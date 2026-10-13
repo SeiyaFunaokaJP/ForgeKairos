@@ -898,9 +898,9 @@ impl Render for SoloDiffGitToolbar {
             }))
             .child(Divider::vertical())
             .child(
-                Button::new("commit", i18n::t!("Commit"))
+                Button::new("commit", i18n::tc!("commit button", "Commit"))
                     .tooltip(Tooltip::for_action_title_in(
-                        i18n::t!("Commit"),
+                        i18n::tc!("commit button", "Commit"),
                         &Commit,
                         &focus_handle,
                     ))

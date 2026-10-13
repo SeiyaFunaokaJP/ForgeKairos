@@ -1,0 +1,48 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Channel Notes"
+msgstr "채널 노트"
+
+msgid "Create File: {}"
+msgstr "파일 만들기: {}"
+
+msgid "Create file "
+msgstr "파일 만들기 "
+
+msgid "Down"
+msgstr "아래"
+
+msgid "Exclude Ignored Files"
+msgstr "무시된 파일 제외"
+
+msgid "Include Ignored Files"
+msgstr "무시된 파일 포함"
+
+msgid "Left"
+msgstr "왼쪽"
+
+msgid "Open File"
+msgstr "파일 열기"
+
+msgid "Open multiple"
+msgstr "여러 개 열기"
+
+msgid "Right"
+msgstr "오른쪽"
+
+msgid "Search project files..."
+msgstr "프로젝트 파일 검색..."
+
+msgid "Split…"
+msgstr "분할…"
+
+msgid "Up"
+msgstr "위"

@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Close Other Tabs"
+msgstr "Fechar outras abas"
+
+msgid "Close Tab"
+msgstr "Fechar aba"
+
+msgid "Move Tab to New Window"
+msgstr "Mover aba para nova janela"
+
+msgid "Show All Tabs"
+msgstr "Mostrar todas as abas"

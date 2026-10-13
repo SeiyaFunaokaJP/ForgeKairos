@@ -1,0 +1,69 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "mcp_server_template"
+msgid "Absolute path of the file to store the memory in"
+msgstr "存储记忆的文件的绝对路径"
+
+msgctxt "mcp_server_template"
+msgid "Absolute path of the folder the server may use"
+msgstr "服务器可使用的文件夹的绝对路径"
+
+msgctxt "mcp_server_template"
+msgid "Bearer <GitHub personal access token>"
+msgstr "Bearer <GitHub 个人访问令牌>"
+
+msgctxt "mcp_server_template"
+msgid "Fetch (Web Page Retrieval)"
+msgstr "Fetch（网页获取）"
+
+msgctxt "mcp_server_template"
+msgid "Fetches the web page at a given URL and passes it on as Markdown."
+msgstr "获取指定 URL 的网页，并以 Markdown 形式传递。"
+
+msgctxt "mcp_server_template"
+msgid "File System"
+msgstr "文件系统"
+
+msgctxt "mcp_server_template"
+msgid "GitHub's official remote MCP server. Works with repositories, issues and pull requests. Requires a GitHub personal access token."
+msgstr "GitHub 官方的远程 MCP 服务器。可处理仓库、Issue 和拉取请求。需要 GitHub 个人访问令牌。"
+
+msgctxt "mcp_server_template"
+msgid "Launches a browser and operates it: opens pages, clicks and types."
+msgstr "启动浏览器并进行操作：打开页面、点击和输入。"
+
+msgctxt "mcp_server_template"
+msgid "Memory (Knowledge Graph)"
+msgstr "Memory（知识图谱）"
+
+msgctxt "mcp_server_template"
+msgid "Node.js (npx), Google Chrome"
+msgstr "Node.js (npx)、Google Chrome"
+
+msgctxt "mcp_server_template"
+msgid "Playwright (Browser Automation)"
+msgstr "Playwright（浏览器自动化）"
+
+msgctxt "mcp_server_template"
+msgid "Reads, writes and searches files inside the folders you specify. Folders you don't specify are left alone."
+msgstr "读取、写入和搜索指定文件夹中的文件。不会触碰未指定的文件夹。"
+
+msgctxt "mcp_server_template"
+msgid "Saves what should be remembered across conversations to a file, as a knowledge graph."
+msgstr "将需要跨会话记住的内容以知识图谱的形式保存到文件中。"
+
+msgctxt "mcp_server_template"
+msgid "The browser's own traffic may ignore the proxy environment variables, and then the network allowlist does not control it."
+msgstr "浏览器自身的通信可能会忽略代理环境变量，此时网络允许列表无法管控它。"
+
+msgctxt "mcp_server_template"
+msgid "The hosts of the sites to fetch also have to be added to the network allowlist."
+msgstr "要获取的网站的主机也必须添加到网络允许列表中。"

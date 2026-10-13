@@ -1,0 +1,301 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Accepts this key and continues connecting (the key is recorded in known_hosts)"
+msgstr "接受此密钥并继续连接（该密钥会记录到 known_hosts 中）"
+
+msgid "Authentication was canceled."
+msgstr "认证已取消。"
+
+msgid "Brings the items selected on the remote side to the local side"
+msgstr "将远程端所选的项目传到本地端"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Canceled."
+msgstr "已取消。"
+
+msgid "Clear Finished"
+msgstr "清除已完成项"
+
+msgid "Connect"
+msgstr "连接"
+
+msgid "Connect first."
+msgstr "请先连接。"
+
+msgid "Connected to {target}."
+msgstr "已连接到 {target}。"
+
+msgid "Connecting to {target}…"
+msgstr "正在连接到 {target}…"
+
+msgid "Connection name"
+msgstr "连接名称"
+
+msgid "Connections"
+msgstr "连接目标"
+
+msgid "Could not list the remote folder."
+msgstr "无法列出远程文件夹。"
+
+msgid "Could not open standard input"
+msgstr "无法打开标准输入"
+
+msgid "Could not open the folder: {error}"
+msgstr "无法打开文件夹：{error}"
+
+msgid "Could not pass on the input: {error}"
+msgstr "无法传递输入：{error}"
+
+msgid "Could not run {program}."
+msgstr "无法运行 {program}。"
+
+msgid "Could not save the connection: {error}"
+msgstr "无法保存连接：{error}"
+
+msgid "Could not save the order: {error}"
+msgstr "无法保存排序：{error}"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete \"{names}\" ({side})?"
+msgstr "删除“{names}”（{side}）？"
+
+msgid "Disconnect"
+msgstr "断开连接"
+
+msgid "Disconnected."
+msgstr "已断开连接。"
+
+msgid "Done"
+msgstr "完成"
+
+msgid "Download"
+msgstr "下载"
+
+msgid "Enter a host name or an IP address."
+msgstr "请输入主机名或 IP 地址。"
+
+msgid "Enter a name."
+msgstr "请输入名称。"
+
+msgid "Enter the remote path."
+msgstr "请输入远程路径。"
+
+msgid "Failed"
+msgstr "失败"
+
+msgid "File Transfer"
+msgstr "文件传输"
+
+msgid "Folder (e.g. Offices/Head Office)"
+msgstr "文件夹（例如：办公室/总部）"
+
+msgid "Go to Parent Folder"
+msgstr "转到上级文件夹"
+
+msgid "Host name / IP address"
+msgstr "主机名 / IP 地址"
+
+msgid "Loading…"
+msgstr "正在加载…"
+
+msgid "Local"
+msgstr "本地"
+
+msgid "Local side"
+msgstr "本地端"
+
+msgid "More than {limit} files would be transferred. Transfer them in smaller batches."
+msgstr "要传输的文件超过 {limit} 个。请分批传输。"
+
+msgid "More than {limit} items would be deleted. Delete them in smaller batches."
+msgstr "要删除的项目超过 {limit} 个。请分批删除。"
+
+msgid "Moves down one place within the same folder"
+msgstr "在同一文件夹内下移一位"
+
+msgid "Moves up one place within the same folder"
+msgstr "在同一文件夹内上移一位"
+
+msgid "Name of the new folder ({side})"
+msgstr "新文件夹的名称（{side}）"
+
+msgid "New name for \"{name}\""
+msgstr "“{name}”的新名称"
+
+msgid "No"
+msgstr "否"
+
+msgid "No items"
+msgstr "没有项目"
+
+msgid "No saved connections yet."
+msgstr "暂无保存的连接。"
+
+msgid "Opens the list of saved connections and Remote SSH hosts"
+msgstr "打开已保存的连接和远程 SSH 主机列表"
+
+msgid "Password (optional)"
+msgstr "密码（可选）"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "Progress"
+msgstr "进度"
+
+msgid "Queued"
+msgstr "排队中"
+
+msgid "Reconnect"
+msgstr "重新连接"
+
+msgid "Remember password"
+msgstr "记住密码"
+
+msgid "Remote"
+msgstr "远程"
+
+msgid "Remote SSH"
+msgstr "远程 SSH"
+
+msgid "Removed the saved password."
+msgstr "已删除保存的密码。"
+
+msgid "Removes the saved password of this connection"
+msgstr "删除此连接保存的密码"
+
+msgid "Rename one item at a time."
+msgstr "请一次重命名一个项目。"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save this connection"
+msgstr "保存此连接"
+
+msgid "Saved"
+msgstr "已保存"
+
+msgid "Saved the connection \"{name}\"."
+msgstr "已保存连接“{name}”。"
+
+msgid "Select the item to rename."
+msgstr "请选择要重命名的项目。"
+
+msgid "Select the items to delete."
+msgstr "请选择要删除的项目。"
+
+msgid "Select the items to download on the remote side."
+msgstr "请在远程端选择要下载的项目。"
+
+msgid "Select the items to upload on the local side."
+msgstr "请在本地端选择要上传的项目。"
+
+msgid "Sends the items selected on the local side to the remote"
+msgstr "将本地端所选的项目发送到远程端"
+
+msgid "Stopped because the connection was closed."
+msgstr "由于连接已关闭，已停止。"
+
+msgid "Stops connecting"
+msgstr "停止连接"
+
+msgid "Target: {side}"
+msgstr "目标：{side}"
+
+msgid "That name cannot be used."
+msgstr "无法使用该名称。"
+
+msgid "The command failed (it printed no details)."
+msgstr "命令失败（未输出任何详细信息）。"
+
+msgid "The command failed:\n{detail}"
+msgstr "命令失败：\n{detail}"
+
+msgid "The connection timed out."
+msgstr "连接超时。"
+
+msgid "The host name contains characters that cannot be used."
+msgstr "主机名包含无法使用的字符。"
+
+msgid "The list of saved connections has not loaded yet."
+msgstr "已保存连接的列表尚未加载。"
+
+msgid "The name contains characters that cannot be used."
+msgstr "名称包含无法使用的字符。"
+
+msgid "The operation failed:\n{error}"
+msgstr "操作失败：\n{error}"
+
+msgid "The password is stored in the operating system's credential manager and shared with Quick Connect"
+msgstr "密码存储在操作系统的凭据管理器中，并与快速连接共享"
+
+msgid "The password you entered was rejected. Enter it again."
+msgstr "你输入的密码被拒绝。请重新输入。"
+
+msgid "The port number is invalid."
+msgstr "端口号无效。"
+
+msgid "The remote path contains characters that cannot be used."
+msgstr "远程路径包含无法使用的字符。"
+
+msgid "The remote path must start with /."
+msgstr "远程路径必须以 / 开头。"
+
+msgid "The saved password was rejected. Enter it again."
+msgstr "保存的密码被拒绝。请重新输入。"
+
+msgid "The user name contains characters that cannot be used."
+msgstr "用户名包含无法使用的字符。"
+
+msgid "This Computer"
+msgstr "本机"
+
+msgid "This Remote ({display_name})"
+msgstr "此远程（{display_name}）"
+
+msgid "This host's key has not been seen before. Continue connecting?"
+msgstr "以前从未见过此主机的密钥。是否继续连接？"
+
+msgid "Upload"
+msgstr "上传"
+
+msgid "User name"
+msgstr "用户名"
+
+msgid "Writes to the list shared with Quick Connect"
+msgstr "写入与快速连接共享的列表"
+
+msgid "Yes"
+msgstr "是"
+
+msgctxt "file transfer"
+msgid "New Folder"
+msgstr "新建文件夹"
+
+msgctxt "file transfer"
+msgid "Refresh"
+msgstr "刷新"
+
+msgctxt "file transfer"
+msgid "Rename"
+msgstr "重命名"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

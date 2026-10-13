@@ -1,0 +1,34 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "All threads"
+msgstr "すべてのスレッド"
+
+msgid "Include profiler timings"
+msgstr "プロファイラー自身の計測を含める"
+
+msgid "Pause"
+msgstr "一時停止"
+
+msgid "Profiler Window"
+msgstr "プロファイラーウィンドウ"
+
+msgid "Remote: All threads"
+msgstr "リモート: すべてのスレッド"
+
+msgid "Remote: Foreground"
+msgstr "リモート: フォアグラウンド"
+
+msgid "Resume"
+msgstr "再開"
+
+msgid "Save"
+msgstr "保存"
+
+msgctxt "profiler thread"
+msgid "Foreground"
+msgstr "フォアグラウンド"

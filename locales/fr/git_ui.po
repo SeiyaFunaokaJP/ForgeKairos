@@ -1,0 +1,3910 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "\nand {} more…"
+msgstr "\net {} de plus…"
+
+msgid " (no branch)"
+msgstr " (aucune branche)"
+
+msgid "\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch."
+msgstr "\"Abandonner\" revient à la branche d'origine \"{origin_branch}\" et supprime cette branche temporaire."
+
+msgid "\"Continue\" carries on with the rest, and \"Abort\" goes back to where it started."
+msgstr "\"Continuer\" poursuit avec le reste, et \"Abandonner\" revient au point de départ."
+
+msgid "\"{label}\" is unavailable right now: {refusal}"
+msgstr "\"{label}\" est indisponible pour le moment : {refusal}"
+
+msgid "\"{merge_request_branch}\" is a branch under development. Give the MR branch another name."
+msgstr "\"{merge_request_branch}\" est une branche en cours de développement. Donnez un autre nom à la branche MR."
+
+msgid "\"{merge_request_branch}\" is checked out in another worktree, so it cannot be recreated. Use another name."
+msgstr "\"{merge_request_branch}\" est extraite dans une autre arborescence de travail : elle ne peut donc pas être recréée. Utilisez un autre nom."
+
+msgid "(binary file not shown)"
+msgstr "(fichier binaire non affiché)"
+
+msgid "(not selected)"
+msgstr "(non sélectionné)"
+
+msgid ". {count} changed file not from the development branch"
+msgid_plural ". {count} changed files not from the development branch"
+msgstr[0] ". {count} fichier modifié ne provenant pas de la branche de développement"
+msgstr[1] ". {count} fichiers modifiés ne provenant pas de la branche de développement"
+
+msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
+msgstr "1. Choisissez la \"branche de développement\" (d'où viennent les validations) et la \"base\" (la cible de la MR). 2. Faites glisser des lignes du graphe des validations dans la boîte, ou sélectionnez-les et appuyez sur \"Ajouter à la boîte MR\". Mettez de côté ce qui doit rester hors de la MR en cliquant avec le bouton droit sur sa ligne et en choisissant \"Exclure de la MR\". 3. Lorsque \"non placées\" sous la boîte indique 0, rien n'a été oublié (les lignes non placées portent un petit ● dans le graphe, et \"Atteindre la suivante non placée\" les parcourt une à une). 4. Saisissez un message et un nom de branche MR, puis appuyez sur \"Créer et comparer\" : la branche MR est créée sous forme d'une seule validation au-dessus de la base, puis comparée à la branche de développement. Elle ne peut pas être créée tant qu'il reste des modifications non validées : validez-les ou remisez-les d'abord."
+
+msgid "<no branch>"
+msgstr "<aucune branche>"
+
+msgid "<no commit message>"
+msgstr "<aucun message de validation>"
+
+msgid "<no name>"
+msgstr "<aucun nom>"
+
+msgid "A base change may be missing from the MR"
+msgstr "Une modification de la base manque peut-être dans la MR"
+
+msgid "A conflict happened while applying the box's commits. Stopped on the scratch branch \"{}\".\nResolve it and press \"Continue\" in the Git panel's banner, then finish with \"Next Steps\" in the MR box. To give up, \"Abort\" in the banner returns to \"{}\".\n{reason}"
+msgstr "Un conflit s'est produit lors de l'application des validations de la boîte. Arrêt sur la branche temporaire \"{}\".\nRésolvez-le et appuyez sur \"Continuer\" dans la bannière du panneau Git, puis terminez avec \"Étapes suivantes\" dans la boîte MR. Pour renoncer, \"Abandonner\" dans la bannière revient à \"{}\".\n{reason}"
+
+msgid "A detached HEAD cannot be reordered. Switch to a branch first."
+msgstr "Un HEAD détaché ne peut pas être réordonné. Passez d'abord à une branche."
+
+msgid "A detached HEAD cannot be rewritten. Switch to a branch first"
+msgstr "Un HEAD détaché ne peut pas être réécrit. Passez d'abord à une branche"
+
+msgid "A file an excluded commit touched (as intended)."
+msgstr "Fichier modifié par une validation exclue (comme prévu)."
+
+msgid "A file history tab has no MR box. Open it in a Git Graph tab."
+msgstr "Un onglet d'historique de fichier n'a pas de boîte MR. Ouvrez-la dans un onglet du graphe des validations."
+
+msgid "A force push can erase other people's changes. Commits others pushed disappear without a word"
+msgstr "Un envoi forcé peut effacer les modifications d'autres personnes. Les validations envoyées par d'autres disparaissent sans avertissement"
+
+msgid "A merge commit and the commits before it cannot be reordered (rewriting them would break the merge)."
+msgstr "Une validation de fusion et les validations qui la précèdent ne peuvent pas être réordonnées (les réécrire casserait la fusion)."
+
+msgid "A merge commit cannot be cherry-picked."
+msgstr "Une validation de fusion ne peut pas être appliquée (cherry-pick)."
+
+msgid "A merge commit cannot be reverted."
+msgstr "Une validation de fusion ne peut pas être inversée (revert)."
+
+msgid "A name cannot start with -."
+msgstr "Un nom ne peut pas commencer par -."
+
+msgid "A period (3d, 2w, 1m, 1y, a date, \"2026-09-01 12:00\")"
+msgstr "Une période (3d, 2w, 1m, 1y, une date, \"2026-09-01 12:00\")"
+
+msgid "A renamed file is split into two rows, \"Deleted\" and \"Added\"."
+msgstr "Un fichier renommé est réparti sur deux lignes, \"Supprimé\" et \"Ajouté\"."
+
+msgid "A renamed file is split into two rows: its old name and its new name."
+msgstr "Un fichier renommé est réparti sur deux lignes : son ancien nom et son nouveau nom."
+
+msgid "A value for \"{label}\" cannot contain both spaces and \"."
+msgstr "Une valeur pour \"{label}\" ne peut pas contenir à la fois des espaces et \"."
+
+msgid "Abort the {}?"
+msgstr "Abandonner l'opération en cours ({}) ?"
+
+msgid "Aborted the {}."
+msgstr "L'opération en cours ({}) a été abandonnée."
+
+msgid "Add Remote…"
+msgstr "Ajouter un dépôt distant…"
+
+msgid "Add a fix to an older commit (fixup)"
+msgstr "Ajouter un correctif à une ancienne validation (fixup)"
+
+msgid "Add co-authored-by"
+msgstr "Ajouter co-authored-by"
+
+msgid "Add repo to project"
+msgstr "Ajouter le dépôt au projet"
+
+msgid "Add the {count} Selected Commit to the MR Box"
+msgid_plural "Add the {count} Selected Commits to the MR Box"
+msgstr[0] "Ajouter {count} validation sélectionnée à la boîte MR"
+msgstr[1] "Ajouter les {count} validations sélectionnées à la boîte MR"
+
+msgid "Add to .git/info/exclude"
+msgstr "Ajouter à .git/info/exclude"
+
+msgid "Add to .gitignore"
+msgstr "Ajouter à .gitignore"
+
+msgid "Add {count} Commit to MR Box"
+msgid_plural "Add {count} Commits to MR Box"
+msgstr[0] "Ajouter {count} validation à la boîte MR"
+msgstr[1] "Ajouter {count} validations à la boîte MR"
+
+msgid "Added or removed lines contain \"foo\" (slow)"
+msgstr "Les lignes ajoutées ou supprimées contiennent \"foo\" (lent)"
+
+msgid "Added the remote {remote_name}."
+msgstr "Le dépôt distant {remote_name} a été ajouté."
+
+msgid "Adds a \"Signed-off-by: name <email>\" line at the end of the commit message. Use it when the project's rules ask for it"
+msgstr "Ajoute une ligne \"Signed-off-by: name <email>\" à la fin du message de validation. À utiliser lorsque les règles du projet l'exigent"
+
+msgid "Adds or removes the stage mark of the chosen change (hunk: one block of changes)"
+msgstr "Ajoute ou retire la marque d'indexation de la modification choisie (bloc : un bloc de modifications)"
+
+msgid "Adds the changes of the {count} picked commit to the tip of the current branch as a new commit (cherry-pick)."
+msgid_plural "Adds the changes of the {count} picked commits to the tip of the current branch as new commits (cherry-pick)."
+msgstr[0] "Ajoute les modifications de {count} validation choisie au sommet de la branche actuelle sous forme d'une nouvelle validation (cherry-pick)."
+msgstr[1] "Ajoute les modifications des {count} validations choisies au sommet de la branche actuelle sous forme de nouvelles validations (cherry-pick)."
+
+msgid "Adds the changes of {sha} to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgstr "Ajoute les modifications de {sha} au sommet de la branche actuelle {branch} sous forme d'une nouvelle validation (cherry-pick)."
+
+msgid "Adds this file to the ignore list at the top of the repository (.gitignore), so that it no longer shows among the changes. Once the .gitignore change is committed, it applies to others too"
+msgstr "Ajoute ce fichier à la liste des fichiers ignorés à la racine du dépôt (.gitignore), afin qu'il n'apparaisse plus parmi les modifications. Une fois la modification de .gitignore validée, elle s'applique aussi aux autres"
+
+msgid "Adds this file to your own local ignore list (.git/info/exclude). It is not committed and does not apply to others"
+msgstr "Ajoute ce fichier à votre propre liste locale de fichiers ignorés (.git/info/exclude). Elle n'est pas validée et ne s'applique pas aux autres"
+
+msgid "Adds your uncommitted changes into this commit"
+msgstr "Ajoute vos modifications non validées dans cette validation"
+
+msgid "After resolving the conflict and pressing \"Continue\" in the Git panel's banner, \"Next Steps\" updates the MR branch and goes back to \"{}\"."
+msgstr "Après avoir résolu le conflit et appuyé sur \"Continuer\" dans la bannière du panneau Git, \"Étapes suivantes\" met à jour la branche MR et revient à \"{}\"."
+
+msgid "After rewriting pushed commits with amend, fixup, reordering and so on, push with \"Force Push (with lease)\". Because of the lease, commits someone else pushed first are not overwritten."
+msgstr "Après avoir réécrit des validations déjà envoyées (amend, fixup, réordonnancement, etc.), envoyez avec \"Envoyer de force (avec bail)\". Grâce au bail, les validations qu'une autre personne a envoyées avant vous ne sont pas écrasées."
+
+msgid "After the rewrite there will be {count} commit, with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgid_plural "After the rewrite there will be {count} commits, each with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgstr[0] "Après la réécriture, il y aura {count} validation, avec un nouveau SHA.\nLa réécriture s'applique à la branche actuelle \"{branch}\". Le travail se fait sur une branche temporaire \"{scratch_branch}\", et \"{branch}\" y est déplacée à la fin (la branche temporaire est supprimée en cas de réussite).\nSi la branche a déjà été envoyée, un envoi forcé sera nécessaire ensuite."
+msgstr[1] "Après la réécriture, il y aura {count} validations, chacune avec un nouveau SHA.\nLa réécriture s'applique à la branche actuelle \"{branch}\". Le travail se fait sur une branche temporaire \"{scratch_branch}\", et \"{branch}\" y est déplacée à la fin (la branche temporaire est supprimée en cas de réussite).\nSi la branche a déjà été envoyée, un envoi forcé sera nécessaire ensuite."
+
+msgid "All Branches"
+msgstr "Toutes les branches"
+
+msgid "All changes ({count} tracked file)"
+msgid_plural "All changes ({count} tracked files)"
+msgstr[0] "Toutes les modifications ({count} fichier suivi)"
+msgstr[1] "Toutes les modifications ({count} fichiers suivis)"
+
+msgid "All conflicts marked as resolved"
+msgstr "Tous les conflits sont marqués comme résolus"
+
+msgid "All three move the current branch back to the chosen commit and undo the commits after it. soft keeps the undone commits' changes as staged changes and mixed as unstaged ones, so you can commit them again. hard throws away the undone commits' changes and the changes you have not committed yet as well (uncommitted changes cannot be recovered)."
+msgstr "Les trois ramènent la branche actuelle à la validation choisie et annulent les validations qui la suivent. soft conserve les modifications des validations annulées comme modifications indexées, et mixed comme modifications non indexées : vous pouvez donc les valider à nouveau. hard abandonne les modifications des validations annulées ainsi que les modifications que vous n'avez pas encore validées (les modifications non validées ne peuvent pas être récupérées)."
+
+msgid "Already pushed, so a force push (with lease) is needed afterwards"
+msgstr "Déjà envoyée : un envoi forcé (avec bail) sera nécessaire ensuite"
+
+msgid "Also changed on the base · changed by an excluded commit"
+msgstr "Également modifié sur la base · modifié par une validation exclue"
+
+msgid "Also changed on the base: the diff includes the base's changes"
+msgstr "Également modifié sur la base : les différences incluent les modifications de la base"
+
+msgid "Amend"
+msgstr "Modifier (amend)"
+
+msgid "Amend Tracked"
+msgstr "Modifier avec les fichiers suivis (amend)"
+
+msgid "Another remote operation is running. Push again once it has finished."
+msgstr "Une autre opération distante est en cours. Envoyez à nouveau une fois qu'elle sera terminée."
+
+msgid "Applied the patch file with a 3-way merge and staged it."
+msgstr "Le fichier patch a été appliqué avec une fusion à 3 voies et indexé."
+
+msgid "Applied the patch file."
+msgstr "Le fichier patch a été appliqué."
+
+msgid "Applies the changes written in a patch file to your current files. Nothing is committed, so check the result before you commit"
+msgstr "Applique les modifications décrites dans un fichier patch à vos fichiers actuels. Rien n'est validé : vérifiez le résultat avant de valider"
+
+msgid "Applies to: {}"
+msgstr "S'applique à : {}"
+
+msgid "Apply"
+msgstr "Appliquer"
+
+msgid "Apply Patch File…"
+msgstr "Appliquer un fichier patch…"
+
+msgid "Apply stash@{{{}}}?"
+msgstr "Appliquer stash@{{{}}} ?"
+
+msgid "Apply the patch file {}?"
+msgstr "Appliquer le fichier patch {} ?"
+
+msgid "Are you sure you want to discard changes to {}?"
+msgstr "Voulez-vous vraiment abandonner les modifications apportées à {} ?"
+
+msgid "Are you sure you want to restore {}?"
+msgstr "Voulez-vous vraiment restaurer {} ?"
+
+msgid "Are you sure?"
+msgstr "Êtes-vous sûr ?"
+
+msgid "Author"
+msgstr "Auteur"
+
+msgid "Base commit: {}"
+msgstr "Validation de base : {}"
+
+msgid "Base: {base_ref}"
+msgstr "Base : {base_ref}"
+
+msgid "Based off the current branch"
+msgstr "À partir de la branche actuelle"
+
+msgid "Based off {url}"
+msgstr "Basé sur {url}"
+
+msgid "Based off {}"
+msgstr "À partir de {}"
+
+msgid "Binary files cannot be shown side by side."
+msgstr "Les fichiers binaires ne peuvent pas être affichés côte à côte."
+
+msgid "Blame Previous Revision"
+msgstr "Afficher le blame de la révision précédente"
+
+msgid "Blame Revision"
+msgstr "Afficher le blame de la révision"
+
+msgid "Branch \"{branch_name}\" is not fully merged. Force delete it?"
+msgstr "La branche \"{branch_name}\" n'est pas entièrement fusionnée. Forcer sa suppression ?"
+
+msgid "Branch \"{branch_name}\" was not found."
+msgstr "La branche \"{branch_name}\" est introuvable."
+
+msgid "Branch \"{merge_request_branch}\" already exists. Check the recreate option to rebuild it."
+msgstr "La branche \"{merge_request_branch}\" existe déjà. Cochez l'option de recréation pour la reconstruire."
+
+msgid "Branch / tag to compare from (the source)"
+msgstr "Branche / étiquette de départ de la comparaison (la source)"
+
+msgid "Branch / tag to compare with (the target)"
+msgstr "Branche / étiquette à laquelle comparer (la cible)"
+
+msgid "Branched off at {}."
+msgstr "Branche créée à partir de {}."
+
+msgid "Branches"
+msgstr "Branches"
+
+msgid "Bring over a commit from another branch (cherry-pick)"
+msgstr "Reprendre une validation d'une autre branche (cherry-pick)"
+
+msgid "Brings a deleted file back with its content in the last commit"
+msgstr "Restaure un fichier supprimé avec son contenu de la dernière validation"
+
+msgid "Brings in the latest from the remote and replays your commits that were not pushed yet on top of it. History stays in a straight line"
+msgstr "Récupère les dernières modifications du dépôt distant et rejoue par-dessus vos validations pas encore envoyées. L'historique reste linéaire"
+
+msgid "Brings the chosen branch's changes into the current branch. Both histories are kept. If the current branch has new commits too, a commit that joins the two (a merge commit) is created"
+msgstr "Intègre les modifications de la branche choisie dans la branche actuelle. Les deux historiques sont conservés. Si la branche actuelle a aussi de nouvelles validations, une validation qui réunit les deux (une validation de fusion) est créée"
+
+msgid "Buffer Search"
+msgstr "Recherche dans le tampon"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Cancel Commit Message Generation"
+msgstr "Annuler la génération du message de validation"
+
+msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+msgstr "Impossible de créer une branche MR sur un HEAD détaché. Passez d'abord à une branche."
+
+msgid "Cannot create it on the scratch branch \"{origin_branch}\". Go back to the original branch first."
+msgstr "Impossible de la créer sur la branche temporaire \"{origin_branch}\". Revenez d'abord à la branche d'origine."
+
+msgid "Cannot fixup: {}"
+msgstr "Impossible d'effectuer le fixup : {}"
+
+msgid "Cannot push from a collaborative project."
+msgstr "Impossible d'envoyer depuis un projet collaboratif."
+
+msgid "Caution: {caution}"
+msgstr "Attention : {caution}"
+
+msgid "Changed by an excluded commit"
+msgstr "Modifié par une validation exclue"
+
+msgid "Changed on the development branch, but different on the MR branch. The commits below may be missing."
+msgstr "Modifié sur la branche de développement, mais différent sur la branche MR. Les validations ci-dessous manquent peut-être."
+
+msgid "Changes"
+msgstr "Modifications"
+
+msgid "Changes how the list of changes is shown (list or tree, sort order, grouping). Does nothing to the files"
+msgstr "Modifie l'affichage de la liste des modifications (liste ou arborescence, ordre de tri, regroupement). Ne touche pas aux fichiers"
+
+msgid "Changes in the working tree (git diff)"
+msgstr "Modifications de la copie de travail (git diff)"
+
+msgid "Changes only this commit's message"
+msgstr "Modifie uniquement le message de cette validation"
+
+msgid "Changes since {}"
+msgstr "Modifications depuis {}"
+
+msgid "Changes to Fold In"
+msgstr "Modifications à intégrer"
+
+msgid "Changes to the same lines on both sides cause a conflict"
+msgstr "Des modifications des mêmes lignes des deux côtés provoquent un conflit"
+
+msgid "Check Out This Commit (detached)"
+msgstr "Extraire cette validation (détachée)"
+
+msgid "Checked out {} (detached HEAD)."
+msgstr "{} extrait (HEAD détaché)."
+
+msgid "Cherry-Pick This Commit onto the Current Branch"
+msgstr "Appliquer cette validation sur la branche actuelle (cherry-pick)"
+
+msgid "Cherry-Pick the {count} Selected Commit onto the Current Branch"
+msgid_plural "Cherry-Pick the {count} Selected Commits onto the Current Branch"
+msgstr[0] "Appliquer {count} validation sélectionnée sur la branche actuelle (cherry-pick)"
+msgstr[1] "Appliquer les {count} validations sélectionnées sur la branche actuelle (cherry-pick)"
+
+msgid "Cherry-pick the selected commits onto the current branch?"
+msgstr "Appliquer les validations sélectionnées sur la branche actuelle (cherry-pick) ?"
+
+msgid "Cherry-pick the {count} picked commit, reorder it or add it to the MR box. Hover over a button to learn more"
+msgid_plural "Cherry-pick the {count} picked commits together, reorder them or add them to the MR box. Hover over a button to learn more"
+msgstr[0] "Appliquez (cherry-pick) {count} validation choisie, réordonnez-la ou ajoutez-la à la boîte MR. Survolez un bouton pour en savoir plus"
+msgstr[1] "Appliquez ensemble (cherry-pick) les {count} validations choisies, réordonnez-les ou ajoutez-les à la boîte MR. Survolez un bouton pour en savoir plus"
+
+msgid "Cherry-pick this commit onto the current branch?"
+msgstr "Appliquer cette validation sur la branche actuelle (cherry-pick) ?"
+
+msgid "Cherry-pick {count} commit onto the current branch?"
+msgid_plural "Cherry-pick {count} commits onto the current branch?"
+msgstr[0] "Appliquer {count} validation sur la branche actuelle (cherry-pick) ?"
+msgstr[1] "Appliquer {count} validations sur la branche actuelle (cherry-pick) ?"
+
+msgid "Cherry-picked {}."
+msgstr "{} appliqué (cherry-pick)."
+
+msgid "Cherry-picks {count} commit: adds it, oldest first, to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgid_plural "Cherry-picks {count} commits: adds them, oldest first, to the tip of the current branch {branch} as new commits (cherry-pick)."
+msgstr[0] "Applique {count} validation (cherry-pick) : l'ajoute au sommet de la branche actuelle {branch} sous forme d'une nouvelle validation, de la plus ancienne à la plus récente."
+msgstr[1] "Applique {count} validations (cherry-pick) : les ajoute au sommet de la branche actuelle {branch} sous forme de nouvelles validations, de la plus ancienne à la plus récente."
+
+msgid "Choose What the Patch File Contains (Whole Repository: {})"
+msgstr "Choisir le contenu du fichier patch (dépôt entier : {})"
+
+msgid "Choose a Branch…"
+msgstr "Choisir une branche…"
+
+msgid "Choose a base."
+msgstr "Choisissez une base."
+
+msgid "Choose a commit (right-click one in the history tab or the Git Graph)"
+msgstr "Choisissez une validation (clic droit sur l'une d'elles dans l'onglet d'historique ou dans le graphe des validations)"
+
+msgid "Choose a development branch and a base to check for left-out commits."
+msgstr "Choisissez une branche de développement et une base pour vérifier les validations oubliées."
+
+msgid "Choose a development branch."
+msgstr "Choisissez une branche de développement."
+
+msgid "Choose a file from the list on the left to show the development branch (left) and the MR branch (right) side by side. Rows in the warning color show the base (left) and the MR branch (right)."
+msgstr "Choisissez un fichier dans la liste de gauche pour afficher côte à côte la branche de développement (à gauche) et la branche MR (à droite). Les lignes dans la couleur d'avertissement montrent la base (à gauche) et la branche MR (à droite)."
+
+msgid "Choose the Base Branch or Tag (Where the MR Goes)"
+msgstr "Choisir la branche ou l'étiquette de base (cible de la MR)"
+
+msgid "Choose the Development Branch (Where the Commits Come From)"
+msgstr "Choisir la branche de développement (d'où viennent les validations)"
+
+msgid "Choose the MR's base (merge target) and reopen as a comparison that the base's own changes do not bury."
+msgstr "Choisissez la base de la MR (cible de la fusion) et rouvrez sous forme d'une comparaison que les modifications propres à la base n'encombrent pas."
+
+msgid "Choose two branches / tags to list the commits only one of them has and how their contents differ. Useful to check that nothing was left out when porting."
+msgstr "Choisissez deux branches / étiquettes pour lister les validations que seule l'une d'elles possède et les différences de contenu. Utile pour vérifier que rien n'a été oublié lors d'un portage."
+
+msgid "Chooses the branches the list shows: all, yours (local) or the server's (remote)"
+msgstr "Choisit les branches affichées dans la liste : toutes, les vôtres (locales) ou celles du serveur (distantes)"
+
+msgid "Chooses the commits the graph shows: all branches, the current branch or a chosen branch"
+msgstr "Choisit les validations affichées dans le graphe : toutes les branches, la branche actuelle ou une branche choisie"
+
+msgid "Chooses the remote to send to, then sends your commits"
+msgstr "Choisit le dépôt distant de destination, puis envoie vos validations"
+
+msgid "Click to Resolve with Agent"
+msgstr "Cliquez pour résoudre avec l'agent"
+
+msgid "Clipboard ↔ {selection_location_path}"
+msgstr "Presse-papiers ↔ {selection_location_path}"
+
+msgid "Clipboard ↔ {selection_location_title}"
+msgstr "Presse-papiers ↔ {selection_location_title}"
+
+msgid "Clone a repository from GitHub or other sources."
+msgstr "Clonez un dépôt depuis GitHub ou d'autres sources."
+
+msgid "Close"
+msgstr "Fermer"
+
+msgid "Close (they show again next time)"
+msgstr "Fermer (ils réapparaîtront la prochaine fois)"
+
+msgid "Close the Box (Its Contents Are Kept)"
+msgstr "Fermer la boîte (son contenu est conservé)"
+
+msgid "Collapse"
+msgstr "Réduire"
+
+msgid "Collapse Commit Editor"
+msgstr "Réduire l'éditeur de message de validation"
+
+msgid "Collect a development branch's commits in the \"MR box\" and they are squashed into one commit on a new branch for the MR. The original branch stays as it is."
+msgstr "Rassemblez les validations d'une branche de développement dans la \"boîte MR\" : elles seront combinées en une seule validation sur une nouvelle branche pour la MR. La branche d'origine reste inchangée."
+
+msgid "Collects commits in a box and creates a branch with them squashed into one commit for an MR (merge request)"
+msgstr "Rassemble des validations dans une boîte et crée une branche où elles sont combinées en une seule validation pour une MR (merge request)"
+
+msgid "Collects commits in the MR box. From them you can create a branch squashed into one commit for the MR"
+msgstr "Rassemble des validations dans la boîte MR. À partir d'elles, vous pouvez créer une branche combinée en une seule validation pour la MR"
+
+msgid "Columns"
+msgstr "Colonnes"
+
+msgid "Combines the picked consecutive commits into a single commit"
+msgstr "Combine les validations consécutives choisies en une seule validation"
+
+msgid "Commit"
+msgstr "Validation"
+
+msgid "Commit SHA"
+msgstr "SHA de la validation"
+
+msgid "Commit SHA Copied!"
+msgstr "SHA de la validation copié !"
+
+msgid "Commit Tracked"
+msgstr "Valider les fichiers suivis"
+
+msgid "Commit and Push As"
+msgstr "Valider et envoyer en tant que"
+
+msgid "Commit in progress"
+msgstr "Validation en cours"
+
+msgid "Commit message for the MR"
+msgstr "Message de validation de la MR"
+
+msgid "Commit message title exceeds {max_title_length}-character limit."
+msgstr "Le titre du message de validation dépasse la limite de {max_title_length} caractères."
+
+msgid "Commit or stash the uncommitted changes first"
+msgstr "Validez ou remisez d'abord les modifications non validées"
+
+msgid "Commit or stash the uncommitted changes first ({operation})."
+msgstr "Validez ou remisez d'abord les modifications non validées ({operation})."
+
+msgid "Commit {sha_short}"
+msgstr "Validation {sha_short}"
+
+msgid "Commits and pushes as git is configured. Click to pick a git account."
+msgstr "Valide et envoie selon la configuration de git. Cliquez pour choisir un compte Git."
+
+msgid "Commits are reordered one at a time. Drag a single commit."
+msgstr "Les validations sont réordonnées une à la fois. Faites glisser une seule validation."
+
+msgid "Commits as {name} <{email}> (git account \"{id}\")"
+msgstr "Valide en tant que {name} <{email}> (compte Git \"{id}\")"
+
+msgid "Commits as {name} <{email}> (git account \"{id}\"). The account's SSH key is not used: {reason}"
+msgstr "Valide en tant que {name} <{email}> (compte Git \"{id}\"). La clé SSH du compte n'est pas utilisée : {reason}"
+
+msgid "Commits on feature that the default branch does not have"
+msgstr "Validations de feature absentes de la branche par défaut"
+
+msgid "Commits that are not in the current branch's history cannot be reordered. Switch to that branch, then try again."
+msgstr "Les validations qui ne font pas partie de l'historique de la branche actuelle ne peuvent pas être réordonnées. Passez à cette branche, puis réessayez."
+
+msgid "Commits that are only on that branch can no longer be seen"
+msgstr "Les validations présentes uniquement sur cette branche ne seront plus visibles"
+
+msgid "Commits that changed that file or folder (* for patterns)"
+msgstr "Validations ayant modifié ce fichier ou ce dossier (* pour les modèles)"
+
+msgid "Commits that tags with \"v1.2\" in their name point to"
+msgstr "Validations désignées par les étiquettes dont le nom contient \"v1.2\""
+
+msgid "Commits whose SHA starts like this"
+msgstr "Validations dont le SHA commence ainsi"
+
+msgid "Commits without the checks that run automatically before a commit (hooks)"
+msgstr "Valide sans les vérifications exécutées automatiquement avant une validation (hooks)"
+
+msgid "Compare two branches"
+msgstr "Comparer deux branches"
+
+msgid "Compares only the files {} changed after it branched off {merge_request_base} (the base)."
+msgstr "Compare uniquement les fichiers modifiés par {} après sa séparation de {merge_request_base} (la base)."
+
+msgid "Compares the contents of two branches or tags themselves. If there are no differences, everything has been ported."
+msgstr "Compare le contenu même de deux branches ou étiquettes. S'il n'y a aucune différence, tout a été porté."
+
+msgid "Compares the contents of two branches or tags. Useful to check that no commit was left behind"
+msgstr "Compare le contenu de deux branches ou étiquettes. Utile pour vérifier qu'aucune validation n'a été oubliée"
+
+msgid "Comparing needs at least two branches or tags."
+msgstr "La comparaison nécessite au moins deux branches ou étiquettes."
+
+msgid "Comparison of {} (source) and {} (target)"
+msgstr "Comparaison de {} (source) et de {} (cible)"
+
+msgid "Comparison of {} and {}"
+msgstr "Comparaison de {} et de {}"
+
+msgid "Configure Provider"
+msgstr "Configurer le fournisseur"
+
+msgid "Configure an LLM provider to generate commit messages."
+msgstr "Configurez un fournisseur LLM pour générer des messages de validation."
+
+msgid "Confirm"
+msgstr "Confirmer"
+
+msgid "Conflict marked as resolved"
+msgstr "Conflit marqué comme résolu"
+
+msgid "Conflicts"
+msgstr "Conflits"
+
+msgid "Conflicts marked as resolved"
+msgstr "Conflits marqués comme résolus"
+
+msgid "Contains Unpushed Changes — {}"
+msgstr "Contient des modifications non envoyées — {}"
+
+msgid "Continued the {}."
+msgstr "L'opération en cours ({}) a repris."
+
+msgid "Copied {text}."
+msgstr "{text} copié."
+
+msgid "Copies how many commits past the nearest tag this is (in git describe form)"
+msgstr "Copie le nombre de validations depuis l'étiquette la plus proche (au format git describe)"
+
+msgid "Copies only this commit's changes onto the current branch as a new commit. The original stays"
+msgstr "Copie uniquement les modifications de cette validation sur la branche actuelle sous forme d'une nouvelle validation. L'original est conservé"
+
+msgid "Copies the file's location as a full (absolute) path to the clipboard"
+msgstr "Copie l'emplacement du fichier sous forme de chemin d'accès complet (absolu) dans le presse-papiers"
+
+msgid "Copies the file's location as a path relative to the project folder to the clipboard"
+msgstr "Copie l'emplacement du fichier sous forme de chemin d'accès relatif au dossier du projet dans le presse-papiers"
+
+msgid "Copies the picked commits' changes onto the current branch, oldest first. The originals stay"
+msgstr "Copie les modifications des validations choisies sur la branche actuelle, de la plus ancienne à la plus récente. Les originaux sont conservés"
+
+msgid "Copy"
+msgstr "Copier"
+
+msgid "Copy Commit SHA"
+msgstr "Copier le SHA de la validation"
+
+msgid "Copy Distance from Latest Tag"
+msgstr "Copier la distance depuis la dernière étiquette"
+
+msgid "Copy Email"
+msgstr "Copier l'adresse e-mail"
+
+msgid "Copy Path"
+msgstr "Copier le chemin d'accès"
+
+msgid "Copy Ref Name"
+msgstr "Copier le nom de la référence"
+
+msgid "Copy Relative Path"
+msgstr "Copier le chemin d'accès relatif"
+
+msgid "Copy SHA"
+msgstr "Copier le SHA"
+
+msgid "Copy SHA ({count} Commit)"
+msgid_plural "Copy SHAs ({count} Commits)"
+msgstr[0] "Copier le SHA ({count} validation)"
+msgstr[1] "Copier les SHA ({count} validations)"
+
+msgid "Copy Tag"
+msgstr "Copier l'étiquette"
+
+msgid "Copy the Full Error"
+msgstr "Copier l'erreur complète"
+
+msgid "Could not commit (a hook, for example). The history is unchanged and the changes are still there."
+msgstr "Impossible de valider (à cause d'un hook, par exemple). L'historique est inchangé et les modifications sont toujours là."
+
+msgid "Could not commit, but HEAD has moved. Check it with git reflog."
+msgstr "Impossible de valider, mais HEAD a bougé. Vérifiez avec git reflog."
+
+msgid "Could not compare"
+msgstr "Impossible de comparer"
+
+msgid "Could not compare the base and the MR branch"
+msgstr "Impossible de comparer la base et la branche MR"
+
+msgid "Could not compare the development branch and the MR branch"
+msgstr "Impossible de comparer la branche de développement et la branche MR"
+
+msgid "Could not compare the histories of the base and the MR branch: {}"
+msgstr "Impossible de comparer les historiques de la base et de la branche MR : {}"
+
+msgid "Could not create the MR branch\n{reason}"
+msgstr "Impossible de créer la branche MR\n{reason}"
+
+msgid "Could not fixup: {}"
+msgstr "Impossible d'effectuer le fixup : {}"
+
+msgid "Could not fold into {short} (the rebase could not start). The history is unchanged and the changes are left staged."
+msgstr "Impossible d'intégrer dans {short} (le rebasage n'a pas pu démarrer). L'historique est inchangé et les modifications restent indexées."
+
+msgid "Could not fold into {short} (the rebase failed). The changes are left at the tip as the \"{fixup_subject}\" commit. Check the working tree with git status too."
+msgstr "Impossible d'intégrer dans {short} (échec du rebasage). Les modifications restent au sommet sous forme de la validation \"{fixup_subject}\". Vérifiez aussi la copie de travail avec git status."
+
+msgid "Could not get the file's contents."
+msgstr "Impossible d'obtenir le contenu du fichier."
+
+msgid "Could not go back to {}. Still on the scratch branch \"{}\".\n{}"
+msgstr "Impossible de revenir à {}. Toujours sur la branche temporaire \"{}\".\n{}"
+
+msgid "Could not load the commits to reorder. Wait a moment and try again."
+msgstr "Impossible de charger les validations à réordonner. Patientez un instant, puis réessayez."
+
+msgid "Could not load the selected commits. Wait a moment and try again."
+msgstr "Impossible de charger les validations sélectionnées. Patientez un instant, puis réessayez."
+
+msgid "Could not pack the branches and tags\n{reason}"
+msgstr "Impossible de compacter les branches et les étiquettes\n{reason}"
+
+msgid "Could not read the Git status"
+msgstr "Impossible de lire l'état Git"
+
+msgid "Could not read the changes on the base"
+msgstr "Impossible de lire les modifications de la base"
+
+msgid "Could not read the common ancestor: {merge_base}"
+msgstr "Impossible de lire l'ancêtre commun : {merge_base}"
+
+msgid "Could not read the current branch."
+msgstr "Impossible de lire la branche actuelle."
+
+msgid "Could not read the development branch's changes"
+msgstr "Impossible de lire les modifications de la branche de développement"
+
+msgid "Could not read the development branch's history: {}"
+msgstr "Impossible de lire l'historique de la branche de développement : {}"
+
+msgid "Could not read the development branch's range: {}"
+msgstr "Impossible de lire la plage de la branche de développement : {}"
+
+msgid "Could not read the excluded commits: {}"
+msgstr "Impossible de lire les validations exclues : {}"
+
+msgid "Could not read the patch file {}"
+msgstr "Impossible de lire le fichier patch {}"
+
+msgid "Could not read the range to reorder."
+msgstr "Impossible de lire la plage à réordonner."
+
+msgid "Could not read {merge_request_base} and {source}: {}"
+msgstr "Impossible de lire {merge_request_base} et {source} : {}"
+
+msgid "Could not run the MR check"
+msgstr "Impossible d'exécuter la vérification de la MR"
+
+msgid "Could not save the patch file {}"
+msgstr "Impossible d'enregistrer le fichier patch {}"
+
+msgid "Could not tell which commits touched it (it may have come in through a merge)."
+msgstr "Impossible de déterminer quelles validations l'ont modifié (il provient peut-être d'une fusion)."
+
+msgid "Could not undo\n{failure}"
+msgstr "Impossible d'annuler\n{failure}"
+
+msgid "Could not update the MR branch\n{reason}"
+msgstr "Impossible de mettre à jour la branche MR\n{reason}"
+
+msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
+msgstr "Impossible de mettre à jour la branche MR. Toujours sur la branche temporaire \"{}\".\n{reason}"
+
+msgid "Create"
+msgstr "Créer"
+
+msgid "Create Branch Here…"
+msgstr "Créer une branche ici…"
+
+msgid "Create Branch from {}"
+msgstr "Créer une branche à partir de {}"
+
+msgid "Create Branch: \"{name}\"…"
+msgstr "Créer la branche : \"{name}\"…"
+
+msgid "Create Merge Request"
+msgstr "Créer une merge request"
+
+msgid "Create New From: {default_branch}"
+msgstr "Créer à partir de : {default_branch}"
+
+msgid "Create Only"
+msgstr "Créer uniquement"
+
+msgid "Create Patch File…"
+msgstr "Créer un fichier patch…"
+
+msgid "Create Pull Request"
+msgstr "Créer une pull request"
+
+msgid "Create Remote Repository"
+msgstr "Créer un dépôt distant"
+
+msgid "Create Remote: \"{name}\""
+msgstr "Créer le dépôt distant : \"{name}\""
+
+msgid "Create Tag"
+msgstr "Créer une étiquette"
+
+msgid "Create Tag at {}"
+msgstr "Créer une étiquette sur {}"
+
+msgid "Create and Compare"
+msgstr "Créer et comparer"
+
+msgid "Create and Switch"
+msgstr "Créer et basculer"
+
+msgid "Create branch \"{name}\"?"
+msgstr "Créer la branche \"{name}\" ?"
+
+msgid "Create or switch branches"
+msgstr "Créer ou changer de branche"
+
+msgid "Create the MR branch?"
+msgstr "Créer la branche MR ?"
+
+msgid "Created branch \"{name}\" and switched to it."
+msgstr "La branche \"{name}\" a été créée et extraite."
+
+msgid "Created branch \"{name}\"."
+msgstr "La branche \"{name}\" a été créée."
+
+msgid "Created tag \"{name}\"."
+msgstr "L'étiquette \"{name}\" a été créée."
+
+msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
+msgstr "La branche MR \"{}\" a été créée, mais vous êtes toujours sur la branche temporaire \"{}\"."
+
+msgid "Created the MR branch {merge_request_branch}"
+msgstr "La branche MR {merge_request_branch} a été créée"
+
+msgid "Created the MR branch {}, but could not go back to {} (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "La branche MR {} a été créée, mais impossible de revenir à {} (\"Revenir\" dans la boîte MR vous y ramène).\n{failure}"
+
+msgid "Created the MR branch {}, but could not go back to {}. You are on the scratch branch \"{}\" (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "La branche MR {} a été créée, mais impossible de revenir à {}. Vous êtes sur la branche temporaire \"{}\" (\"Revenir\" dans la boîte MR vous y ramène).\n{failure}"
+
+msgid "Creates \"{branch}\" on top of the base \"{base}\" from the box's {count} commit.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgid_plural "Creates \"{branch}\" on top of the base \"{base}\" by squashing the box's {count} commits into one.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgstr[0] "Crée \"{branch}\" au-dessus de la base \"{base}\" à partir de {count} validation de la boîte.\nLe travail se fait sur la branche temporaire \"{scratch}\", puis ForgeKairos revient à \"{origin}\"."
+msgstr[1] "Crée \"{branch}\" au-dessus de la base \"{base}\" en combinant les {count} validations de la boîte en une seule.\nLe travail se fait sur la branche temporaire \"{scratch}\", puis ForgeKairos revient à \"{origin}\"."
+
+msgid "Creates a new branch (a line of work) starting at this commit. Your current work stays as it is"
+msgstr "Crée une nouvelle branche (une ligne de travail) à partir de cette validation. Votre travail actuel reste inchangé"
+
+msgid "Creates a new branch starting from the default branch (main, for example) instead of the current branch"
+msgstr "Crée une nouvelle branche à partir de la branche par défaut (main, par exemple) plutôt que de la branche actuelle"
+
+msgid "Creates a new commit that applies this commit's changes in reverse. History is kept, so it is safe after sharing"
+msgstr "Crée une nouvelle validation qui applique les modifications de cette validation en sens inverse. L'historique est conservé : c'est sans risque après un partage"
+
+msgid "Creates an MR branch that squashes the box's commits into one on top of the base, and compares it with the development branch"
+msgstr "Crée une branche MR qui combine les validations de la boîte en une seule au-dessus de la base, et la compare à la branche de développement"
+
+msgid "Create…"
+msgstr "Créer…"
+
+msgid "Current Branch"
+msgstr "Branche actuelle"
+
+msgid "Current Branch ({branch})"
+msgstr "Branche actuelle ({branch})"
+
+msgid "Current branch (the branch checked out now)"
+msgstr "Branche actuelle (la branche extraite en ce moment)"
+
+msgid "Custom Commands"
+msgstr "Commandes personnalisées"
+
+msgid "Cut"
+msgstr "Couper"
+
+msgid "Cut off at {count} commit. Add conditions to narrow the search."
+msgid_plural "Cut off at {count} commits. Add conditions to narrow the search."
+msgstr[0] "Résultats limités à {count} validation. Ajoutez des conditions pour affiner la recherche."
+msgstr[1] "Résultats limités à {count} validations. Ajoutez des conditions pour affiner la recherche."
+
+msgid "Date"
+msgstr "Date"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Delete Branch"
+msgstr "Supprimer la branche"
+
+msgid "Deleted on both the development branch and the MR branch."
+msgstr "Supprimé à la fois sur la branche de développement et sur la branche MR."
+
+msgid "Deletes a local branch even if it has commits that were not merged"
+msgstr "Supprime une branche locale même si elle contient des validations non fusionnées"
+
+msgid "Deletes a local branch. If it has commits that are not in the current branch (or its upstream), it stops and asks whether to force delete. For a remote branch only your local copy goes; the branch on the server stays"
+msgstr "Supprime une branche locale. Si elle contient des validations absentes de la branche actuelle (ou de sa branche amont), l'opération s'arrête et vous demande s'il faut forcer la suppression. Pour une branche distante, seule votre copie locale est supprimée ; la branche sur le serveur est conservée"
+
+msgid "Deletes the scratch branch \"{}\" and returns to \"{}\". The commits on the scratch branch (conflict resolutions included) are thrown away (they stay in the reflog).\nIf a cherry-pick is still stopped, press \"Abort\" in the Git panel's banner first."
+msgstr "Supprime la branche temporaire \"{}\" et revient à \"{}\". Les validations de la branche temporaire (résolutions de conflits comprises) sont abandonnées (elles restent dans le reflog).\nSi un cherry-pick est toujours arrêté, appuyez d'abord sur \"Abandonner\" dans la bannière du panneau Git."
+
+msgid "Description"
+msgstr "Description"
+
+msgid "Detected dubious ownership in repository at {}. This happens when the .git/ directory is not owned by the current user. If you want to learn more about safe directories, visit git's documentation."
+msgstr "Propriété douteuse détectée dans le dépôt à {}. Cela se produit lorsque le répertoire .git/ n'appartient pas à l'utilisateur actuel. Pour en savoir plus sur les répertoires sûrs, consultez la documentation de Git."
+
+msgid "Development Branch"
+msgstr "Branche de développement"
+
+msgid "Diff ({count} file)"
+msgid_plural "Diff ({count} files)"
+msgstr[0] "Différences ({count} fichier)"
+msgstr[1] "Différences ({count} fichiers)"
+
+msgid "Discard Changes"
+msgstr "Abandonner les modifications"
+
+msgid "Discard Changes to {count} Files"
+msgstr "Abandonner les modifications de {count} fichiers"
+
+msgid "Discard Everything (--hard)"
+msgstr "Tout abandonner (--hard)"
+
+msgid "Discard Tracked Changes"
+msgstr "Abandonner les modifications suivies"
+
+msgid "Discard changes to these files?"
+msgstr "Abandonner les modifications de ces fichiers ?"
+
+msgid "Discard changes to these files? New files are moved to the trash."
+msgstr "Abandonner les modifications de ces fichiers ? Les nouveaux fichiers sont mis à la corbeille."
+
+msgid "Discards this file's changes and returns it to its content in the last commit"
+msgstr "Abandonne les modifications de ce fichier et rétablit son contenu de la dernière validation"
+
+msgid "Don't Show Again"
+msgstr "Ne plus afficher"
+
+msgid "Downloads the latest from the remote and brings it into the current branch (fetch + merge; when the git setting pull.rebase is set, it rebases as that says)"
+msgstr "Télécharge les dernières modifications du dépôt distant et les intègre dans la branche actuelle (fetch + merge ; si le paramètre git pull.rebase est défini, un rebasage est effectué selon ce paramètre)"
+
+msgid "Drag a commit onto a branch to cherry-pick it, onto a row to reorder, or into the MR box"
+msgstr "Faites glisser une validation sur une branche pour l'appliquer (cherry-pick), sur une ligne pour la réordonner, ou dans la boîte MR"
+
+msgid "Drag commits here (a multiple selection moves together)"
+msgstr "Faites glisser des validations ici (une sélection multiple est déplacée ensemble)"
+
+msgid "Drag: into Staged / onto a commit to fix it up"
+msgstr "Glisser : dans Indexées / sur une validation pour la corriger (fixup)"
+
+msgid "Drag: onto a branch to cherry-pick / onto another row to reorder / into the MR box"
+msgstr "Glisser : sur une branche pour appliquer (cherry-pick) / sur une autre ligne pour réordonner / dans la boîte MR"
+
+msgid "Drop"
+msgstr "Supprimer"
+
+msgid "Drop Commit"
+msgstr "Supprimer la validation (drop)"
+
+msgid "Drop Stash"
+msgstr "Supprimer la remise"
+
+msgid "Drop This Commit…"
+msgstr "Supprimer cette validation (drop)…"
+
+msgid "Drop files from the Git panel onto a commit to add the fix to that commit (fixup)"
+msgstr "Déposez des fichiers du panneau Git sur une validation pour y ajouter la correction (fixup)"
+
+msgid "Drop here to stage"
+msgstr "Déposer ici pour indexer"
+
+msgid "Drop here to unstage"
+msgstr "Déposer ici pour désindexer"
+
+msgid "Drop here: add to this commit (fixup)"
+msgstr "Déposer ici : ajouter à cette validation (fixup)"
+
+msgid "Drop here: cherry-pick"
+msgstr "Déposer ici : appliquer (cherry-pick)"
+
+msgid "Drop here: cherry-pick {count} commit"
+msgid_plural "Drop here: cherry-pick {count} commits"
+msgstr[0] "Déposer ici : appliquer {count} validation (cherry-pick)"
+msgstr[1] "Déposer ici : appliquer {count} validations (cherry-pick)"
+
+msgid "Drop here: move to this position (reorder)"
+msgstr "Déposer ici : déplacer à cette position (réordonner)"
+
+msgid "Drop here: move {name} here"
+msgstr "Déposer ici : déplacer {name} ici"
+
+msgid "Drop here: reset {name} to here (reset)"
+msgstr "Déposer ici : réinitialiser {name} jusqu'ici (reset)"
+
+msgid "Drop here: switch to {branch} and cherry-pick"
+msgstr "Déposer ici : passer à {branch} et appliquer (cherry-pick)"
+
+msgid "Drop here: switch to {branch} and cherry-pick {count} commit"
+msgid_plural "Drop here: switch to {branch} and cherry-pick {count} commits"
+msgstr[0] "Déposer ici : passer à {branch} et appliquer {count} validation (cherry-pick)"
+msgstr[1] "Déposer ici : passer à {branch} et appliquer {count} validations (cherry-pick)"
+
+msgid "Drop stash@{{{}}}?"
+msgstr "Supprimer stash@{{{}}} ?"
+
+msgid "Drop {short} from the history?"
+msgstr "Supprimer {short} de l'historique ?"
+
+msgid "Dropped on the same commit, so the order does not change."
+msgstr "Déposé sur la même validation : l'ordre ne change pas."
+
+msgid "Dropped {} from the history."
+msgstr "{} a été supprimé de l'historique."
+
+msgid "Edit {count} Commit"
+msgid_plural "Edit {count} Commits"
+msgstr[0] "Modifier {count} validation"
+msgstr[1] "Modifier {count} validations"
+
+msgid "Email Copied!"
+msgstr "E-mail copié !"
+
+msgid "Enter a commit message."
+msgstr "Saisissez un message de validation."
+
+msgid "Enter a name for this remote…"
+msgstr "Saisissez un nom pour ce dépôt distant…"
+
+msgid "Enter a name."
+msgstr "Saisissez un nom."
+
+msgid "Enter both a remote name and a URL."
+msgstr "Saisissez à la fois un nom de dépôt distant et une URL."
+
+msgid "Enter commit message"
+msgstr "Saisissez un message de validation"
+
+msgid "Enter git ref..."
+msgstr "Saisissez une référence Git..."
+
+msgid "Enter repository URL…"
+msgstr "Saisissez l'URL du dépôt…"
+
+msgid "Error loading: {}"
+msgstr "Erreur de chargement : {}"
+
+msgid "Error parsing date"
+msgstr "Erreur lors de l'analyse de la date"
+
+msgid "Every commit after {short} gets a new SHA."
+msgstr "Chaque validation postérieure à {short} reçoit un nouveau SHA."
+
+msgid "Every commit of the development branch is checked ({} placed / {} excluded)"
+msgstr "Toutes les validations de la branche de développement sont vérifiées ({} placées / {} exclues)"
+
+msgid "Every uncommitted change is lost."
+msgstr "Toutes les modifications non validées seront perdues."
+
+msgid "Exclude {count} Commit from MR"
+msgid_plural "Exclude {count} Commits from MR"
+msgstr[0] "Exclure {count} validation de la MR"
+msgstr[1] "Exclure {count} validations de la MR"
+
+msgid "Expand Commit Description"
+msgstr "Développer la description de la validation"
+
+msgid "Expand Commit Editor"
+msgstr "Développer l'éditeur de message de validation"
+
+msgid "Failed to apply stash"
+msgstr "Échec de l'application de la remise"
+
+msgid "Failed to change branch"
+msgstr "Échec du changement de branche"
+
+msgid "Failed to create branch"
+msgstr "Échec de la création de la branche"
+
+msgid "Failed to create remote"
+msgstr "Échec de la création du dépôt distant"
+
+msgid "Failed to discard changes"
+msgstr "Impossible d'abandonner les modifications"
+
+msgid "Failed to drop stash"
+msgstr "Échec de la suppression de la remise"
+
+msgid "Failed to generate commit message: {err}"
+msgstr "Échec de la génération du message de validation : {err}"
+
+msgid "Failed to load commit history"
+msgstr "Échec du chargement de l'historique des validations"
+
+msgid "Failed to load commits"
+msgstr "Échec du chargement des validations"
+
+msgid "Failed to pop stash"
+msgstr "Échec de l'application et de la suppression de la remise"
+
+msgid "Failed to rename branch"
+msgstr "Échec du renommage de la branche"
+
+msgid "Failed to trash file"
+msgstr "Impossible de mettre le fichier à la corbeille"
+
+msgid "Failed to trash files"
+msgstr "Échec de la mise des fichiers à la corbeille"
+
+msgid "Failed to trash {failed_count} of {total_count} files: {first_error}"
+msgstr "Impossible de mettre à la corbeille {failed_count} fichiers sur {total_count} : {first_error}"
+
+msgid "Fast forwarded from {}"
+msgstr "Avance rapide depuis {}"
+
+msgid "Fetch"
+msgstr "Récupérer"
+
+msgid "Fetch From"
+msgstr "Récupérer depuis"
+
+msgid "Fetch Missing History"
+msgstr "Récupérer l'historique manquant"
+
+msgid "Fetch in Progress…"
+msgstr "Récupération en cours…"
+
+msgid "Fetch updates from remote"
+msgstr "Récupérer les mises à jour depuis le dépôt distant"
+
+msgid "Fetch: Already up to date"
+msgstr "Récupération : déjà à jour"
+
+msgid "Fetched the missing commit history"
+msgstr "L'historique des validations manquant a été récupéré"
+
+msgid "Fetches the remote, then makes the current branch the same as the remote branch"
+msgstr "Récupère le dépôt distant, puis rend la branche actuelle identique à la branche distante"
+
+msgid "Fetches {remote_name}, then runs git reset --hard {target_ref}.\nEvery uncommitted change and every commit the remote does not have is lost."
+msgstr "Récupère {remote_name}, puis exécute git reset --hard {target_ref}.\nToutes les modifications non validées et toutes les validations absentes du dépôt distant seront perdues."
+
+msgid "Files from another repository cannot go into this graph's commits."
+msgstr "Les fichiers d'un autre dépôt ne peuvent pas être intégrés aux validations de ce graphe."
+
+msgid "Filter Branches"
+msgstr "Filtrer les branches"
+
+msgid "Find a Git operation by what you want to do"
+msgstr "Trouvez une opération Git selon ce que vous voulez faire"
+
+msgid "Find or add a tag (tag)"
+msgstr "Rechercher ou ajouter une étiquette (tag)"
+
+msgid "Find past changes (search)"
+msgstr "Rechercher des modifications passées (recherche)"
+
+msgid "Find what you want to do and press \"Try It\" to start that operation."
+msgstr "Trouvez ce que vous voulez faire et appuyez sur \"Essayer\" pour lancer cette opération."
+
+msgid "Fix a commit message (reword)"
+msgstr "Corriger un message de validation (reword)"
+
+msgid "Fix the last commit (amend)"
+msgstr "Corriger la dernière validation (amend)"
+
+msgid "Fold Commit Description"
+msgstr "Replier la description de la validation"
+
+msgid "Fold Current Changes into This Commit (fixup)…"
+msgstr "Intégrer les modifications actuelles dans cette validation (fixup)…"
+
+msgid "Fold Current Changes into {short} (fixup)"
+msgstr "Intégrer les modifications actuelles dans {short} (fixup)"
+
+msgid "Fold into Commit"
+msgstr "Intégrer dans la validation"
+
+msgid "Fold into Previous"
+msgstr "Intégrer dans la précédente"
+
+msgid "Folded the changes into {short}. However, {}\nPrevious tip: {} (recoverable from the reflog)"
+msgstr "Les modifications ont été intégrées dans {short}. Toutefois, {}\nAncien sommet : {} (récupérable depuis le reflog)"
+
+msgid "Folded the changes into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "Les modifications ont été intégrées dans {short}. Ancien sommet : {} (récupérable depuis le reflog)"
+
+msgid "For when you notice something missing right after committing. Check \"Amend\" in the Git panel and the last commit's message comes back; committing then replaces the last commit."
+msgstr "Lorsque vous remarquez un oubli juste après avoir validé. Cochez \"Modifier (amend)\" dans le panneau Git : le message de la dernière validation revient, et la validation suivante remplace alors la dernière validation."
+
+msgid "Force Delete"
+msgstr "Forcer la suppression"
+
+msgid "Force Delete Branch"
+msgstr "Forcer la suppression de la branche"
+
+msgid "Force Push"
+msgstr "Envoyer de force"
+
+msgid "Force Push (Without Lease)"
+msgstr "Envoyer de force (sans bail)"
+
+msgid "Force Push (with lease)"
+msgstr "Envoyer de force (avec bail)"
+
+msgid "Force Push Without Lease…"
+msgstr "Envoyer de force sans bail…"
+
+msgid "Force push (with lease)?"
+msgstr "Envoyer de force (avec bail) ?"
+
+msgid "Force push without a lease?"
+msgstr "Envoyer de force sans bail ?"
+
+msgid "Found {count} conflict across the codebase"
+msgid_plural "Found {count} conflicts across the codebase"
+msgstr[0] "{count} conflit trouvé dans l'ensemble du code"
+msgstr[1] "{count} conflits trouvés dans l'ensemble du code"
+
+msgid "Generate Commit Message"
+msgstr "Générer un message de validation"
+
+msgid "Generating Commit…"
+msgstr "Génération de la validation…"
+
+msgid "Generating commit message..."
+msgstr "Génération du message de validation..."
+
+msgid "Git Clone: {}"
+msgstr "Clonage Git : {}"
+
+msgid "Git Graph"
+msgstr "Graphe des validations"
+
+msgid "Git Guide"
+msgstr "Guide Git"
+
+msgid "Git Guide (find an operation by what you want to do)"
+msgstr "Guide Git (trouver une opération selon ce que vous voulez faire)"
+
+msgid "Git Job Queue: {repo_path}"
+msgstr "File d'attente des tâches Git : {repo_path}"
+
+msgid "Git Panel"
+msgstr "Panneau Git"
+
+msgid "Git accounts don't apply to a project shared by a collaborator. It commits and pushes as git is configured on its host."
+msgstr "Les comptes Git ne s'appliquent pas à un projet partagé par un collaborateur. Les validations et envois se font selon la configuration de git sur son hôte."
+
+msgid "Git's Own Configuration"
+msgstr "Configuration propre à Git"
+
+msgid "Git's history has no copy of it, so once the trash is emptied it cannot be restored"
+msgstr "L'historique Git n'en contient aucune copie : une fois la corbeille vidée, il ne pourra pas être restauré"
+
+msgid "Git's history has no copy of them, so once the trash is emptied they cannot be restored"
+msgstr "L'historique Git n'en contient aucune copie : une fois la corbeille vidée, ils ne pourront pas être restaurés"
+
+msgid "Gives this commit a marker name (a tag), for example to record a released version"
+msgstr "Attribue un nom repère (une étiquette) à cette validation, par exemple pour marquer une version publiée"
+
+msgid "Gives up the operation and returns to the state before it started"
+msgstr "Abandonne l'opération et revient à l'état antérieur à son démarrage"
+
+msgid "Go Back to \"{}\" (Delete the Scratch Branch)"
+msgstr "Revenir à \"{}\" (supprimer la branche temporaire)"
+
+msgid "Go back to before the fixup?"
+msgstr "Revenir à l'état antérieur au fixup ?"
+
+msgid "Go back to the state before the reorder?"
+msgstr "Revenir à l'état antérieur au réordonnancement ?"
+
+msgid "Go to Next Hunk"
+msgstr "Atteindre le bloc suivant"
+
+msgid "Go to Next Unplaced"
+msgstr "Atteindre la suivante non placée"
+
+msgid "Go to Previous Hunk"
+msgstr "Atteindre le bloc précédent"
+
+msgid "Graph"
+msgstr "Graphe"
+
+msgid "Group By"
+msgstr "Regrouper par"
+
+msgid "Groups the changed files by folder hierarchy, with folders you can expand and collapse"
+msgstr "Regroupe les fichiers modifiés selon la hiérarchie des dossiers, avec des dossiers que vous pouvez développer et réduire"
+
+msgid "HEAD has moved or another branch was checked out since the fixup, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "HEAD a bougé ou une autre branche a été extraite depuis le fixup : il ne peut donc pas être annulé d'ici. Annulez-le manuellement avec git reflog."
+
+msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "HEAD a bougé depuis la réécriture : elle ne peut donc pas être annulée d'ici. Annulez-la manuellement avec git reflog."
+
+msgid "History"
+msgstr "Historique"
+
+msgid "History (Graph)"
+msgstr "Historique (graphe)"
+
+msgid "Hold {} to force delete"
+msgstr "Maintenez {} pour forcer la suppression"
+
+msgid "Hover over a button to see what it does here. The Git guide explains the terms too"
+msgstr "Survolez un bouton pour voir ici ce qu'il fait. Le guide Git explique aussi les termes"
+
+msgid "How soft / mixed / hard differ in \"Reset to This Commit\""
+msgstr "Différences entre soft / mixed / hard dans \"Réinitialiser à cette validation\""
+
+msgid "How to Write a Search"
+msgstr "Comment écrire une recherche"
+
+msgid "I changed commits I had already pushed"
+msgstr "J'ai modifié des validations déjà envoyées"
+
+msgid "If the commit was already pushed, you will need to force push"
+msgstr "Si la validation a déjà été envoyée, vous devrez effectuer un envoi forcé"
+
+msgid "If your current changes touch the same files, it stops or ends in a conflict. On a conflict, the changes also stay in the stash"
+msgstr "Si vos modifications actuelles touchent les mêmes fichiers, l'opération s'arrête ou aboutit à un conflit. En cas de conflit, les modifications restent aussi dans la remise"
+
+msgid "In the Git Graph, pick rows while holding Ctrl / Shift and press \"Reorder / Squash / Drop…\" above to edit the order, what to squash and the messages. You can also reorder a single commit by dragging it onto another row. Mind that the changes of dropped commits are lost (the SHAs of the commits from there on change)."
+msgstr "Dans le graphe des validations, sélectionnez des lignes en maintenant Ctrl / Shift et appuyez sur \"Réordonner / Combiner / Supprimer…\" ci-dessus pour modifier l'ordre, ce qu'il faut combiner et les messages. Vous pouvez aussi réordonner une seule validation en la faisant glisser sur une autre ligne. Attention : les modifications des validations supprimées sont perdues (les SHA des validations suivantes changent)."
+
+msgid "Initialize Repository"
+msgstr "Initialiser le dépôt"
+
+msgid "Instead of adding a new commit, the next commit rebuilds the last commit from the current changes and message"
+msgstr "Au lieu d'ajouter une nouvelle validation, la prochaine validation reconstruit la dernière validation à partir des modifications et du message actuels"
+
+msgid "It was pushed, so it needs a force push (with lease) afterwards."
+msgstr "Elle a été envoyée : un envoi forcé (avec bail) sera nécessaire ensuite."
+
+msgid "It was pushed, so it needs a force push (with lease)."
+msgstr "Elle a été envoyée : un envoi forcé (avec bail) est nécessaire."
+
+msgid "Its parent history was not fetched, so the changes it introduced cannot be shown."
+msgstr "L'historique de ses parents n'a pas été récupéré : les modifications qu'elle a introduites ne peuvent donc pas être affichées."
+
+msgid "Its remote-tracking branches are removed as well."
+msgstr "Ses branches de suivi distantes sont également supprimées."
+
+msgid "Keeps both the upper side (ours) and the lower side (theirs) of the conflict, one above the other"
+msgstr "Conserve à la fois la partie supérieure (ours) et la partie inférieure (theirs) du conflit, l'une au-dessus de l'autre"
+
+msgid "Latest tag: checking…"
+msgstr "Dernière étiquette : vérification…"
+
+msgid "Latest tag: none"
+msgstr "Dernière étiquette : aucune"
+
+msgid "Latest tag: {tag} (this commit itself)"
+msgstr "Dernière étiquette : {tag} (cette validation elle-même)"
+
+msgid "Latest tag: {tag} ({count} commit before this one)"
+msgid_plural "Latest tag: {tag} ({count} commits before this one)"
+msgstr[0] "Dernière étiquette : {tag} ({count} validation avant celle-ci)"
+msgstr[1] "Dernière étiquette : {tag} ({count} validations avant celle-ci)"
+
+msgid "Learn More"
+msgstr "En savoir plus"
+
+msgid "Leaves out merge commits (yes, no, only)"
+msgstr "Exclut les validations de fusion (oui, non, uniquement)"
+
+msgid "Leaves the current tip {short_new} and goes back to {short_old} (git reset --soft).\nThe folded changes stay as staged changes."
+msgstr "Quitte le sommet actuel {short_new} et revient à {short_old} (git reset --soft).\nLes modifications intégrées restent indexées."
+
+msgid "Left: {} / Right: {}"
+msgstr "Gauche : {} / Droite : {}"
+
+msgid "List"
+msgstr "Liste"
+
+msgid "Load File Snapshot"
+msgstr "Charger l'instantané du fichier"
+
+msgid "Load Full Snapshot"
+msgstr "Charger l'instantané complet"
+
+msgid "Loading"
+msgstr "Chargement"
+
+msgid "Loading Commit History…"
+msgstr "Chargement de l'historique des validations…"
+
+msgid "Loading comparison…"
+msgstr "Chargement de la comparaison…"
+
+msgid "Loading tags…"
+msgstr "Chargement des étiquettes…"
+
+msgid "Loading the development branch's commits…"
+msgstr "Chargement des validations de la branche de développement…"
+
+msgid "Loading the tag list…"
+msgstr "Chargement de la liste des étiquettes…"
+
+msgid "Loading…"
+msgstr "Chargement…"
+
+msgid "Local Branches"
+msgstr "Branches locales"
+
+msgid "Local branch (a branch on this computer)"
+msgstr "Branche locale (une branche sur cet ordinateur)"
+
+msgid "MR Box"
+msgstr "Boîte MR"
+
+msgid "MR Branch Name"
+msgstr "Nom de la branche MR"
+
+msgid "MR Check {} → {}"
+msgstr "Vérification de la MR {} → {}"
+
+msgid "MR Check: {} (development branch) → {} (MR branch)"
+msgstr "Vérification de la MR : {} (branche de développement) → {} (branche MR)"
+
+msgid "MR's Base (Merge Target) Branch"
+msgstr "Branche de base de la MR (cible de la fusion)"
+
+msgid "Make one commit for an MR (MR box)"
+msgstr "Créer une seule validation pour une MR (boîte MR)"
+
+msgid "Manage Git Accounts…"
+msgstr "Gérer les comptes Git…"
+
+msgid "Marks every change in this folder to go into the next commit"
+msgstr "Marque toutes les modifications de ce dossier pour la prochaine validation"
+
+msgid "Marks every change under this heading to go into the next commit"
+msgstr "Marque toutes les modifications sous cet en-tête pour la prochaine validation"
+
+msgid "Marks every changed file to go into the next commit (stages it). The files' contents do not change"
+msgstr "Marque tous les fichiers modifiés pour la prochaine validation (les indexe). Le contenu des fichiers ne change pas"
+
+msgid "Marks only this change (hunk: one block of changes) to go into the next commit. The file's contents do not change"
+msgstr "Marque uniquement cette modification (bloc : un bloc de modifications) pour la prochaine validation. Le contenu du fichier ne change pas"
+
+msgid "Marks the commit as one you decided to keep out of the MR, so that the check for forgotten commits no longer counts it as \"unplaced\". If it is in the box, it is taken out too"
+msgstr "Marque la validation comme une validation que vous avez décidé de garder hors de la MR : la vérification des validations oubliées ne la compte plus comme \"non placée\". Si elle est dans la boîte, elle en est aussi retirée"
+
+msgid "Marks this file's changes to go into the next commit. The file's contents do not change"
+msgstr "Marque les modifications de ce fichier pour la prochaine validation. Le contenu du fichier ne change pas"
+
+msgid "Match Case Sensitivity"
+msgstr "Respecter la casse"
+
+msgid "Matches"
+msgstr "Correspondances"
+
+msgid "Merge Branch…"
+msgstr "Fusionner une branche…"
+
+msgid "Merge commits cannot go into the box ({count} was left out)."
+msgid_plural "Merge commits cannot go into the box ({count} were left out)."
+msgstr[0] "Les validations de fusion ne peuvent pas aller dans la boîte ({count} a été exclue)."
+msgstr[1] "Les validations de fusion ne peuvent pas aller dans la boîte ({count} ont été exclues)."
+
+msgid "Merged from {}"
+msgstr "Fusionné depuis {}"
+
+msgid "Merged {branch}."
+msgstr "{branch} a été fusionnée."
+
+msgid "Merged {count} file change from {remote}"
+msgid_plural "Merged {count} file changes from {remote}"
+msgstr[0] "{count} modification de fichier fusionnée depuis {remote}"
+msgstr[1] "{count} modifications de fichiers fusionnées depuis {remote}"
+
+msgid "Message (leave empty for a lightweight tag)"
+msgstr "Message (laisser vide pour une étiquette légère)"
+
+msgid "Mismatches Only"
+msgstr "Différences uniquement"
+
+msgid "Move {branch} to this commit?"
+msgstr "Déplacer {branch} sur cette validation ?"
+
+msgid "Moves a new file that was never committed to the system trash. It can be restored from the trash"
+msgstr "Met à la corbeille du système un nouveau fichier qui n'a jamais été validé. Il peut être restauré depuis la corbeille"
+
+msgid "Moves new files Git does not manage yet (untracked) to the system trash. They can be restored from the trash"
+msgstr "Met à la corbeille du système les nouveaux fichiers que Git ne gère pas encore (non suivis). Ils peuvent être restaurés depuis la corbeille"
+
+msgid "Moves only the branch back. The later changes stay staged and in the working tree"
+msgstr "Ramène uniquement la branche en arrière. Les modifications ultérieures restent indexées et dans la copie de travail"
+
+msgid "Moves the branch back and unstages. The later changes stay in the working tree's files"
+msgstr "Ramène la branche en arrière et désindexe. Les modifications ultérieures restent dans les fichiers de la copie de travail"
+
+msgid "Moves the current branch back to here. Choose soft / mixed / hard for the later changes"
+msgstr "Ramène la branche actuelle jusqu'ici. Choisissez soft / mixed / hard pour les modifications ultérieures"
+
+msgid "New branch name"
+msgstr "Nom de la nouvelle branche"
+
+msgid "New commit message"
+msgstr "Nouveau message de validation"
+
+msgid "Next Steps (Update the MR Branch and Go Back)"
+msgstr "Étapes suivantes (mettre à jour la branche MR et revenir)"
+
+msgid "No Changes to Commit"
+msgstr "Aucune modification à valider"
+
+msgid "No Git Repositories"
+msgstr "Aucun dépôt Git"
+
+msgid "No Git repository is open."
+msgstr "Aucun dépôt Git n'est ouvert."
+
+msgid "No active branch"
+msgstr "Aucune branche active"
+
+msgid "No active repository"
+msgstr "Aucun dépôt actif"
+
+msgid "No branch is checked out, so there is nothing to push."
+msgstr "Aucune branche n'est extraite : il n'y a donc rien à envoyer."
+
+msgid "No changes"
+msgstr "Aucune modification"
+
+msgid "No changes to commit"
+msgstr "Aucune modification à valider"
+
+msgid "No commit message"
+msgstr "Aucun message de validation"
+
+msgid "No commits found"
+msgstr "Aucune validation trouvée"
+
+msgid "No commits match. Try fewer conditions."
+msgstr "Aucune validation ne correspond. Essayez avec moins de conditions."
+
+msgid "No commits yet"
+msgstr "Aucune validation pour le moment"
+
+msgid "No development branch is chosen. Choose a development branch first."
+msgstr "Aucune branche de développement n'est choisie. Choisissez d'abord une branche de développement."
+
+msgid "No differences (everything has been ported)"
+msgstr "Aucune différence (tout a été porté)"
+
+msgid "No files changed on the development branch."
+msgstr "Aucun fichier n'a été modifié sur la branche de développement."
+
+msgid "No files mismatch. \"All\" also shows the matching files."
+msgstr "Aucun fichier ne diffère. \"Tout\" affiche aussi les fichiers identiques."
+
+msgid "No matching tags"
+msgstr "Aucune étiquette correspondante"
+
+msgid "No remote available to push to. Add a remote to be able to publish changes."
+msgstr "Aucun dépôt distant disponible vers lequel envoyer. Ajoutez un dépôt distant pour pouvoir publier des modifications."
+
+msgid "No remote configured for repository"
+msgstr "Aucun dépôt distant n'est configuré pour le dépôt"
+
+msgid "No repository found"
+msgstr "Aucun dépôt trouvé"
+
+msgid "No staged changes"
+msgstr "Aucune modification indexée"
+
+msgid "No staged changes yet"
+msgstr "Aucune modification indexée pour le moment"
+
+msgid "No stashes found"
+msgstr "Aucune remise trouvée"
+
+msgid "No tags"
+msgstr "Aucune étiquette"
+
+msgid "No tracked file has changes"
+msgstr "Aucun fichier suivi n'a de modifications"
+
+msgid "No tracked file has staged changes"
+msgstr "Aucun fichier suivi n'a de modifications indexées"
+
+msgid "No uncommitted changes"
+msgstr "Aucune modification non validée"
+
+msgid "No unstaged changes"
+msgstr "Aucune modification non indexée"
+
+msgid "Not available on a detached HEAD. Switch to a branch first."
+msgstr "Non disponible sur un HEAD détaché. Passez d'abord à une branche."
+
+msgid "Not available while several files are selected"
+msgstr "Non disponible lorsque plusieurs fichiers sont sélectionnés"
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base (a change that came in while resolving a conflict, for example). The base is on the left, the MR branch on the right."
+msgstr "Non modifié sur la branche de développement, et pourtant la branche MR diffère de la base (une modification introduite lors de la résolution d'un conflit, par exemple). La base est à gauche, la branche MR à droite."
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base. The MR branch was not created from the tip of its base, so it may only lack the base's newer changes (or the change came in while resolving a conflict). The base is on the left, the MR branch on the right."
+msgstr "Non modifié sur la branche de développement, et pourtant la branche MR diffère de la base. La branche MR n'a pas été créée à partir du sommet de sa base : il se peut qu'il lui manque seulement les modifications plus récentes de la base (ou que la modification ait été introduite lors de la résolution d'un conflit). La base est à gauche, la branche MR à droite."
+
+msgid "Not every commit could be checked for being left out. Create the MR branch anyway?"
+msgstr "Il n'a pas été possible de vérifier si chaque validation avait été oubliée. Créer quand même la branche MR ?"
+
+msgid "Not from the development branch"
+msgstr "Ne provient pas de la branche de développement"
+
+msgid "Not from the development branch (came in while resolving conflicts, for example)"
+msgstr "Ne provient pas de la branche de développement (introduit lors de la résolution de conflits, par exemple)"
+
+msgid "Not from the development branch (includes newer base changes the MR branch lacks)"
+msgstr "Ne provient pas de la branche de développement (inclut des modifications plus récentes de la base absentes de la branche MR)"
+
+msgid "Nothing has been put away on the shelf (the stash)"
+msgstr "Rien n'a été mis de côté dans la remise (stash)"
+
+msgid "Nothing has changed. Reorder the commits or choose an action."
+msgstr "Rien n'a changé. Réordonnez les validations ou choisissez une action."
+
+msgid "Nothing is missing"
+msgstr "Rien ne manque"
+
+msgid "Nothing is missing, but {count} file needs a look"
+msgid_plural "Nothing is missing, but {count} files need a look"
+msgstr[0] "Rien ne manque, mais {count} fichier doit être vérifié"
+msgstr[1] "Rien ne manque, mais {count} fichiers doivent être vérifiés"
+
+msgid "Once you have a fix that belongs in a commit a few back, pick that commit in the Git Graph and press \"Add Current Changes (fixup)\". You can also drag files from the Git panel onto the commit's row."
+msgstr "Une fois que vous avez une correction qui appartient à une validation quelques crans plus tôt, sélectionnez cette validation dans le graphe des validations et appuyez sur \"Ajouter les modifications actuelles (fixup)\". Vous pouvez aussi faire glisser des fichiers du panneau Git sur la ligne de la validation."
+
+msgid "Only downloads the latest from the remote (the shared server). Your files and branches do not change"
+msgstr "Télécharge uniquement les dernières modifications du dépôt distant (le serveur partagé). Vos fichiers et vos branches ne changent pas"
+
+msgid "Only for new files Git does not manage yet (untracked)"
+msgstr "Uniquement pour les nouveaux fichiers que Git ne gère pas encore (non suivis)"
+
+msgid "Only the staged changes ({count} file)"
+msgid_plural "Only the staged changes ({count} files)"
+msgstr[0] "Uniquement les modifications indexées ({count} fichier)"
+msgstr[1] "Uniquement les modifications indexées ({count} fichiers)"
+
+msgid "Open Commit Modal"
+msgstr "Ouvrir la fenêtre de validation"
+
+msgid "Open Commit Permalink"
+msgstr "Ouvrir le lien permanent de la validation"
+
+msgid "Open Diff"
+msgstr "Ouvrir les différences"
+
+msgid "Open File Diff"
+msgstr "Ouvrir les différences du fichier"
+
+msgid "Open File in Project"
+msgstr "Ouvrir le fichier dans le projet"
+
+msgid "Open Git Graph"
+msgstr "Ouvrir le graphe des validations"
+
+msgid "Open a directory first"
+msgstr "Ouvrez d'abord un répertoire"
+
+msgid "Open repo in new project"
+msgstr "Ouvrir le dépôt dans un nouveau projet"
+
+msgid "Opens a diff of just this file (before and after the change) in a tab of its own"
+msgstr "Ouvre les différences de ce seul fichier (avant et après la modification) dans un onglet distinct"
+
+msgid "Opens a guide that explains Git's terms and the steps of common operations"
+msgstr "Ouvre un guide qui explique les termes de Git et les étapes des opérations courantes"
+
+msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
+msgstr "Ouvre un écran pour réécrire le message de la dernière validation. Pour une validation plus ancienne, sélectionnez-la dans le graphe des validations et appuyez sur \"Reformuler le message\" (les SHA des validations suivantes changent)."
+
+msgid "Opens the current file itself in the editor, rather than the diff"
+msgstr "Ouvre le fichier actuel lui-même dans l'éditeur, plutôt que les différences"
+
+msgid "Opens the difference between this file before and after the change (the diff) in the tab that shows all changes together"
+msgstr "Ouvre les différences de ce fichier avant et après la modification dans l'onglet qui affiche toutes les modifications ensemble"
+
+msgid "Opens the list of changes put on the shelf (the stash), where you can look inside, pop or drop them"
+msgstr "Ouvre la liste des modifications mises de côté dans la remise (stash), où vous pouvez les consulter, les réappliquer ou les supprimer"
+
+msgid "Opens the list of commits that changed this file, newest first"
+msgstr "Ouvre la liste des validations ayant modifié ce fichier, de la plus récente à la plus ancienne"
+
+msgid "Operation was canceled"
+msgstr "L'opération a été annulée"
+
+msgid "Operations that did not fit in the row. Open it to see each one explained beside it"
+msgstr "Opérations qui ne tenaient pas dans la ligne. Ouvrez ce menu pour voir l'explication de chacune à côté"
+
+msgid "Optionally provide a stash message"
+msgstr "Saisissez éventuellement un message pour la remise"
+
+msgid "Other staged changes are not included (after the rewrite they are left unstaged)."
+msgstr "Les autres modifications indexées ne sont pas incluses (après la réécriture, elles restent non indexées)."
+
+msgid "Outside the development branch"
+msgstr "Hors de la branche de développement"
+
+msgid "Overwrites the remote branch with your history, without checking"
+msgstr "Écrase la branche distante avec votre historique, sans vérification"
+
+msgid "Overwrites the remote branch with your history. Stops if someone else pushed commits after your last fetch"
+msgstr "Écrase la branche distante avec votre historique. S'arrête si quelqu'un d'autre a envoyé des validations depuis votre dernière récupération"
+
+msgid "Packed the branches and tags ({seconds} s)"
+msgstr "Branches et étiquettes compactées ({seconds} s)"
+
+msgid "Packing…"
+msgstr "Compactage…"
+
+msgid "Packs the refs (branches and tags) stored as separate files into one file."
+msgstr "Regroupe dans un seul fichier les références (branches et étiquettes) stockées sous forme de fichiers séparés."
+
+msgid "Packs the {count} or more refs (branches and tags) stored as separate files into one file."
+msgstr "Regroupe dans un seul fichier les {count} références ou plus (branches et étiquettes) stockées sous forme de fichiers séparés."
+
+msgid "Packs the {formatted} ref (branch or tag) stored as a separate file into one file."
+msgid_plural "Packs the {formatted} refs (branches and tags) stored as separate files into one file."
+msgstr[0] "Regroupe dans un seul fichier {formatted} référence (branche ou étiquette) stockée sous forme de fichier séparé."
+msgstr[1] "Regroupe dans un seul fichier les {formatted} références (branches et étiquettes) stockées sous forme de fichiers séparés."
+
+msgid "Part of a name or email address"
+msgstr "Partie d'un nom ou d'une adresse e-mail"
+
+msgid "Paste"
+msgstr "Coller"
+
+msgid "Path History"
+msgstr "Historique du chemin d'accès"
+
+msgid "Pick a commit and the buttons for it show above"
+msgstr "Sélectionnez une validation : ses boutons s'affichent au-dessus"
+
+msgid "Pick a commit in the Git Graph and press \"Check Out\" to put the working tree in that commit's state (detached HEAD). Commits made from there belong to no branch, so to keep working, use \"Branch from Here\". To go back, switch to the original branch from the branch list."
+msgstr "Sélectionnez une validation dans le graphe des validations et appuyez sur \"Extraire\" pour mettre la copie de travail dans l'état de cette validation (HEAD détaché). Les validations faites à partir de là n'appartiennent à aucune branche : pour continuer à travailler, utilisez \"Créer une branche ici\". Pour revenir, passez à la branche d'origine depuis la liste des branches."
+
+msgid "Pick a commit in the Git Graph, then press \"Revert\" to make a commit that undoes its changes, or \"Reset to This Commit ▾\" to move the branch back (hard throws the changes away). After a rewrite, \"Undo…\" on the notification or the reflog brings things back."
+msgstr "Sélectionnez une validation dans le graphe des validations, puis appuyez sur \"Inverser (revert)\" pour créer une validation qui annule ses modifications, ou sur \"Réinitialiser à cette validation ▾\" pour ramener la branche en arrière (hard abandonne les modifications). Après une réécriture, \"Annuler…\" dans la notification ou le reflog permet de revenir en arrière."
+
+msgid "Pick a commit to get its operations here (right-clicking offers the same)"
+msgstr "Sélectionnez une validation pour afficher ici ses opérations (le clic droit propose les mêmes)"
+
+msgid "Pick an unbroken range"
+msgstr "Sélectionnez une plage continue"
+
+msgid "Pick an unbroken range. A range that contains a merge commit cannot be rewritten."
+msgstr "Sélectionnez une plage continue. Une plage qui contient une validation de fusion ne peut pas être réécrite."
+
+msgid "Pick at least two commits to reorder."
+msgstr "Sélectionnez au moins deux validations à réordonner."
+
+msgid "Pick commits on the current branch"
+msgstr "Sélectionnez des validations de la branche actuelle"
+
+msgid "Pick commits on the current branch."
+msgstr "Sélectionnez des validations de la branche actuelle."
+
+msgid "Pick the commit in the Git Graph and press \"Cherry-Pick\" to add its changes to the current branch as a new commit. With several picked through Ctrl / Shift, \"Cherry-Pick N Commits\" adds them oldest first. You can also drag a row onto a branch name. Changes to the same places can end in a conflict."
+msgstr "Sélectionnez la validation dans le graphe des validations et appuyez sur \"Appliquer (cherry-pick)\" pour ajouter ses modifications à la branche actuelle sous forme d'une nouvelle validation. Si plusieurs sont sélectionnées avec Ctrl / Shift, \"Appliquer N validations (cherry-pick)\" les ajoute de la plus ancienne à la plus récente. Vous pouvez aussi faire glisser une ligne sur un nom de branche. Des modifications aux mêmes endroits peuvent aboutir à un conflit."
+
+msgid "Pick the commit to add your current changes to, then press \"Add Current Changes (fixup)\" above."
+msgstr "Sélectionnez la validation à laquelle ajouter vos modifications actuelles, puis appuyez sur \"Ajouter les modifications actuelles (fixup)\" ci-dessus."
+
+msgid "Pick which remote to fetch"
+msgstr "Choisissez le dépôt distant depuis lequel récupérer"
+
+msgid "Pick which remote to push to"
+msgstr "Choisissez le dépôt distant vers lequel envoyer"
+
+msgid "Pick which remote to remove"
+msgstr "Choisissez le dépôt distant à supprimer"
+
+msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
+msgstr "Choisit une autre branche (une ligne de travail) sur laquelle travailler. Les fichiers prennent le contenu de cette branche"
+
+msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
+msgstr "Choisit l'un des dépôts distants enregistrés et télécharge uniquement ses dernières modifications. Les fichiers ne changent pas"
+
+msgid "Pop"
+msgstr "Appliquer et supprimer"
+
+msgid "Pop Stash"
+msgstr "Appliquer et supprimer la remise"
+
+msgid "Pop stash@{{{}}}?"
+msgstr "Appliquer et supprimer stash@{{{}}} ?"
+
+msgid "Possibly missing"
+msgstr "Peut-être manquant"
+
+msgid "Previous tip: {} (recoverable from the reflog)"
+msgstr "Ancien sommet : {} (récupérable depuis le reflog)"
+
+msgid "Problems the checks would have stopped can get into the commit"
+msgstr "Des problèmes que les vérifications auraient bloqués peuvent se retrouver dans la validation"
+
+msgid "Publish"
+msgstr "Publier"
+
+msgid "Publish branch to remote"
+msgstr "Publie la branche sur le dépôt distant"
+
+msgid "Pull"
+msgstr "Tirer"
+
+msgid "Pull (Rebase)"
+msgstr "Tirer (rebase)"
+
+msgid "Pull in Progress…"
+msgstr "Tirage en cours…"
+
+msgid "Pull: Already up to date"
+msgstr "Tirage : déjà à jour"
+
+msgid "Push"
+msgstr "Envoyer"
+
+msgid "Push To"
+msgstr "Envoyer vers"
+
+msgid "Push committed changes to remote"
+msgstr "Envoie les modifications validées vers le dépôt distant"
+
+msgid "Push in Progress…"
+msgstr "Envoi en cours…"
+
+msgid "Push: Everything is up-to-date"
+msgstr "Envoi : tout est à jour"
+
+msgid "Pushed {} to {}"
+msgstr "{} envoyé vers {}"
+
+msgid "Put Back"
+msgstr "Remettre"
+
+msgid "Puts all changes together in one list, without splitting them"
+msgstr "Regroupe toutes les modifications dans une seule liste, sans les séparer"
+
+msgid "Puts all uncommitted changes, newly created files (untracked) included, away on a temporary shelf (the stash) and returns the files to the last commit. \"Stash Pop\" brings them back later"
+msgstr "Met de côté toutes les modifications non validées, y compris les fichiers nouvellement créés (non suivis), dans une remise temporaire (stash) et ramène les fichiers à la dernière validation. \"Appliquer et supprimer la remise\" les restaure plus tard"
+
+msgid "Puts only the changes to files Git manages (tracked) away on the shelf (the stash). Newly created files are kept"
+msgstr "Met de côté dans la remise (stash) uniquement les modifications des fichiers gérés par Git (suivis). Les fichiers nouvellement créés sont conservés"
+
+msgid "Puts only the staged changes away on the shelf (the stash). Unstaged changes stay in the files"
+msgstr "Met de côté dans la remise (stash) uniquement les modifications indexées. Les modifications non indexées restent dans les fichiers"
+
+msgid "Puts the changes last put on the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "Réapplique aux fichiers les dernières modifications mises dans la remise (stash) et les supprime de la remise"
+
+msgid "Puts these changes from the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "Réapplique aux fichiers ces modifications de la remise (stash) et les supprime de la remise"
+
+msgid "Re-publish branch to remote"
+msgstr "Republie la branche sur le dépôt distant"
+
+msgid "Rebuilds the last commit from your changes and message (Git panel)"
+msgstr "Reconstruit la dernière validation à partir de vos modifications et de votre message (panneau Git)"
+
+msgid "Received {count} file change from {remote}"
+msgid_plural "Received {count} file changes from {remote}"
+msgstr[0] "{count} modification de fichier reçue de {remote}"
+msgstr[1] "{count} modifications de fichiers reçues de {remote}"
+
+msgid "Records the names of the people you worked with in \"Co-authored-by\" lines of the commit message"
+msgstr "Enregistre les noms des personnes avec qui vous avez travaillé dans des lignes \"Co-authored-by\" du message de validation"
+
+msgid "Recreate an MR branch"
+msgstr "Recréer une branche MR"
+
+msgid "Recreate the existing {branch_name} (needs a force push)"
+msgstr "Recréer la branche existante {branch_name} (nécessite un envoi forcé)"
+
+msgid "Recreated the MR branch {merge_request_branch}\nPrevious MR branch: {} (recoverable from the reflog)"
+msgstr "La branche MR {merge_request_branch} a été recréée\nAncienne branche MR : {} (récupérable depuis le reflog)"
+
+msgid "Ref {ref_name}"
+msgstr "Référence {ref_name}"
+
+msgid "Registers a folder owned by another user as a place Git may work in"
+msgstr "Enregistre un dossier appartenant à un autre utilisateur comme un emplacement où Git peut travailler"
+
+msgid "Registers a server to push to and fetch from (a remote) by name and URL"
+msgstr "Enregistre par son nom et son URL un serveur vers lequel envoyer et depuis lequel récupérer (un dépôt distant)"
+
+msgid "Remote Branches"
+msgstr "Branches distantes"
+
+msgid "Remote Name"
+msgstr "Nom du dépôt distant"
+
+msgid "Remote branch (a copy of a branch on the server)"
+msgstr "Branche distante (une copie d'une branche du serveur)"
+
+msgid "Remote name can't be empty"
+msgstr "Le nom du dépôt distant ne peut pas être vide"
+
+msgid "Remote up to date"
+msgstr "Dépôt distant à jour"
+
+msgid "Remove Remote…"
+msgstr "Supprimer un dépôt distant…"
+
+msgid "Remove co-authored-by"
+msgstr "Supprimer co-authored-by"
+
+msgid "Remove the remote {remote_name}?"
+msgstr "Supprimer le dépôt distant {remote_name} ?"
+
+msgid "Remove this condition and search again"
+msgstr "Retirer cette condition et relancer la recherche"
+
+msgid "Removed the remote {remote_name}."
+msgstr "Le dépôt distant {remote_name} a été supprimé."
+
+msgid "Removes every stage mark in this folder. The changes stay in the files"
+msgstr "Retire toutes les marques d'indexation de ce dossier. Les modifications restent dans les fichiers"
+
+msgid "Removes every stage mark. The changes stay in the files and just no longer go into the next commit"
+msgstr "Retire toutes les marques d'indexation. Les modifications restent dans les fichiers et ne font simplement plus partie de la prochaine validation"
+
+msgid "Removes the exclusion mark and makes the commit \"unplaced\" again"
+msgstr "Retire la marque d'exclusion et rend la validation de nouveau \"non placée\""
+
+msgid "Removes the stage mark of this change (hunk). The change stays in the file"
+msgstr "Retire la marque d'indexation de cette modification (bloc). La modification reste dans le fichier"
+
+msgid "Removes the stage marks of every change under this heading. The changes stay in the files"
+msgstr "Retire les marques d'indexation de toutes les modifications sous cet en-tête. Les modifications restent dans les fichiers"
+
+msgid "Removes this commit and its changes from history"
+msgstr "Supprime cette validation et ses modifications de l'historique"
+
+msgid "Removes this file's stage mark. The changes stay in the file"
+msgstr "Retire la marque d'indexation de ce fichier. Les modifications restent dans le fichier"
+
+msgid "Rename Branch ({})"
+msgstr "Renommer la branche ({})"
+
+msgid "Reorder / Squash / Drop the {count} Selected Commit…"
+msgid_plural "Reorder / Squash / Drop the {count} Selected Commits…"
+msgstr[0] "Réordonner / Combiner / Supprimer {count} validation sélectionnée…"
+msgstr[1] "Réordonner / Combiner / Supprimer les {count} validations sélectionnées…"
+
+msgid "Reorder / Squash / Drop — {reason}"
+msgstr "Réordonner / Combiner / Supprimer — {reason}"
+
+msgid "Reorder commits: done\nPrevious tip: {short_old} (can be restored from the reflog)"
+msgstr "Réordonnancement des validations : terminé\nAncien sommet : {short_old} (peut être restauré depuis le reflog)"
+
+msgid "Reorder commits: done."
+msgstr "Réordonnancement des validations : terminé."
+
+msgid "Reorders, squashes or drops the picked range"
+msgstr "Réordonne, combine (squash) ou supprime (drop) la plage choisie"
+
+msgid "Repository not found."
+msgstr "Dépôt introuvable."
+
+msgid "Republish"
+msgstr "Republier"
+
+msgid "Reset (Discard Changes)"
+msgstr "Réinitialiser (abandonner les modifications)"
+
+msgid "Reset the local branch to the remote?"
+msgstr "Réinitialiser la branche locale sur le dépôt distant ?"
+
+msgid "Reset the local branch to {target_ref}."
+msgstr "La branche locale a été réinitialisée sur {target_ref}."
+
+msgid "Reset to Remote"
+msgstr "Réinitialiser sur le dépôt distant"
+
+msgid "Reset to Remote…"
+msgstr "Réinitialiser sur le dépôt distant…"
+
+msgid "Reset to This Commit (hard: {summary})…"
+msgstr "Réinitialiser à cette validation (hard : {summary})…"
+
+msgid "Reset to This Commit (mixed: {summary})"
+msgstr "Réinitialiser à cette validation (mixed : {summary})"
+
+msgid "Reset to This Commit (soft: {summary})"
+msgstr "Réinitialiser à cette validation (soft : {summary})"
+
+msgid "Reset to {short}?"
+msgstr "Réinitialiser à {short} ?"
+
+msgid "Reset to {} ({flag})."
+msgstr "Réinitialisé à {} ({flag})."
+
+msgid "Reset {branch} to this commit?"
+msgstr "Réinitialiser {branch} à cette validation ?"
+
+msgid "Resets the branch, discarding later and uncommitted changes"
+msgstr "Réinitialise la branche en abandonnant les modifications ultérieures et non validées"
+
+msgid "Resets the current branch {branch} to {short_sha}.\n- Undo Commits Only (--soft): the changes stay staged\n- Unstage Too (--mixed): the changes stay in the working tree\n- Discard Everything (--hard): uncommitted changes are lost too"
+msgstr "Réinitialise la branche actuelle {branch} à {short_sha}.\n- Annuler uniquement les validations (--soft) : les modifications restent indexées\n- Désindexer aussi (--mixed) : les modifications restent dans la copie de travail\n- Tout abandonner (--hard) : les modifications non validées sont aussi perdues"
+
+msgid "Resolve Merge Conflict with Agent"
+msgid_plural "Resolve Merge Conflicts with Agent"
+msgstr[0] "Résoudre le conflit de fusion avec l'agent"
+msgstr[1] "Résoudre les conflits de fusion avec l'agent"
+
+msgid "Resolve the conflicts, stage them, then press \"Continue\"."
+msgstr "Résolvez les conflits, indexez-les, puis appuyez sur \"Continuer\"."
+
+msgid "Resolve with Agent"
+msgstr "Résoudre avec l'agent"
+
+msgid "Resolves the conflict with only the lower side (the >>>>>>> side, theirs). The upper side is thrown away. During a merge that is the side being merged in; during a rebase, your commit being replayed"
+msgstr "Résout le conflit en ne gardant que la partie inférieure (côté >>>>>>>, theirs). La partie supérieure est abandonnée. Pendant une fusion, il s'agit du côté en cours d'intégration ; pendant un rebasage, de votre validation en cours de réapplication"
+
+msgid "Resolves the conflict with only the upper side (the <<<<<<< side, ours). The lower side is thrown away. During a merge that is the branch you are on; during a rebase, the branch being rebased onto"
+msgstr "Résout le conflit en ne gardant que la partie supérieure (côté <<<<<<<, ours). La partie inférieure est abandonnée. Pendant une fusion, il s'agit de la branche sur laquelle vous êtes ; pendant un rebasage, de la branche sur laquelle vous rebasez"
+
+msgid "Restore"
+msgstr "Restaurer"
+
+msgid "Restore All"
+msgstr "Tout restaurer"
+
+msgid "Restore All Changes"
+msgstr "Restaurer toutes les modifications"
+
+msgid "Restore File"
+msgstr "Restaurer le fichier"
+
+msgid "Restore Hunk"
+msgstr "Restaurer le bloc"
+
+msgid "Restore Selected Hunks"
+msgstr "Restaurer les blocs sélectionnés"
+
+msgid "Restore Tracked Files"
+msgstr "Restaurer les fichiers suivis"
+
+msgid "Restore selected hunk"
+msgstr "Restaurer le bloc sélectionné"
+
+msgid "Returns each tracked file that has staged changes to its content in the last commit, unstaged changes included. Files with only unstaged changes and newly created files (untracked) are kept"
+msgstr "Rétablit chaque fichier suivi ayant des modifications indexées dans son contenu de la dernière validation, modifications non indexées comprises. Les fichiers n'ayant que des modifications non indexées et les fichiers nouvellement créés (non suivis) sont conservés"
+
+msgid "Revert This Commit"
+msgstr "Inverser cette validation (revert)"
+
+msgid "Reverted {}."
+msgstr "{} a été inversé (revert)."
+
+msgid "Review Diff"
+msgstr "Examiner les différences"
+
+msgid "Reword Message…"
+msgstr "Reformuler le message…"
+
+msgid "Reword the Message of {}"
+msgstr "Reformuler le message de {}"
+
+msgid "Reworded the message of {}."
+msgstr "Le message de {} a été reformulé."
+
+msgid "Rewrite"
+msgstr "Réécrire"
+
+msgid "Rewrite History…"
+msgstr "Réécrire l'historique…"
+
+msgid "Rewrite the selected commits like this?"
+msgstr "Réécrire les validations sélectionnées de cette façon ?"
+
+msgid "Run `git fetch --unshallow` to download the full history"
+msgstr "Exécutez `git fetch --unshallow` pour télécharger l'historique complet"
+
+msgid "Run `git fetch --unshallow` to download the full history, then show this commit's changes."
+msgstr "Exécutez `git fetch --unshallow` pour télécharger l'historique complet, puis afficher les modifications de cette validation."
+
+msgid "Runs git pack-refs --all. The branches and tags themselves do not change. With tens of thousands of them it takes about a minute, and other Git operations wait meanwhile."
+msgstr "Exécute git pack-refs --all. Les branches et étiquettes elles-mêmes ne changent pas. Avec plusieurs dizaines de milliers d'entre elles, cela prend environ une minute, et les autres opérations Git attendent pendant ce temps."
+
+msgid "Runs git remote add."
+msgstr "Exécute git remote add."
+
+msgid "Runs git reset {flag} {short}.\n{kept}"
+msgstr "Exécute git reset {flag} {short}.\n{kept}"
+
+msgid "Same contents as on the development branch."
+msgstr "Même contenu que sur la branche de développement."
+
+msgid "Saved the patch file: {destination}"
+msgstr "Fichier patch enregistré : {destination}"
+
+msgid "Saves the staged changes as a single record with a message (a commit). With nothing staged, all tracked changes go in"
+msgstr "Enregistre les modifications indexées sous forme d'un seul enregistrement accompagné d'un message (une validation). Si rien n'est indexé, toutes les modifications suivies sont incluses"
+
+msgid "Search"
+msgstr "Recherche"
+
+msgid "Search by Conditions"
+msgstr "Rechercher par conditions"
+
+msgid "Search by conditions such as the author, a tag or a period"
+msgstr "Rechercher selon des conditions telles que l'auteur, une étiquette ou une période"
+
+msgid "Search commits… (e.g. author:alice file:src/ since:2w)"
+msgstr "Rechercher des validations… (p. ex. author:alice file:src/ since:2w)"
+
+msgid "Search for a tag in the Git Graph's \"Tags\" and pick it to jump to its commit. To add a tag, right-click the commit's row and choose \"Tag Here…\" (an empty message makes a lightweight tag)."
+msgstr "Recherchez une étiquette dans \"Étiquettes\" du graphe des validations et sélectionnez-la pour atteindre sa validation. Pour ajouter une étiquette, cliquez avec le bouton droit sur la ligne de la validation et choisissez \"Créer une étiquette ici…\" (un message vide crée une étiquette légère)."
+
+msgid "Search in the Git Graph's search box. Add author: tag: branch: file: since: until: change: merge: to narrow it down (for example author:alice file:src/main.rs since:2026-01-01)."
+msgstr "Recherchez dans la zone de recherche du graphe des validations. Ajoutez author: tag: branch: file: since: until: change: merge: pour affiner (par exemple author:alice file:src/main.rs since:2026-01-01)."
+
+msgid "Search tags… (newest first)"
+msgstr "Rechercher des étiquettes… (les plus récentes d'abord)"
+
+msgid "Searches the tags (names given to commits) and jumps to the commit of the one you pick"
+msgstr "Recherche parmi les étiquettes (noms attribués aux validations) et atteint la validation de celle que vous choisissez"
+
+msgid "Searching… {count} commit"
+msgid_plural "Searching… {count} commits"
+msgstr[0] "Recherche… {count} validation"
+msgstr[1] "Recherche… {count} validations"
+
+msgid "See Docs"
+msgstr "Voir la documentation"
+
+msgid "See an older commit as it was (checkout)"
+msgstr "Voir une ancienne validation telle qu'elle était (extraction)"
+
+msgid "Select Base Branch"
+msgstr "Sélectionner la branche de base"
+
+msgid "Select Next Match"
+msgstr "Sélectionner la correspondance suivante"
+
+msgid "Select Previous Match"
+msgstr "Sélectionner la correspondance précédente"
+
+msgid "Select a Patch File to Apply"
+msgstr "Sélectionner un fichier patch à appliquer"
+
+msgid "Select a repository..."
+msgstr "Sélectionner un dépôt..."
+
+msgid "Select a stash…"
+msgstr "Sélectionner une remise…"
+
+msgid "Select as Repository Destination"
+msgstr "Sélectionner comme destination du dépôt"
+
+msgid "Selected Branch"
+msgstr "Branche sélectionnée"
+
+msgid "Selection Actions…"
+msgstr "Actions sur la sélection…"
+
+msgid "Selects the next unplaced commit in the graph, starting from the oldest. Press again for the one after it."
+msgstr "Sélectionne la prochaine validation non placée dans le graphe, en commençant par la plus ancienne. Appuyez à nouveau pour passer à la suivante."
+
+msgid "Send Review to Agent ({})"
+msgstr "Envoyer la revue à l'agent ({})"
+
+msgid "Send all review comments to the Agent panel"
+msgstr "Envoyer tous les commentaires de revue au panneau de l'agent"
+
+msgid "Send this diff for your last agent to review."
+msgstr "Envoie ces différences à votre dernier agent afin qu'il les examine."
+
+msgid "Sends a branch that disappeared from the remote there again and links it again"
+msgstr "Renvoie vers le dépôt distant une branche qui en a disparu et la relie de nouveau"
+
+msgid "Sends this branch to the remote for the first time and links it as the branch to push to and pull from from now on"
+msgstr "Envoie cette branche vers le dépôt distant pour la première fois et la relie comme branche d'envoi et de tirage à partir de maintenant"
+
+msgid "Sends your commits to the remote. Changes you have not committed are not sent"
+msgstr "Envoie vos validations vers le dépôt distant. Les modifications non validées ne sont pas envoyées"
+
+msgid "Separate conditions with spaces to find the commits that match all of them. Put a value that contains spaces in \"…\"."
+msgstr "Séparez les conditions par des espaces pour trouver les validations qui les remplissent toutes. Mettez une valeur contenant des espaces entre \"…\"."
+
+msgid "Separates the changes marked to go into the next commit (staged) from the changes not marked yet (unstaged)"
+msgstr "Sépare les modifications marquées pour la prochaine validation (indexées) des modifications pas encore marquées (non indexées)"
+
+msgid "Separates the files Git manages (tracked) from the new files it does not manage yet (untracked)"
+msgstr "Sépare les fichiers gérés par Git (suivis) des nouveaux fichiers qu'il ne gère pas encore (non suivis)"
+
+msgid "Shallow clone boundary: earlier history is missing, so these lines may come from an older commit."
+msgstr "Limite du clone superficiel : l'historique antérieur est manquant, ces lignes peuvent donc provenir d'une validation plus ancienne."
+
+msgid "Show Changes Only"
+msgstr "Afficher uniquement les modifications"
+
+msgid "Show Flat View"
+msgstr "Afficher la vue à plat"
+
+msgid "Show Full File"
+msgstr "Afficher le fichier complet"
+
+msgid "Show Git Output"
+msgstr "Afficher la sortie de Git"
+
+msgid "Show Tree View"
+msgstr "Afficher la vue en arborescence"
+
+msgid "Show every file at this commit as added. This can be slow in large repositories."
+msgstr "Afficher chaque fichier de cette validation comme ajouté. Cela peut être lent dans les dépôts volumineux."
+
+msgid "Show in Git Graph"
+msgstr "Afficher dans le graphe des validations"
+
+msgid "Show this file's full contents at this commit as added."
+msgstr "Afficher le contenu complet de ce fichier dans cette validation comme ajouté."
+
+msgid "Show {hidden_count} More"
+msgstr "Afficher {hidden_count} de plus"
+
+msgid "Show:"
+msgstr "Afficher :"
+
+msgid "Shows a diff of only the changes not staged yet (which do not go into the next commit)"
+msgstr "Affiche les différences des seules modifications pas encore indexées (qui ne feront pas partie de la prochaine validation)"
+
+msgid "Shows a diff of only the staged changes (which go into the next commit)"
+msgstr "Affiche les différences des seules modifications indexées (qui feront partie de la prochaine validation)"
+
+msgid "Shows both your branches (local) and the copies of the server's branches (remote)"
+msgstr "Affiche à la fois vos branches (locales) et les copies des branches du serveur (distantes)"
+
+msgid "Shows only the branches in your repository. These are the ones you can commit to"
+msgstr "Affiche uniquement les branches de votre dépôt. Ce sont celles sur lesquelles vous pouvez valider"
+
+msgid "Shows only the copies of the server's branches that the last fetch brought in (origin/… and so on)"
+msgstr "Affiche uniquement les copies des branches du serveur apportées par la dernière récupération (origin/…, etc.)"
+
+msgid "Shows the changed files in a single column, without splitting them by folder"
+msgstr "Affiche les fichiers modifiés dans une seule colonne, sans les répartir par dossier"
+
+msgid "Shows the diff (before and after) of the uncommitted changes together in one tab"
+msgstr "Affiche ensemble dans un onglet les différences (avant et après) des modifications non validées"
+
+msgid "Shows what these changes put on the shelf (the stash) contain, as a diff. Does not pop them"
+msgstr "Affiche sous forme de différences le contenu de ces modifications mises dans la remise (stash). Ne les réapplique pas"
+
+msgid "Signoff"
+msgstr "Signer (Signed-off-by)"
+
+msgid "Skip Hooks"
+msgstr "Ignorer les hooks"
+
+msgid "Skipped a commit of the {}."
+msgstr "Une validation de l'opération en cours ({}) a été ignorée."
+
+msgid "Skips the commit it stopped at and moves on to the next commit"
+msgstr "Ignore la validation sur laquelle l'opération s'est arrêtée et passe à la validation suivante"
+
+msgid "Some branches could not be loaded"
+msgstr "Certaines branches n'ont pas pu être chargées"
+
+msgid "Some branches could not be loaded: {error}"
+msgstr "Certaines branches n'ont pas pu être chargées : {error}"
+
+msgid "Some files have conflicts. Resolve them first."
+msgstr "Certains fichiers ont des conflits. Résolvez-les d'abord."
+
+msgid "Sort By"
+msgstr "Trier par"
+
+msgid "Sorts by file name, regardless of the folder"
+msgstr "Trie par nom de fichier, quel que soit le dossier"
+
+msgid "Sorts by location, folders included (the path). Files in the same folder end up next to each other"
+msgstr "Trie par emplacement, dossiers compris (le chemin d'accès). Les fichiers d'un même dossier se retrouvent côte à côte"
+
+msgid "Squash into One — {reason}"
+msgstr "Combiner en une seule (squash) — {reason}"
+
+msgid "Squash the selected commits into one?"
+msgstr "Combiner les validations sélectionnées en une seule ?"
+
+msgid "Squash the {count} Selected Commit into One"
+msgid_plural "Squash the {count} Selected Commits into One"
+msgstr[0] "Combiner {count} validation sélectionnée en une seule (squash)"
+msgstr[1] "Combiner les {count} validations sélectionnées en une seule (squash)"
+
+msgid "Squash the {count} Selected Commit into One Commit on a New MR Branch…"
+msgid_plural "Squash the {count} Selected Commits into One Commit on a New MR Branch…"
+msgstr[0] "Combiner {count} validation sélectionnée en une seule validation sur une nouvelle branche MR…"
+msgstr[1] "Combiner les {count} validations sélectionnées en une seule validation sur une nouvelle branche MR…"
+
+msgid "Squash {count} commit"
+msgid_plural "Squash {count} commits"
+msgstr[0] "Combinaison de {count} validation (squash)"
+msgstr[1] "Combinaison de {count} validations (squash)"
+
+msgid "Squash, reorder or drop commits (squash / drop)"
+msgstr "Combiner, réordonner ou supprimer des validations (squash / drop)"
+
+msgid "Squashed the commits (squash)."
+msgstr "Les validations ont été combinées (squash)."
+
+msgid "Stage"
+msgstr "Indexer"
+
+msgid "Stage All"
+msgstr "Tout indexer"
+
+msgid "Stage All Changes"
+msgstr "Indexer toutes les modifications"
+
+msgid "Stage File"
+msgstr "Indexer le fichier"
+
+msgid "Stage Folder"
+msgstr "Indexer le dossier"
+
+msgid "Stage Hunk"
+msgstr "Indexer le bloc"
+
+msgid "Stage Selected Hunks"
+msgstr "Indexer les blocs sélectionnés"
+
+msgid "Stage and Go to Next Hunk"
+msgstr "Indexer et atteindre le bloc suivant"
+
+msgid "Stage {count} Files"
+msgstr "Indexer {count} fichiers"
+
+msgid "Staged"
+msgstr "Indexés"
+
+msgid "Staged & Unstaged"
+msgstr "Indexés et non indexés"
+
+msgid "Staged Changes"
+msgstr "Modifications indexées"
+
+msgid "Staged changes (git diff --cached)"
+msgstr "Modifications indexées (git diff --cached)"
+
+msgid "Starts using Git in this folder (creates a .git folder). The existing files do not change"
+msgstr "Commence à utiliser Git dans ce dossier (crée un dossier .git). Les fichiers existants ne changent pas"
+
+msgid "Stash All"
+msgstr "Tout remiser"
+
+msgid "Stash Pop"
+msgstr "Appliquer et supprimer la remise"
+
+msgid "Stash Staged"
+msgstr "Remiser les modifications indexées"
+
+msgid "Stash Tracked"
+msgstr "Remiser les modifications suivies"
+
+msgid "Stash has changed, drop aborted"
+msgstr "La remise a changé, suppression abandonnée"
+
+msgid "Stash has changed, not applying"
+msgstr "La remise a changé, elle n'est pas appliquée"
+
+msgid "Stash has changed, pop aborted"
+msgstr "La remise a changé, application et suppression abandonnées"
+
+msgid "Stashes"
+msgstr "Remises"
+
+msgid "Still on the scratch branch \"{}\"."
+msgstr "Toujours sur la branche temporaire \"{}\"."
+
+msgid "Stop Excluding and Mark as Unplaced"
+msgstr "Ne plus exclure et marquer comme non placée"
+
+msgid "Stop Excluding {count} Commit from MR"
+msgid_plural "Stop Excluding {count} Commits from MR"
+msgstr[0] "Ne plus exclure {count} validation de la MR"
+msgstr[1] "Ne plus exclure {count} validations de la MR"
+
+msgid "Stop and Go Back"
+msgstr "Arrêter et revenir"
+
+msgid "Stop and Go Back…"
+msgstr "Arrêter et revenir…"
+
+msgid "Stop creating the MR branch?"
+msgstr "Arrêter la création de la branche MR ?"
+
+msgid "Stopped at {count} commit."
+msgid_plural "Stopped at {count} commits."
+msgstr[0] "Arrêté à {count} validation."
+msgstr[1] "Arrêté à {count} validations."
+
+msgid "Stops the search. The commits found so far stay"
+msgstr "Arrête la recherche. Les validations trouvées jusqu'ici restent affichées"
+
+msgid "Successfully pulled from {}"
+msgstr "Tirage réussi depuis {}"
+
+msgid "Successfully rebased from {}"
+msgstr "Rebasage réussi depuis {}"
+
+msgid "Switch"
+msgstr "Changer"
+
+msgid "Switch Active Repository"
+msgstr "Changer le dépôt actif"
+
+msgid "Switch Branch"
+msgstr "Changer de branche"
+
+msgid "Switch from the branch list. Type a name that is not in the list to create a new branch. To start from an older commit, pick that commit in the Git Graph and press \"Branch from Here\"."
+msgstr "Changez de branche depuis la liste des branches. Saisissez un nom absent de la liste pour créer une nouvelle branche. Pour partir d'une validation plus ancienne, sélectionnez-la dans le graphe des validations et appuyez sur \"Créer une branche ici\"."
+
+msgid "Switch or type to create a branch…"
+msgstr "Changer de branche ou saisir un nom pour en créer une…"
+
+msgid "Switch to {branch} and then cherry-pick {count} commit?"
+msgid_plural "Switch to {branch} and then cherry-pick {count} commits?"
+msgstr[0] "Passer à {branch}, puis appliquer {count} validation (cherry-pick) ?"
+msgstr[1] "Passer à {branch}, puis appliquer {count} validations (cherry-pick) ?"
+
+msgid "Switch to {branch} and then cherry-pick?"
+msgstr "Passer à {branch}, puis appliquer (cherry-pick) ?"
+
+msgid "Switched the graph to all branches: the commit was not among the rows loaded for the branch it was showing."
+msgstr "Le graphe affiche maintenant toutes les branches : la validation ne figurait pas parmi les lignes chargées pour la branche affichée."
+
+msgid "Switches to this commit (detached HEAD: not on any branch)"
+msgstr "Passe à cette validation (HEAD détaché : sur aucune branche)"
+
+msgid "Switches to {branch}, then adds the changes of {sha} as a new commit (checkout + cherry-pick)."
+msgstr "Passe à {branch}, puis ajoute les modifications de {sha} sous forme d'une nouvelle validation (checkout + cherry-pick)."
+
+msgid "Switches to {branch}, then cherry-picks {count} commit: adds it, oldest first, as a new commit (checkout + cherry-pick)."
+msgid_plural "Switches to {branch}, then cherry-picks {count} commits: adds them, oldest first, as new commits (checkout + cherry-pick)."
+msgstr[0] "Passe à {branch}, puis applique {count} validation : l'ajoute sous forme d'une nouvelle validation, de la plus ancienne à la plus récente (checkout + cherry-pick)."
+msgstr[1] "Passe à {branch}, puis applique {count} validations : les ajoute sous forme de nouvelles validations, de la plus ancienne à la plus récente (checkout + cherry-pick)."
+
+msgid "Synchronized with remotes"
+msgstr "Synchronisé avec les dépôts distants"
+
+msgid "Synchronized with {}"
+msgstr "Synchronisé avec {}"
+
+msgid "Tag (a marker given to a particular commit)"
+msgstr "Étiquette (un repère attribué à une validation précise)"
+
+msgid "Tag Here…"
+msgstr "Créer une étiquette ici…"
+
+msgid "Tag name (e.g. v1.2.3)"
+msgstr "Nom de l'étiquette (p. ex. v1.2.3)"
+
+msgid "Take Out of the Box"
+msgstr "Retirer de la boîte"
+
+msgid "Text of added or removed lines (slow)"
+msgstr "Texte des lignes ajoutées ou supprimées (lent)"
+
+msgid "The Git panel has another repository selected. Switch the Git panel to this repository, then amend."
+msgstr "Le panneau Git a un autre dépôt sélectionné. Passez le panneau Git à ce dépôt, puis modifiez la dernière validation (amend)."
+
+msgid "The MR branch \"{}\" is half created (on the scratch branch \"{}\")."
+msgstr "La création de la branche MR \"{}\" est inachevée (sur la branche temporaire \"{}\")."
+
+msgid "The MR branch matches the development branch, but the base changed this file too and differs from it. Merging the MR may undo the base's change. The base is on the left, the MR branch on the right."
+msgstr "La branche MR correspond à la branche de développement, mais la base a aussi modifié ce fichier et en diffère. Fusionner la MR pourrait annuler la modification de la base. La base est à gauche, la branche MR à droite."
+
+msgid "The MR branch was not created from the tip of its base (the base is at least {MAX_COUNTED_BASE_COMMITS} commits ahead)"
+msgstr "La branche MR n'a pas été créée à partir du sommet de sa base (la base a au moins {MAX_COUNTED_BASE_COMMITS} validations d'avance)"
+
+msgid "The MR branch was not created from the tip of its base (the base is {count} commit ahead)"
+msgid_plural "The MR branch was not created from the tip of its base (the base is {count} commits ahead)"
+msgstr[0] "La branche MR n'a pas été créée à partir du sommet de sa base (la base a {count} validation d'avance)"
+msgstr[1] "La branche MR n'a pas été créée à partir du sommet de sa base (la base a {count} validations d'avance)"
+
+msgid "The MR has the same contents as the base (fine if the base already took the same change)"
+msgstr "La MR a le même contenu que la base (normal si la base a déjà intégré la même modification)"
+
+msgid "The SHAs of the later commits change"
+msgstr "Les SHA des validations suivantes changent"
+
+msgid "The Zed server on the remote host is too old for the MR check (it refuses git rev-parse). Update Zed on the remote host."
+msgstr "Le serveur ForgeKairos de l'hôte distant est trop ancien pour la vérification de la MR (il refuse git rev-parse). Mettez à jour ForgeKairos sur l'hôte distant."
+
+msgid "The Zed server on the remote host is too old for this operation. Update the server."
+msgstr "Le serveur ForgeKairos de l'hôte distant est trop ancien pour cette opération. Mettez à jour le serveur."
+
+msgid "The Zed server on the remote host is too old to pack branches and tags."
+msgstr "Le serveur ForgeKairos de l'hôte distant est trop ancien pour compacter les branches et les étiquettes."
+
+msgid "The Zed server on the remote host is too old, so this ran as a force push with a lease. Reconnect to update the server."
+msgstr "Le serveur ForgeKairos de l'hôte distant est trop ancien : l'opération a donc été exécutée comme un envoi forcé avec bail. Reconnectez-vous pour mettre à jour le serveur."
+
+msgid "The author's name or email address contains \"alice\""
+msgstr "Le nom ou l'adresse e-mail de l'auteur contient \"alice\""
+
+msgid "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
+msgstr "La branche de base \"{merge_request_branch}\" ne peut pas être la branche MR. Utilisez un autre nom."
+
+msgid "The box is empty. Drag commits into it."
+msgstr "La boîte est vide. Faites-y glisser des validations."
+
+msgid "The changes of {short} are undone, and every commit after it gets a new SHA.\nIf the branch was pushed, it needs a force push afterwards."
+msgstr "Les modifications de {short} sont annulées, et chaque validation suivante reçoit un nouveau SHA.\nSi la branche a été envoyée, un envoi forcé sera nécessaire ensuite."
+
+msgid "The changes stay in the working tree."
+msgstr "Les modifications restent dans la copie de travail."
+
+msgid "The changes stay staged."
+msgstr "Les modifications restent indexées."
+
+msgid "The commit {} is not in the graph. Refresh the graph and try again."
+msgstr "La validation {} ne figure pas dans le graphe. Actualisez le graphe et réessayez."
+
+msgid "The commits that touched it are not in the loaded history (the newest {MAX_MERGE_REQUEST_HISTORY_COMMITS} commits)."
+msgstr "Les validations qui l'ont modifié ne figurent pas dans l'historique chargé (les {MAX_MERGE_REQUEST_HISTORY_COMMITS} validations les plus récentes)."
+
+msgid "The commits were not put in the box because no development branch is chosen. Choose a development branch first."
+msgstr "Les validations n'ont pas été mises dans la boîte, car aucune branche de développement n'est choisie. Choisissez d'abord une branche de développement."
+
+msgid "The conditions you enter are written into the search box."
+msgstr "Les conditions que vous saisissez sont écrites dans la zone de recherche."
+
+msgid "The development branch has no commits newer than the base."
+msgstr "La branche de développement n'a aucune validation plus récente que la base."
+
+msgid "The development branch was rewritten (or merged into the base), so {count} commit was taken out of the box."
+msgid_plural "The development branch was rewritten (or merged into the base), so {count} commits were taken out of the box."
+msgstr[0] "La branche de développement a été réécrite (ou fusionnée dans la base) : {count} validation a donc été retirée de la boîte."
+msgstr[1] "La branche de développement a été réécrite (ou fusionnée dans la base) : {count} validations ont donc été retirées de la boîte."
+
+msgid "The development branch's range could not be read, so left-out commits were not checked."
+msgstr "La plage de la branche de développement n'a pas pu être lue : les validations oubliées n'ont donc pas été vérifiées."
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits, so older commits were not checked for being left out."
+msgstr "La plage de la branche de développement compte plus de {MAX_RANGE_COMMITS} validations : les validations plus anciennes n'ont donc pas été vérifiées."
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits. Check that the base is right (older commits are not shown)."
+msgstr "La plage de la branche de développement compte plus de {MAX_RANGE_COMMITS} validations. Vérifiez que la base est correcte (les validations plus anciennes ne sont pas affichées)."
+
+msgid "The development branch's range is too wide (more than {MAX_RANGE_COMMITS} commits). Check that the base is right."
+msgstr "La plage de la branche de développement est trop large (plus de {MAX_RANGE_COMMITS} validations). Vérifiez que la base est correcte."
+
+msgid "The dragged order could not be reproduced, so the list opened in the original order."
+msgstr "L'ordre obtenu par glissement n'a pas pu être reproduit : la liste s'est ouverte dans l'ordre d'origine."
+
+msgid "The excluded commit {} was not found."
+msgstr "La validation exclue {} est introuvable."
+
+msgid "The existing \"{}\" ({previous}) is recreated to point at the new commit. If it was pushed, it needs a force push."
+msgstr "La branche existante \"{}\" ({previous}) est recréée pour pointer vers la nouvelle validation. Si elle a été envoyée, un envoi forcé est nécessaire."
+
+msgid "The folder of the patch file was removed from the project."
+msgstr "Le dossier du fichier patch a été retiré du projet."
+
+msgid "The git account \"{id}\" is not in effect on the remote host ({reason}), so commits are refused there. Update the remote server, or pick Git's Own Configuration."
+msgstr "Le compte Git \"{id}\" n'est pas actif sur l'hôte distant ({reason}) : les validations y sont donc refusées. Mettez à jour le serveur distant ou choisissez \"Configuration propre à Git\"."
+
+msgid "The git account \"{id}\" picked for this repository cannot be used ({reason}), so it commits and pushes as git is configured."
+msgstr "Le compte Git \"{id}\" choisi pour ce dépôt ne peut pas être utilisé ({reason}) : les validations et envois se font donc selon la configuration de git."
+
+msgid "The git command was interrupted."
+msgstr "La commande git a été interrompue."
+
+msgid "The latest commit (git format-patch -1 HEAD)"
+msgstr "La dernière validation (git format-patch -1 HEAD)"
+
+msgid "The list is in the order you dragged the commits into. Run it as it is or adjust it here."
+msgstr "La liste suit l'ordre dans lequel vous avez fait glisser les validations. Exécutez-la telle quelle ou ajustez-la ici."
+
+msgid "The local {base} is {count} commit behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgid_plural "The local {base} is {count} commits behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgstr[0] "La branche locale {base} a {count} validation de retard sur le dépôt distant ({remote}). Utilisez {remote} comme base, ou tirez d'abord."
+msgstr[1] "La branche locale {base} a {count} validations de retard sur le dépôt distant ({remote}). Utilisez {remote} comme base, ou tirez d'abord."
+
+msgid "The merge ran into conflicts. Resolve them, then commit."
+msgstr "La fusion a rencontré des conflits. Résolvez-les, puis validez."
+
+msgid "The message of {} is empty. Enter a message."
+msgstr "Le message de {} est vide. Saisissez un message."
+
+msgid "The newest {MAX_RANGE_COMMITS} commits are all placed or excluded, but older commits were not checked."
+msgstr "Les {MAX_RANGE_COMMITS} validations les plus récentes sont toutes placées ou exclues, mais les validations plus anciennes n'ont pas été vérifiées."
+
+msgid "The oldest commit is at the top. Drag the rows or use ↑↓ to reorder them, choose to fold, reword or drop, then run the rewrite."
+msgstr "La validation la plus ancienne est en haut. Faites glisser les lignes ou utilisez ↑↓ pour les réordonner, choisissez d'intégrer, de reformuler ou de supprimer, puis lancez la réécriture."
+
+msgid "The original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "La branche d'origine est inconnue : \"Abandonner\" n'y revient donc pas. Passez-y vous-même après l'abandon."
+
+msgid "The overwritten commits disappear from the remote branch"
+msgstr "Les validations écrasées disparaissent de la branche distante"
+
+msgid "The rebase finished, but the \"{fixup_subject}\" commit was not squashed into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "Le rebasage est terminé, mais la validation \"{fixup_subject}\" n'a pas été combinée dans {short}. Ancien sommet : {} (récupérable depuis le reflog)"
+
+msgid "The rebase stopped while folding into {short} (a conflict, for example). Continue or abort it from the Git panel's banner. Even after aborting, the changes stay at the tip as the \"{fixup_subject}\" commit ({}). Skipping that commit takes the changes out of the history (recoverable from git reflog). Previous tip: {}"
+msgstr "Le rebasage s'est arrêté pendant l'intégration dans {short} (à cause d'un conflit, par exemple). Continuez-le ou abandonnez-le depuis la bannière du panneau Git. Même après l'abandon, les modifications restent au sommet sous forme de la validation \"{fixup_subject}\" ({}). Ignorer cette validation retire les modifications de l'historique (récupérables depuis git reflog). Ancien sommet : {}"
+
+msgid "The remote host may still commit as the git account picked before, as it did not take the change ({reason}), so commits are refused there. Pick an account again, or reconnect to the remote server."
+msgstr "L'hôte distant peut encore valider avec le compte Git choisi précédemment, car il n'a pas pris en compte le changement ({reason}) : les validations y sont donc refusées. Choisissez de nouveau un compte ou reconnectez-vous au serveur distant."
+
+msgid "The replayed commits of yours get new SHAs"
+msgstr "Vos validations réappliquées reçoivent de nouveaux SHA"
+
+msgid "The repository could not be found, so the files cannot go into the commit."
+msgstr "Le dépôt est introuvable : les fichiers ne peuvent donc pas être intégrés à la validation."
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
+msgstr "La branche temporaire \"{scratch_branch}\" de la tentative précédente existe toujours. Vérifiez son contenu et supprimez-la, puis réessayez."
+
+msgid "The scratch branch \"{}\" has moved away from the commit of the MR branch \"{}\", so it is not deleted. Check its contents, then switch to \"{}\" yourself."
+msgstr "La branche temporaire \"{}\" s'est éloignée de la validation de la branche MR \"{}\" : elle n'est donc pas supprimée. Vérifiez son contenu, puis passez vous-même à \"{}\"."
+
+msgid "The skipped commit's changes are not brought in"
+msgstr "Les modifications de la validation ignorée ne sont pas intégrées"
+
+msgid "The tip commit of the current branch is not known, so nothing can be reordered."
+msgstr "La validation au sommet de la branche actuelle est inconnue : rien ne peut donc être réordonné."
+
+msgid "The top commit cannot be folded into a previous one. Put the commit to fold into above it."
+msgstr "La validation du haut ne peut pas être intégrée dans une précédente. Placez au-dessus d'elle la validation dans laquelle intégrer."
+
+msgid "The {count} chosen file (staged or not, as it is now)"
+msgid_plural "The {count} chosen files (staged or not, as they are now)"
+msgstr[0] "{count} fichier choisi (indexé ou non, dans son état actuel)"
+msgstr[1] "Les {count} fichiers choisis (indexés ou non, dans leur état actuel)"
+
+msgid "The {count} commit becomes one, and its SHA changes (squash).\nMessage after squashing: {first_line}"
+msgid_plural "The {count} commits become one, and each SHA changes (squash).\nMessage after squashing: {first_line}"
+msgstr[0] "{count} validation devient une seule, et son SHA change (squash).\nMessage après combinaison : {first_line}"
+msgstr[1] "Les {count} validations deviennent une seule, et chaque SHA change (squash).\nMessage après combinaison : {first_line}"
+
+msgid "There are no changes to put in the commit. Untracked files can be put in once they are staged."
+msgstr "Il n'y a aucune modification à intégrer à la validation. Les fichiers non suivis peuvent être intégrés une fois indexés."
+
+msgid "There are no changes to stage"
+msgstr "Il n'y a aucune modification à indexer"
+
+msgid "There are no changes to stash"
+msgstr "Il n'y a aucune modification à remiser"
+
+msgid "There are no commits yet, or none in the chosen range. Try widening the range with \"Show\" above."
+msgstr "Il n'y a pas encore de validation, ou aucune dans la plage choisie. Essayez d'élargir la plage avec \"Afficher\" ci-dessus."
+
+msgid "There are no commits yet. You can only amend once there is a commit."
+msgstr "Il n'y a pas encore de validation. Vous ne pouvez modifier la dernière validation (amend) que s'il en existe une."
+
+msgid "There are no files to fold in."
+msgstr "Aucun fichier à intégrer."
+
+msgid "There are no staged changes"
+msgstr "Il n'y a aucune modification indexée"
+
+msgid "There are no tags."
+msgstr "Il n'y a aucune étiquette."
+
+msgid "There are no untracked files"
+msgstr "Il n'y a aucun fichier non suivi"
+
+msgid "There are still conflicts. You must stage these before committing"
+msgstr "Il reste des conflits. Vous devez les indexer avant de valider"
+
+msgid "There are uncommitted changes, so it cannot be undone. Commit or stash them, then try again."
+msgstr "Il y a des modifications non validées : l'opération ne peut donc pas être annulée. Validez-les ou remisez-les, puis réessayez."
+
+msgid "There are uncommitted changes. Commit or stash them before creating the MR branch (the box stays as it is)."
+msgstr "Il y a des modifications non validées. Validez-les ou remisez-les avant de créer la branche MR (la boîte reste inchangée)."
+
+msgid "There is no active repository."
+msgstr "Aucun dépôt actif."
+
+msgid "There is no remote to remove."
+msgstr "Il n'y a aucun dépôt distant à supprimer."
+
+msgid "There were no changes to put in a patch file."
+msgstr "Il n'y avait aucune modification à mettre dans un fichier patch."
+
+msgid "They are the rows with a small ● in the graph. Drag them into the box, or set them aside with \"Exclude from MR\" in the right-click menu."
+msgstr "Ce sont les lignes marquées d'un petit ● dans le graphe. Faites-les glisser dans la boîte, ou mettez-les de côté avec \"Exclure de la MR\" dans le menu du clic droit."
+
+msgid "This branch has no upstream, so whether it was pushed was not checked."
+msgstr "Cette branche n'a pas de branche amont : il n'a donc pas été vérifié si elle avait été envoyée."
+
+msgid "This cannot be undone"
+msgstr "Cette action est irréversible"
+
+msgid "This commit is at the boundary of a shallow clone."
+msgstr "Cette validation se trouve à la limite d'un clone superficiel."
+
+msgid "This commit was already pushed to {}."
+msgstr "Cette validation a déjà été envoyée vers {}."
+
+msgid "This commit's SHA changes"
+msgstr "Le SHA de cette validation change"
+
+msgid "This file changed on the base too, and an excluded commit touched it. The diff mixes both."
+msgstr "Ce fichier a aussi été modifié sur la base, et une validation exclue l'a modifié. Les différences mélangent les deux."
+
+msgid "This file changed on the base too, so the diff includes the base's changes (usually fine)."
+msgstr "Ce fichier a aussi été modifié sur la base : les différences incluent donc les modifications de la base (généralement sans conséquence)."
+
+msgid "This is the tip of the current branch. There is nothing to pick."
+msgstr "Il s'agit du sommet de la branche actuelle. Il n'y a rien à appliquer."
+
+msgid "This remote host's server does not support git accounts ({reason}); update it to pick one. The project commits and pushes as git is configured on the host."
+msgstr "Le serveur de cet hôte distant ne prend pas en charge les comptes Git ({reason}) ; mettez-le à jour pour en choisir un. Le projet valide et envoie selon la configuration de git sur l'hôte."
+
+msgid "This throws away the current tip {short_new} and goes back to {short_old} (git reset --hard).\nThe commits the reorder made can then only be found through the reflog."
+msgstr "Cette action abandonne le sommet actuel {short_new} et revient à {short_old} (git reset --hard).\nLes validations créées par le réordonnancement ne pourront alors plus être retrouvées que via le reflog."
+
+msgid "This will update your most recent commit."
+msgstr "Cela mettra à jour votre validation la plus récente."
+
+msgid "Throws away these changes on the shelf (the stash) without putting them back into the files"
+msgstr "Supprime ces modifications de la remise (stash) sans les réappliquer aux fichiers"
+
+msgid "To create it under the same MR branch name, check \"Recreate the existing …\". An MR branch that was already pushed needs a force push (with lease) once recreated. The old MR branch can be restored from the reflog."
+msgstr "Pour la créer sous le même nom de branche MR, cochez \"Recréer la branche existante …\". Une branche MR déjà envoyée nécessite un envoi forcé (avec bail) une fois recréée. L'ancienne branche MR peut être restaurée depuis le reflog."
+
+msgid "To work here, create a branch first"
+msgstr "Pour travailler ici, créez d'abord une branche"
+
+msgid "Toggle Branch Picker"
+msgstr "Afficher/masquer le sélecteur de branches"
+
+msgid "Toggle Folder"
+msgstr "Développer/réduire le dossier"
+
+msgid "Toggle Staged"
+msgstr "Indexer/désindexer"
+
+msgid "Toggle Stash Picker"
+msgstr "Afficher/masquer le sélecteur de remises"
+
+msgid "Toggle {} Tab"
+msgstr "Afficher/masquer l'onglet {}"
+
+msgid "Too large to show."
+msgstr "Trop volumineux pour être affiché."
+
+msgid "Tracked"
+msgstr "Suivis"
+
+msgid "Tracked & Untracked"
+msgstr "Suivis et non suivis"
+
+msgid "Trash"
+msgstr "Mettre à la corbeille"
+
+msgid "Trash File"
+msgstr "Mettre le fichier à la corbeille"
+
+msgid "Trash Untracked Files"
+msgstr "Mettre les fichiers non suivis à la corbeille"
+
+msgid "Trash these files?"
+msgstr "Mettre ces fichiers à la corbeille ?"
+
+msgid "Trash {count} Files"
+msgstr "Mettre {count} fichiers à la corbeille"
+
+msgid "Trash {}?"
+msgstr "Mettre {} à la corbeille ?"
+
+msgid "Tree"
+msgstr "Arborescence"
+
+msgid "Trust Directory"
+msgstr "Faire confiance au répertoire"
+
+msgid "Try It"
+msgstr "Essayer"
+
+msgid "Unable to construct pull request URL"
+msgstr "Impossible de construire l'URL de la pull request"
+
+msgid "Unable to initialize a git repository"
+msgstr "Impossible d'initialiser un dépôt Git"
+
+msgid "Uncommit"
+msgstr "Annuler la dernière validation"
+
+msgid "Uncommitted Changes"
+msgstr "Modifications non validées"
+
+msgid "Uncommitted changes and your commits that are not on the remote are thrown away and cannot be undone"
+msgstr "Les modifications non validées et vos validations absentes du dépôt distant sont abandonnées, sans retour possible"
+
+msgid "Uncommitted changes cannot be recovered"
+msgstr "Les modifications non validées ne peuvent pas être récupérées"
+
+msgid "Undo Commits Only (--soft)"
+msgstr "Annuler uniquement les validations (--soft)"
+
+msgid "Undo a mistake (reset / revert / undo)"
+msgstr "Annuler une erreur (reset / revert / annuler)"
+
+msgid "Undoes every unstaged change and returns the files to their staged content. Newly created files are kept"
+msgstr "Annule toutes les modifications non indexées et ramène les fichiers à leur contenu indexé. Les fichiers nouvellement créés sont conservés"
+
+msgid "Undoes the edits in this change (hunk) and returns the file to its staged content"
+msgstr "Annule les modifications de ce bloc et ramène le fichier à son contenu indexé"
+
+msgid "Undoes the last commit and returns its changes to the staged, uncommitted state. The files' contents do not change"
+msgstr "Annule la dernière validation et ramène ses modifications à l'état indexé, non validé. Le contenu des fichiers ne change pas"
+
+msgid "Undo…"
+msgstr "Annuler…"
+
+msgid "Unknown"
+msgstr "Inconnu"
+
+msgid "Unregisters a remote. Your local record of that remote's branches goes too. The data on the server is not deleted"
+msgstr "Supprime l'enregistrement d'un dépôt distant. Votre trace locale des branches de ce dépôt distant est aussi supprimée. Les données sur le serveur ne sont pas supprimées"
+
+msgid "Unresolved conflicts remain, but whether a rebase caused them could not be confirmed. Check which changes would be lost before pressing \"Abort\"."
+msgstr "Des conflits non résolus subsistent, mais il n'a pas été possible de confirmer qu'ils proviennent d'un rebasage. Vérifiez quelles modifications seraient perdues avant d'appuyer sur \"Abandonner\"."
+
+msgid "Unstage"
+msgstr "Désindexer"
+
+msgid "Unstage All"
+msgstr "Tout désindexer"
+
+msgid "Unstage All Changes"
+msgstr "Désindexer toutes les modifications"
+
+msgid "Unstage File"
+msgstr "Désindexer le fichier"
+
+msgid "Unstage Folder"
+msgstr "Désindexer le dossier"
+
+msgid "Unstage Hunk"
+msgstr "Désindexer le bloc"
+
+msgid "Unstage Selected Hunks"
+msgstr "Désindexer les blocs sélectionnés"
+
+msgid "Unstage Too (--mixed)"
+msgstr "Désindexer aussi (--mixed)"
+
+msgid "Unstage and Go to Next Hunk"
+msgstr "Désindexer et atteindre le bloc suivant"
+
+msgid "Unstage {count} Files"
+msgstr "Désindexer {count} fichiers"
+
+msgid "Unstaged"
+msgstr "Non indexés"
+
+msgid "Unstaged Changes"
+msgstr "Modifications non indexées"
+
+msgid "Unstaged edits are lost"
+msgstr "Les modifications non indexées sont perdues"
+
+msgid "Unsupported remote URL: {}"
+msgstr "URL de dépôt distant non prise en charge : {}"
+
+msgid "Untracked"
+msgstr "Non suivis"
+
+msgid "Untracked files are not included unless they are staged."
+msgstr "Les fichiers non suivis ne sont pas inclus, sauf s'ils sont indexés."
+
+msgid "Use Both"
+msgstr "Utiliser les deux"
+
+msgid "Use {}"
+msgstr "Utiliser {}"
+
+msgid "Using the Git Graph"
+msgstr "Utilisation du graphe des validations"
+
+msgid "Using the MR box (add, exclude, create and compare)"
+msgstr "Utilisation de la boîte MR (ajouter, exclure, créer et comparer)"
+
+msgid "View"
+msgstr "Afficher"
+
+msgid "View Branch Diff"
+msgstr "Afficher les différences de la branche"
+
+msgid "View Changes"
+msgstr "Afficher les modifications"
+
+msgid "View Commit"
+msgstr "Afficher la validation"
+
+msgid "View Commit Diff"
+msgstr "Afficher les différences de la validation"
+
+msgid "View Diff"
+msgstr "Afficher les différences"
+
+msgid "View File"
+msgstr "Afficher le fichier"
+
+msgid "View File History"
+msgstr "Afficher l'historique du fichier"
+
+msgid "View Log"
+msgstr "Afficher le journal"
+
+msgid "View Merge Request"
+msgstr "Afficher la merge request"
+
+msgid "View Options"
+msgstr "Options d'affichage"
+
+msgid "View Stash"
+msgstr "Afficher la remise"
+
+msgid "View as MR Check…"
+msgstr "Afficher en tant que vérification de MR…"
+
+msgid "View commit failed"
+msgstr "Échec de l'affichage de la validation"
+
+msgid "View on {}"
+msgstr "Afficher sur {}"
+
+msgid "Went back to {short_old}."
+msgstr "Retour à {short_old} effectué."
+
+msgid "Went back to {short_old}. The folded changes are staged."
+msgstr "Retour à {short_old} effectué. Les modifications intégrées sont indexées."
+
+msgid "Went back to {} and deleted the scratch branch \"{}\"."
+msgstr "Retour à {} effectué et branche temporaire \"{}\" supprimée."
+
+msgid "Whatever you resolved along the way is thrown away"
+msgstr "Tout ce que vous avez résolu en cours de route est abandonné"
+
+msgid "When on, the last message is filled in and committing replaces the last commit"
+msgstr "Si cette option est activée, le dernier message est prérempli et la validation remplace la dernière validation"
+
+msgid "Where the MR goes. The MR branch is created from here"
+msgstr "Cible de la MR. La branche MR est créée à partir d'ici"
+
+msgid "Where the commits come from. Used to check for left-out commits and for the final comparison"
+msgstr "D'où viennent les validations. Sert à vérifier les validations oubliées et à la comparaison finale"
+
+msgid "Where would you like to initialize this git repository?"
+msgstr "Où voulez-vous initialiser ce dépôt Git ?"
+
+msgid "With tens of thousands of them this takes about a minute, and other Git operations wait meanwhile. No data changes."
+msgstr "Avec plusieurs dizaines de milliers d'entre elles, cela prend environ une minute, et les autres opérations Git attendent pendant ce temps. Aucune donnée n'est modifiée."
+
+msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
+msgstr "Une fois les conflits résolus et indexés, poursuit le reste de l'opération qui s'est arrêtée en cours de route"
+
+msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
+msgstr "Écrit un fichier texte (un patch) qui contient uniquement les modifications. Choisissez la copie de travail, les modifications indexées ou la dernière validation. Les fichiers eux-mêmes ne changent pas"
+
+msgid "Writes to your user's Git settings as a whole (--global)"
+msgstr "Écrit dans l'ensemble des paramètres Git de votre utilisateur (--global)"
+
+msgid "You do not have write access to this project"
+msgstr "Vous n'avez pas d'accès en écriture à ce projet"
+
+msgid "You must resolve conflicts before committing"
+msgstr "Vous devez résoudre les conflits avant de valider"
+
+msgid "and {left_out} more"
+msgstr "et {left_out} de plus"
+
+msgid "and {more} more"
+msgstr "et {more} de plus"
+
+msgid "author:alice"
+msgstr "author:alice"
+
+msgid "branch:feature"
+msgstr "branch:feature"
+
+msgid "change:foo"
+msgstr "change:foo"
+
+msgid "cherry-pick / squash / create an MR branch (also on right-click)"
+msgstr "cherry-pick / squash / créer une branche MR (aussi par clic droit)"
+
+msgid "discard the changes too"
+msgstr "abandonner aussi les modifications"
+
+msgid "e.g. 2026-09-30"
+msgstr "p. ex. 2026-09-30"
+
+msgid "e.g. 2w, 2026-09-01"
+msgstr "p. ex. 2w, 2026-09-01"
+
+msgid "e.g. feature/login"
+msgstr "p. ex. feature/login"
+
+msgid "e.g. mr/new-feature"
+msgstr "p. ex. mr/new-feature"
+
+msgid "e.g. src/ or *.rs"
+msgstr "p. ex. src/ ou *.rs"
+
+msgid "e.g. v1.2"
+msgstr "p. ex. v1.2"
+
+msgid "file:src/"
+msgstr "file:src/"
+
+msgid "git push --force overwrites {branch_name} on the remote.\nWithout a lease, commits others pushed since the last fetch are lost as well."
+msgstr "git push --force écrase {branch_name} sur le dépôt distant.\nSans bail, les validations envoyées par d'autres depuis la dernière récupération sont également perdues."
+
+msgid "git push --force-with-lease overwrites {branch_name} on the remote.\nIf others pushed commits since the last fetch, it stops without overwriting them."
+msgstr "git push --force-with-lease écrase {branch_name} sur le dépôt distant.\nSi d'autres ont envoyé des validations depuis la dernière récupération, l'opération s'arrête sans les écraser."
+
+msgid "keep the changes staged"
+msgstr "conserver les modifications indexées"
+
+msgid "merge:no"
+msgstr "merge:no"
+
+msgid "project has no worktrees"
+msgstr "le projet n'a aucune arborescence de travail"
+
+msgid "since:2w  until:2026-09-01"
+msgstr "since:2w  until:2026-09-01"
+
+msgid "tag:v1.2"
+msgstr "tag:v1.2"
+
+msgid "unstage only, keep the files"
+msgstr "désindexer uniquement, conserver les fichiers"
+
+msgid "{branch} is checked out in another worktree ({path}), so it cannot be moved."
+msgstr "{branch} est extraite dans une autre arborescence de travail ({path}) : elle ne peut donc pas être déplacée."
+
+msgid "{branch}, which is not checked out, will point to {short_sha}. The working tree does not change."
+msgstr "{branch}, qui n'est pas extraite, pointera vers {short_sha}. La copie de travail ne change pas."
+
+msgid "{count} Changed File"
+msgid_plural "{count} Changed Files"
+msgstr[0] "{count} fichier modifié"
+msgstr[1] "{count} fichiers modifiés"
+
+msgid "{count} Commit Selected"
+msgid_plural "{count} Commits Selected"
+msgstr[0] "{count} validation sélectionnée"
+msgstr[1] "{count} validations sélectionnées"
+
+msgid "{count} base change possibly missing"
+msgid_plural "{count} base changes possibly missing"
+msgstr[0] "{count} modification de la base peut-être manquante"
+msgstr[1] "{count} modifications de la base peut-être manquantes"
+
+msgid "{count} branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "{count} branches et étiquettes sont stockées sous forme de fichiers séparés. Les compacter rend Git plus rapide."
+
+msgid "{count} commit"
+msgid_plural "{count} commits"
+msgstr[0] "{count} validation"
+msgstr[1] "{count} validations"
+
+msgid "{count} commit is already in the box."
+msgid_plural "{count} commits are already in the box."
+msgstr[0] "{count} validation est déjà dans la boîte."
+msgstr[1] "{count} validations sont déjà dans la boîte."
+
+msgid "{count} commit is not placed. Create the MR branch anyway?"
+msgid_plural "{count} commits are not placed. Create the MR branch anyway?"
+msgstr[0] "{count} validation n'est pas placée. Créer quand même la branche MR ?"
+msgstr[1] "{count} validations ne sont pas placées. Créer quand même la branche MR ?"
+
+msgid "{count} commit:"
+msgid_plural "{count} commits:"
+msgstr[0] "{count} validation :"
+msgstr[1] "{count} validations :"
+
+msgid "{count} excluded commit."
+msgid_plural "{count} excluded commits."
+msgstr[0] "{count} validation exclue."
+msgstr[1] "{count} validations exclues."
+
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count} fichier"
+msgstr[1] "{count} fichiers"
+
+msgid "{count} file changed on the development branch: {matched} matching / {mismatched} not matching"
+msgid_plural "{count} files changed on the development branch: {matched} matching / {mismatched} not matching"
+msgstr[0] "{count} fichier modifié sur la branche de développement : {matched} identiques / {mismatched} différents"
+msgstr[1] "{count} fichiers modifiés sur la branche de développement : {matched} identiques / {mismatched} différents"
+
+msgid "{count} file differs. Choose it from the list on the left to show the contents side by side."
+msgid_plural "{count} files differ. Choose one from the list on the left to show the contents side by side."
+msgstr[0] "{count} fichier diffère. Choisissez-le dans la liste de gauche pour afficher les contenus côte à côte."
+msgstr[1] "{count} fichiers diffèrent. Choisissez-en un dans la liste de gauche pour afficher les contenus côte à côte."
+
+msgid "{count} file possibly missing"
+msgid_plural "{count} files possibly missing"
+msgstr[0] "{count} fichier peut-être manquant"
+msgstr[1] "{count} fichiers peut-être manquants"
+
+msgid "{count} merge commit (not included)"
+msgid_plural "{count} merge commits (not included)"
+msgstr[0] "{count} validation de fusion (non incluse)"
+msgstr[1] "{count} validations de fusion (non incluses)"
+
+msgid "{count} more commit"
+msgid_plural "{count} more commits"
+msgstr[0] "{count} validation de plus"
+msgstr[1] "{count} validations de plus"
+
+msgid "{count} or more branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "{count} branches et étiquettes ou plus sont stockées sous forme de fichiers séparés. Les compacter rend Git plus rapide."
+
+msgid "{count} selected"
+msgid_plural "{count} selected"
+msgstr[0] "{count} sélectionnée"
+msgstr[1] "{count} sélectionnées"
+
+msgid "{count} unplaced commit"
+msgid_plural "{count} unplaced commits"
+msgstr[0] "{count} validation non placée"
+msgstr[1] "{count} validations non placées"
+
+msgid "{explanation}."
+msgstr "{explanation}."
+
+msgid "{explanation}. Caution: {caution}."
+msgstr "{explanation}. Attention : {caution}."
+
+msgid "{headline}: could not run\n{error}"
+msgstr "{headline} : impossible d'exécuter\n{error}"
+
+msgid "{headline}: done"
+msgstr "{headline} : terminé"
+
+msgid "{headline}: failed\n{failure}"
+msgstr "{headline} : échec\n{failure}"
+
+msgid "{hedge}Creating the MR branch stopped on the scratch branch \"{scratch_branch}\". {resolve}\n{abort}\nOnce \"Continue\" has applied the remaining commits, \"Next Steps\" in the Git Graph's \"MR Box\" updates the MR branch and goes back to the original branch."
+msgstr "{hedge}La création de la branche MR s'est arrêtée sur la branche temporaire \"{scratch_branch}\". {resolve}\n{abort}\nUne fois que \"Continuer\" a appliqué les validations restantes, \"Étapes suivantes\" dans la \"Boîte MR\" du graphe des validations met à jour la branche MR et revient à la branche d'origine."
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\n\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch (the partly rewritten commits stay only in git reflog).\nIf you carry on with \"Continue\", you have to move the original branch onto the result yourself (git rebase --onto)."
+msgstr "{hedge}La réécriture des validations s'est arrêtée sur la branche temporaire \"{scratch_branch}\". {resolve}\n\"Abandonner\" revient à la branche d'origine \"{origin_branch}\" et supprime cette branche temporaire (les validations partiellement réécrites ne restent que dans git reflog).\nSi vous poursuivez avec \"Continuer\", vous devrez déplacer vous-même la branche d'origine sur le résultat (git rebase --onto)."
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\nThe original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "{hedge}La réécriture des validations s'est arrêtée sur la branche temporaire \"{scratch_branch}\". {resolve}\nLa branche d'origine est inconnue : \"Abandonner\" n'y revient donc pas. Passez-y vous-même après l'abandon."
+
+msgid "{hidden} more (keep typing to narrow them down)"
+msgstr "{hidden} de plus (continuez à saisir pour affiner)"
+
+msgid "{merge_request_base} and {source} have no common ancestor (unrelated histories). The MR check cannot run."
+msgstr "{merge_request_base} et {source} n'ont aucun ancêtre commun (historiques sans rapport). La vérification de la MR ne peut pas s'exécuter."
+
+msgid "{merge_request_base} and {source} have {} common ancestors (a criss-cross merge). The MR check cannot tell where to compare from, so it cannot run."
+msgstr "{merge_request_base} et {source} ont {} ancêtres communs (fusion croisée). La vérification de la MR ne peut pas déterminer le point de départ de la comparaison : elle ne peut donc pas s'exécuter."
+
+msgid "{reason}."
+msgstr "{reason}."
+
+msgid "{}\nHowever, {}"
+msgstr "{}\nToutefois, {}"
+
+msgid "{}\nRuns git {} --abort. If no rebase is running, git refuses; if one is, whatever was partly resolved is lost."
+msgstr "{}\nExécute git {} --abort. Si aucun rebasage n'est en cours, git refuse ; s'il y en a un, tout ce qui a été partiellement résolu est perdu."
+
+msgid "{} Excluded"
+msgstr "{} exclues"
+
+msgid "{} also changed on the base"
+msgstr "{} également modifiés sur la base"
+
+msgid "{} and {} have the same contents."
+msgstr "{} et {} ont le même contenu."
+
+msgid "{} excluded"
+msgstr "{} exclues"
+
+msgid "{} more omitted"
+msgstr "{} de plus omis"
+
+msgid "{} of the excluded commits are not in the recent history of the development branch (at most {MAX_EXCLUDED_COMMIT_LOOKUPS} can be looked up at once)."
+msgstr "{} des validations exclues ne figurent pas dans l'historique récent de la branche de développement ({MAX_EXCLUDED_COMMIT_LOOKUPS} au maximum peuvent être recherchées à la fois)."
+
+msgid "{} possibly missing"
+msgstr "{} peut-être manquants"
+
+msgid "{} stopped partway"
+msgstr "Opération en cours ({}) arrêtée en cours de route"
+
+msgctxt "amend checkbox"
+msgid "Amend"
+msgstr "Modifier (amend)"
+
+msgctxt "commit action"
+msgid "Add Current Changes (fixup)"
+msgstr "Ajouter les modifications actuelles (fixup)"
+
+msgctxt "commit action"
+msgid "Add to MR Box"
+msgstr "Ajouter à la boîte MR"
+
+msgctxt "commit action"
+msgid "Add to MR Box ({count} Commit)"
+msgid_plural "Add to MR Box ({count} Commits)"
+msgstr[0] "Ajouter à la boîte MR ({count} validation)"
+msgstr[1] "Ajouter à la boîte MR ({count} validations)"
+
+msgctxt "commit action"
+msgid "Amend Last Commit"
+msgstr "Modifier la dernière validation (amend)"
+
+msgctxt "commit action"
+msgid "Branch from Here"
+msgstr "Créer une branche ici"
+
+msgctxt "commit action"
+msgid "Check Out"
+msgstr "Extraire"
+
+msgctxt "commit action"
+msgid "Cherry-Pick"
+msgstr "Appliquer (cherry-pick)"
+
+msgctxt "commit action"
+msgid "Cherry-Pick {count} Commit"
+msgid_plural "Cherry-Pick {count} Commits"
+msgstr[0] "Appliquer {count} validation (cherry-pick)"
+msgstr[1] "Appliquer {count} validations (cherry-pick)"
+
+msgctxt "commit action"
+msgid "Exclude from MR"
+msgstr "Exclure de la MR"
+
+msgctxt "commit action"
+msgid "More"
+msgstr "Plus"
+
+msgctxt "commit action"
+msgid "Reorder / Squash / Drop…"
+msgstr "Réordonner / Combiner / Supprimer…"
+
+msgctxt "commit action"
+msgid "Reset to This Commit"
+msgstr "Réinitialiser à cette validation"
+
+msgctxt "commit action"
+msgid "Revert"
+msgstr "Inverser (revert)"
+
+msgctxt "commit action"
+msgid "Reword Message"
+msgstr "Reformuler le message"
+
+msgctxt "commit action"
+msgid "Stop Excluding from MR"
+msgstr "Ne plus exclure de la MR"
+
+msgctxt "commit button"
+msgid "Commit"
+msgstr "Valider"
+
+msgctxt "commit modal"
+msgid "Signoff"
+msgstr "Signer (Signed-off-by)"
+
+msgctxt "commit search"
+msgid "Advanced"
+msgstr "Avancé"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "Auteur"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "Branche"
+
+msgctxt "commit search"
+msgid "Changed Text"
+msgstr "Texte modifié"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "Fichier"
+
+msgctxt "commit search"
+msgid "Merges"
+msgstr "Fusions"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "Depuis"
+
+msgctxt "commit search"
+msgid "Stop"
+msgstr "Arrêter"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "Étiquette"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "Jusqu'à"
+
+msgctxt "file status"
+msgid "Added"
+msgstr "Ajouté"
+
+msgctxt "file status"
+msgid "Deleted"
+msgstr "Supprimé"
+
+msgctxt "file status"
+msgid "Modified"
+msgstr "Modifié"
+
+msgctxt "git fetch"
+msgid "Fetching…"
+msgstr "Récupération…"
+
+msgctxt "git graph hints"
+msgid "Guide"
+msgstr "Guide"
+
+msgctxt "git graph toolbar"
+msgid "Compare…"
+msgstr "Comparer…"
+
+msgctxt "git graph toolbar"
+msgid "Create MR"
+msgstr "Créer la MR"
+
+msgctxt "git graph toolbar"
+msgid "Tags"
+msgstr "Étiquettes"
+
+msgctxt "git history"
+msgid "Drop"
+msgstr "Supprimer"
+
+msgctxt "git history"
+msgid "Go Back"
+msgstr "Précédent"
+
+msgctxt "git operation"
+msgid "Abort (--abort)"
+msgstr "Abandonner (--abort)"
+
+msgctxt "git operation"
+msgid "Add Current Changes (fixup)"
+msgstr "Ajouter les modifications actuelles (fixup)"
+
+msgctxt "git operation"
+msgid "Add Remote (remote add)"
+msgstr "Ajouter un dépôt distant (remote add)"
+
+msgctxt "git operation"
+msgid "Add to .git/info/exclude"
+msgstr "Ajouter à .git/info/exclude"
+
+msgctxt "git operation"
+msgid "Add to .gitignore"
+msgstr "Ajouter à .gitignore"
+
+msgctxt "git operation"
+msgid "All Branches"
+msgstr "Toutes les branches"
+
+msgctxt "git operation"
+msgid "Amend Last Commit"
+msgstr "Modifier la dernière validation (amend)"
+
+msgctxt "git operation"
+msgid "Apply Patch File (apply)"
+msgstr "Appliquer un fichier patch (apply)"
+
+msgctxt "git operation"
+msgid "Branch from Here"
+msgstr "Créer une branche ici"
+
+msgctxt "git operation"
+msgid "Check Out"
+msgstr "Extraire"
+
+msgctxt "git operation"
+msgid "Cherry-Pick"
+msgstr "Appliquer (cherry-pick)"
+
+msgctxt "git operation"
+msgid "Cherry-Pick Selected"
+msgstr "Appliquer la sélection (cherry-pick)"
+
+msgctxt "git operation"
+msgid "Co-Authors (Co-authored-by)"
+msgstr "Coauteurs (Co-authored-by)"
+
+msgctxt "git operation"
+msgid "Commit"
+msgstr "Valider (commit)"
+
+msgctxt "git operation"
+msgid "Compare"
+msgstr "Comparer"
+
+msgctxt "git operation"
+msgid "Continue (--continue)"
+msgstr "Continuer (--continue)"
+
+msgctxt "git operation"
+msgid "Copy Path"
+msgstr "Copier le chemin d'accès"
+
+msgctxt "git operation"
+msgid "Copy Relative Path"
+msgstr "Copier le chemin d'accès relatif"
+
+msgctxt "git operation"
+msgid "Create MR"
+msgstr "Créer la MR"
+
+msgctxt "git operation"
+msgid "Create Patch File (diff)"
+msgstr "Créer un fichier patch (diff)"
+
+msgctxt "git operation"
+msgid "Create from Default Branch"
+msgstr "Créer à partir de la branche par défaut"
+
+msgctxt "git operation"
+msgid "Delete Branch (branch -d)"
+msgstr "Supprimer la branche (branch -d)"
+
+msgctxt "git operation"
+msgid "Discard Changes (restore)"
+msgstr "Abandonner les modifications (restore)"
+
+msgctxt "git operation"
+msgid "Discard Tracked Changes (restore)"
+msgstr "Abandonner les modifications suivies (restore)"
+
+msgctxt "git operation"
+msgid "Distance from Tag"
+msgstr "Distance depuis l'étiquette"
+
+msgctxt "git operation"
+msgid "Drop"
+msgstr "Supprimer"
+
+msgctxt "git operation"
+msgid "Drop Stash (stash drop)"
+msgstr "Supprimer la remise (stash drop)"
+
+msgctxt "git operation"
+msgid "Exclude from MR"
+msgstr "Exclure de la MR"
+
+msgctxt "git operation"
+msgid "Fetch"
+msgstr "Récupérer (fetch)"
+
+msgctxt "git operation"
+msgid "Fetch From (fetch)"
+msgstr "Récupérer depuis (fetch)"
+
+msgctxt "git operation"
+msgid "File History (log)"
+msgstr "Historique du fichier (log)"
+
+msgctxt "git operation"
+msgid "Filter Branches"
+msgstr "Filtrer les branches"
+
+msgctxt "git operation"
+msgid "Force Delete Branch (branch -D)"
+msgstr "Forcer la suppression de la branche (branch -D)"
+
+msgctxt "git operation"
+msgid "Force Push (push --force-with-lease)"
+msgstr "Envoyer de force (push --force-with-lease)"
+
+msgctxt "git operation"
+msgid "Force Push Without Lease (push --force)"
+msgstr "Envoyer de force sans bail (push --force)"
+
+msgctxt "git operation"
+msgid "Git Guide"
+msgstr "Guide Git"
+
+msgctxt "git operation"
+msgid "Group by Staged and Unstaged"
+msgstr "Regrouper par indexé et non indexé"
+
+msgctxt "git operation"
+msgid "Group by Tracked and Untracked"
+msgstr "Regrouper par suivi et non suivi"
+
+msgctxt "git operation"
+msgid "Initialize Repository (init)"
+msgstr "Initialiser le dépôt (init)"
+
+msgctxt "git operation"
+msgid "List View"
+msgstr "Vue en liste"
+
+msgctxt "git operation"
+msgid "Local Branches"
+msgstr "Branches locales"
+
+msgctxt "git operation"
+msgid "MR Box"
+msgstr "Boîte MR"
+
+msgctxt "git operation"
+msgid "Merge Branch"
+msgstr "Fusionner une branche (merge)"
+
+msgctxt "git operation"
+msgid "More"
+msgstr "Plus"
+
+msgctxt "git operation"
+msgid "Move File to Trash"
+msgstr "Mettre le fichier à la corbeille"
+
+msgctxt "git operation"
+msgid "Move Untracked Files to Trash"
+msgstr "Mettre les fichiers non suivis à la corbeille"
+
+msgctxt "git operation"
+msgid "No Grouping"
+msgstr "Aucun regroupement"
+
+msgctxt "git operation"
+msgid "Open Diff"
+msgstr "Ouvrir les différences"
+
+msgctxt "git operation"
+msgid "Open File Diff"
+msgstr "Ouvrir les différences du fichier"
+
+msgctxt "git operation"
+msgid "Pop This Stash (stash pop)"
+msgstr "Appliquer et supprimer cette remise (stash pop)"
+
+msgctxt "git operation"
+msgid "Publish (push --set-upstream)"
+msgstr "Publier (push --set-upstream)"
+
+msgctxt "git operation"
+msgid "Pull"
+msgstr "Tirer (pull)"
+
+msgctxt "git operation"
+msgid "Pull with Rebase (pull --rebase)"
+msgstr "Tirer avec rebasage (pull --rebase)"
+
+msgctxt "git operation"
+msgid "Push"
+msgstr "Envoyer (push)"
+
+msgctxt "git operation"
+msgid "Push To (push)"
+msgstr "Envoyer vers (push)"
+
+msgctxt "git operation"
+msgid "Remote Branches"
+msgstr "Branches distantes"
+
+msgctxt "git operation"
+msgid "Remove Remote (remote remove)"
+msgstr "Supprimer un dépôt distant (remote remove)"
+
+msgctxt "git operation"
+msgid "Reorder / Squash / Drop"
+msgstr "Réordonner / Combiner / Supprimer"
+
+msgctxt "git operation"
+msgid "Republish (push --set-upstream)"
+msgstr "Republier (push --set-upstream)"
+
+msgctxt "git operation"
+msgid "Reset to Remote (reset --hard)"
+msgstr "Réinitialiser sur le dépôt distant (reset --hard)"
+
+msgctxt "git operation"
+msgid "Reset to This Commit"
+msgstr "Réinitialiser à cette validation (reset)"
+
+msgctxt "git operation"
+msgid "Reset: hard"
+msgstr "Réinitialisation : hard"
+
+msgctxt "git operation"
+msgid "Reset: mixed"
+msgstr "Réinitialisation : mixed"
+
+msgctxt "git operation"
+msgid "Reset: soft"
+msgstr "Réinitialisation : soft"
+
+msgctxt "git operation"
+msgid "Restore All (restore)"
+msgstr "Tout restaurer (restore)"
+
+msgctxt "git operation"
+msgid "Restore File (restore)"
+msgstr "Restaurer le fichier (restore)"
+
+msgctxt "git operation"
+msgid "Restore Hunk (restore)"
+msgstr "Restaurer le bloc (restore)"
+
+msgctxt "git operation"
+msgid "Revert"
+msgstr "Inverser (revert)"
+
+msgctxt "git operation"
+msgid "Reword Message"
+msgstr "Reformuler le message (reword)"
+
+msgctxt "git operation"
+msgid "Show"
+msgstr "Afficher"
+
+msgctxt "git operation"
+msgid "Show Diff"
+msgstr "Afficher les différences (diff)"
+
+msgctxt "git operation"
+msgid "Signoff"
+msgstr "Signer (Signed-off-by)"
+
+msgctxt "git operation"
+msgid "Skip (--skip)"
+msgstr "Ignorer (--skip)"
+
+msgctxt "git operation"
+msgid "Skip Hooks (--no-verify)"
+msgstr "Ignorer les hooks (--no-verify)"
+
+msgctxt "git operation"
+msgid "Sort by Name"
+msgstr "Trier par nom"
+
+msgctxt "git operation"
+msgid "Sort by Path"
+msgstr "Trier par chemin d'accès"
+
+msgctxt "git operation"
+msgid "Squash into One"
+msgstr "Combiner en une seule (squash)"
+
+msgctxt "git operation"
+msgid "Stage All"
+msgstr "Tout indexer"
+
+msgctxt "git operation"
+msgid "Stage All in Section"
+msgstr "Tout indexer dans la section"
+
+msgctxt "git operation"
+msgid "Stage File"
+msgstr "Indexer le fichier"
+
+msgctxt "git operation"
+msgid "Stage Folder"
+msgstr "Indexer le dossier"
+
+msgctxt "git operation"
+msgid "Stage Hunk"
+msgstr "Indexer le bloc"
+
+msgctxt "git operation"
+msgid "Staged Changes"
+msgstr "Modifications indexées"
+
+msgctxt "git operation"
+msgid "Stash All"
+msgstr "Tout remiser"
+
+msgctxt "git operation"
+msgid "Stash Pop"
+msgstr "Appliquer et supprimer la remise"
+
+msgctxt "git operation"
+msgid "Stash Staged (stash --staged)"
+msgstr "Remiser les modifications indexées (stash --staged)"
+
+msgctxt "git operation"
+msgid "Stash Tracked"
+msgstr "Remiser les modifications suivies"
+
+msgctxt "git operation"
+msgid "Stop Excluding from MR"
+msgstr "Ne plus exclure de la MR"
+
+msgctxt "git operation"
+msgid "Switch Branch"
+msgstr "Changer de branche"
+
+msgctxt "git operation"
+msgid "Tag"
+msgstr "Étiquette (tag)"
+
+msgctxt "git operation"
+msgid "Tags"
+msgstr "Étiquettes"
+
+msgctxt "git operation"
+msgid "Toggle Staged"
+msgstr "Indexer/désindexer"
+
+msgctxt "git operation"
+msgid "Tree View"
+msgstr "Vue en arborescence"
+
+msgctxt "git operation"
+msgid "Trust Directory (safe.directory)"
+msgstr "Faire confiance au répertoire (safe.directory)"
+
+msgctxt "git operation"
+msgid "Uncommit (reset --soft)"
+msgstr "Annuler la dernière validation (reset --soft)"
+
+msgctxt "git operation"
+msgid "Unstage All"
+msgstr "Tout désindexer"
+
+msgctxt "git operation"
+msgid "Unstage All in Section"
+msgstr "Tout désindexer dans la section"
+
+msgctxt "git operation"
+msgid "Unstage File"
+msgstr "Désindexer le fichier"
+
+msgctxt "git operation"
+msgid "Unstage Folder"
+msgstr "Désindexer le dossier"
+
+msgctxt "git operation"
+msgid "Unstage Hunk"
+msgstr "Désindexer le bloc"
+
+msgctxt "git operation"
+msgid "Unstaged Changes"
+msgstr "Modifications non indexées"
+
+msgctxt "git operation"
+msgid "Use Both"
+msgstr "Utiliser les deux"
+
+msgctxt "git operation"
+msgid "Use Ours"
+msgstr "Utiliser la partie supérieure (ours)"
+
+msgctxt "git operation"
+msgid "Use Theirs"
+msgstr "Utiliser la partie inférieure (theirs)"
+
+msgctxt "git operation"
+msgid "View File"
+msgstr "Afficher le fichier"
+
+msgctxt "git operation"
+msgid "View Options"
+msgstr "Options d'affichage"
+
+msgctxt "git operation"
+msgid "View Stash"
+msgstr "Afficher la remise"
+
+msgctxt "git operation"
+msgid "View Stash List (stash list)"
+msgstr "Afficher la liste des remises (stash list)"
+
+msgctxt "git panel view options"
+msgid "Name"
+msgstr "Nom"
+
+msgctxt "git panel view options"
+msgid "None"
+msgstr "Aucun"
+
+msgctxt "git panel view options"
+msgid "Path"
+msgstr "Chemin d'accès"
+
+msgctxt "git panel view options"
+msgid "View"
+msgstr "Afficher"
+
+msgctxt "git prompt"
+msgid "Cherry-Pick"
+msgstr "Appliquer"
+
+msgctxt "git prompt"
+msgid "Go Back"
+msgstr "Précédent"
+
+msgctxt "git prompt"
+msgid "Move"
+msgstr "Déplacer"
+
+msgctxt "git prompt"
+msgid "Rewrite"
+msgstr "Réécrire"
+
+msgctxt "git prompt"
+msgid "Squash"
+msgstr "Combiner"
+
+msgctxt "git prompt"
+msgid "Switch and Cherry-Pick"
+msgstr "Changer de branche et appliquer"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "Application (cherry-pick)"
+
+msgctxt "git result"
+msgid "Edit commits"
+msgstr "Modification des validations"
+
+msgctxt "git result"
+msgid "Move branch"
+msgstr "Déplacement de branche"
+
+msgctxt "git result"
+msgid "Reorder commits"
+msgstr "Réordonnancement des validations"
+
+msgctxt "git result"
+msgid "Reset branch"
+msgstr "Réinitialisation de branche (reset)"
+
+msgctxt "git result"
+msgid "Squash"
+msgstr "Combinaison (squash)"
+
+msgctxt "git result"
+msgid "Squash commits"
+msgstr "Combinaison des validations (squash)"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "Changement de branche"
+
+msgctxt "git rewrite"
+msgid "Keep"
+msgstr "Conserver"
+
+msgctxt "git rewrite"
+msgid "Move Down"
+msgstr "Descendre"
+
+msgctxt "git rewrite"
+msgid "Move Up"
+msgstr "Monter"
+
+msgctxt "git rewrite"
+msgid "Reword"
+msgstr "Reformuler"
+
+msgctxt "git sequencer"
+msgid "Abort"
+msgstr "Abandonner"
+
+msgctxt "git sequencer"
+msgid "Continue"
+msgstr "Continuer"
+
+msgctxt "git sequencer"
+msgid "Skip"
+msgstr "Ignorer"
+
+msgctxt "git sequencer prompt"
+msgid "Abort"
+msgstr "Abandonner"
+
+msgctxt "git sequencer prompt"
+msgid "Cancel"
+msgstr "Annuler"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "log source"
+msgid "All Branches"
+msgstr "Toutes les branches"
+
+msgctxt "log source"
+msgid "File History"
+msgstr "Historique du fichier"
+
+msgctxt "merge commits"
+msgid "Exclude"
+msgstr "Exclure"
+
+msgctxt "merge commits"
+msgid "Include"
+msgstr "Inclure"
+
+msgctxt "merge commits"
+msgid "Only"
+msgstr "Uniquement"
+
+msgctxt "merge request box"
+msgid "Base"
+msgstr "Base"
+
+msgctxt "merge request box"
+msgid "Create"
+msgstr "Créer"
+
+msgctxt "merge request box"
+msgid "Message"
+msgstr "Message"
+
+msgctxt "merge request check"
+msgid "All"
+msgstr "Tout"
+
+msgctxt "pack refs"
+msgid "Pack"
+msgstr "Compacter"
+
+msgctxt "remove remote"
+msgid "Remove"
+msgstr "Supprimer"
+
+msgctxt "two sentences"
+msgid "{0} {1}"
+msgstr "{0} {1}"

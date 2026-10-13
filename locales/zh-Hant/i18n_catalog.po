@@ -1,0 +1,23 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "i18n_catalog test: Goodbye"
+msgstr "i18n_catalog 測試：再見"
+
+msgid "i18n_catalog test: Hello"
+msgstr "i18n_catalog 測試：你好"
+
+msgid "i18n_catalog test: {count} file"
+msgid_plural "i18n_catalog test: {count} files"
+msgstr[0] "i18n_catalog 測試：{count} 個檔案"
+
+msgctxt "i18n_catalog test"
+msgid "Open"
+msgstr "開啟"

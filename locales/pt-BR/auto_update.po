@@ -1,0 +1,68 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Auto-updates disabled for non-bundled app."
+msgstr "As atualizações automáticas estão desabilitadas para aplicativos não empacotados."
+
+msgid "Could not auto-update because the required rsync utility was not found."
+msgstr "Não foi possível atualizar automaticamente porque o utilitário rsync, necessário para isso, não foi encontrado."
+
+msgid "Could not check for updates"
+msgstr "Não foi possível verificar se há atualizações"
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "Não foi possível adicionar os hosts à lista de permissões: {error}"
+
+msgid "Couldn't check for updates: GitHub answered with HTTP status {status}."
+msgstr "Não foi possível verificar atualizações: o GitHub respondeu com o status HTTP {status}."
+
+msgid "Couldn't check for updates: GitHub could not be reached ({error})."
+msgstr "Não foi possível verificar atualizações: não foi possível acessar o GitHub ({error})."
+
+msgid "Couldn't check for updates: GitHub has no release list for {repository}. The repository may be private or not published yet."
+msgstr "Não foi possível verificar atualizações: o GitHub não tem lista de versões para {repository}. O repositório pode ser privado ou ainda não ter sido publicado."
+
+msgid "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minute."
+msgid_plural "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minutes."
+msgstr[0] "Não foi possível verificar atualizações: o limite do GitHub para solicitações sem login foi atingido. Tente novamente em {count} minuto."
+msgstr[1] "Não foi possível verificar atualizações: o limite do GitHub para solicitações sem login foi atingido. Tente novamente em {count} minutos."
+
+msgid "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again later."
+msgstr "Não foi possível verificar atualizações: o limite do GitHub para solicitações sem login foi atingido. Tente novamente mais tarde."
+
+msgid "Couldn't check for updates: GitHub's release list was not in the expected format."
+msgstr "Não foi possível verificar atualizações: a lista de versões do GitHub não estava no formato esperado."
+
+msgid "Downloading remote server"
+msgstr "Baixando o servidor remoto"
+
+msgid "Fetching remote server release"
+msgstr "Obtendo a versão do servidor remoto"
+
+msgid "Install it with: sudo apt install rsync"
+msgstr "Instale-o com: sudo apt install rsync"
+
+msgid "Install it with: sudo dnf install rsync"
+msgstr "Instale-o com: sudo dnf install rsync"
+
+msgid "Install it with: sudo pacman -S rsync"
+msgstr "Instale-o com: sudo pacman -S rsync"
+
+msgid "Install pkgs.rsync from nixpkgs"
+msgstr "Instale pkgs.rsync a partir do nixpkgs"
+
+msgid "Please install rsync using your package manager"
+msgstr "Instale o rsync usando seu gerenciador de pacotes"
+
+msgid "Zed was installed via a package manager."
+msgstr "O ForgeKairos foi instalado por meio de um gerenciador de pacotes."
+
+msgid "rsync is required for auto-updates but is not installed. {install_hint}"
+msgstr "O rsync é necessário para as atualizações automáticas, mas não está instalado. {install_hint}"

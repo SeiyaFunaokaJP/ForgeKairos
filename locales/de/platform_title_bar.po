@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Close Other Tabs"
+msgstr "Andere Tabs schließen"
+
+msgid "Close Tab"
+msgstr "Tab schließen"
+
+msgid "Move Tab to New Window"
+msgstr "Tab in neues Fenster verschieben"
+
+msgid "Show All Tabs"
+msgstr "Alle Tabs anzeigen"

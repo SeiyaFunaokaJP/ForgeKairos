@@ -1,0 +1,175 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "A folder allowed for writing is your Windows user folder itself or contains it, which the sandbox can't use (it keeps the credentials inside it from being read). Open the project from a folder below it."
+msgstr "Un dossier autorisé en écriture est votre dossier utilisateur Windows lui-même ou le contient, ce que le bac à sable ne peut pas utiliser (il empêche la lecture des identifiants qui s'y trouvent). Ouvrez le projet depuis un dossier situé en dessous."
+
+msgid "A path allowed for writing was replaced after the approval so that it points somewhere else (through a symbolic link, for example). The command wasn't run, to be safe."
+msgstr "Un chemin autorisé en écriture a été remplacé après l'approbation de sorte qu'il pointe ailleurs (par exemple via un lien symbolique). Par sécurité, la commande n'a pas été exécutée."
+
+msgid "A path the agent asked to see read-only, as something it needs to run, is neither the agent's install folder (`external_agents`) nor Node.js (`node`) in Zed's data folder (or it overlaps credentials), so the command wasn't run."
+msgstr "Un chemin que l'agent a demandé à voir en lecture seule, comme nécessaire à son exécution, n'est ni le dossier d'installation de l'agent (`external_agents`) ni Node.js (`node`) dans le dossier de données de ForgeKairos (ou il chevauche des identifiants) : la commande n'a donc pas été exécutée."
+
+msgid "Allow once"
+msgstr "Autoriser une fois"
+
+msgid "An internal error occurred while preparing the sandbox ({code})."
+msgstr "Une erreur interne s'est produite lors de la préparation du bac à sable ({code})."
+
+msgid "Asking you, because the call has no arguments"
+msgstr "Demande de confirmation, car l'appel n'a pas d'arguments"
+
+msgid "Collaboration"
+msgstr "Collaboration"
+
+msgid "Could not create the sandbox in WSL: "
+msgstr "Impossible de créer le bac à sable dans WSL : "
+
+msgid "Could not create the sandbox in WSL: WSL didn't respond within {seconds} seconds ({attempts} attempts). WSL may be slow to start. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
+msgstr "Impossible de créer le bac à sable dans WSL : WSL n'a pas répondu dans un délai de {seconds} secondes ({attempts} tentatives). WSL est peut-être lent à démarrer. Patientez un instant et réessayez ; si cela ne suffit pas, redémarrez WSL avec `wsl --shutdown`."
+
+msgid "Couldn't create the sandbox on the remote host: "
+msgstr "Impossible de créer le bac à sable sur l'hôte distant : "
+
+msgid "Deny"
+msgstr "Refuser"
+
+msgid "Edit {path} (agent configuration)"
+msgstr "Modifier {path} (configuration de l'agent)"
+
+msgid "Edit {path} (agent skills)"
+msgstr "Modifier {path} (compétences de l'agent)"
+
+msgid "Edit {path} (local settings)"
+msgstr "Modifier {path} (paramètres locaux)"
+
+msgid "Edit {path} (settings)"
+msgstr "Modifier {path} (paramètres)"
+
+msgid "Neither file isolation method (Landlock or mounts) is available."
+msgstr "Aucune des méthodes d'isolation des fichiers (Landlock ou montages) n'est disponible."
+
+msgid "Network control couldn't be set up."
+msgstr "Impossible de mettre en place le contrôle du réseau."
+
+msgid "No usable `bwrap` binary was found on your PATH. Install Bubblewrap to let the agent sandbox terminal commands."
+msgstr "Aucun binaire `bwrap` utilisable n'a été trouvé dans votre PATH. Installez Bubblewrap pour permettre à l'agent d'exécuter les commandes du terminal dans un bac à sable."
+
+msgid "Remote"
+msgstr "Distant"
+
+msgid "SSH (not Linux)"
+msgstr "SSH (hors Linux)"
+
+msgid "The WSL home directory couldn't be determined (the command isn't run, because the paths that are always protected can't be settled)."
+msgstr "Impossible de déterminer le répertoire personnel WSL (la commande n'est pas exécutée, car les chemins toujours protégés ne peuvent pas être établis)."
+
+msgid "The command couldn't be started inside the sandbox."
+msgstr "Impossible de démarrer la commande dans le bac à sable."
+
+msgid "The command's capabilities couldn't be dropped."
+msgstr "Impossible de retirer les capacités (capabilities) de la commande."
+
+msgid "The file write restrictions couldn't be applied."
+msgstr "Impossible d'appliquer les restrictions d'écriture de fichiers."
+
+msgid "The folder (or socket) that carries the IDE integration isn't in a safe state (its permissions aren't 0700, it has another owner, or it lies outside the protected paths), so the command wasn't run. Restart Zed and try again."
+msgstr "Le dossier (ou socket) qui assure l'intégration IDE n'est pas dans un état sûr (ses autorisations ne sont pas 0700, il a un autre propriétaire ou il se trouve hors des chemins protégés) : la commande n'a donc pas été exécutée. Redémarrez ForgeKairos et réessayez."
+
+msgid "The only `bwrap` available is setuid-root, which Zed refuses to run. Install a non-setuid Bubblewrap to let the agent sandbox terminal commands."
+msgstr "Le seul `bwrap` disponible est setuid-root, ce que ForgeKairos refuse d'exécuter. Installez une version de Bubblewrap sans setuid pour permettre à l'agent d'exécuter les commandes du terminal dans un bac à sable."
+
+msgid "The protected paths (credentials and shell startup files such as `.git`, `~/.ssh` and `~/.bashrc`) couldn't be checked (check their permissions)."
+msgstr "Impossible de vérifier les chemins protégés (identifiants et fichiers de démarrage du shell, comme `.git`, `~/.ssh` et `~/.bashrc`) (vérifiez leurs autorisations)."
+
+msgid "The remote home directory couldn't be determined (the command isn't run, because the paths that are always protected can't be settled)."
+msgstr "Impossible de déterminer le répertoire personnel distant (la commande n'est pas exécutée, car les chemins toujours protégés ne peuvent pas être établis)."
+
+msgid "The remote kernel refused to create a PID namespace, so processes left behind when the command ends can't be reliably stopped. The command wasn't run, to be safe (a `user.max_pid_namespaces=0` setting or a container's seccomp profile can cause this)."
+msgstr "Le noyau distant a refusé de créer un espace de noms PID : les processus restants à la fin de la commande ne peuvent donc pas être arrêtés de manière fiable. Par sécurité, la commande n'a pas été exécutée (un paramètre `user.max_pid_namespaces=0` ou le profil seccomp d'un conteneur peut en être la cause)."
+
+msgid "The remote kernel refused to let the helper reap child processes (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be cleaned up. The command wasn't run, to be safe."
+msgstr "Le noyau distant a refusé de laisser l'assistant récupérer les processus enfants (PR_SET_CHILD_SUBREAPER) : les processus restants à la fin de la commande ne peuvent donc pas être nettoyés. Par sécurité, la commande n'a pas été exécutée."
+
+msgid "The run was canceled"
+msgstr "L'exécution a été annulée"
+
+msgid "The sandbox helper (or slirp4netns) doesn't match the one bundled with this Zed (it was replaced or is damaged). The command wasn't run, to be safe. Restarting Zed puts it back."
+msgstr "L'assistant du bac à sable (ou slirp4netns) ne correspond pas à celui fourni avec ce ForgeKairos (il a été remplacé ou est endommagé). Par sécurité, la commande n'a pas été exécutée. Redémarrer ForgeKairos le remet en place."
+
+msgid "The sandbox helper (slirp4netns) is missing from `~/.zed_server/` on the remote host, so network access can't be isolated. Reconnecting puts it back."
+msgstr "L'assistant du bac à sable (slirp4netns) est absent de `~/.zed_server/` sur l'hôte distant : l'accès réseau ne peut donc pas être isolé. Une reconnexion le remet en place."
+
+msgid "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't be isolated. Restarting Zed puts it back."
+msgstr "L'assistant du bac à sable (slirp4netns) est introuvable dans WSL : l'accès réseau ne peut donc pas être isolé. Redémarrer ForgeKairos le remet en place."
+
+msgid "The sandbox helper's signal handling couldn't be set up. The command wasn't run, to be safe."
+msgstr "Impossible de mettre en place la gestion des signaux de l'assistant du bac à sable. Par sécurité, la commande n'a pas été exécutée."
+
+msgid "The sandbox is turned off in the settings"
+msgstr "Le bac à sable est désactivé dans les paramètres"
+
+msgid "The sandbox's launch arguments are invalid (internal error)."
+msgstr "Les arguments de lancement du bac à sable ne sont pas valides (erreur interne)."
+
+msgid "The system call restrictions couldn't be applied."
+msgstr "Impossible d'appliquer les restrictions d'appels système."
+
+msgid "The user ID mapping (uid_map / gid_map) couldn't be set up in the user namespace."
+msgstr "Impossible de configurer la correspondance des ID utilisateur (uid_map / gid_map) dans l'espace de noms utilisateur."
+
+msgid "These hosts aren't in the editor-wide allowlist: {}"
+msgstr "Ces hôtes ne figurent pas dans la liste d'autorisation de l'éditeur : {}"
+
+msgid "This project can't use the sandbox ({project_kind})"
+msgstr "Ce projet ne peut pas utiliser le bac à sable ({project_kind})"
+
+msgid "This thread is a conversation with an agent that was started outside the sandbox"
+msgstr "Cette conversation a lieu avec un agent démarré hors du bac à sable"
+
+msgid "Tool call not found"
+msgstr "Appel d'outil introuvable"
+
+msgid "Unknown reason ({other})"
+msgstr "Raison inconnue ({other})"
+
+msgid "Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again."
+msgstr "Mettez à jour WSL avec `wsl --update`, redémarrez-le avec `wsl --shutdown`, puis réessayez."
+
+msgid "User namespaces can't be created (they may be disabled). In a dev container (Docker), the default seccomp profile refuses `unshare`, so add `--cap-add SYS_ADMIN` (or `--security-opt seccomp=unconfined`) to `runArgs`, and `--device /dev/net/tun` for commands that use the network."
+msgstr "Impossible de créer des espaces de noms utilisateur (ils sont peut-être désactivés). Dans un conteneur de développement (Docker), le profil seccomp par défaut refuse `unshare` : ajoutez `--cap-add SYS_ADMIN` (ou `--security-opt seccomp=unconfined`) à `runArgs`, ainsi que `--device /dev/net/tun` pour les commandes qui utilisent le réseau."
+
+msgid "User namespaces can't be created in WSL."
+msgstr "Impossible de créer des espaces de noms utilisateur dans WSL."
+
+msgid "WSL remote"
+msgstr "WSL distant"
+
+msgid "WSL's kernel doesn't support Landlock."
+msgstr "Le noyau de WSL ne prend pas en charge Landlock."
+
+msgid "WSL's kernel refused to create a PID namespace, so processes left behind when the command ends can't be reliably stopped. The command wasn't run, to be safe (a `user.max_pid_namespaces=0` setting can cause this)."
+msgstr "Le noyau de WSL a refusé de créer un espace de noms PID : les processus restants à la fin de la commande ne peuvent donc pas être arrêtés de manière fiable. Par sécurité, la commande n'a pas été exécutée (un paramètre `user.max_pid_namespaces=0` peut en être la cause)."
+
+msgid "WSL's kernel refused to let the helper reap child processes (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be cleaned up. The command wasn't run, to be safe."
+msgstr "Le noyau de WSL a refusé de laisser l'assistant récupérer les processus enfants (PR_SET_CHILD_SUBREAPER) : les processus restants à la fin de la commande ne peuvent donc pas être nettoyés. Par sécurité, la commande n'a pas été exécutée."
+
+msgid "`bwrap` is installed but couldn't create a sandbox, likely because unprivileged user namespaces are disabled on this system (Ubuntu 23.10 and later need an AppArmor profile for Bubblewrap)."
+msgstr "`bwrap` est installé mais n'a pas pu créer de bac à sable, probablement parce que les espaces de noms utilisateur non privilégiés sont désactivés sur ce système (Ubuntu 23.10 et versions ultérieures nécessitent un profil AppArmor pour Bubblewrap)."
+
+msgid "not supported on this OS"
+msgstr "non pris en charge sur ce système d'exploitation"
+
+msgid "sandboxing is turned off"
+msgstr "l'isolation en bac à sable est désactivée"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

@@ -1,0 +1,30 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "CLI should already be installed"
+msgstr "CLI 應已安裝"
+
+msgid "Cannot install the Zed CLI"
+msgstr "無法安裝 ForgeKairos CLI"
+
+msgid "Couldn't install the Zed CLI"
+msgstr "無法安裝 ForgeKairos CLI"
+
+msgid "If you installed Zed from our official release add ~/.local/bin to your PATH.\n\nIf you installed Zed from a different source like your package manager, then you may need to create an alias/symlink to `{cli_name}` manually."
+msgstr "如果您是從官方發行版本安裝 ForgeKairos，請將 ~/.local/bin 加入 PATH。\n\n如果您是從其他來源（例如套件管理員）安裝 ForgeKairos，可能需要手動建立 `{cli_name}` 的別名或符號連結。"
+
+msgid "Installed `{cli_name}` to {path}. You can launch {app} from your terminal."
+msgstr "已將 `{cli_name}` 安裝至 {path}。您可以從終端機啟動 {app}。"
+
+msgid "Show me how"
+msgstr "查看操作方式"
+
+msgid "You can add `{cli_name}` to your PATH manually."
+msgstr "您可以手動將 `{cli_name}` 加入 PATH。"

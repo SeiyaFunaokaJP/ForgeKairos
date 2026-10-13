@@ -41,6 +41,9 @@ msgstr "実行中のプロセスにデバッガーをアタッチ"
 msgid "Breakpoints"
 msgstr "ブレークポイント"
 
+msgid "Build failed"
+msgstr "ビルドに失敗しました"
+
 msgid "Change Address of Currently Viewed Memory"
 msgstr "表示中のメモリのアドレスを変更"
 
@@ -53,11 +56,20 @@ msgstr "コンソール"
 msgid "Continue Program"
 msgstr "プログラムを続行"
 
+msgid "Continue Thread"
+msgstr "スレッドを続行"
+
 msgid "Copy Name"
 msgstr "名前をコピー"
 
 msgid "Copy Value"
 msgstr "値をコピー"
+
+msgid "Could not find a valid locator for a build task and configure is invalid with error: {}"
+msgstr "ビルドタスクの有効なロケーターが見つからず、構成も無効です。エラー: {}"
+
+msgid "Could not resolve task variables within a debug scenario"
+msgstr "デバッグシナリオ内のタスク変数を解決できませんでした"
 
 msgid "Current State"
 msgstr "現在の状態"
@@ -187,6 +199,9 @@ msgstr "いいえ"
 
 msgid "No Breakpoints Set"
 msgstr "ブレークポイントが設定されていません"
+
+msgid "No process selected with config that contains {}"
+msgstr "{} を含む構成に対してプロセスが選択されていません"
 
 msgid "Open Debug Adapter Logs"
 msgstr "デバッグアダプターのログを開く"
@@ -361,6 +376,15 @@ msgstr "{d}/ 内"
 
 msgid "in {f}"
 msgstr "{f} 内"
+
+msgid "no active worktree"
+msgstr "アクティブなワークツリーがありません"
+
+msgid "no scenario to save"
+msgstr "保存するシナリオがありません"
+
+msgid "no task contexts"
+msgstr "タスクのコンテキストがありません"
 
 msgctxt "data breakpoint access"
 msgid "Read"

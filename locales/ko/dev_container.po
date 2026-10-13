@@ -1,0 +1,61 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Confirm Selections"
+msgstr "선택 확인"
+
+msgid "Create Dev Container"
+msgstr "Dev Container 만들기"
+
+msgid "Error Creating Dev Container Definition"
+msgstr "Dev Container 정의 만들기 오류"
+
+msgid "Error Retrieving Templates"
+msgstr "템플릿 가져오기 오류"
+
+msgid "Go Back"
+msgstr "뒤로"
+
+msgid "Multiple containers match this project's dev container labels ({ids}). Zed can't decide which to connect to. Stop and remove the stale one(s) with `docker stop <id>` and `docker rm <id>`, then try again."
+msgstr "이 프로젝트의 Dev Container 레이블과 일치하는 컨테이너가 여러 개 있습니다 ({ids}). ForgeKairos가 어느 컨테이너에 연결할지 결정할 수 없습니다. `docker stop <id>` 및 `docker rm <id>`로 오래된 컨테이너를 중지하고 제거한 후 다시 시도하세요."
+
+msgid "Overwrite"
+msgstr "덮어쓰기"
+
+msgid "Overwrite Existing Configuration?"
+msgstr "기존 구성을 덮어쓰시겠습니까?"
+
+msgid "Querying features..."
+msgstr "기능 조회 중..."
+
+msgid "Querying template registry..."
+msgstr "템플릿 레지스트리 조회 중..."
+
+msgid "Search for Dev Container Templates"
+msgstr "Dev Container 템플릿 검색"
+
+msgid "Select Feature"
+msgstr "기능 선택"
+
+msgid "Select a template"
+msgstr "템플릿 선택"
+
+msgid "Select features to add"
+msgstr "추가할 기능 선택"
+
+msgid "Template Option: "
+msgstr "템플릿 옵션: "
+
+msgctxt "dev container wizard"
+msgid "Continue"
+msgstr "계속"

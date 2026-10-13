@@ -1,0 +1,40 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add"
+msgstr "添加"
+
+msgid "Add Toolchain"
+msgstr "添加工具链"
+
+msgid "Add {}"
+msgstr "添加 {}"
+
+msgid "Select"
+msgstr "选择"
+
+msgid "Select Toolchain Path"
+msgstr "选择工具链路径"
+
+msgid "Select a toolchain…"
+msgstr "选择工具链…"
+
+msgid "Select a {} for {pretty_path}…"
+msgstr "为 {pretty_path} 选择 {}…"
+
+msgid "Select {}"
+msgstr "选择 {}"
+
+msgid "worktree root"
+msgstr "工作树根目录"
+
+msgctxt "toolchain scope"
+msgid "Scope"
+msgstr "适用范围"

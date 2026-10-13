@@ -1,0 +1,30 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "CLI should already be installed"
+msgstr "CLI가 이미 설치되어 있어야 합니다"
+
+msgid "Cannot install the Zed CLI"
+msgstr "ForgeKairos CLI를 설치할 수 없습니다"
+
+msgid "Couldn't install the Zed CLI"
+msgstr "ForgeKairos CLI를 설치하지 못했습니다"
+
+msgid "If you installed Zed from our official release add ~/.local/bin to your PATH.\n\nIf you installed Zed from a different source like your package manager, then you may need to create an alias/symlink to `{cli_name}` manually."
+msgstr "공식 릴리스에서 ForgeKairos를 설치했다면 ~/.local/bin을 PATH에 추가하세요.\n\n패키지 관리자 등 다른 소스에서 ForgeKairos를 설치했다면 `{cli_name}`에 대한 별칭/심볼릭 링크를 직접 만들어야 할 수 있습니다."
+
+msgid "Installed `{cli_name}` to {path}. You can launch {app} from your terminal."
+msgstr "`{cli_name}`을(를) {path}에 설치했습니다. 터미널에서 {app}을(를) 실행할 수 있습니다."
+
+msgid "Show me how"
+msgstr "방법 보기"
+
+msgid "You can add `{cli_name}` to your PATH manually."
+msgstr "`{cli_name}`을(를) PATH에 직접 추가할 수 있습니다."

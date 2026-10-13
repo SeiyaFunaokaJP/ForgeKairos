@@ -1,0 +1,575 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "'{path}' does not exist"
+msgstr "'{path}' ist nicht vorhanden"
+
+msgid "A language server"
+msgstr "Ein Sprachserver"
+
+msgid "Are you sure you want to restart?"
+msgstr "Möchten Sie wirklich neu starten?"
+
+msgid "Body Text"
+msgstr "Fließtext"
+
+msgid "Bottom"
+msgstr "Unten"
+
+msgid "Bottom dock"
+msgstr "Unteres Dock"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Cannot drop files on a remote project"
+msgstr "Dateien können nicht auf einem Remote-Projekt abgelegt werden"
+
+msgid "Cannot drop local files on a remote SSH/Docker project"
+msgstr "Lokale Dateien können nicht in einem Remote-SSH-/Docker-Projekt abgelegt werden"
+
+msgid "Click to Close"
+msgstr "Zum Schließen klicken"
+
+msgid "Click to close"
+msgstr "Zum Schließen klicken"
+
+msgid "Clone Repository"
+msgstr "Repository klonen"
+
+msgid "Close"
+msgstr "Schließen"
+
+msgid "Close All"
+msgstr "Alle schließen"
+
+msgid "Close Clean"
+msgstr "Unveränderte schließen"
+
+msgid "Close Left"
+msgstr "Links schließen"
+
+msgid "Close Multibuffers"
+msgstr "Multibuffer schließen"
+
+msgid "Close Others"
+msgstr "Andere schließen"
+
+msgid "Close Right"
+msgstr "Rechts schließen"
+
+msgid "Close Tab"
+msgstr "Tab schließen"
+
+msgid "Close Without Saving"
+msgstr "Ohne Speichern schließen"
+
+msgid "Close window and hang up"
+msgstr "Fenster schließen und Anruf beenden"
+
+msgid "Close {} Dock"
+msgstr "Dock „{}“ schließen"
+
+msgid "Collaborate with Agents"
+msgstr "Mit Agenten zusammenarbeiten"
+
+msgid "Colors"
+msgstr "Farben"
+
+msgid "Configure"
+msgstr "Konfigurieren"
+
+msgid "Copy Description"
+msgstr "Beschreibung kopieren"
+
+msgid "Copy File Permalink"
+msgstr "Datei-Permalink kopieren"
+
+msgid "Copy Message"
+msgstr "Nachricht kopieren"
+
+msgid "Copy Path"
+msgstr "Pfad kopieren"
+
+msgid "Copy Relative Path"
+msgstr "Relativen Pfad kopieren"
+
+msgid "Could not open file"
+msgstr "Datei konnte nicht geöffnet werden"
+
+msgid "Could not translate the dropped paths into WSL paths"
+msgstr "Die abgelegten Pfade konnten nicht in WSL-Pfade umgewandelt werden"
+
+msgid "Customize Keymaps"
+msgstr "Keymaps anpassen"
+
+msgid "Discard Edits"
+msgstr "Änderungen verwerfen"
+
+msgid "Discard all"
+msgstr "Alle verwerfen"
+
+msgid "Dismiss"
+msgstr "Schließen"
+
+msgid "Do you want to leave the current call?"
+msgstr "Möchten Sie den aktuellen Anruf verlassen?"
+
+msgid "Do you want to save all changes in the following files?"
+msgstr "Möchten Sie alle Änderungen in den folgenden Dateien speichern?"
+
+msgid "Do you want to save changes to the following files?"
+msgstr "Möchten Sie die Änderungen an den folgenden Dateien speichern?"
+
+msgid "Do you want to switch channels?"
+msgstr "Möchten Sie den Kanal wechseln?"
+
+msgid "Dock {}"
+msgstr "{} andocken"
+
+msgid "Don't Save"
+msgstr "Nicht speichern"
+
+msgid "Drag to move to another dock"
+msgstr "Ziehen, um in ein anderes Dock zu verschieben"
+
+msgid "Editor"
+msgstr "Editor"
+
+msgid "Enter a folder to trust"
+msgstr "Geben Sie einen Ordner ein, dem vertraut werden soll"
+
+msgid "Enter an absolute folder path"
+msgstr "Geben Sie einen absoluten Ordnerpfad ein"
+
+msgid "Explore Extensions"
+msgstr "Erweiterungen erkunden"
+
+msgid "Failed to copy file permalink: {err}"
+msgstr "Der Permalink der Datei konnte nicht kopiert werden: {err}"
+
+msgid "Failed to join channel"
+msgstr "Beitritt zum Kanal fehlgeschlagen"
+
+msgid "Failed to join project"
+msgstr "Beitritt zum Projekt fehlgeschlagen"
+
+msgid "Failed to load the database file."
+msgstr "Datenbankdatei konnte nicht geladen werden."
+
+msgid "Failed to open file permalink: {err}"
+msgstr "Der Permalink der Datei konnte nicht geöffnet werden: {err}"
+
+msgid "Failed to save"
+msgstr "Speichern fehlgeschlagen"
+
+msgid "File an Issue"
+msgstr "Issue melden"
+
+msgid "Fixed Width"
+msgstr "Feste Breite"
+
+msgid "Flex Width"
+msgstr "Flexible Breite"
+
+msgid "Folder to trust"
+msgstr "Ordner, dem vertraut werden soll"
+
+msgid "Follow {} to their active project"
+msgstr "{} zum aktiven Projekt folgen"
+
+msgid "Get Started"
+msgstr "Erste Schritte"
+
+msgid "Go Back"
+msgstr "Zurück"
+
+msgid "Go Forward"
+msgstr "Vorwärts"
+
+msgid "Headline 1"
+msgstr "Überschrift 1"
+
+msgid "Headline 2"
+msgstr "Überschrift 2"
+
+msgid "Headline 3"
+msgstr "Überschrift 3"
+
+msgid "Headline 4"
+msgstr "Überschrift 4"
+
+msgid "Headline 5"
+msgstr "Überschrift 5"
+
+msgid "Headline Sizes"
+msgstr "Überschriftgrößen"
+
+msgid "Hide Button"
+msgstr "Schaltfläche ausblenden"
+
+msgid "Hide {icon_tooltip}"
+msgstr "{icon_tooltip} ausblenden"
+
+msgid "Language servers from running"
+msgstr "Ausführen von Sprachservern"
+
+msgid "Leaving this call will unshare your current project."
+msgstr "Durch das Verlassen dieses Anrufs wird die Freigabe des aktuellen Projekts aufgehoben."
+
+msgid "Left"
+msgstr "Links"
+
+msgid "Left dock"
+msgstr "Linkes Dock"
+
+msgid "Locked Tab"
+msgstr "Gesperrter Tab"
+
+msgid "MCP Server integrations from installing"
+msgstr "Installation von MCP-Server-Integrationen"
+
+msgid "Make Tab Editable"
+msgstr "Tab bearbeitbar machen"
+
+msgid "Make Tab Read-Only"
+msgstr "Tab schreibgeschützt machen"
+
+msgid "Move to New Window"
+msgstr "In neues Fenster verschieben"
+
+msgid "Move to {} Dock"
+msgstr "In das Dock „{}“ verschieben"
+
+msgid "Must be a parent folder of the project"
+msgstr "Muss ein übergeordneter Ordner des Projekts sein"
+
+msgid "New Center Terminal"
+msgstr "Neues Terminal in der Mitte"
+
+msgid "New File"
+msgstr "Neue Datei"
+
+msgid "New Terminal"
+msgstr "Neues Terminal"
+
+msgid "New Window"
+msgstr "Neues Fenster"
+
+msgid "New…"
+msgstr "Neu…"
+
+msgid "No matching channel was found. Please check the link and try again."
+msgstr "Es wurde kein passender Kanal gefunden. Bitte prüfen Sie den Link, und versuchen Sie es erneut."
+
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Open Agent Panel"
+msgstr "Agent-Panel öffnen"
+
+msgid "Open Command Palette"
+msgstr "Befehlspalette öffnen"
+
+msgid "Open File"
+msgstr "Datei öffnen"
+
+msgid "Open File Permalink"
+msgstr "Datei-Permalink öffnen"
+
+msgid "Open Project"
+msgstr "Projekt öffnen"
+
+msgid "Open Settings"
+msgstr "Einstellungen öffnen"
+
+msgid "Open Threads Sidebar"
+msgstr "Thread-Seitenleiste öffnen"
+
+msgid "Open a link from a language server?"
+msgstr "Einen Link von einem Sprachserver öffnen?"
+
+msgid "Open in Default App"
+msgstr "In Standard-App öffnen"
+
+msgid "Open in Terminal"
+msgstr "Im Terminal öffnen"
+
+msgid "Open in WSL"
+msgstr "In WSL öffnen"
+
+msgid "Open threads sidebar"
+msgstr "Thread-Seitenleiste öffnen"
+
+msgid "Overview"
+msgstr "Übersicht"
+
+msgid "Overwrite"
+msgstr "Überschreiben"
+
+msgid "Pin Tab"
+msgstr "Tab anheften"
+
+msgid "Please check your internet connection and try again."
+msgstr "Überprüfen Sie Ihre Internetverbindung und versuchen Sie es erneut."
+
+msgid "Please sign in to continue."
+msgstr "Melden Sie sich an, um fortzufahren."
+
+msgid "Pop Out to New Window"
+msgstr "In neues Fenster auslagern"
+
+msgid "Project settings from being applied"
+msgstr "Anwenden von Projekteinstellungen"
+
+msgid "Read-Only Tab"
+msgstr "Schreibgeschützter Tab"
+
+msgid "Recent Projects"
+msgstr "Zuletzt verwendete Projekte"
+
+msgid "Rename"
+msgstr "Umbenennen"
+
+msgid "Restart"
+msgstr "Neu starten"
+
+msgid "Restricted Mode prevents:"
+msgstr "Der eingeschränkte Modus verhindert:"
+
+msgid "Return to Onboarding"
+msgstr "Zur Einführung zurückkehren"
+
+msgid "Reveal In Project Panel"
+msgstr "Im Projektpanel anzeigen"
+
+msgid "Review .zed/settings.json for any extensions or commands configured by this project."
+msgstr ".zed/settings.json auf Erweiterungen oder Befehle überprüfen, die von diesem Projekt konfiguriert wurden."
+
+msgid "Right"
+msgstr "Rechts"
+
+msgid "Right dock"
+msgstr "Rechtes Dock"
+
+msgid "Right-click or Shift-click to stack below"
+msgstr "Rechtsklick oder Shift+Klick, um darunter anzuzeigen"
+
+msgid "Right-click or Shift-click to stack side by side"
+msgstr "Rechtsklick oder Shift+Klick, um daneben anzuzeigen"
+
+msgid "Run multiple threads at once, mix and match any ACP-compatible agent, and keep work conflict-free with worktrees."
+msgstr "Mehrere Threads gleichzeitig ausführen, beliebige ACP-kompatible Agenten kombinieren und Arbeit mit Worktrees konfliktfrei halten."
+
+msgid "Save"
+msgstr "Speichern"
+
+msgid "Save all"
+msgstr "Alle speichern"
+
+msgid "Search Project"
+msgstr "Projekt durchsuchen"
+
+msgid "Search Symbols"
+msgstr "Symbole durchsuchen"
+
+msgid "See docs"
+msgstr "Dokumentation anzeigen"
+
+msgid "Shift-click to Suppress"
+msgstr "Shift+Klick zum Unterdrücken"
+
+msgid "Split Down"
+msgstr "Nach unten teilen"
+
+msgid "Split Left"
+msgstr "Nach links teilen"
+
+msgid "Split Pane"
+msgstr "Bereich teilen"
+
+msgid "Split Right"
+msgstr "Nach rechts teilen"
+
+msgid "Split Up"
+msgstr "Nach oben teilen"
+
+msgid "Stack Below"
+msgstr "Darunter anzeigen"
+
+msgid "Stack Side by Side"
+msgstr "Daneben anzeigen"
+
+msgid "Stack in {} Dock"
+msgstr "Im Dock „{}“ gemeinsam anzeigen"
+
+msgid "Stack {icon_tooltip} Below"
+msgstr "{icon_tooltip} darunter anzeigen"
+
+msgid "Stack {icon_tooltip} Side by Side"
+msgstr "{icon_tooltip} daneben anzeigen"
+
+msgid "Status bar"
+msgstr "Statusleiste"
+
+msgid "Stay in Restricted Mode"
+msgstr "Im eingeschränkten Modus bleiben"
+
+msgid "Suppress"
+msgstr "Unterdrücken"
+
+msgid "Suppress with shift-click"
+msgstr "Mit Shift+Klick unterdrücken"
+
+msgid "Task spawn failed: {e}"
+msgstr "Aufgabe konnte nicht gestartet werden: {e}"
+
+msgid "Text"
+msgstr "Text"
+
+msgid "Text Colors"
+msgstr "Textfarben"
+
+msgid "The editor for what's next"
+msgstr "Der Editor für die Zukunft"
+
+msgid "The folders were not changed because the selected folders could not be opened"
+msgstr "Die Ordner wurden nicht geändert, da die ausgewählten Ordner nicht geöffnet werden konnten"
+
+msgid "Theme Preview"
+msgstr "Designvorschau"
+
+msgid "This buffer contains unsaved edits. Do you want to save it?"
+msgstr "Dieser Puffer enthält nicht gespeicherte Änderungen. Möchten Sie ihn speichern?"
+
+msgid "This channel is private, and you do not have access. Please ask someone to add you and try again."
+msgstr "Dieser Kanal ist privat, und Sie haben keinen Zugriff. Bitte lassen Sie sich hinzufügen, und versuchen Sie es erneut."
+
+msgid "This file has been deleted on disk since you started editing it. Do you want to recreate it?"
+msgstr "Diese Datei wurde auf dem Datenträger gelöscht, seit Sie mit der Bearbeitung begonnen haben. Möchten Sie sie neu erstellen?"
+
+msgid "This file has changed on disk since you started editing it. Do you want to overwrite it?"
+msgstr "Diese Datei wurde auf dem Datenträger geändert, seit Sie mit der Bearbeitung begonnen haben. Möchten Sie sie überschreiben?"
+
+msgid "This tab is read-only"
+msgstr "Dieser Tab ist schreibgeschützt"
+
+msgid "This will make this tab editable"
+msgstr "Dadurch wird dieser Tab bearbeitbar"
+
+msgid "Title bar"
+msgstr "Titelleiste"
+
+msgid "Trust all projects in"
+msgstr "Allen Projekten im folgenden Ordner vertrauen:"
+
+msgid "Trust all projects in the parent folders"
+msgstr "Allen Projekten in den übergeordneten Ordnern vertrauen"
+
+msgid "Trust all projects in the {} folder"
+msgstr "Allen Projekten im Ordner {} vertrauen"
+
+msgid "Trust all single files"
+msgstr "Allen einzelnen Dateien vertrauen"
+
+msgid "Trust and Continue"
+msgstr "Vertrauen und fortfahren"
+
+msgid "Typography"
+msgstr "Typografie"
+
+msgid "Unable to save file: {err}"
+msgstr "Datei konnte nicht gespeichert werden: {err}"
+
+msgid "Unlock Tab"
+msgstr "Tab entsperren"
+
+msgid "Unpin Tab"
+msgstr "Tab lösen"
+
+msgid "Unrecognized Project"
+msgstr "Nicht erkanntes Projekt"
+
+msgid "Unrecognized Projects ({})"
+msgstr "Nicht erkannte Projekte ({})"
+
+msgid "Unstack"
+msgstr "Gemeinsame Anzeige aufheben"
+
+msgid "Untitled"
+msgstr "Unbenannt"
+
+msgid "Untrusted projects are opened in Restricted Mode to protect your system."
+msgstr "Nicht vertrauenswürdige Projekte werden im eingeschränkten Modus geöffnet, um das System zu schützen."
+
+msgid "Welcome"
+msgstr "Willkommen"
+
+msgid "Welcome back to Zed"
+msgstr "Willkommen zurück bei ForgeKairos"
+
+msgid "Welcome to Zed"
+msgstr "Willkommen bei ForgeKairos"
+
+msgid "Wrapping Text"
+msgstr "Textumbruch"
+
+msgid "Yes, Join Channel"
+msgstr "Ja, Kanal beitreten"
+
+msgid "You cannot add folders to someone else's project"
+msgstr "Sie können keine Ordner zum Projekt einer anderen Person hinzufügen"
+
+msgid "You cannot change the folders of someone else's project"
+msgstr "Die Ordner des Projekts einer anderen Person können nicht geändert werden"
+
+msgid "Your are running an unsupported version of Zed. Please update to continue."
+msgstr "Sie verwenden eine nicht unterstützte Version von ForgeKairos. Bitte aktualisieren Sie, um fortzufahren."
+
+msgid "empty project"
+msgstr "leeres Projekt"
+
+msgid "{display_path} is inside a WSL filesystem, some features may not work unless you open it with WSL remote"
+msgstr "{display_path} befindet sich in einem WSL-Dateisystem. Einige Funktionen funktionieren möglicherweise nicht, sofern Sie es nicht mit WSL Remote öffnen."
+
+msgid "{server} asks to open this address in your browser:\n\n{url}"
+msgstr "{server} möchte diese Adresse in Ihrem Browser öffnen:\n\n{url}"
+
+msgid "{}\n\nPlease try again."
+msgstr "{}\n\nBitte versuchen Sie es erneut."
+
+msgid "{}\n.. and {} more"
+msgstr "{}\n.. und {} weitere"
+
+msgid "{} Preview"
+msgstr "{}-Vorschau"
+
+msgid "{} contains unsaved edits. Do you want to save it?"
+msgstr "{} enthält nicht gespeicherte Änderungen. Möchten Sie sie speichern?"
+
+msgid "{} is in an unshared pane"
+msgstr "{} befindet sich in einem nicht freigegebenen Bereich"
+
+msgid "{} is viewing a window outside of Zed"
+msgstr "{} sieht sich ein Fenster außerhalb von ForgeKairos an"
+
+msgid "{} is viewing an unshared Zed project"
+msgstr "{} sieht sich ein nicht freigegebenes ForgeKairos-Projekt an"
+
+msgid "{}'s screen"
+msgstr "Bildschirm von {}"
+
+msgctxt "pane"
+msgid "Zoom In"
+msgstr "Vergrößern"
+
+msgctxt "pane"
+msgid "Zoom Out"
+msgstr "Verkleinern"

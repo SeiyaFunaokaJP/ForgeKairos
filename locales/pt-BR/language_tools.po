@@ -1,0 +1,385 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "(low precedence)"
+msgstr "(baixa precedência)"
+
+msgid "(match)"
+msgstr "(correspondência)"
+
+msgid "(no match)"
+msgstr "(sem correspondência)"
+
+msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
+msgstr "* Servidor: {NAME} (id {ID})\n\n* Versão: {VERSION}\n\n* Binário: {BINARY}\n\n* Pastas do espaço de trabalho registradas:\n{WORKSPACE_FOLDERS}\n\n* Recursos: {CAPABILITIES}\n\n* Configuração: {CONFIGURATION}"
+
+msgid "All Servers Operational"
+msgstr "Todos os servidores operacionais"
+
+msgid "All highlights are filtered out"
+msgstr "Todos os destaques foram filtrados"
+
+msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
+msgstr "Um agente gravou novamente depois que este diálogo foi aberto. Revise as alterações e pressione Retomar novamente."
+
+msgid "An agent wrote to {name}"
+msgstr "Um agente gravou em {name}"
+
+msgid "Clear"
+msgstr "Limpar"
+
+msgid "Close"
+msgstr "Fechar"
+
+msgid "Current Context Stack"
+msgstr "Pilha de contexto atual"
+
+msgid "Current editor has no associated language"
+msgstr "O editor atual não tem linguagem associada"
+
+msgid "Download Denied"
+msgstr "Download negado"
+
+msgid "Edit Keymap File"
+msgstr "Editar arquivo de mapa de teclas"
+
+msgid "Enable text, syntax, or semantic highlights in the toolbar"
+msgstr "Habilite destaques de texto, sintaxe ou semânticos na barra de ferramentas"
+
+msgid "Error"
+msgstr "Erro"
+
+msgid "Failed to revoke approval: {error}"
+msgstr "Falha ao revogar a aprovação: {error}"
+
+msgid "Failed to serialize capabilities: {e}"
+msgstr "Falha ao serializar os recursos: {e}"
+
+msgid "Failed to serialize configuration: {e}"
+msgstr "Falha ao serializar a configuração: {e}"
+
+msgid "Focus an editor to show a new tree view"
+msgstr "Foque em um editor para exibir uma nova exibição em árvore"
+
+msgid "Focus an editor to show highlights"
+msgstr "Foque em um editor para exibir os destaques"
+
+msgid "Folder Code Paused"
+msgstr "Código da pasta pausado"
+
+msgid "Folder code is paused after an agent write"
+msgstr "O código da pasta está pausado após uma gravação do agente"
+
+msgid "Highlights"
+msgstr "Destaques"
+
+msgid "Highlights Settings"
+msgstr "Configurações de destaques"
+
+msgid "Info"
+msgstr "Informação"
+
+msgid "Key Equivalents"
+msgstr "Equivalentes de teclas"
+
+msgid "Keyboard Context"
+msgstr "Contexto do teclado"
+
+msgid "LSP Logs"
+msgstr "Logs do LSP"
+
+msgid "Language Servers"
+msgstr "Servidores de linguagem"
+
+msgid "Language Servers can't run until you trust this project."
+msgstr "Os servidores de linguagem não podem ser executados até que você confie neste projeto."
+
+msgid "Language server {server_name}:\n\n{message}"
+msgstr "Servidor de linguagem {server_name}:\n\n{message}"
+
+msgid "Language servers and formatters on the remote host are paused the same way."
+msgstr "Os servidores de linguagem e formatadores no host remoto são pausados da mesma forma."
+
+msgid "Language servers running in Restricted Mode: {restricted}"
+msgstr "Servidores de linguagem em execução no modo restrito: {restricted}"
+
+msgid "Language servers stay in Restricted Mode or stopped until you review and resume."
+msgstr "Os servidores de linguagem permanecem no modo restrito ou parados até você revisar e retomar."
+
+msgid "Last Keystroke"
+msgstr "Última sequência de teclas"
+
+msgid "Light mode saves the most memory by not indexing the whole project; references and renames then only cover the open files."
+msgstr "O modo leve economiza mais memória ao não indexar o projeto inteiro; nesse caso, referências e renomeações abrangem somente os arquivos abertos."
+
+msgid "Log"
+msgstr "Log"
+
+msgid "Log level"
+msgstr "Nível de log"
+
+msgid "Memory {used}"
+msgstr "Memória {used}"
+
+msgid "Memory {used} (background index {background_index}, open files {open_files})"
+msgstr "Memória {used} (índice em segundo plano {background_index}, arquivos abertos {open_files})"
+
+msgid "Messages"
+msgstr "Mensagens"
+
+msgid "No folders are paused."
+msgstr "Nenhuma pasta está pausada."
+
+msgid "No highlights found"
+msgstr "Nenhum destaque encontrado"
+
+msgid "No language servers"
+msgstr "Nenhum servidor de linguagem"
+
+msgid "No language servers or formatters have been held back yet. They follow this state when they start or run."
+msgstr "Nenhum servidor de linguagem ou formatador foi retido ainda. Eles seguem este estado quando iniciam ou são executados."
+
+msgid "No server selected"
+msgstr "Nenhum servidor selecionado"
+
+msgid "Not attached to an editor"
+msgstr "Não vinculado a um editor"
+
+msgid "Not stopped yet. Either the host isn't responding or the processes are ignoring the request to exit. They stay in the list if they're still running at the next check."
+msgstr "Ainda não parou. O host não está respondendo ou os processos estão ignorando o pedido para encerrar. Eles permanecem na lista se ainda estiverem em execução na próxima verificação."
+
+msgid "Off"
+msgstr "Desativado"
+
+msgid "Open Documentation"
+msgstr "Abrir documentação"
+
+msgid "Open Git Panel"
+msgstr "Abrir painel do Git"
+
+msgid "Open Project Settings"
+msgstr "Abrir configurações do projeto"
+
+msgid "Processes left behind by an agent response are running in the sandbox. You can't resume until they end."
+msgstr "Processos deixados por uma resposta do agente estão em execução no sandbox. Não é possível retomar até que eles terminem."
+
+msgid "Project is in Restricted Mode"
+msgstr "O projeto está no modo restrito"
+
+msgid "RPC Messages"
+msgstr "Mensagens RPC"
+
+msgid "Restart All Servers"
+msgstr "Reiniciar todos os servidores"
+
+msgid "Restart Server"
+msgstr "Reiniciar servidor"
+
+msgid "Restricted Mode"
+msgstr "Modo restrito"
+
+msgid "Resume"
+msgstr "Retomar"
+
+msgid "Revoke Launch Approval"
+msgstr "Revogar aprovação de inicialização"
+
+msgid "Running"
+msgstr "Em execução"
+
+msgid "Semantic Tokens"
+msgstr "Tokens semânticos"
+
+msgid "Server Info"
+msgstr "Informações do servidor"
+
+msgid "Server Logs"
+msgstr "Logs do servidor"
+
+msgid "Server Trace"
+msgstr "Rastreamento do servidor"
+
+msgid "Server with errors"
+msgstr "Servidor com erros"
+
+msgid "Server with notifications"
+msgstr "Servidor com notificações"
+
+msgid "Server with warnings"
+msgstr "Servidor com avisos"
+
+msgid "Shortcuts defined using some characters have been remapped so that shortcuts can be typed without holding option."
+msgstr "Atalhos definidos com alguns caracteres foram remapeados para que possam ser digitados sem segurar a tecla option."
+
+msgid "Since an agent wrote to the following folders, the language servers and formatters that run each folder's code are paused. Review the agent's changes before you resume."
+msgstr "Como um agente gravou nas pastas a seguir, os servidores de linguagem e formatadores que executam o código de cada pasta estão pausados. Revise as alterações do agente antes de retomar."
+
+msgid "Skipped formatters: {formatters}"
+msgstr "Formatadores ignorados: {formatters}"
+
+msgid "Starting…"
+msgstr "Iniciando…"
+
+msgid "Stop All Servers"
+msgstr "Parar todos os servidores"
+
+msgid "Stop Leftover Processes"
+msgstr "Parar processos restantes"
+
+msgid "Stop Server"
+msgstr "Parar servidor"
+
+msgid "Stopped"
+msgstr "Parado"
+
+msgid "Stopped language servers: {stopped}"
+msgstr "Servidores de linguagem parados: {stopped}"
+
+msgid "Switch to Light Mode"
+msgstr "Mudar para o modo leve"
+
+msgid "Syntax Tokens"
+msgstr "Tokens de sintaxe"
+
+msgid "Syntax Tree"
+msgstr "Árvore de sintaxe"
+
+msgid "Text Highlights"
+msgstr "Destaques de texto"
+
+msgid "The editor has no text, syntax, or semantic token highlights"
+msgstr "O editor não possui destaques de texto, sintaxe ou tokens semânticos"
+
+msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
+msgstr "O servidor remoto é antigo demais, então os servidores de linguagem e formatadores no host remoto não estão pausados"
+
+msgid "This folder's code (language servers and formatters) won't run until you review and resume."
+msgstr "O código desta pasta (servidores de linguagem e formatadores) não será executado até você revisar e retomar."
+
+msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
+msgstr "As configurações deste projeto escolhem o modo completo do clangd, que as suas próprias configurações não alteram. Para economizar memória com o modo leve, altere `clangd.index_mode` nas configurações do projeto."
+
+msgid "This view lets you determine the current context stack for creating custom key bindings in Zed. When a keyboard shortcut is triggered, it also shows all the possible contexts it could have triggered in, and which one matched."
+msgstr "Esta exibição permite determinar a pilha de contexto atual para criar associações de teclas personalizadas no ForgeKairos. Quando um atalho de teclado é acionado, ela também exibe todos os contextos possíveis em que poderia ter sido acionado e qual correspondeu."
+
+msgid "Trace level"
+msgstr "Nível de rastreamento"
+
+msgid "Try assigning a language or switching to a different buffer"
+msgstr "Tente atribuir uma linguagem ou trocar para outro buffer"
+
+msgid "Typed: {}"
+msgstr "Digitado: {}"
+
+msgid "Unknown"
+msgstr "Desconhecido"
+
+msgid "Unknown worktree"
+msgstr "Árvore de trabalho desconhecida"
+
+msgid "Update view to '{active_tab_name}'"
+msgstr "Atualizar exibição para mostrar '{active_tab_name}'"
+
+msgid "Verbose"
+msgstr "Detalhado"
+
+msgid "View Agent Changes"
+msgstr "Ver alterações do agente"
+
+msgid "View Default Keymap"
+msgstr "Exibir mapa de teclas padrão"
+
+msgid "View Logs"
+msgstr "Exibir logs"
+
+msgid "View Message"
+msgstr "Exibir mensagem"
+
+msgid "Waiting for more input: {}"
+msgstr "Aguardando mais entrada: {}"
+
+msgid "Waiting for the remote server to respond."
+msgstr "Aguardando a resposta do servidor remoto."
+
+msgid "Warning"
+msgstr "Aviso"
+
+msgid "You can't resume until the agent's response ends. If it doesn't end, stop the agent."
+msgstr "Não é possível retomar até que a resposta do agente termine. Se ela não terminar, pare o agente."
+
+msgid "You can't resume until the running sessions and commands end."
+msgstr "Não é possível retomar até que as sessões e os comandos em execução terminem."
+
+msgid "clangd is using {used} of memory, over its limit of {limit}. It was restarted less than 10 minutes ago, so it is left running."
+msgstr "O clangd está usando {used} de memória, acima do limite de {limit}. Ele foi reiniciado há menos de 10 minutos, então continua em execução."
+
+msgid "clangd was using {used} of memory, over its limit of {limit}, and was restarted."
+msgstr "O clangd estava usando {used} de memória, acima do limite de {limit}, e foi reiniciado."
+
+msgid "process with an unreadable command name"
+msgstr "processo com nome de comando ilegível"
+
+msgid "running for under a second"
+msgstr "em execução há menos de um segundo"
+
+msgid "running for {count} minute"
+msgid_plural "running for {count} minutes"
+msgstr[0] "em execução há {count} minuto"
+msgstr[1] "em execução há {count} minutos"
+
+msgid "running for {count} second"
+msgid_plural "running for {count} seconds"
+msgstr[0] "em execução há {count} segundo"
+msgstr[1] "em execução há {count} segundos"
+
+msgid "running for {} h {} min"
+msgstr "em execução há {} h {} min"
+
+msgid "started at an unknown time"
+msgstr "iniciado em um horário desconhecido"
+
+msgid "supplementary"
+msgstr "suplementar"
+
+msgid "unknown server"
+msgstr "servidor desconhecido"
+
+msgid "{command} ({}, PID {}, {})"
+msgstr "{command} ({}, PID {}, {})"
+
+msgid "{} / {} highlights"
+msgstr "{} / {} destaques"
+
+msgid "{} highlights"
+msgstr "{} destaques"
+
+msgctxt "highlight style"
+msgid "bold"
+msgstr "negrito"
+
+msgctxt "highlight style"
+msgid "italic"
+msgstr "itálico"
+
+msgctxt "highlight style"
+msgid "none"
+msgstr "nenhum"
+
+msgctxt "highlight style"
+msgid "strike"
+msgstr "tachado"
+
+msgctxt "highlight style"
+msgid "underline"
+msgstr "sublinhado"
+
+msgctxt "paused folder code"
+msgid "Review"
+msgstr "Revisar"

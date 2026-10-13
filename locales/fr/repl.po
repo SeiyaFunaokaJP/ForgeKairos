@@ -1,0 +1,181 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Add code block"
+msgstr "Ajouter un bloc de code"
+
+msgid "Add code cell"
+msgstr "Ajouter une cellule de code"
+
+msgid "Add markdown block"
+msgstr "Ajouter un bloc Markdown"
+
+msgid "Add markdown cell"
+msgstr "Ajouter une cellule Markdown"
+
+msgid "Clear all outputs"
+msgstr "Effacer toutes les sorties"
+
+msgid "Close output area"
+msgstr "Fermer la zone de sortie"
+
+msgid "Connecting to kernel..."
+msgstr "Connexion au noyau..."
+
+msgid "Copy Full Error"
+msgstr "Copier l'erreur complète"
+
+msgid "Copy Output"
+msgstr "Copier la sortie"
+
+msgid "Delete cell"
+msgstr "Supprimer la cellule"
+
+msgid "Error: {err}"
+msgstr "Erreur : {err}"
+
+msgid "Execute all cells"
+msgstr "Exécuter toutes les cellules"
+
+msgid "Executing..."
+msgstr "Exécution en cours..."
+
+msgid "Failed to install ipykernel in {}: {}"
+msgstr "Échec de l'installation d'ipykernel dans {} : {}"
+
+msgid "Input:"
+msgstr "Entrée :"
+
+msgid "Install Kernels"
+msgstr "Installer des noyaux"
+
+msgid "Installing ipykernel in {}..."
+msgstr "Installation d'ipykernel dans {}..."
+
+msgid "Interrupt"
+msgstr "Interrompre"
+
+msgid "Interrupt Kernel"
+msgstr "Interrompre le noyau"
+
+msgid "Jupyter Kernel Sessions"
+msgstr "Sessions de noyau Jupyter"
+
+msgid "Jupyter Kernels"
+msgstr "Noyaux Jupyter"
+
+msgid "Kernel Docs"
+msgstr "Documentation du noyau"
+
+msgid "Kernel error: {}"
+msgstr "Erreur du noyau : {}"
+
+msgid "Kernel restarting..."
+msgstr "Redémarrage du noyau..."
+
+msgid "Kernel shutdown"
+msgstr "Noyau arrêté"
+
+msgid "Kernel shutting down..."
+msgstr "Arrêt du noyau..."
+
+msgid "Kernel: {} ({}). Click to change."
+msgstr "Noyau : {} ({}). Cliquez pour changer de noyau."
+
+msgid "More options"
+msgstr "Plus d'options"
+
+msgid "Move cell down"
+msgstr "Déplacer la cellule vers le bas"
+
+msgid "Move cell up"
+msgstr "Déplacer la cellule vers le haut"
+
+msgid "No Jupyter Kernel Sessions"
+msgstr "Aucune session de noyau Jupyter"
+
+msgid "No Jupyter Kernels Available"
+msgstr "Aucun noyau Jupyter disponible"
+
+msgid "Open Full Error in Buffer"
+msgstr "Ouvrir l'erreur complète dans un tampon"
+
+msgid "Open in Buffer"
+msgstr "Ouvrir dans un tampon"
+
+msgid "Python Environments"
+msgstr "Environnements Python"
+
+msgid "Queued..."
+msgstr "En file d'attente..."
+
+msgid "REPL Sessions"
+msgstr "Sessions REPL"
+
+msgid "Recommended"
+msgstr "Recommandé"
+
+msgid "Remote Servers"
+msgstr "Serveurs distants"
+
+msgid "Restart Kernel"
+msgstr "Redémarrer le noyau"
+
+msgid "Restarting"
+msgstr "Redémarrage"
+
+msgid "Running..."
+msgstr "Exécution en cours..."
+
+msgid "Select Kernel"
+msgstr "Sélectionner le noyau"
+
+msgid "Select a kernel..."
+msgstr "Sélectionner un noyau..."
+
+msgid "Shutdown"
+msgstr "Arrêter"
+
+msgid "Shutting Down"
+msgstr "Arrêt en cours"
+
+msgid "Starting"
+msgstr "Démarrage"
+
+msgid "This notebook is empty."
+msgstr "Ce notebook est vide."
+
+msgid "To run code in a Jupyter kernel, select some code and use the 'repl::Run' command."
+msgstr "Pour exécuter du code dans un noyau Jupyter, sélectionnez du code et utilisez la commande 'repl::Run'."
+
+msgid "To start interactively running code in your editor, you need to install and configure Jupyter kernels."
+msgstr "Pour exécuter du code de manière interactive dans votre éditeur, vous devez installer et configurer des noyaux Jupyter."
+
+msgid "Type here and press Enter"
+msgstr "Saisissez du texte ici et appuyez sur Enter"
+
+msgid "Unknown status"
+msgstr "Statut inconnu"
+
+msgid "WSL Kernels"
+msgstr "Noyaux WSL"
+
+msgid "ipykernel installed in {}"
+msgstr "ipykernel installé dans {}"
+
+msgid "ipykernel not installed"
+msgstr "ipykernel non installé"
+
+msgid "{} ({}). Click to change kernel."
+msgstr "{} ({}). Cliquez pour changer de noyau."
+
+msgctxt "kernel status"
+msgid "Shutdown"
+msgstr "Arrêter"

@@ -1025,6 +1025,9 @@ msgstr "ブランチを作成できませんでした"
 msgid "Failed to create remote"
 msgstr "リモートを作成できませんでした"
 
+msgid "Failed to discard changes"
+msgstr "変更を破棄できませんでした"
+
 msgid "Failed to drop stash"
 msgstr "スタッシュを破棄できませんでした"
 
@@ -1061,6 +1064,9 @@ msgstr "フェッチ"
 msgid "Fetch From"
 msgstr "取得元を指定してフェッチ"
 
+msgid "Fetch Missing History"
+msgstr "欠けている履歴をフェッチ"
+
 msgid "Fetch in Progress…"
 msgstr "フェッチ中…"
 
@@ -1069,6 +1075,9 @@ msgstr "リモートから更新をフェッチします"
 
 msgid "Fetch: Already up to date"
 msgstr "フェッチ: すでに最新です"
+
+msgid "Fetched the missing commit history"
+msgstr "欠けていたコミット履歴をフェッチしました"
 
 msgid "Fetches the remote, then makes the current branch the same as the remote branch"
 msgstr "リモートをフェッチしてから、今のブランチをリモートのブランチと同じ内容にします"
@@ -1173,6 +1182,9 @@ msgstr "Git の操作ガイド"
 msgid "Git Guide (find an operation by what you want to do)"
 msgstr "Git の操作ガイド (やりたいことから操作を探せます)"
 
+msgid "Git Job Queue: {repo_path}"
+msgstr "Git ジョブキュー: {repo_path}"
+
 msgid "Git Panel"
 msgstr "Git パネル"
 
@@ -1269,6 +1281,9 @@ msgstr "プッシュ済みなので、この後に強制プッシュ (lease 付�
 msgid "It was pushed, so it needs a force push (with lease)."
 msgstr "プッシュ済みなので、強制プッシュ (lease 付き) が必要です。"
 
+msgid "Its parent history was not fetched, so the changes it introduced cannot be shown."
+msgstr "親の履歴がフェッチされていないため、このコミットで加えられた変更を表示できません。"
+
 msgid "Its remote-tracking branches are removed as well."
 msgstr "このリモートの追跡ブランチも削除されます。"
 
@@ -1302,6 +1317,12 @@ msgstr "左: {} / 右: {}"
 
 msgid "List"
 msgstr "リスト"
+
+msgid "Load File Snapshot"
+msgstr "ファイルのスナップショットを読み込む"
+
+msgid "Load Full Snapshot"
+msgstr "全体のスナップショットを読み込む"
 
 msgid "Loading"
 msgstr "読み込み中"
@@ -1989,6 +2010,12 @@ msgstr "この内容で書き換える…"
 msgid "Rewrite the selected commits like this?"
 msgstr "選択したコミットをこの内容で書き換えますか?"
 
+msgid "Run `git fetch --unshallow` to download the full history"
+msgstr "`git fetch --unshallow` を実行して完全な履歴をダウンロードします"
+
+msgid "Run `git fetch --unshallow` to download the full history, then show this commit's changes."
+msgstr "`git fetch --unshallow` を実行して完全な履歴をダウンロードし、このコミットの変更を表示します。"
+
 msgid "Runs git pack-refs --all. The branches and tags themselves do not change. With tens of thousands of them it takes about a minute, and other Git operations wait meanwhile."
 msgstr "git pack-refs --all を実行します。ブランチ・タグの中身は変わりません。数万個あると 1 分ほどかかり、その間ほかの Git の操作は待たされます。"
 
@@ -2098,6 +2125,9 @@ msgstr "次のコミットに入れる印を付けた変更 (ステージ済み)
 msgid "Separates the files Git manages (tracked) from the new files it does not manage yet (untracked)"
 msgstr "Git が管理しているファイル (追跡中) と、まだ管理していない新しいファイル (未追跡) に分けて並べます"
 
+msgid "Shallow clone boundary: earlier history is missing, so these lines may come from an older commit."
+msgstr "シャロークローンの境界: これより前の履歴が無いため、これらの行はもっと古いコミットに由来する可能性があります。"
+
 msgid "Show Changes Only"
 msgstr "変更箇所のみ表示"
 
@@ -2113,8 +2143,14 @@ msgstr "git の出力を表示"
 msgid "Show Tree View"
 msgstr "ツリー表示に切り替え"
 
+msgid "Show every file at this commit as added. This can be slow in large repositories."
+msgstr "このコミット時点のすべてのファイルを追加として表示します。大きなリポジトリでは時間がかかることがあります。"
+
 msgid "Show in Git Graph"
 msgstr "コミットグラフで表示"
+
+msgid "Show this file's full contents at this commit as added."
+msgstr "このコミット時点のこのファイルの全内容を追加として表示します。"
 
 msgid "Show {hidden_count} More"
 msgstr "ほか {hidden_count} 個をすべて表示"
@@ -2253,6 +2289,15 @@ msgstr "ステージ済みをスタッシュ"
 
 msgid "Stash Tracked"
 msgstr "追跡中をスタッシュ"
+
+msgid "Stash has changed, drop aborted"
+msgstr "スタッシュが変更されたため、破棄を中止しました"
+
+msgid "Stash has changed, not applying"
+msgstr "スタッシュが変更されたため、適用しません"
+
+msgid "Stash has changed, pop aborted"
+msgstr "スタッシュが変更されたため、取り出しを中止しました"
 
 msgid "Stashes"
 msgstr "スタッシュ"
@@ -2568,6 +2613,9 @@ msgstr "このブランチには追跡ブランチがないため、プッシュ
 
 msgid "This cannot be undone"
 msgstr "元に戻せません"
+
+msgid "This commit is at the boundary of a shallow clone."
+msgstr "このコミットはシャロークローンの境界にあります。"
 
 msgid "This commit was already pushed to {}."
 msgstr "このコミットはすでに {} にプッシュされています。"
@@ -2899,6 +2947,9 @@ msgstr "変更をステージに残す"
 msgid "merge:no"
 msgstr "マージ:いいえ"
 
+msgid "project has no worktrees"
+msgstr "プロジェクトにワークツリーがありません"
+
 msgid "since:2w  until:2026-09-01"
 msgstr "以降:2週間  以前:2026-09-01"
 
@@ -3116,6 +3167,10 @@ msgctxt "commit action"
 msgid "Stop Excluding from MR"
 msgstr "MR の除外をやめる"
 
+msgctxt "commit button"
+msgid "Commit"
+msgstr "コミット"
+
 msgctxt "commit modal"
 msgid "Signoff"
 msgstr "Signed-off-by を付ける"
@@ -3171,6 +3226,10 @@ msgstr "削除"
 msgctxt "file status"
 msgid "Modified"
 msgstr "変更"
+
+msgctxt "git fetch"
+msgid "Fetching…"
+msgstr "フェッチ中…"
 
 msgctxt "git graph hints"
 msgid "Guide"

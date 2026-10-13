@@ -1,0 +1,60 @@
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Cancelling ETW recording..."
+msgstr "Annulation de l'enregistrement ETW..."
+
+msgid "ETW recording cancelled"
+msgstr "Enregistrement ETW annulé"
+
+msgid "ETW recording ended unexpectedly"
+msgstr "L'enregistrement ETW s'est arrêté de manière inattendue"
+
+msgid "ETW recording failed: {message}"
+msgstr "Échec de l'enregistrement ETW : {message}"
+
+msgid "ETW recording is already in progress"
+msgstr "Un enregistrement ETW est déjà en cours"
+
+msgid "ETW recording is already stopping"
+msgstr "L'enregistrement ETW est déjà en cours d'arrêt"
+
+msgid "ETW recording is already waiting for a save location"
+msgstr "L'enregistrement ETW attend déjà le choix d'un emplacement d'enregistrement"
+
+msgid "ETW recording started"
+msgstr "Enregistrement ETW démarré"
+
+msgid "ETW trace saved to {}"
+msgstr "Trace ETW enregistrée dans {}"
+
+msgid "Failed to cancel ETW recording: {error}"
+msgstr "Impossible d'annuler l'enregistrement ETW : {error}"
+
+msgid "Failed to complete ETW recording: {error}"
+msgstr "Impossible de terminer l'enregistrement ETW : {error}"
+
+msgid "Failed to pick save location: {error}"
+msgstr "Impossible de choisir l'emplacement d'enregistrement : {error}"
+
+msgid "Failed to start ETW recording: {error}"
+msgstr "Impossible de démarrer l'enregistrement ETW : {error}"
+
+msgid "Failed to stop ETW recording: {error}"
+msgstr "Impossible d'arrêter l'enregistrement ETW : {error}"
+
+msgid "No active ETW recording to cancel"
+msgstr "Aucun enregistrement ETW en cours à annuler"
+
+msgid "No active ETW recording to stop"
+msgstr "Aucun enregistrement ETW en cours à arrêter"
+
+msgid "Show in File Manager"
+msgstr "Afficher dans le gestionnaire de fichiers"
+
+msgid "Stopping ETW recording..."
+msgstr "Arrêt de l'enregistrement ETW..."

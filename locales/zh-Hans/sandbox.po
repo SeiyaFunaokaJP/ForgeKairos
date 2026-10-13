@@ -1,0 +1,535 @@
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A zip archive cannot be extracted in the WSL sandbox (the distro has no `unzip`). Specify a Linux archive in a format such as tar.gz."
+msgstr "无法在 WSL 沙盒中解压 zip 压缩包（发行版中没有 `unzip`）。请指定 tar.gz 等格式的 Linux 压缩包。"
+
+msgid "Could not check the agent executable"
+msgstr "无法检查智能体可执行文件"
+
+msgid "Could not check the agent executable in {distro} ({error})."
+msgstr "无法在 {distro} 中检查智能体可执行文件（{error}）。"
+
+msgid "Could not check the agent executable in {distro}."
+msgstr "无法在 {distro} 中检查智能体可执行文件。"
+
+msgid "Could not check the agent executable in {distro}{details}. Run `wsl --update` and try again."
+msgstr "无法在 {distro}{details} 中检查智能体可执行文件。请运行 `wsl --update` 后重试。"
+
+msgid "Could not check the agent runtime in {distro} ({error})."
+msgstr "无法在 {distro} 中检查智能体运行环境（{error}）。"
+
+msgid "Could not check the agent runtime in {distro}{details}."
+msgstr "无法在 {distro}{details} 中检查智能体运行环境。"
+
+msgid "Could not check the always-protected path `{path}` ({error}). Commands never run without that protection, so stopping."
+msgstr "无法检查始终受保护的路径 `{path}`（{error}）。没有该保护时绝不会运行命令，因此已停止。"
+
+msgid "Could not check the npm package"
+msgstr "无法检查 npm 包"
+
+msgid "Could not check the npm package executable"
+msgstr "无法检查 npm 包的可执行文件"
+
+msgid "Could not check the npm package executable in {distro}."
+msgstr "无法在 {distro} 中检查 npm 包的可执行文件。"
+
+msgid "Could not check the path shown read-only `{path}` ({error}). Nothing unchecked is shown, so stopping."
+msgstr "无法检查以只读方式显示的路径 `{path}`（{error}）。不会显示任何未经检查的内容，因此已停止。"
+
+msgid "Could not check the sandbox helper in {distro} ({error})."
+msgstr "无法在 {distro} 中检查沙盒辅助程序（{error}）。"
+
+msgid "Could not check the sandbox helper in {distro}{details}. Run `wsl --update` and try again."
+msgstr "无法在 {distro}{details} 中检查沙盒辅助程序。请运行 `wsl --update` 后重试。"
+
+msgid "Could not copy the {file} to {distro} ({error})."
+msgstr "无法将{file}复制到 {distro}（{error}）。"
+
+msgid "Could not copy the {file} to {distro}{details}. Check the free space in WSL and that the home directory is writable."
+msgstr "无法将{file}复制到 {distro}{details}。请检查 WSL 中的可用空间以及主目录是否可写。"
+
+msgid "Could not create the IDE integration lock file (check the owner and permissions of {path} {home}, and that it is not a symbolic link)."
+msgstr "无法创建 IDE 集成锁文件（请检查 {path} {home} 的所有者和权限，并确认它不是符号链接）。"
+
+msgid "Could not create the IDE integration's rendezvous socket (check the owner and permissions of {path} {home})."
+msgstr "无法创建 IDE 集成的会合套接字（请检查 {path} {home} 的所有者和权限）。"
+
+msgid "Could not create the agent settings folder"
+msgstr "无法创建智能体设置文件夹"
+
+msgid "Could not create the agent settings folder in {distro}."
+msgstr "无法在 {distro} 中创建智能体设置文件夹。"
+
+msgid "Could not create the npm working folder"
+msgstr "无法创建 npm 工作文件夹"
+
+msgid "Could not create the npm working folder in {distro}."
+msgstr "无法在 {distro} 中创建 npm 工作文件夹。"
+
+msgid "Could not create the sandbox in WSL"
+msgstr "无法在 WSL 中创建沙盒"
+
+msgid "Could not extract the agent runtime"
+msgstr "无法解压智能体运行环境"
+
+msgid "Could not find Zed's data folder in {distro}{details}."
+msgstr "无法在 {distro}{details} 中找到 ForgeKairos 的数据文件夹。"
+
+msgid "Could not find the architecture of {distro}{details}."
+msgstr "无法确定 {distro}{details} 的架构。"
+
+msgid "Could not find the home directory of {distro}{details}."
+msgstr "无法找到 {distro}{details} 的主目录。"
+
+msgid "Could not finish {description} in {distro}{details}"
+msgstr "无法在 {distro}{details} 中完成{description}"
+
+msgid "Could not handle the processes in the sandbox in {distro}:{detail}"
+msgstr "无法处理 {distro} 中沙盒内的进程：{detail}"
+
+msgid "Could not install the agent runtime"
+msgstr "无法安装智能体运行环境"
+
+msgid "Could not install the npm package"
+msgstr "无法安装 npm 包"
+
+msgid "Could not pass the connection details to the IDE integration relay"
+msgstr "无法将连接信息传递给 IDE 集成中继"
+
+msgid "Could not pass the connection details to the IDE integration relay."
+msgstr "无法将连接详细信息传递给 IDE 集成中继。"
+
+msgid "Could not pass the path of the {description} to the sandbox: {path}"
+msgstr "无法将{description}的路径传递给沙盒：{path}"
+
+msgid "Could not read inside the writable path `{path}` ({error}). The paths to protect cannot be separated out, so stopping."
+msgstr "无法读取可写路径 `{path}` 的内部（{error}）。无法区分出需要保护的路径，因此已停止。"
+
+msgid "Could not read the bundled sandbox helper `{path}` ({error}). Reinstall Zed."
+msgstr "无法读取随附的沙盒辅助程序 `{path}`（{error}）。请重新安装 ForgeKairos。"
+
+msgid "Could not read the {file} `{path}` ({error}). {fix}"
+msgstr "无法读取{file} `{path}`（{error}）。{fix}"
+
+msgid "Could not resolve the paths in {distro} ({error})."
+msgstr "无法解析 {distro} 中的路径（{error}）。"
+
+msgid "Could not resolve the paths in {distro}{details}. Run `wsl --update` and try again."
+msgstr "无法解析 {distro}{details} 中的路径。请运行 `wsl --update` 后重试。"
+
+msgid "Could not resolve the writable path `{path}` on Windows."
+msgstr "无法在 Windows 上解析可写路径 `{path}`。"
+
+msgid "Could not resolve the writable path `{path}`.{details}"
+msgstr "无法解析可写路径 `{path}`。{details}"
+
+msgid "Could not run `npm install {package_spec}` in the sandbox{details}"
+msgstr "无法在沙盒中运行 `npm install {package_spec}`{details}"
+
+msgid "Could not run the sandbox helper in {distro}{details} ({error}). Update WSL with `wsl --update` and try again."
+msgstr "无法在 {distro}{details} 中运行沙盒辅助程序（{error}）。请使用 `wsl --update` 更新 WSL 后重试。"
+
+msgid "Could not start WSL for {description} ({error}). Run `wsl --update` or restart Windows, then try again."
+msgstr "无法为{description}启动 WSL（{error}）。请运行 `wsl --update` 或重启 Windows，然后重试。"
+
+msgid "Could not start the IDE integration relay (unknown reason: {other})."
+msgstr "无法启动 IDE 集成中继（未知原因：{other}）。"
+
+msgid "Could not start the IDE integration relay (wsl.exe)"
+msgstr "无法启动 IDE 集成中继（wsl.exe）"
+
+msgid "Download it again."
+msgstr "请重新下载。"
+
+msgid "Download the agent again."
+msgstr "请重新下载智能体。"
+
+msgid "No WSL distro is registered. Add one with `wsl --install -d Ubuntu` or similar (any distro works, but it must run on WSL 2)."
+msgstr "未注册任何 WSL 发行版。请使用 `wsl --install -d Ubuntu` 等命令添加一个（任何发行版均可，但必须在 WSL 2 上运行）。"
+
+msgid "No default WSL distro is set. List the distros with `wsl --list --verbose` and make a WSL 2 distro the default with `wsl --set-default <name>`."
+msgstr "未设置默认 WSL 发行版。请使用 `wsl --list --verbose` 列出发行版，并使用 `wsl --set-default <name>` 将某个 WSL 2 发行版设为默认。"
+
+msgid "Reinstall Zed."
+msgstr "请重新安装 ForgeKairos。"
+
+msgid "Set the environment variable `ZED_WSL_SANDBOX_HELPER` to an absolute path inside WSL (UTF-8)."
+msgstr "请将环境变量 `ZED_WSL_SANDBOX_HELPER` 设置为 WSL 中的绝对路径（UTF-8）。"
+
+msgid "The IDE integration relay could not be started because the home directory {home} could not be determined."
+msgstr "无法确定主目录 {home}，因此无法启动 IDE 集成中继。"
+
+msgid "The IDE integration relay could not set up its signal handling."
+msgstr "IDE 集成中继无法设置其信号处理。"
+
+msgid "The IDE integration relay exited before it was ready."
+msgstr "IDE 集成中继在就绪前已退出。"
+
+msgid "The IDE integration relay for this configuration is already running"
+msgstr "此配置的 IDE 集成中继已在运行"
+
+msgid "The IDE integration relay was not ready within {seconds} seconds."
+msgstr "IDE 集成中继未在 {seconds} 秒内就绪。"
+
+msgid "The IDE integration relay was started with invalid arguments (internal error)."
+msgstr "IDE 集成中继以无效的参数启动（内部错误）。"
+
+msgid "The IDE lock file is larger than {limit} bytes (internal error)"
+msgstr "IDE 锁文件大于 {limit} 字节（内部错误）"
+
+msgid "The IDE port inside the sandbox is 0 (internal error)"
+msgstr "沙盒内的 IDE 端口为 0（内部错误）"
+
+msgid "The WSL distro `{name}` is not registered. Check its name with `wsl --list --verbose`."
+msgstr "WSL 发行版 `{name}` 未注册。请使用 `wsl --list --verbose` 检查其名称。"
+
+msgid "The WSL distro `{name}` runs on WSL 1, but the sandbox needs WSL 2. Convert it with `wsl --set-version {name} 2`, or make a WSL 2 distro the default with `wsl --set-default <name>`."
+msgstr "WSL 发行版 `{name}` 在 WSL 1 上运行，但沙盒需要 WSL 2。请使用 `wsl --set-version {name} 2` 进行转换，或使用 `wsl --set-default <name>` 将某个 WSL 2 发行版设为默认。"
+
+msgid "The WSL sandbox helper returned a canonical path that is not UTF-8 (internal error)"
+msgstr "WSL 沙盒辅助程序返回了非 UTF-8 的规范路径（内部错误）"
+
+msgid "The agent executable was installed in {distro}, but it could not be verified. Try again."
+msgstr "智能体可执行文件已安装到 {distro}，但无法验证。请重试。"
+
+msgid "The agent folder name is not a single name (internal error): {folder_name}"
+msgstr "智能体文件夹名称不是单个名称（内部错误）：{folder_name}"
+
+msgid "The agent runtime was extracted in {distro}, but it could not be verified. Try again."
+msgstr "智能体运行环境已解压到 {distro}，但无法验证。请重试。"
+
+msgid "The agent runtime was installed in {distro}, but it could not be verified. Try again."
+msgstr "智能体运行环境已安装到 {distro}，但无法验证。请重试。"
+
+msgid "The bundled sandbox helper `{path}` is damaged ({error}). Reinstall Zed."
+msgstr "随附的沙盒辅助程序 `{path}` 已损坏（{error}）。请重新安装 ForgeKairos。"
+
+msgid "The home directory could not be determined, so the paths shown read-only cannot be checked. Stopping without building the sandbox."
+msgstr "无法确定主目录，因此无法检查以只读方式显示的路径。已停止，未构建沙盒。"
+
+msgid "The home directory could not be determined, so the paths that are always protected (credentials, shell startup files, settings folders) cannot be settled. Stopping without building the sandbox."
+msgstr "无法确定主目录，因此无法确定始终受保护的路径（凭据、Shell 启动文件、设置文件夹）。已停止，未构建沙盒。"
+
+msgid "The home directory could not be determined, so the paths that must not be read (credentials, agent settings) cannot be settled. Stopping without building the sandbox."
+msgstr "无法确定主目录，因此无法确定禁止读取的路径（凭据、智能体设置）。已停止，未构建沙盒。"
+
+msgid "The npm package was installed in {distro}, but it could not be verified. Try again."
+msgstr "npm 包已安装到 {distro}，但无法验证。请重试。"
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only because it overlaps `{entry}`, which must not be read."
+msgstr "路径 `{path}`（实际为 `{canonical}`）与禁止读取的 `{entry}` 重叠，因此无法以只读方式显示。"
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only. Only the agent installations (`external_agents`) and Node.js (`node`) inside Zed's data folder (`{data_directory}`) can be shown (credentials and Zed's database, settings and logs are never shown)."
+msgstr "无法以只读方式显示路径 `{path}`（实际为 `{canonical}`）。只能显示 ForgeKairos 数据文件夹（`{data_directory}`）中的智能体安装目录（`external_agents`）和 Node.js（`node`）（凭据以及 ForgeKairos 的数据库、设置和日志永远不会显示）。"
+
+msgid "The path is in the WSL distro `{requested}`, but this session runs in `{session}`."
+msgstr "该路径位于 WSL 发行版 `{requested}` 中，但此会话在 `{session}` 中运行。"
+
+msgid "The path shown read-only `{path}` was replaced after it was checked and now points somewhere else (`{canonical}`). Stopping for safety."
+msgstr "以只读方式显示的路径 `{path}` 在检查后被替换，现在指向其他位置（`{canonical}`）。为安全起见已停止。"
+
+msgid "The project identifier is invalid (internal error): {project_key}"
+msgstr "项目标识符无效（内部错误）：{project_key}"
+
+msgid "The readable path was not resolved (internal error)"
+msgstr "可读路径未被解析（内部错误）"
+
+msgid "The readable path was passed on unresolved (internal error)"
+msgstr "可读路径未经解析就被传递（内部错误）"
+
+msgid "The sandbox cannot be created because the kernel of {distro} does not support Landlock. Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again."
+msgstr "{distro} 的内核不支持 Landlock，因此无法创建沙盒。请使用 `wsl --update` 更新 WSL，使用 `wsl --shutdown` 重启 WSL，然后重试。"
+
+msgid "The sandbox cannot be created because {distro} cannot create user namespaces ({reason}). Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again (WSL 2 is required)."
+msgstr "{distro} 无法创建用户命名空间（{reason}），因此无法创建沙盒。请使用 `wsl --update` 更新 WSL，使用 `wsl --shutdown` 重启 WSL，然后重试（需要 WSL 2）。"
+
+msgid "The sandbox helper was installed in {distro}, but it could not be verified. Try again."
+msgstr "沙盒辅助程序已安装到 {distro}，但无法验证。请重试。"
+
+msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build.ps1` puts them in `target\\debug` (searched: {searched})."
+msgstr "在 ForgeKairos 的安装位置未找到沙盒辅助程序（`{server_name}` 和 `{slirp_name}`）。请重新安装 ForgeKairos。在开发版本中，`script/build.ps1` 会将它们放在 `target\\debug` 中（已搜索：{searched}）。"
+
+msgid "The terminal's working folder was not resolved (internal error)"
+msgstr "终端的工作文件夹未被解析（内部错误）"
+
+msgid "The terminal's working folder was passed on unresolved (internal error)"
+msgstr "终端的工作文件夹未经解析就被传递（内部错误）"
+
+msgid "The writable path `{writable}` overlaps the always-protected path `{protected}` (writing to credentials, shell startup files and settings folders cannot be allowed)."
+msgstr "可写路径 `{writable}` 与始终受保护的路径 `{protected}` 重叠（不能允许写入凭据、Shell 启动文件和设置文件夹）。"
+
+msgid "The writable path was not resolved (internal error)"
+msgstr "可写路径未被解析（内部错误）"
+
+msgid "The writable path was passed on unresolved (internal error)"
+msgstr "可写路径未经解析就被传递（内部错误）"
+
+msgid "The {description} contains a component that cannot be used (internal error): {segment} in {relative}"
+msgstr "{description}包含无法使用的组成部分（内部错误）：{relative} 中的 {segment}"
+
+msgid "The {description} is not a relative path (internal error): {path}"
+msgstr "{description}不是相对路径（内部错误）：{path}"
+
+msgid "The {description} is not a relative path below the data directory (internal error): {relative}"
+msgstr "{description}不是数据目录下的相对路径（内部错误）：{relative}"
+
+msgid "The {description} is not an absolute Linux path (internal error): {path}"
+msgstr "{description}不是 Linux 绝对路径（内部错误）：{path}"
+
+msgid "The {description} points outside the package (internal error): {path}"
+msgstr "{description}指向包外部（内部错误）：{path}"
+
+msgid "The {description} points to nothing (internal error): {path}"
+msgstr "{description}未指向任何内容（内部错误）：{path}"
+
+msgid "The {file} `{name}` copied to {distro} does not match the original ({sent} bytes sent, {received} bytes received). Try again. If that does not help, check the free space in WSL."
+msgstr "复制到 {distro} 的{file} `{name}` 与原始文件不一致（发送 {sent} 字节，接收 {received} 字节）。请重试。如果仍无效，请检查 WSL 中的可用空间。"
+
+msgid "The {file} `{path}` is damaged ({error}). {fix}"
+msgstr "{file} `{path}` 已损坏（{error}）。{fix}"
+
+msgid "WSL is not installed. On Windows, agent commands run in a sandbox inside WSL 2. Open PowerShell as an administrator, run `wsl --install`, and restart the computer."
+msgstr "未安装 WSL。在 Windows 上，智能体命令在 WSL 2 内的沙盒中运行。请以管理员身份打开 PowerShell，运行 `wsl --install`，然后重启计算机。"
+
+msgid "Writing to `{path}` cannot be allowed"
+msgstr "不能允许写入 `{path}`"
+
+msgid "Writing to `{path}` cannot be allowed: it is a whole WSL distro, not a folder inside one."
+msgstr "不能允许写入 `{path}`：它是整个 WSL 发行版，而不是其中的文件夹。"
+
+msgid "Writing to `{path}` cannot be allowed: it resolves to `{resolved}`, which is not a path on a Windows drive."
+msgstr "不能允许写入 `{path}`：它解析为 `{resolved}`，这不是 Windows 驱动器上的路径。"
+
+msgid "Writing to `{path}` cannot be allowed: only a path on a Windows drive (`C:\\...`), an absolute WSL path (`/...`), or a folder inside a WSL distro (`\\\\wsl.localhost\\<distro>\\...`) can be given."
+msgstr "不能允许写入 `{path}`：只能指定 Windows 驱动器上的路径（`C:\\...`）、WSL 绝对路径（`/...`）或 WSL 发行版中的文件夹（`\\\\wsl.localhost\\<distro>\\...`）。"
+
+msgid "`sha256sum` is missing in {distro}, so it cannot be verified that the agent executable has not been replaced. Install coreutils and try again."
+msgstr "{distro} 中缺少 `sha256sum`，因此无法验证智能体可执行文件未被替换。请安装 coreutils 后重试。"
+
+msgid "`sha256sum` is missing in {distro}, so it cannot be verified that the sandbox helper has not been replaced. Install coreutils and try again."
+msgstr "{distro} 中缺少 `sha256sum`，因此无法验证沙盒辅助程序未被替换。请安装 coreutils 后重试。"
+
+msgid "ended by a signal"
+msgstr "被信号终止"
+
+msgid "exit code {code}"
+msgstr "退出代码 {code}"
+
+msgid "the WSL distro `{distro}`"
+msgstr "WSL 发行版 `{distro}`"
+
+msgid "the default WSL distro"
+msgstr "默认 WSL 发行版"
+
+msgid "{count} IDE integration relays are already running, so no more can be started. Close the agent threads and terminals you are not using and try again."
+msgstr "已有 {count} 个 IDE 集成中继在运行，无法再启动更多。请关闭未使用的智能体会话和终端后重试。"
+
+msgid "{exit_status}, error output: {stderr}"
+msgstr "{exit_status}，错误输出：{stderr}"
+
+msgid "{exit_status}, npm output: {tail}"
+msgstr "{exit_status}，npm 输出：{tail}"
+
+msgid "{what} in {distro}{reason}{details}."
+msgstr "在 {distro} 中{what}{reason}{details}。"
+
+msgctxt "ide bridge host"
+msgid "in WSL"
+msgstr "WSL 中的"
+
+msgctxt "ide bridge host"
+msgid "on the remote host"
+msgstr "远程主机上的"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "wsl sandbox file"
+msgid "agent executable"
+msgstr "智能体可执行文件"
+
+msgctxt "wsl sandbox file"
+msgid "agent runtime archive"
+msgstr "智能体运行环境压缩包"
+
+msgctxt "wsl sandbox file"
+msgid "bundled sandbox helper"
+msgstr "随附的沙盒辅助程序"
+
+msgctxt "wsl sandbox file"
+msgid "downloaded agent runtime archive"
+msgstr "已下载的智能体运行环境压缩包"
+
+msgctxt "wsl sandbox file"
+msgid "sandbox helper"
+msgstr "沙盒辅助程序"
+
+msgctxt "wsl sandbox path"
+msgid "IDE bridge's own folder"
+msgstr "IDE 桥接专用文件夹"
+
+msgctxt "wsl sandbox path"
+msgid "IDE lock file"
+msgstr "IDE 锁文件"
+
+msgctxt "wsl sandbox path"
+msgid "IDE rendezvous socket"
+msgstr "IDE 会合套接字"
+
+msgctxt "wsl sandbox path"
+msgid "Node.js installation folder"
+msgstr "Node.js 安装文件夹"
+
+msgctxt "wsl sandbox path"
+msgid "agent folder name"
+msgstr "智能体文件夹名称"
+
+msgctxt "wsl sandbox path"
+msgid "entry in the agent folder"
+msgstr "智能体文件夹中的条目"
+
+msgctxt "wsl sandbox path"
+msgid "npm package destination"
+msgstr "npm 包目标位置"
+
+msgctxt "wsl sandbox path"
+msgid "npm package executable"
+msgstr "npm 包可执行文件"
+
+msgctxt "wsl sandbox path"
+msgid "npm package installation folder"
+msgstr "npm 包安装文件夹"
+
+msgctxt "wsl sandbox path"
+msgid "npm package name"
+msgstr "npm 包名称"
+
+msgctxt "wsl sandbox path"
+msgid "npm working folder"
+msgstr "npm 工作文件夹"
+
+msgctxt "wsl sandbox path"
+msgid "runtime destination"
+msgstr "运行时目标位置"
+
+msgctxt "wsl sandbox path"
+msgid "runtime executable"
+msgstr "运行时可执行文件"
+
+msgctxt "wsl sandbox path"
+msgid "runtime folder"
+msgstr "运行时文件夹"
+
+msgctxt "wsl sandbox step"
+msgid "checking Zed's data folder"
+msgstr "检查 ForgeKairos 的数据文件夹"
+
+msgctxt "wsl sandbox step"
+msgid "checking the WSL architecture"
+msgstr "检查 WSL 架构"
+
+msgctxt "wsl sandbox step"
+msgid "checking the agent executable"
+msgstr "检查智能体可执行文件"
+
+msgctxt "wsl sandbox step"
+msgid "checking the agent runtime"
+msgstr "检查智能体运行环境"
+
+msgctxt "wsl sandbox step"
+msgid "checking the home directory"
+msgstr "检查主目录"
+
+msgctxt "wsl sandbox step"
+msgid "checking the npm package"
+msgstr "检查 npm 包"
+
+msgctxt "wsl sandbox step"
+msgid "checking the npm package executable"
+msgstr "检查 npm 包可执行文件"
+
+msgctxt "wsl sandbox step"
+msgid "checking the sandbox helper"
+msgstr "检查沙盒辅助程序"
+
+msgctxt "wsl sandbox step"
+msgid "cleaning up after the IDE integration"
+msgstr "清理 IDE 集成"
+
+msgctxt "wsl sandbox step"
+msgid "copying the agent executable"
+msgstr "复制智能体可执行文件"
+
+msgctxt "wsl sandbox step"
+msgid "copying the agent runtime"
+msgstr "复制智能体运行环境"
+
+msgctxt "wsl sandbox step"
+msgid "copying the sandbox helper"
+msgstr "复制沙盒辅助程序"
+
+msgctxt "wsl sandbox step"
+msgid "creating the agent settings folder"
+msgstr "创建智能体设置文件夹"
+
+msgctxt "wsl sandbox step"
+msgid "creating the npm working folder"
+msgstr "创建 npm 工作文件夹"
+
+msgctxt "wsl sandbox step"
+msgid "extracting the agent runtime"
+msgstr "解压智能体运行环境"
+
+msgctxt "wsl sandbox step"
+msgid "installing the agent executable"
+msgstr "安装智能体可执行文件"
+
+msgctxt "wsl sandbox step"
+msgid "installing the agent runtime"
+msgstr "安装智能体运行环境"
+
+msgctxt "wsl sandbox step"
+msgid "installing the npm package"
+msgstr "安装 npm 包"
+
+msgctxt "wsl sandbox step"
+msgid "installing the sandbox helper"
+msgstr "安装沙盒辅助程序"
+
+msgctxt "wsl sandbox step"
+msgid "listing the processes in the sandbox"
+msgstr "列出沙盒中的进程"
+
+msgctxt "wsl sandbox step"
+msgid "removing a partly copied file"
+msgstr "删除未复制完成的文件"
+
+msgctxt "wsl sandbox step"
+msgid "removing the npm working folder"
+msgstr "删除 npm 工作文件夹"
+
+msgctxt "wsl sandbox step"
+msgid "resolving paths"
+msgstr "解析路径"
+
+msgctxt "wsl sandbox step"
+msgid "resolving the writable path"
+msgstr "解析可写路径"
+
+msgctxt "wsl sandbox step"
+msgid "running npm install in the sandbox"
+msgstr "在沙盒中运行 npm install"
+
+msgctxt "wsl sandbox step"
+msgid "stopping the processes in the sandbox"
+msgstr "停止沙盒中的进程"
+
+msgctxt "wsl sandbox step"
+msgid "testing the sandbox helper"
+msgstr "测试沙盒辅助程序"

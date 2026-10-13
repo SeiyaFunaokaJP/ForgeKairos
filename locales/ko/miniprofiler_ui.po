@@ -1,0 +1,34 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "All threads"
+msgstr "모든 스레드"
+
+msgid "Include profiler timings"
+msgstr "프로파일러 자체 시간 포함"
+
+msgid "Pause"
+msgstr "일시 중지"
+
+msgid "Profiler Window"
+msgstr "프로파일러 창"
+
+msgid "Remote: All threads"
+msgstr "원격: 모든 스레드"
+
+msgid "Remote: Foreground"
+msgstr "원격: 포그라운드"
+
+msgid "Resume"
+msgstr "재개"
+
+msgid "Save"
+msgstr "저장"
+
+msgctxt "profiler thread"
+msgid "Foreground"
+msgstr "포그라운드"

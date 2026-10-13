@@ -1,0 +1,69 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "mcp_server_template"
+msgid "Absolute path of the file to store the memory in"
+msgstr "메모리를 저장할 파일의 절대 경로"
+
+msgctxt "mcp_server_template"
+msgid "Absolute path of the folder the server may use"
+msgstr "서버가 사용할 수 있는 폴더의 절대 경로"
+
+msgctxt "mcp_server_template"
+msgid "Bearer <GitHub personal access token>"
+msgstr "Bearer <GitHub 개인 액세스 토큰>"
+
+msgctxt "mcp_server_template"
+msgid "Fetch (Web Page Retrieval)"
+msgstr "Fetch (웹 페이지 가져오기)"
+
+msgctxt "mcp_server_template"
+msgid "Fetches the web page at a given URL and passes it on as Markdown."
+msgstr "지정한 URL의 웹 페이지를 가져와 Markdown으로 변환하여 전달합니다."
+
+msgctxt "mcp_server_template"
+msgid "File System"
+msgstr "파일 시스템"
+
+msgctxt "mcp_server_template"
+msgid "GitHub's official remote MCP server. Works with repositories, issues and pull requests. Requires a GitHub personal access token."
+msgstr "GitHub 공식 원격 MCP 서버입니다. 저장소, 이슈, 풀 리퀘스트를 다룹니다. GitHub 개인 액세스 토큰이 필요합니다."
+
+msgctxt "mcp_server_template"
+msgid "Launches a browser and operates it: opens pages, clicks and types."
+msgstr "브라우저를 실행하여 조작합니다: 페이지 열기, 클릭, 입력."
+
+msgctxt "mcp_server_template"
+msgid "Memory (Knowledge Graph)"
+msgstr "Memory (지식 그래프)"
+
+msgctxt "mcp_server_template"
+msgid "Node.js (npx), Google Chrome"
+msgstr "Node.js (npx), Google Chrome"
+
+msgctxt "mcp_server_template"
+msgid "Playwright (Browser Automation)"
+msgstr "Playwright (브라우저 자동화)"
+
+msgctxt "mcp_server_template"
+msgid "Reads, writes and searches files inside the folders you specify. Folders you don't specify are left alone."
+msgstr "지정한 폴더 안의 파일을 읽고, 쓰고, 검색합니다. 지정하지 않은 폴더에는 손대지 않습니다."
+
+msgctxt "mcp_server_template"
+msgid "Saves what should be remembered across conversations to a file, as a knowledge graph."
+msgstr "대화 간에 기억해야 할 내용을 지식 그래프로 파일에 저장합니다."
+
+msgctxt "mcp_server_template"
+msgid "The browser's own traffic may ignore the proxy environment variables, and then the network allowlist does not control it."
+msgstr "브라우저 자체의 통신은 프록시 환경 변수를 무시할 수 있으며, 그 경우 네트워크 허용 목록으로 통제되지 않습니다."
+
+msgctxt "mcp_server_template"
+msgid "The hosts of the sites to fetch also have to be added to the network allowlist."
+msgstr "가져올 사이트의 호스트도 네트워크 허용 목록에 추가해야 합니다."

@@ -1,0 +1,268 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "\n\n1 of these has unsaved changes, which will be lost."
+msgstr "\n\nUno de estos tiene cambios sin guardar, que se perderán."
+
+msgid "\n\nIt has unsaved changes, which will be lost."
+msgstr "\n\nTiene cambios sin guardar, que se perderán."
+
+msgid "\n\n{dirty_buffers} of these have unsaved changes, which will be lost."
+msgstr "\n\n{dirty_buffers} de estos tienen cambios sin guardar, que se perderán."
+
+msgid ".. 1 file not shown"
+msgstr ".. 1 archivo no mostrado"
+
+msgid ".. {omitted_count} files not shown"
+msgstr ".. {omitted_count} archivos no mostrados"
+
+msgid "A file or folder with name {} already exists in the destination folder. Do you want to replace it?"
+msgstr "Ya existe un archivo o una carpeta con el nombre {} en la carpeta de destino. ¿Desea reemplazarlo?"
+
+msgid "Add Folders to Project…"
+msgstr "Agregar carpetas al proyecto…"
+
+msgid "Add to .git/info/exclude"
+msgstr "Agregar a .git/info/exclude"
+
+msgid "Add to .gitignore"
+msgstr "Agregar a .gitignore"
+
+msgid "Apply Patch File…"
+msgstr "Aplicar archivo de parche…"
+
+msgid "Are you sure you want to permanently delete the following {} files?\n{}"
+msgstr "¿Está seguro de que desea eliminar permanentemente los siguientes {} archivos?\n{}"
+
+msgid "Are you sure you want to permanently delete {}?"
+msgstr "¿Está seguro de que desea eliminar permanentemente {}?"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Change Folder…"
+msgstr "Cambiar carpeta…"
+
+msgid "Collapse All"
+msgstr "Contraer todo"
+
+msgid "Compare Marked Files"
+msgstr "Comparar archivos marcados"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Copy File Permalink"
+msgstr "Copiar enlace permanente del archivo"
+
+msgid "Copy Path"
+msgstr "Copiar ruta"
+
+msgid "Copy Relative Path"
+msgstr "Copiar ruta relativa"
+
+msgid "Create Patch File…"
+msgstr "Crear archivo de parche…"
+
+msgid "Created an excluded directory at {}.\nAlter `file_scan_exclusions` in the settings to show it in the panel"
+msgstr "Se creó un directorio excluido en {}.\nModifique `file_scan_exclusions` en la configuración para mostrarlo en el panel"
+
+msgid "Cut"
+msgstr "Cortar"
+
+msgid "Discard changes to {}?"
+msgstr "¿Descartar los cambios en {}?"
+
+msgid "Disconnected from SSH host"
+msgstr "Desconectado del host SSH"
+
+msgid "Disconnected from remote project"
+msgstr "Desconectado del proyecto remoto"
+
+msgid "Do you want to trash the following {} files?\n{}"
+msgstr "¿Desea mover a la papelera los siguientes {} archivos?\n{}"
+
+msgid "Do you want to trash {}?"
+msgstr "¿Desea mover {} a la papelera?"
+
+msgid "Download"
+msgstr "Descargar"
+
+msgid "Download..."
+msgstr "Descargar..."
+
+msgid "Downloaded {} files"
+msgstr "Se descargaron {} archivos"
+
+msgid "Downloading 0/{} files..."
+msgstr "Descargando 0/{} archivos..."
+
+msgid "Downloading {}/{} files..."
+msgstr "Descargando {}/{} archivos..."
+
+msgid "Duplicate"
+msgstr "Duplicar"
+
+msgid "Expand All"
+msgstr "Expandir todo"
+
+msgid "Failed to add to .git/info/exclude: {}"
+msgstr "No se pudo agregar a .git/info/exclude: {}"
+
+msgid "Failed to add to .gitignore: {}"
+msgstr "No se pudo agregar a .gitignore: {}"
+
+msgid "Failed to delete {failed_count} of {total_count} file."
+msgstr "No se pudo eliminar {failed_count} de {total_count} archivo."
+
+msgid "Failed to delete {failed_count} of {total_count} files."
+msgstr "No se pudieron eliminar {failed_count} de {total_count} archivos."
+
+msgid "Failed to open file"
+msgstr "No se pudo abrir el archivo"
+
+msgid "Failed to refresh"
+msgstr "No se pudo actualizar"
+
+msgid "Failed to restore `{name}`. It may have been permanently deleted."
+msgstr "No se pudo restaurar `{name}`. Puede que se haya eliminado permanentemente."
+
+msgid "Failed to restore `{name}`. Something already exists at its original location."
+msgstr "No se pudo restaurar `{name}`. Ya existe algo en su ubicación original."
+
+msgid "Failed to restore {}: {}"
+msgstr "No se pudo restaurar {}: {}"
+
+msgid "Failed to trash `{name}`."
+msgstr "No se pudo mover `{name}` a la papelera."
+
+msgid "Failed to trash `{name}`. It no longer exists."
+msgstr "No se pudo mover `{name}` a la papelera. Ya no existe."
+
+msgid "Failed to trash {failed_count} of {total_count} file."
+msgstr "No se pudo mover {failed_count} de {total_count} archivo a la papelera."
+
+msgid "Failed to trash {failed_count} of {total_count} files."
+msgstr "No se pudieron mover {failed_count} de {total_count} archivos a la papelera."
+
+msgid "Failed to {operation} `{from_name}` to `{to_name}`. A file or folder already exists there."
+msgstr "No se pudo {operation} `{from_name}` a `{to_name}`. Ya existe un archivo o carpeta en esa ubicación."
+
+msgid "Failed to {operation} `{from_name}`. It no longer exists."
+msgstr "No se pudo {operation} `{from_name}`. Ya no existe."
+
+msgid "File or directory '{}' already exists at location. Please choose a different name."
+msgstr "Ya existe un archivo o directorio '{}' en esta ubicación. Elija un nombre diferente."
+
+msgid "File or directory name cannot be empty."
+msgstr "El nombre de archivo o directorio no puede estar vacío."
+
+msgid "File or directory name contains leading or trailing whitespace."
+msgstr "El nombre de archivo o directorio contiene espacios en blanco iniciales o finales."
+
+msgid "Find in Folder…"
+msgstr "Buscar en carpeta…"
+
+msgid "Fold Directory"
+msgstr "Plegar directorio"
+
+msgid "New File"
+msgstr "Nuevo archivo"
+
+msgid "New Folder"
+msgstr "Nueva carpeta"
+
+msgid "Open File Permalink"
+msgstr "Abrir enlace permanente del archivo"
+
+msgid "Open Markdown Preview"
+msgstr "Abrir vista previa de Markdown"
+
+msgid "Open in Default App"
+msgstr "Abrir en la aplicación predeterminada"
+
+msgid "Open in Terminal"
+msgstr "Abrir en terminal"
+
+msgid "Paste"
+msgstr "Pegar"
+
+msgid "Project Panel"
+msgstr "Panel de proyecto"
+
+msgid "Redo"
+msgstr "Rehacer"
+
+msgid "Redo Failed"
+msgstr "Error al rehacer"
+
+msgid "Refresh"
+msgstr "Actualizar"
+
+msgid "Remove from Project"
+msgstr "Quitar del proyecto"
+
+msgid "Rename"
+msgstr "Cambiar nombre"
+
+msgid "Replace"
+msgstr "Reemplazar"
+
+msgid "Restore"
+msgstr "Restaurar"
+
+msgid "Search Inside"
+msgstr "Buscar dentro"
+
+msgid "Symbolic Link"
+msgstr "Enlace simbólico"
+
+msgid "This cannot be undone."
+msgstr "Esta acción no se puede deshacer."
+
+msgid "Trash"
+msgstr "Mover a la papelera"
+
+msgid "Undo"
+msgstr "Deshacer"
+
+msgid "Undo Failed"
+msgstr "Error al deshacer"
+
+msgid "Unfold Directory"
+msgstr "Desplegar directorio"
+
+msgid "View History"
+msgstr "Ver historial"
+
+msgid "item"
+msgstr "elemento"
+
+msgid "{} entries"
+msgstr "{} entradas"
+
+msgid "{} is not shared by the host. This could be because it has been marked as `private`"
+msgstr "El host no comparte {}. Esto puede deberse a que se ha marcado como `private`"
+
+msgctxt "delete permanently"
+msgid "Delete"
+msgstr "Eliminar"
+
+msgctxt "discard file changes"
+msgid "Restore File"
+msgstr "Restaurar archivo"
+
+msgctxt "file operation"
+msgid "move"
+msgstr "mover"
+
+msgctxt "file operation"
+msgid "rename"
+msgstr "cambiar el nombre de"

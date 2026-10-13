@@ -1,0 +1,30 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Another connection took over this shell"
+msgstr "其他連線已接管此 Shell"
+
+msgid "Could not open standard input"
+msgstr "無法開啟標準輸入"
+
+msgid "Could not run {program} on the remote. Check that it is installed."
+msgstr "無法在遠端執行 {program}。請確認是否已安裝。"
+
+msgid "No operation was specified"
+msgstr "未指定操作"
+
+msgid "Older output was omitted"
+msgstr "已省略較舊的輸出"
+
+msgid "The previous shell was no longer running. Starting a new shell"
+msgstr "先前的 Shell 已不在執行中。正在啟動新的 Shell"
+
+msgid "The shell exited while disconnected (exit code {code})"
+msgstr "Shell 在中斷連線期間結束（結束代碼 {code}）"
+
+msgid "{program} cannot be run on the remote."
+msgstr "無法在遠端執行 {program}。"

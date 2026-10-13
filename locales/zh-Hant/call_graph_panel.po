@@ -1,0 +1,207 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(file scope)"
+msgstr "（檔案範圍）"
+
+msgid "All Sources"
+msgstr "所有來源"
+
+msgid "Call Graph Options"
+msgstr "呼叫圖選項"
+
+msgid "Call Graph Panel"
+msgstr "呼叫圖面板"
+
+msgid "Callees"
+msgstr "被呼叫端"
+
+msgid "Callees in the call_graph_panel.excluded_callees setting. Click to show them."
+msgstr "call_graph_panel.excluded_callees 設定中的被呼叫端。按一下以顯示。"
+
+msgid "Callers"
+msgstr "呼叫端"
+
+msgid "Calls come from the language server. For C and C++, clangd needs a compile_commands.json to find them."
+msgstr "呼叫資訊來自語言伺服器。對於 C 與 C++，clangd 需要 compile_commands.json 才能找到呼叫。"
+
+msgid "Collapse All"
+msgstr "全部摺疊"
+
+msgid "Could not find the function at the cursor: {error}"
+msgstr "找不到游標處的函式：{error}"
+
+msgid "Could not get the calls: {message}"
+msgstr "無法取得呼叫：{message}"
+
+msgid "Definition not found"
+msgstr "找不到定義"
+
+msgid "Exact: answered by the language server"
+msgstr "精確：由語言伺服器回答"
+
+msgid "Filter shown functions…"
+msgstr "篩選顯示的函式…"
+
+msgid "Folders deeper than the file scan depth outside git repositories are not in the symbol index."
+msgstr "Git 儲存庫之外、深度超過檔案掃描深度的資料夾不在符號索引中。"
+
+msgid "Follow the Cursor"
+msgstr "跟隨游標"
+
+msgid "Function pointer candidate"
+msgstr "函式指標候選"
+
+msgid "Function pointer candidate: stored into the member this indirect call goes through, so it may be called there"
+msgstr "函式指標候選：已存入此間接呼叫所經由的成員，因此可能在此處被呼叫"
+
+msgid "If the language server is still indexing, this is tried again when it finishes."
+msgstr "若語言伺服器仍在建立索引，完成時會再試一次。"
+
+msgid "Indexing symbols {done} / {total}"
+msgstr "正在建立符號索引 {done} / {total}"
+
+msgid "Indirect call: .{field}"
+msgstr "間接呼叫：.{field}"
+
+msgid "Inspect Cursor"
+msgstr "檢查游標處"
+
+msgid "Inspect the Function at the Cursor"
+msgstr "檢查游標處的函式"
+
+msgid "It does not offer call hierarchy. Another language server for this language may."
+msgstr "它不提供呼叫階層。此語言的其他語言伺服器可能提供。"
+
+msgid "Language Server Only"
+msgstr "僅語言伺服器"
+
+msgid "Language server"
+msgstr "語言伺服器"
+
+msgid "Looking for the function at the cursor…"
+msgstr "正在尋找游標處的函式…"
+
+msgid "Macro"
+msgstr "巨集"
+
+msgid "Macro: a macro the symbol index found by name"
+msgstr "巨集：符號索引依名稱找到的巨集"
+
+msgid "Name Matches Only"
+msgstr "僅名稱相符"
+
+msgid "Name match"
+msgstr "名稱相符"
+
+msgid "Name match: found by the symbol index by name, not resolved by a language server"
+msgstr "名稱相符：由符號索引依名稱找到，並非由語言伺服器解析"
+
+msgid "Name matches found so far may be incomplete; they are asked for again when indexing ends."
+msgstr "目前找到的名稱相符項目可能不完整；索引建立完成時會重新查詢。"
+
+msgid "Next Root"
+msgstr "下一個起點"
+
+msgid "No callees"
+msgstr "沒有被呼叫端"
+
+msgid "No callers"
+msgstr "沒有呼叫端"
+
+msgid "No function selected"
+msgstr "未選取函式"
+
+msgid "No language server is running for this file."
+msgstr "此檔案沒有正在執行的語言伺服器。"
+
+msgid "Nothing is asked for until then, and each level is asked for only when you expand it."
+msgstr "在那之前不會查詢任何內容，且每一層只會在您展開時才查詢。"
+
+msgid "Only the first {limit} calls are shown"
+msgstr "只顯示前 {limit} 個呼叫"
+
+msgid "Open a file and put the cursor on a function."
+msgstr "請開啟檔案並將游標放在函式上。"
+
+msgid "Open the Setting"
+msgstr "開啟設定"
+
+msgid "Preparing the symbol index…"
+msgstr "正在準備符號索引…"
+
+msgid "Previous Root"
+msgstr "上一個起點"
+
+msgid "Put the cursor on a function and inspect it to see its calls."
+msgstr "將游標放在函式上並進行檢查，即可查看其呼叫。"
+
+msgid "Rebuild the Symbol Index"
+msgstr "重新建立符號索引"
+
+msgid "Recursive: this function is already on the path above"
+msgstr "遞迴：此函式已在上方的路徑中"
+
+msgid "Retry"
+msgstr "重試"
+
+msgid "Several functions are named {name}. Choose the root:"
+msgstr "有多個名為 {name} 的函式。請選擇起點："
+
+msgid "Show {count} more"
+msgid_plural "Show {count} more"
+msgstr[0] "再顯示 {count} 個"
+
+msgid "Symbol index: in use by another window"
+msgstr "符號索引：正由另一個視窗使用"
+
+msgid "Symbol index: not available in a shared project"
+msgstr "符號索引：無法在分享的專案中使用"
+
+msgid "Symbol index: this server does not support it"
+msgstr "符號索引：此伺服器不支援"
+
+msgid "Symbol index: {error}"
+msgstr "符號索引：{error}"
+
+msgid "Symbol index: {files} files, {definitions} definitions"
+msgstr "符號索引：{files} 個檔案、{definitions} 個定義"
+
+msgid "The language server for this file cannot list calls."
+msgstr "此檔案的語言伺服器無法列出呼叫。"
+
+msgid "The symbol index is off"
+msgstr "符號索引已關閉"
+
+msgid "There is no function at the cursor."
+msgstr "游標處沒有函式。"
+
+msgid "Turn it on with the symbol_index.enabled setting to find calls by name in C and C++."
+msgstr "使用 symbol_index.enabled 設定將其開啟，即可在 C 與 C++ 中依名稱尋找呼叫。"
+
+msgid "{count} definition with this name"
+msgid_plural "{count} definitions with this name"
+msgstr[0] "{count} 個同名定義"
+
+msgid "{count} excluded"
+msgid_plural "{count} excluded"
+msgstr[0] "已排除 {count} 個"
+
+msgid "{count} more are not listed"
+msgid_plural "{count} more are not listed"
+msgstr[0] "另有 {count} 個未列出"
+
+msgctxt "call graph panel"
+msgid "Refresh"
+msgstr "重新整理"
+
+msgctxt "call graph panel"
+msgid "Sources"
+msgstr "來源"

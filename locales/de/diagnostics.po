@@ -1,0 +1,87 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Buffer Diagnostics"
+msgstr "Puffer-Diagnosen"
+
+msgid "Buffer Diagnostics - {}"
+msgstr "Puffer-Diagnosen – {}"
+
+msgid "Buffer Search"
+msgstr "Puffersuche"
+
+msgid "Copy Diagnostic"
+msgstr "Diagnose kopieren"
+
+msgid "Diagnostics"
+msgstr "Diagnosen"
+
+msgid "Exclude Warnings"
+msgstr "Warnungen ausschließen"
+
+msgid "Expand Diagnostics"
+msgstr "Diagnosen aufklappen"
+
+msgid "Include Warnings"
+msgstr "Warnungen einschließen"
+
+msgid "Inline Assist"
+msgstr "Inline-Assistent"
+
+msgid "Next Diagnostic"
+msgstr "Nächste Diagnose"
+
+msgid "No errors in workspace"
+msgstr "Keine Fehler im Arbeitsbereich"
+
+msgid "No errors in {file}"
+msgstr "Keine Fehler in {file}"
+
+msgid "No problems"
+msgstr "Keine Probleme"
+
+msgid "No problems in workspace"
+msgstr "Keine Probleme im Arbeitsbereich"
+
+msgid "No problems in {file}"
+msgstr "Keine Probleme in {file}"
+
+msgid "Open File"
+msgstr "Datei öffnen"
+
+msgid "Project Diagnostics"
+msgstr "Projektdiagnosen"
+
+msgid "Project diagnostics: no problems"
+msgstr "Projektdiagnosen: keine Probleme"
+
+msgid "Project diagnostics: {}"
+msgstr "Projektdiagnosen: {}"
+
+msgid "Refresh Diagnostics"
+msgstr "Diagnosen aktualisieren"
+
+msgid "Show {count} warning"
+msgid_plural "Show {count} warnings"
+msgstr[0] "{count} Warnung anzeigen"
+msgstr[1] "{count} Warnungen anzeigen"
+
+msgid "Stop Diagnostics Update"
+msgstr "Diagnoseaktualisierung beenden"
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "{count} Fehler"
+msgstr[1] "{count} Fehler"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "{count} Warnung"
+msgstr[1] "{count} Warnungen"

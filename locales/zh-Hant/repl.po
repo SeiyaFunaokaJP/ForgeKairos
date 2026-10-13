@@ -1,0 +1,181 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add code block"
+msgstr "新增程式碼區塊"
+
+msgid "Add code cell"
+msgstr "新增程式碼儲存格"
+
+msgid "Add markdown block"
+msgstr "新增 Markdown 區塊"
+
+msgid "Add markdown cell"
+msgstr "新增 Markdown 儲存格"
+
+msgid "Clear all outputs"
+msgstr "清除所有輸出"
+
+msgid "Close output area"
+msgstr "關閉輸出區域"
+
+msgid "Connecting to kernel..."
+msgstr "正在連線到核心..."
+
+msgid "Copy Full Error"
+msgstr "複製完整錯誤"
+
+msgid "Copy Output"
+msgstr "複製輸出"
+
+msgid "Delete cell"
+msgstr "刪除儲存格"
+
+msgid "Error: {err}"
+msgstr "錯誤：{err}"
+
+msgid "Execute all cells"
+msgstr "執行所有儲存格"
+
+msgid "Executing..."
+msgstr "正在執行..."
+
+msgid "Failed to install ipykernel in {}: {}"
+msgstr "無法在 {} 中安裝 ipykernel：{}"
+
+msgid "Input:"
+msgstr "輸入："
+
+msgid "Install Kernels"
+msgstr "安裝核心"
+
+msgid "Installing ipykernel in {}..."
+msgstr "正在 {} 中安裝 ipykernel..."
+
+msgid "Interrupt"
+msgstr "中斷"
+
+msgid "Interrupt Kernel"
+msgstr "中斷核心"
+
+msgid "Jupyter Kernel Sessions"
+msgstr "Jupyter 核心工作階段"
+
+msgid "Jupyter Kernels"
+msgstr "Jupyter 核心"
+
+msgid "Kernel Docs"
+msgstr "核心文件"
+
+msgid "Kernel error: {}"
+msgstr "核心錯誤：{}"
+
+msgid "Kernel restarting..."
+msgstr "正在重新啟動核心..."
+
+msgid "Kernel shutdown"
+msgstr "核心已關閉"
+
+msgid "Kernel shutting down..."
+msgstr "正在關閉核心..."
+
+msgid "Kernel: {} ({}). Click to change."
+msgstr "核心：{}（{}）。按一下以變更。"
+
+msgid "More options"
+msgstr "更多選項"
+
+msgid "Move cell down"
+msgstr "向下移動儲存格"
+
+msgid "Move cell up"
+msgstr "向上移動儲存格"
+
+msgid "No Jupyter Kernel Sessions"
+msgstr "沒有 Jupyter 核心工作階段"
+
+msgid "No Jupyter Kernels Available"
+msgstr "沒有可用的 Jupyter 核心"
+
+msgid "Open Full Error in Buffer"
+msgstr "在緩衝區中開啟完整錯誤"
+
+msgid "Open in Buffer"
+msgstr "在緩衝區中開啟"
+
+msgid "Python Environments"
+msgstr "Python 環境"
+
+msgid "Queued..."
+msgstr "已排入佇列..."
+
+msgid "REPL Sessions"
+msgstr "REPL 工作階段"
+
+msgid "Recommended"
+msgstr "建議"
+
+msgid "Remote Servers"
+msgstr "遠端伺服器"
+
+msgid "Restart Kernel"
+msgstr "重新啟動核心"
+
+msgid "Restarting"
+msgstr "正在重新啟動"
+
+msgid "Running..."
+msgstr "正在執行..."
+
+msgid "Select Kernel"
+msgstr "選取核心"
+
+msgid "Select a kernel..."
+msgstr "選取核心..."
+
+msgid "Shutdown"
+msgstr "關閉"
+
+msgid "Shutting Down"
+msgstr "正在關閉"
+
+msgid "Starting"
+msgstr "正在啟動"
+
+msgid "This notebook is empty."
+msgstr "此筆記本為空。"
+
+msgid "To run code in a Jupyter kernel, select some code and use the 'repl::Run' command."
+msgstr "若要在 Jupyter 核心中執行程式碼，請選取一些程式碼並使用 'repl::Run' 命令。"
+
+msgid "To start interactively running code in your editor, you need to install and configure Jupyter kernels."
+msgstr "若要在編輯器中以互動方式執行程式碼，需要安裝並設定 Jupyter 核心。"
+
+msgid "Type here and press Enter"
+msgstr "在此輸入並按 Enter"
+
+msgid "Unknown status"
+msgstr "未知狀態"
+
+msgid "WSL Kernels"
+msgstr "WSL 核心"
+
+msgid "ipykernel installed in {}"
+msgstr "ipykernel 已安裝至 {}"
+
+msgid "ipykernel not installed"
+msgstr "尚未安裝 ipykernel"
+
+msgid "{} ({}). Click to change kernel."
+msgstr "{}（{}）。按一下以變更核心。"
+
+msgctxt "kernel status"
+msgid "Shutdown"
+msgstr "關閉"

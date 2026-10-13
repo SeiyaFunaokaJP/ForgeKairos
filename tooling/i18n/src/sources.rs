@@ -216,8 +216,10 @@ pub struct JapaneseLiteral {
     pub in_test: bool,
 }
 
-/// Kana and kanji, and also the Japanese punctuation and full-width forms that UI text uses
-/// without them: `"、"` joining a list, `"「{}」"` quoting a name, `"{reason}。"`.
+/// Kana and Han characters (Chinese uses them too), Hangul, and also the CJK punctuation and
+/// full-width forms that UI text uses without them: `"、"` joining a list, `"「{}」"` quoting a
+/// name, `"{reason}。"`. Languages written in the Latin script cannot be told from English this
+/// way.
 fn contains_japanese_text(text: &str) -> bool {
     contains_japanese(text)
         || text.chars().any(|character| {
@@ -225,6 +227,9 @@ fn contains_japanese_text(text: &str) -> bool {
                 0x3000..=0x303F // CJK symbols and punctuation
                 | 0xFF01..=0xFF65 // Full-width forms and half-width CJK punctuation
                 | 0xFFE0..=0xFFEE
+                | 0x1100..=0x11FF // Hangul jamo
+                | 0x3130..=0x318F // Hangul compatibility jamo
+                | 0xAC00..=0xD7AF // Hangul syllables
             )
         })
 }
@@ -730,6 +735,19 @@ async fn standalone() { check(r"単独"); }
                 ("別".to_string(), 1, true),
             ]
         );
+    }
+
+    #[test]
+    fn chinese_and_korean_literals_are_found_too() {
+        let files = [file(
+            "crates/c/src/c.rs",
+            "fn ui() { show(\"取消\"); show(\"취소\"); show(\"ㅋ\"); show(\"Abbrechen\"); }",
+        )];
+        let found: Vec<String> = japanese_literals(&files)
+            .into_iter()
+            .map(|literal| literal.value)
+            .collect();
+        assert_eq!(found, ["取消", "취소", "ㅋ"]);
     }
 
     #[test]

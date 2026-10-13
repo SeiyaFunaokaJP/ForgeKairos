@@ -176,6 +176,9 @@ msgstr "すべて完了"
 msgid "All Options"
 msgstr "すべてのオプション"
 
+msgid "All Sidebar Thread Metadata"
+msgstr "サイドバーの全スレッドのメタデータ"
+
 msgid "All domains (unrestricted)"
 msgstr "すべてのドメイン (制限なし)"
 
@@ -831,6 +834,9 @@ msgstr "許可リストへの追加に失敗しました: {error}"
 msgid "Failed to authenticate with {} provider"
 msgstr "プロバイダー {} の認証に失敗しました"
 
+msgid "Failed to convert image"
+msgstr "画像を変換できませんでした"
+
 msgid "Failed to decode clipboard content (expected base64)"
 msgstr "クリップボードの内容をデコードできませんでした (base64 が必要です)。"
 
@@ -1169,6 +1175,9 @@ msgstr "モデルが選択されていません"
 msgid "No active native thread to copy"
 msgstr "コピーできるネイティブスレッドがありません。"
 
+msgid "No active thread"
+msgstr "アクティブなスレッドがありません"
+
 msgid "No agents available."
 msgstr "利用できるエージェントはありません。"
 
@@ -1199,6 +1208,9 @@ msgstr "インストール済みのエージェントはありません。"
 msgid "No matches"
 msgstr "一致なし"
 
+msgid "No metadata found for active thread"
+msgstr "アクティブなスレッドのメタデータが見つかりません"
+
 msgid "No model is available from this provider yet. Shows why and what to do."
 msgstr "このプロバイダーから使えるモデルがまだありません。理由と対処をその場で示します。"
 
@@ -1212,7 +1224,7 @@ msgid "No new threads found to import."
 msgstr "インポートできる新しいスレッドはありませんでした。"
 
 msgid "No output available"
-msgstr "設定を取得できませんでした。"
+msgstr "利用できる出力がありません"
 
 msgid "No profiles match your search."
 msgstr "検索条件に一致するプロファイルはありません。"
@@ -1486,6 +1498,9 @@ msgstr "拒否"
 
 msgid "Reject All"
 msgstr "すべて拒否"
+
+msgid "Reload Agent"
+msgstr "エージェントを再読み込み"
 
 msgid "Remove"
 msgstr "削除"
@@ -2052,6 +2067,9 @@ msgstr "この拡張機能の設定はフォームで表せないため、JSON �
 msgid "This internationalized address displays as {decoded_host}. Verify it carefully."
 msgstr "この国際化アドレスは {decoded_host} と表示されます。よく確認してください。"
 
+msgid "This model does not support images yet"
+msgstr "このモデルはまだ画像に対応していません"
+
 msgid "This model does not support tools."
 msgstr "このモデルはツールに対応していません。"
 
@@ -2088,6 +2106,9 @@ msgstr "このスレッドのエージェントには IDE の診断ツールが�
 msgid "This thread's agent is running outside the sandbox"
 msgstr "このスレッドのエージェントはサンドボックスの外で実行中です"
 
+msgid "Thread Metadata: {}"
+msgstr "スレッドのメタデータ: {}"
+
 msgid "Thread Started Outside the Sandbox"
 msgstr "サンドボックスの外で起動したスレッドです"
 
@@ -2096,6 +2117,9 @@ msgstr "スレッドをクリップボードにコピーしました (base64 エ
 
 msgid "Thread loaded from clipboard"
 msgstr "クリップボードからスレッドを読み込みました。"
+
+msgid "Thread metadata store not available"
+msgstr "スレッドのメタデータストアを使用できません"
 
 msgid "Thread reached the token limit"
 msgstr "スレッドがトークン上限に達しました"

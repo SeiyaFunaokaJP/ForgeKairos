@@ -1,0 +1,102 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A Gantt chart title cannot be empty."
+msgstr "甘特圖標題不能是空的。"
+
+msgid "A class diagram relationship label cannot contain %%. Use a different symbol instead."
+msgstr "類別圖的關聯標籤不能包含 %%。請改用其他符號。"
+
+msgid "A pie chart item name cannot be empty or contain `%%`."
+msgstr "圓餅圖項目名稱不能是空的，也不能包含 `%%`。"
+
+msgid "A pie chart title cannot contain `%%`."
+msgstr "圓餅圖標題不能包含 `%%`。"
+
+msgid "A section name cannot be empty."
+msgstr "區段名稱不能是空的。"
+
+msgid "A section with the same name already exists. Sections with the same name are drawn as one, so use a different name."
+msgstr "已存在同名的區段。同名的區段會被繪製為一個，因此請使用其他名稱。"
+
+msgid "A task name cannot be empty, contain `:`, or start with a keyword such as `title` or `section`."
+msgstr "工作名稱不能是空的、不能包含 `:`，也不能以 `title` 或 `section` 等關鍵字開頭。"
+
+msgid "An empty label cannot be edited here. Add text to it in \"Edit Mermaid Diagram\"."
+msgstr "無法在此編輯空白標籤。請在「編輯 Mermaid 圖表」中為其加入文字。"
+
+msgid "An item with the same name already exists. A pie chart does not draw a second item with the same name, so use a different name."
+msgstr "已存在同名的項目。圓餅圖不會繪製第二個同名的項目，因此請使用其他名稱。"
+
+msgid "Code"
+msgstr "程式碼"
+
+msgid "Details"
+msgstr "詳細資料"
+
+msgid "Double-click to edit the text"
+msgstr "按兩下以編輯文字"
+
+msgid "Edit Mermaid Diagram"
+msgstr "編輯 Mermaid 圖表"
+
+msgid "Failed to Load Mermaid Diagram"
+msgstr "載入 Mermaid 圖表失敗"
+
+msgid "Failed to Load: {link_label}"
+msgstr "載入失敗：{link_label}"
+
+msgid "Failed to load mermaid diagram"
+msgstr "載入 Mermaid 圖表失敗"
+
+msgid "Failed to render the Mermaid diagram: {error}"
+msgstr "無法轉譯 Mermaid 圖表：{error}"
+
+msgid "Image failed to load. Open `zed: log` for more details."
+msgstr "影像載入失敗。請開啟 `zed: log` 以取得詳細資料。"
+
+msgid "In a sequence diagram, a leading wrap: or nowrap: is read as a wrapping directive, so the text cannot start with it."
+msgstr "在循序圖中，開頭的 wrap: 或 nowrap: 會被視為換行指示詞，因此文字不能以它開頭。"
+
+msgid "Preview"
+msgstr "預覽"
+
+msgid "Rendering..."
+msgstr "正在轉譯..."
+
+msgid "Reset Zoom"
+msgstr "重設縮放"
+
+msgid "Sequence diagram text cannot be empty. Edit it in \"Edit Mermaid Diagram\"."
+msgstr "循序圖的文字不能是空的。請在「編輯 Mermaid 圖表」中編輯。"
+
+msgid "Several elements share this name or ID, so it cannot be edited here. Fix it in \"Edit Mermaid Diagram\"."
+msgstr "有多個元素使用此名稱或 ID，因此無法在此編輯。請在「編輯 Mermaid 圖表」中修正。"
+
+msgid "The attribute name contains characters that cannot be used. Whitespace, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` and key names such as `PK` are not allowed."
+msgstr "屬性名稱包含無法使用的字元。不允許使用空白字元、`,`、`\"`、`{{`、`}}`、`#`、`%`、`;` 以及 `PK` 等鍵名稱。"
+
+msgid "The source location of this label could not be found."
+msgstr "找不到此標籤在原始碼中的位置。"
+
+msgid "This element shows its ID as is. To change what is shown, give it a description or an alias in \"Edit Mermaid Diagram\"."
+msgstr "此元素直接顯示其 ID。若要變更顯示的內容，請在「編輯 Mermaid 圖表」中為其加上描述或別名。"
+
+msgid "This line's label is shared by several links, so it cannot be edited here."
+msgstr "此線條的標籤由多個連結共用，因此無法在此編輯。"
+
+msgid "Unwrap Content"
+msgstr "取消內容換行"
+
+msgid "Wrap Content"
+msgstr "內容換行"
+
+msgid "Zoom {percentage}%"
+msgstr "縮放 {percentage}%"

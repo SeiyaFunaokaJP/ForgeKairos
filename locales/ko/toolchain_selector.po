@@ -1,0 +1,40 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add"
+msgstr "추가"
+
+msgid "Add Toolchain"
+msgstr "툴체인 추가"
+
+msgid "Add {}"
+msgstr "{} 추가"
+
+msgid "Select"
+msgstr "선택"
+
+msgid "Select Toolchain Path"
+msgstr "툴체인 경로 선택"
+
+msgid "Select a toolchain…"
+msgstr "툴체인 선택…"
+
+msgid "Select a {} for {pretty_path}…"
+msgstr "{pretty_path}의 {} 선택…"
+
+msgid "Select {}"
+msgstr "{} 선택"
+
+msgid "worktree root"
+msgstr "워크트리 루트"
+
+msgctxt "toolchain scope"
+msgid "Scope"
+msgstr "범위"

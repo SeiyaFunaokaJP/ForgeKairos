@@ -504,6 +504,9 @@ msgstr "再起動"
 msgid "Restarts the shell in the same working directory"
 msgstr "同じ作業ディレクトリでシェルを起動し直します"
 
+msgid "Restoring terminals…"
+msgstr "ターミナルを復元中…"
+
 msgid "Run"
 msgstr "実行"
 
@@ -608,6 +611,9 @@ msgstr "ログの記録を開始 (保存先を選ぶ)…"
 
 msgid "Start Logging (Default Location)"
 msgstr "ログの記録を開始 (既定の保存先)"
+
+msgid "Starting terminal…"
+msgstr "ターミナルを起動中…"
 
 msgid "Step {label}: enter a variable name."
 msgstr "ステップ {label}: 変数名を入力してください。"

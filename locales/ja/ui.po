@@ -77,6 +77,9 @@ msgstr "ForgeKairos の更新をインストールしています…"
 msgid "Learn More"
 msgstr "詳細"
 
+msgid "No items"
+msgstr "項目がありません"
+
 msgid "Open Project"
 msgstr "プロジェクトを開く"
 
@@ -104,6 +107,9 @@ msgstr "サーバーを起動しています。"
 msgid "Server is stopped."
 msgstr "サーバーは停止しています。"
 
+msgid "Thread has an Error"
+msgstr "スレッドでエラーが発生しました"
+
 msgid "Up to Date"
 msgstr "最新です"
 
@@ -115,6 +121,9 @@ msgstr "バージョン {version} に更新"
 
 msgid "Waiting for Authorization…"
 msgstr "認証の完了を待っています…"
+
+msgid "Waiting for Confirmation"
+msgstr "確認待ち"
 
 msgid "Waiting for approval."
 msgstr "承認待ちです。"

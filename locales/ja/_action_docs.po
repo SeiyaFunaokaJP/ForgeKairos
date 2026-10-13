@@ -2317,12 +2317,12 @@ msgstr "テキストを、推奨する行の長さに収まるように折り返
 #. Rotates selections or lines backward.
 msgctxt "action documentation"
 msgid "editor::RotateSelectionsBackward"
-msgstr "選択範囲または行の内容を前方へ回転します。"
+msgstr "選択範囲または行の内容を後方へ回転します。"
 
 #. Rotates selections or lines forward.
 msgctxt "action documentation"
 msgid "editor::RotateSelectionsForward"
-msgstr "選択範囲または行の内容を後方へ回転します。"
+msgstr "選択範囲または行の内容を前方へ回転します。"
 
 #. Runs flycheck diagnostics.
 msgctxt "action documentation"
@@ -3764,10 +3764,10 @@ msgid "markdown::CopyAsMarkdown"
 msgstr "選択したテキストを Markdown 形式でクリップボードにコピーします。"
 
 #. Opens the structured editor on the Mermaid flowchart the
-#. cursor is inside. DESIGN.md §5.7
+#. cursor is inside.
 msgctxt "action documentation"
 msgid "markdown::EditMermaid"
-msgstr "カーソルのある Mermaid フローチャートを、構造化エディターで開きます。DESIGN.md §5.7"
+msgstr "カーソルのある Mermaid フローチャートを、構造化エディターで開きます。"
 
 #. Opens the table editor on the pipe table under the cursor, or
 #. on a blank table when the cursor is not inside one.
@@ -3775,10 +3775,10 @@ msgctxt "action documentation"
 msgid "markdown::EditTable"
 msgstr "カーソル位置のパイプテーブルを表エディターで開きます。カーソルが表の中に無ければ、空の表で開きます。"
 
-#. Exports the active Markdown file to a PDF next to it. DESIGN.md §5.3
+#. Exports the active Markdown file to a PDF next to it.
 msgctxt "action documentation"
 msgid "markdown::ExportToPdf"
-msgstr "アクティブな Markdown ファイルを、同じ場所に PDF として書き出します。DESIGN.md §5.3"
+msgstr "アクティブな Markdown ファイルを、同じ場所に PDF として書き出します。"
 
 #. Folds the body of every Markdown heading, at every level.
 msgctxt "action documentation"

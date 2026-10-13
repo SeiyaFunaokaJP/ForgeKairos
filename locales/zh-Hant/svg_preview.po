@@ -1,0 +1,21 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Failed to load SVG image"
+msgstr "無法載入 SVG 影像"
+
+msgid "No SVG file selected"
+msgstr "未選取 SVG 檔案"
+
+msgid "Preview {}"
+msgstr "預覽 {}"
+
+msgid "SVG Preview"
+msgstr "SVG 預覽"

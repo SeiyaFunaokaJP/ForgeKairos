@@ -1,0 +1,272 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Actions"
+msgstr "Acciones"
+
+msgid "Add your feedback…"
+msgstr "Agregue sus comentarios…"
+
+msgid "All Files"
+msgstr "Todos los archivos"
+
+msgid "Bad Prediction"
+msgstr "Predicción incorrecta"
+
+msgid "Check your payment status or contact us at billing-support@zed.dev to continue using this feature."
+msgstr "Compruebe el estado del pago o póngase en contacto con nosotros en billing-support@zed.dev para seguir usando esta función."
+
+msgid "Choose a Plan"
+msgstr "Elegir un plan"
+
+msgid "Configure Excluded Files"
+msgstr "Configurar archivos excluidos"
+
+msgid "Configure Providers"
+msgstr "Configurar proveedores"
+
+msgid "Configure a Provider"
+msgstr "Configurar un proveedor"
+
+msgid "Copilot Edit Predictions can't be started: {}"
+msgstr "No se puede iniciar Copilot Edit Predictions: {}"
+
+msgid "Copilot: Next Edit Suggestions"
+msgstr "Copilot: próximas sugerencias de edición"
+
+msgid "Default"
+msgstr "Predeterminado"
+
+msgid "Disable Copilot Edit Predictions"
+msgstr "Deshabilitar Copilot Edit Predictions"
+
+msgid "Disabled For This File"
+msgstr "Deshabilitado para este archivo"
+
+msgid "Display Modes"
+msgstr "Modos de visualización"
+
+msgid "Display predictions inline only when holding a modifier key ({} by default)."
+msgstr "Muestra las predicciones en línea solo mientras se mantiene presionada una tecla modificadora ({} de forma predeterminada)."
+
+msgid "Display predictions inline when there are no language server completions available."
+msgstr "Muestra las predicciones en línea cuando no hay autocompletados del servidor de lenguaje disponibles."
+
+msgid "Edit Prediction"
+msgstr "Predicción de edición"
+
+msgid "Edit Prediction Context"
+msgstr "Contexto de la predicción de edición"
+
+msgid "Edit Predictions"
+msgstr "Predicciones de edición"
+
+msgid "Edit predictions are disabled for this organization."
+msgstr "Las predicciones de edición están deshabilitadas para esta organización."
+
+msgid "Edit predictions are disabled for {}"
+msgstr "Las predicciones de edición están deshabilitadas para {}"
+
+msgid "Edits Available"
+msgstr "Ediciones disponibles"
+
+msgid "Enable to Use"
+msgstr "Habilitar para usar"
+
+msgid "Expected Patch"
+msgstr "Parche esperado"
+
+msgid "Experiment"
+msgstr "Experimento"
+
+msgid "Explain what's bad about it before reporting it"
+msgstr "Explique qué tiene de malo antes de notificarlo"
+
+msgid "Explain why this completion is good or bad. If it's negative, describe what you expected instead."
+msgstr "Explique por qué este autocompletado es bueno o malo. Si es negativo, describa lo que esperaba en su lugar."
+
+msgid "External AI warning not accepted"
+msgstr "No se aceptó la advertencia sobre IA externa"
+
+msgid "Free tier limit reached"
+msgstr "Límite del plan gratuito alcanzado"
+
+msgid "From most recent to oldest"
+msgstr "De más reciente a más antiguo"
+
+msgid "GitHub Copilot Edit Predictions"
+msgstr "Predicciones de edición de GitHub Copilot"
+
+msgid "Go to Copilot Settings"
+msgstr "Ir a la configuración de Copilot"
+
+msgid "Go to next run"
+msgstr "Ir a la ejecución siguiente"
+
+msgid "Go to previous run"
+msgstr "Ir a la ejecución anterior"
+
+msgid "Good Prediction"
+msgstr "Buena predicción"
+
+msgid "Help us improve our open dataset model by sharing data from open source repositories. Zed must detect a license file in your repo for this setting to take effect. Files with sensitive data and secrets are excluded by default."
+msgstr "Ayúdenos a mejorar nuestro modelo de conjunto de datos abierto compartiendo datos de repositorios de código abierto. ForgeKairos debe detectar un archivo de licencia en su repositorio para que esta configuración tenga efecto. Los archivos con datos sensibles y secretos se excluyen de forma predeterminada."
+
+msgid "Issue"
+msgstr "Problema"
+
+msgid "Learn More"
+msgstr "Más información"
+
+msgid "Mercury free tier limit reached"
+msgstr "Se alcanzó el límite del nivel gratuito de Mercury"
+
+msgid "Missing API key for Codestral"
+msgstr "Falta la clave de API para Codestral"
+
+msgid "Missing API key for Mercury"
+msgstr "Falta la clave de API de Mercury"
+
+msgid "No Edits Produced"
+msgstr "No se produjeron ediciones"
+
+msgid "No active completion"
+msgstr "No hay ningún autocompletado activo"
+
+msgid "No completions yet. Use the editor to generate some, and make sure to rate them!"
+msgstr "Todavía no hay autocompletados. Use el editor para generar algunos, ¡y no olvide valorarlos!"
+
+msgid "No data captured."
+msgstr "No se capturaron datos."
+
+msgid "No edits produced."
+msgstr "No se produjeron ediciones."
+
+msgid "No retrieval runs yet"
+msgstr "Aún no hay ejecuciones de recuperación"
+
+msgid "Ollama model not configured — configure a model before use"
+msgstr "Modelo de Ollama no configurado — configure un modelo antes de usarlo"
+
+msgid "Open your settings to add sensitive paths for which Zed will never predict edits."
+msgstr "Abra su configuración para agregar rutas confidenciales para las que ForgeKairos nunca predecirá ediciones."
+
+msgid "Powered by Codestral"
+msgstr "Con tecnología de Codestral"
+
+msgid "Powered by Mercury"
+msgstr "Con tecnología de Mercury"
+
+msgid "Powered by Ollama ({})"
+msgstr "Con tecnología de Ollama ({})"
+
+msgid "Powered by Zeta"
+msgstr "Con tecnología de Zeta"
+
+msgid "Predict Edit at Cursor"
+msgstr "Predecir edición en el cursor"
+
+msgid "Predicted Patch"
+msgstr "Parche predicho"
+
+msgid "Privacy"
+msgstr "Privacidad"
+
+msgid "Project identified as open source, and you're sharing data."
+msgstr "El proyecto se identificó como de código abierto y se están compartiendo datos."
+
+msgid "Project identified as open source, but you're not sharing data."
+msgstr "El proyecto se identificó como de código abierto, pero no se están compartiendo datos."
+
+msgid "Project not identified as open source, and setting turned off."
+msgstr "El proyecto no se identificó como de código abierto y la opción está desactivada."
+
+msgid "Project not identified as open source. No data captured."
+msgstr "El proyecto no se identificó como de código abierto. No se capturan datos."
+
+msgid "Providers"
+msgstr "Proveedores"
+
+msgid "Rate Predictions"
+msgstr "Valorar predicciones"
+
+msgid "Rated Prediction"
+msgstr "Predicción valorada"
+
+msgid "Rated completion."
+msgstr "Autocompletado valorado."
+
+msgid "Recorded Events & Input"
+msgstr "Eventos y entrada registrados"
+
+msgid "Reinstall Copilot Edit Predictions"
+msgstr "Reinstalar Copilot Edit Predictions"
+
+msgid "Show Edit Predictions For"
+msgstr "Mostrar predicciones de edición para"
+
+msgid "Sign In & Start Using"
+msgstr "Iniciar sesión y empezar a usar"
+
+msgid "Sign In Or Configure a Provider"
+msgstr "Iniciar sesión o configurar un proveedor"
+
+msgid "Sign In to Copilot Edit Predictions"
+msgstr "Iniciar sesión en Copilot Edit Predictions"
+
+msgid "Sign Out"
+msgstr "Cerrar sesión"
+
+msgid "Subscribe to increase your limit"
+msgstr "Suscribirse para aumentar el límite"
+
+msgid "Suggested Edits"
+msgstr "Ediciones sugeridas"
+
+msgid "This Buffer"
+msgstr "Este búfer"
+
+msgid "This file is excluded."
+msgstr "Este archivo está excluido."
+
+msgid "Training Data Collection"
+msgstr "Recopilación de datos de entrenamiento"
+
+msgid "Upgrade to Zed Pro or contact us."
+msgstr "Cambiar a Zed Pro o contactar con nosotros."
+
+msgid "Upgrade to a paid plan to continue using the service"
+msgstr "Cambiar a un plan de pago para seguir usando el servicio"
+
+msgid "Usage"
+msgstr "Uso"
+
+msgid "View Docs"
+msgstr "Ver documentación"
+
+msgid "You get 2,000 accepted suggestions at every keystroke for free, powered by Zeta, our open-source, open-data model"
+msgstr "Obtiene gratis 2000 sugerencias aceptadas en cada pulsación de tecla, con la tecnología de Zeta, nuestro modelo de código y datos abiertos"
+
+msgid "You have an outstanding invoice"
+msgstr "Tiene una factura pendiente"
+
+msgid "Your GitHub account is less than 30 days old."
+msgstr "Su cuenta de GitHub tiene menos de 30 días."
+
+msgid "{tooltip_text} • Trigger: {trigger_tooltip}"
+msgstr "{tooltip_text} • Activador: {trigger_tooltip}"
+
+msgctxt "edit prediction display mode"
+msgid "Eager"
+msgstr "Inmediato"
+
+msgctxt "edit prediction display mode"
+msgid "Subtle"
+msgstr "Discreto"

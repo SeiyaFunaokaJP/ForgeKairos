@@ -1,0 +1,108 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "A worktree with this name already exists"
+msgstr "Ya existe un worktree con este nombre"
+
+msgid "Automate Setup"
+msgstr "Automatizar configuración"
+
+msgid "Automate Worktree Setup"
+msgstr "Automatizar configuración del worktree"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Cannot create a named worktree in a project with multiple repositories"
+msgstr "No se puede crear un worktree con nombre en un proyecto con varios repositorios"
+
+msgid "Create"
+msgstr "Crear"
+
+msgid "Create \"{name}\" based on {branch_label}"
+msgstr "Crear \"{name}\" basado en {branch_label}"
+
+msgid "Create new worktree based on {branch_label}"
+msgstr "Crear nuevo worktree basado en {branch_label}"
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Delete Worktree"
+msgstr "Eliminar worktree"
+
+msgid "Deleting…"
+msgstr "Eliminando…"
+
+msgid "Failed to connect"
+msgstr "No se pudo conectar"
+
+msgid "Force Delete"
+msgstr "Forzar eliminación"
+
+msgid "Force Delete Worktree"
+msgstr "Forzar eliminación del worktree"
+
+msgid "Hold {} to force delete"
+msgstr "Mantenga presionado {} para forzar la eliminación"
+
+msgid "Learn more"
+msgstr "Más información"
+
+msgid "Open"
+msgstr "Abrir"
+
+msgid "Open in New Window"
+msgstr "Abrir en ventana nueva"
+
+msgid "Output from git {operation}"
+msgstr "Salida de git {operation}"
+
+msgid "Remove Worktree from Window"
+msgstr "Quitar worktree de la ventana"
+
+msgid "Requires a Git repository in the project"
+msgstr "Requiere un repositorio Git en el proyecto"
+
+msgid "Select or type to create a worktree…"
+msgstr "Seleccione o escriba para crear un worktree…"
+
+msgid "Show Error Logs"
+msgstr "Mostrar registros de errores"
+
+msgid "Some project folders are not git repositories. They were included as-is without creating a worktree."
+msgstr "Algunas carpetas del proyecto no son repositorios Git. Se incluyeron tal cual, sin crear un worktree."
+
+msgid "This Window"
+msgstr "Esta ventana"
+
+msgid "Use local {}"
+msgstr "Usar la copia local de {}"
+
+msgid "View Log"
+msgstr "Ver registro"
+
+msgid "Worktree \"{display_name}\" contains modified or untracked files. Force delete it?"
+msgstr "El worktree \"{display_name}\" contiene archivos modificados o sin seguimiento. ¿Forzar su eliminación?"
+
+msgid "Worktree creation is not supported in collaborative projects"
+msgstr "La creación de worktrees no es compatible con proyectos colaborativos"
+
+msgid "You may need to configure git for Github."
+msgstr "Puede que sea necesario configurar Git para GitHub."
+
+msgid "current branches"
+msgstr "ramas actuales"
+
+msgid "git fetch failed for {}"
+msgstr "git fetch falló para {}"
+
+msgid "git {} failed"
+msgstr "git {} falló"

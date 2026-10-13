@@ -1028,13 +1028,13 @@ pub mod preview {
                 OpenPreview,
                 /// Opens a markdown preview in a split pane.
                 OpenPreviewToTheSide,
-                /// Exports the active Markdown file to a PDF next to it. DESIGN.md §5.3
+                /// Exports the active Markdown file to a PDF next to it.
                 ExportToPdf,
                 /// Opens the table editor on the pipe table under the cursor, or
                 /// on a blank table when the cursor is not inside one.
                 EditTable,
                 /// Opens the structured editor on the Mermaid flowchart the
-                /// cursor is inside. DESIGN.md §5.7
+                /// cursor is inside.
                 EditMermaid,
             ]
         );

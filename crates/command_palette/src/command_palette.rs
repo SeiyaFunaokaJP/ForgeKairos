@@ -492,9 +492,9 @@ impl CommandPaletteDelegate {
             })
             .child(
                 ButtonLike::new(("remove-command-history", ix))
-                    .aria_label("Remove from Command History")
+                    .aria_label(i18n::t!("Remove from Command History"))
                     .tooltip(Tooltip::for_action_title(
-                        "Remove from Command History",
+                        i18n::t!("Remove from Command History"),
                         &RemoveSelected,
                     ))
                     .child(
@@ -1134,6 +1134,16 @@ mod tests {
         (
             "agent::ToggleFastMode",
             "エージェント: ファストモードの切り替え",
+        ),
+        // The old labels had the directions swapped: "Forward" rotates each
+        // selection's text into the next selection, which is 前方 as in vim::PushFindForward.
+        (
+            "editor::RotateSelectionsBackward",
+            "選択: 選択範囲の内容を後方へ回転",
+        ),
+        (
+            "editor::RotateSelectionsForward",
+            "選択: 選択範囲の内容を前方へ回転",
         ),
         // The brand layer names this application instead of upstream.
         ("zed::About", "ForgeKairos について"),

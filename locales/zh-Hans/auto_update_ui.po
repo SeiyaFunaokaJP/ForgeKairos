@@ -1,0 +1,36 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Built on DeltaDB, so your threads and code stay in sync across machines and teammates."
+msgstr "基于 DeltaDB 构建，你的会话和代码可在多台设备与队友之间保持同步。"
+
+msgid "Introducing Delta"
+msgstr "全新 Delta"
+
+msgid "Learn More"
+msgstr "了解详情"
+
+msgid "Made by the Zed team, with the same quality and performance"
+msgstr "由 Zed 团队打造，拥有同样的品质与性能"
+
+msgid "Pick up your thread on the web or your phone, without committing or pushing"
+msgstr "在网页或手机上继续你的会话，无需提交或推送"
+
+msgid "Try Delta"
+msgstr "试用 Delta"
+
+msgid "Updated to {app_name} {}"
+msgstr "已更新至 {app_name} {}"
+
+msgid "View Release Notes"
+msgstr "查看发行说明"
+
+msgid "Work with teammates and agents in the same thread, live or later"
+msgstr "与队友和智能体在同一会话中协作，实时或事后均可"

@@ -74,8 +74,8 @@ msgstr "(省略可)"
 msgid "(unnamed)"
 msgstr "(名前なし)"
 
-msgid "// Zed egress allowlist (.forgekairos-docs/DESIGN.md §4)\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
-msgstr "// ForgeKairos 外部通信の許可リスト (.forgekairos-docs/DESIGN.md §4)\n//\n// AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・\n// 外部エージェントのプロセス) は、ここに書いたホストだけが許可されます。\n// 言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。\n// 127.0.0.1 / ::1 / localhost は書かなくても常に許可されます。\n// // コメントと末尾のカンマを書けます。変更は保存した時点で反映されます。\n"
+msgid "// Zed egress allowlist\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// ForgeKairos 外部通信の許可リスト\n//\n// AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・\n// 外部エージェントのプロセス) は、ここに書いたホストだけが許可されます。\n// 言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。\n// 127.0.0.1 / ::1 / localhost は書かなくても常に許可されます。\n// // コメントと末尾のカンマを書けます。変更は保存した時点で反映されます。\n"
 
 msgid "127.0.0.1 / ::1 / localhost are always allowed without being registered, so local LLM servers (such as Ollama) work even with an empty allowlist. A small number of hosts, such as the external agent (ACP) registry, are allowed by built-in rules. Every redirect target is checked the same way, one hop at a time."
 msgstr "127.0.0.1 / ::1 / localhost は登録しなくても常に許可されるため、ローカルの LLM サーバー (Ollama など) は許可リストが空のままでも利用できます。外部エージェント (ACP) のレジストリなど、ごく一部のホストは組み込みで許可済みです。リダイレクト先も 1 ホップごとに同じ判定を受けます。"
@@ -1005,6 +1005,9 @@ msgstr "テンプレート「{title}」を読み込みました。「入力し�
 msgid "Loading agent skill instructions"
 msgstr "エージェントのスキル指示の読み込み"
 
+msgid "Loading models…"
+msgstr "モデルを読み込み中…"
+
 msgid "Loading pages in AI tabs of the built-in browser"
 msgstr "内蔵ブラウザーの AI タブでページを読み込む操作"
 
@@ -1136,6 +1139,9 @@ msgstr "グローバルなスキルはインストールされていません。
 
 msgid "No hosts configured (everything except loopback is denied)"
 msgstr "設定されていません (ループバック以外はすべて拒否されます)"
+
+msgid "No models found. Check your Ollama server URL."
+msgstr "モデルが見つかりません。Ollama サーバーの URL を確認してください。"
 
 msgid "No new models were found to add"
 msgstr "追加できる新しいモデルはありませんでした"

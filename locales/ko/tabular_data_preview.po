@@ -1,0 +1,543 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " ({count} row hidden)"
+msgid_plural " ({count} rows hidden)"
+msgstr[0] " (행 {count}개 숨김)"
+
+msgid "(Blank)"
+msgstr "(공백)"
+
+msgid "A single cell is compared against the clipboard, but the clipboard is empty (select several ranges with Ctrl, or two or more columns or rows, to compare within them)"
+msgstr "단일 셀은 클립보드와 비교하지만 클립보드가 비어 있습니다 (Ctrl로 여러 범위를 선택하거나 두 개 이상의 열 또는 행을 선택하면 그 안에서 비교합니다)"
+
+msgid "A-Z, then Count"
+msgstr "A-Z 순, 그다음 개수순"
+
+msgid "Add Column"
+msgstr "열 추가"
+
+msgid "Add Row"
+msgstr "행 추가"
+
+msgid "Add a column at the end"
+msgstr "끝에 열 추가"
+
+msgid "Add a row at the end"
+msgstr "끝에 행 추가"
+
+msgid "Alt+Enter for a line break in a cell"
+msgstr "셀 안에서 줄 바꿈하려면 Alt+Enter"
+
+msgid "Begins With"
+msgstr "시작 문자"
+
+msgid "Blank"
+msgstr "공백"
+
+msgid "Cell Comparison ({} ↔ {})"
+msgstr "셀 비교 ({} ↔ {})"
+
+msgid "Center"
+msgstr "가운데"
+
+msgid "Choose how filter values are sorted in the filter menu"
+msgstr "필터 메뉴에서 필터 값이 정렬되는 방식을 선택합니다"
+
+msgid "Choose vertical text alignment within cells"
+msgstr "셀 내 세로 텍스트 정렬을 선택합니다"
+
+msgid "Choose what to compare on this side"
+msgstr "이쪽에서 비교할 대상 선택"
+
+msgid "Clear Colors"
+msgstr "색 지우기"
+
+msgid "Clear Contents"
+msgstr "내용 지우기"
+
+msgid "Clear Filters"
+msgstr "필터 지우기"
+
+msgid "Clear Second"
+msgstr "두 번째 지우기"
+
+msgid "Clear Selection Contents"
+msgstr "선택 영역 내용 지우기"
+
+msgid "Clear Sort"
+msgstr "정렬 해제"
+
+msgid "Clears the filters of every column. Filter a single column from the ▾ in its heading"
+msgstr "모든 열의 필터를 지웁니다. 열 하나만 필터링하려면 머리글의 ▾를 사용하세요"
+
+msgid "Clears this column's filters"
+msgstr "이 열의 필터를 지웁니다"
+
+msgid "Clipboard"
+msgstr "클립보드"
+
+msgid "Color"
+msgstr "색"
+
+msgid "Colors aren't saved for this file"
+msgstr "이 파일의 색은 저장되지 않습니다"
+
+msgid "Column {label}"
+msgstr "열 {label}"
+
+msgid "Columns"
+msgstr "열"
+
+msgid "Compare"
+msgstr "비교"
+
+msgid "Compare Again"
+msgstr "다시 비교"
+
+msgid "Compare Selected Cells"
+msgstr "선택한 셀 비교"
+
+msgid "Compare this table with another version or another file"
+msgstr "이 표를 다른 버전이나 다른 파일과 비교"
+
+msgid "Compare with File…"
+msgstr "파일과 비교…"
+
+msgid "Compare with HEAD"
+msgstr "HEAD와 비교"
+
+msgid "Comparing…"
+msgstr "비교 중…"
+
+msgid "Condition: {}"
+msgstr "조건: {}"
+
+msgid "Contains"
+msgstr "포함"
+
+msgid "Copy"
+msgstr "복사"
+
+msgid "Couldn't read the chosen file"
+msgstr "선택한 파일을 읽지 못했습니다"
+
+msgid "Count, then A-Z"
+msgstr "개수순, 그다음 A-Z 순"
+
+msgid "Creates the first row"
+msgstr "첫 번째 행을 만듭니다"
+
+msgid "Cut"
+msgstr "잘라내기"
+
+msgid "Delete Columns"
+msgstr "열 삭제"
+
+msgid "Delete Rows"
+msgstr "행 삭제"
+
+msgid "Delete Selected Columns"
+msgstr "선택한 열 삭제"
+
+msgid "Delete Selected Rows"
+msgstr "선택한 행 삭제"
+
+msgid "Dev-only section used for debugging purposes.\nWill be removed on public release of the tabular data preview feature"
+msgstr "디버깅 용도로 사용하는 개발 전용 섹션입니다.\n표 형식 데이터 미리 보기 기능이 공개되면 제거됩니다"
+
+msgid "Dev-only: Rendering Mode"
+msgstr "개발 전용: 렌더링 모드"
+
+msgid "Diff"
+msgstr "Diff"
+
+msgid "Diff of {} and {}"
+msgstr "{}과(와) {}의 Diff"
+
+msgid "Display multiline rows"
+msgstr "행을 여러 줄로 표시"
+
+msgid "Does Not Contain"
+msgstr "포함하지 않음"
+
+msgid "Ends With"
+msgstr "끝 문자"
+
+msgid "Equals"
+msgstr "같음"
+
+msgid "Fill Color"
+msgstr "채우기 색"
+
+msgid "Filter Sort"
+msgstr "필터 정렬"
+
+msgid "Filter and sort menu (Alt+↓)"
+msgstr "필터 및 정렬 메뉴 (Alt+↓)"
+
+msgid "Filtered by the chosen values. Click to change"
+msgstr "선택한 값으로 필터링됨. 변경하려면 클릭"
+
+msgid "Filtering by this condition. Click to clear"
+msgstr "이 조건으로 필터링 중. 지우려면 클릭"
+
+msgid "Filtering: {}. Click to change"
+msgstr "필터링 중: {}. 변경하려면 클릭"
+
+msgid "Filters to only the values listed now (use it together with the search)"
+msgstr "지금 목록에 표시된 값만으로 필터링합니다 (검색과 함께 사용하세요)"
+
+msgid "Filter…"
+msgstr "필터…"
+
+msgid "First Row Is Header"
+msgstr "첫 번째 행이 머리글"
+
+msgid "Hidden by other filters"
+msgstr "다른 필터에 의해 숨겨짐"
+
+msgid "Insert a column here"
+msgstr "여기에 열 삽입"
+
+msgid "Insert a row here"
+msgstr "여기에 행 삽입"
+
+msgid "Joins the first condition with \"{}\" to show {}"
+msgstr "첫 번째 조건과 \"{}\"(으)로 연결하여 {}을(를) 표시합니다"
+
+msgid "Joins the two conditions with \"{}\""
+msgstr "두 조건을 \"{}\"(으)로 연결합니다"
+
+msgid "Loading…"
+msgstr "로드 중…"
+
+msgid "Makes the next condition you press the second, joined with \"{}\""
+msgstr "다음에 누르는 조건을 \"{}\"(으)로 연결된 두 번째 조건으로 만듭니다"
+
+msgid "Next Difference"
+msgstr "다음 차이"
+
+msgid "No differences"
+msgstr "차이 없음"
+
+msgid "No matching values. The conditions below can still use this text"
+msgstr "일치하는 값이 없습니다. 아래 조건에서는 이 텍스트를 계속 사용할 수 있습니다"
+
+msgid "Not Blank"
+msgstr "공백 아님"
+
+msgid "Not sorted. Click to sort ascending"
+msgstr "정렬되지 않음. 오름차순으로 정렬하려면 클릭"
+
+msgid "Nothing to compare"
+msgstr "비교할 대상이 없습니다"
+
+msgid "Only the first {} rows were compared"
+msgstr "처음 {}개 행만 비교했습니다"
+
+msgid "Open Text Beside"
+msgstr "옆에 텍스트 열기"
+
+msgid "Opens the underlying text in the adjacent pane"
+msgstr "원본 텍스트를 인접한 분할 영역에서 엽니다"
+
+msgid "Paste"
+msgstr "붙여넣기"
+
+msgid "Pick values, or filter with the conditions below"
+msgstr "값을 선택하거나 아래 조건으로 필터링하세요"
+
+msgid "Previous Difference"
+msgstr "이전 차이"
+
+msgid "Reads both sides again and compares them"
+msgstr "양쪽을 다시 읽어 비교합니다"
+
+msgid "Removes the second condition and filters by the first one only"
+msgstr "두 번째 조건을 제거하고 첫 번째 조건으로만 필터링합니다"
+
+msgid "Restored the previous filters"
+msgstr "이전 필터를 복원했습니다"
+
+msgid "Restored the previous filters and sorting"
+msgstr "이전 필터와 정렬을 복원했습니다"
+
+msgid "Restored the previous sorting"
+msgstr "이전 정렬을 복원했습니다"
+
+msgid "Row {number}"
+msgstr "행 {number}"
+
+msgid "Row {}"
+msgstr "행 {}"
+
+msgid "Rows"
+msgstr "행"
+
+msgid "Rows can't be inserted above the header row"
+msgstr "머리글 행 위에는 행을 삽입할 수 없습니다"
+
+msgid "Search {} values, or type text for a condition"
+msgstr "값 {}개 검색 또는 조건 텍스트 입력"
+
+msgid "Second Condition"
+msgstr "두 번째 조건"
+
+msgid "Select All"
+msgstr "모두 선택"
+
+msgid "Select All Cells"
+msgstr "모든 셀 선택"
+
+msgid "Show Only Rows with Differences"
+msgstr "차이가 있는 행만 표시"
+
+msgid "Show cell positions"
+msgstr "셀 위치 표시"
+
+msgid "Show perf metrics"
+msgstr "성능 지표 표시"
+
+msgid "Showing file line numbers.\nClick to show sequential row numbers."
+msgstr "파일 줄 번호를 표시 중입니다.\n순차적인 행 번호를 표시하려면 클릭하세요."
+
+msgid "Showing sequential row numbers.\nClick to show file line numbers."
+msgstr "순차적인 행 번호를 표시 중입니다.\n파일 줄 번호를 표시하려면 클릭하세요."
+
+msgid "Shows only {kept}"
+msgstr "{kept}만 표시합니다"
+
+msgid "Sort Ascending"
+msgstr "오름차순 정렬"
+
+msgid "Sort Descending"
+msgstr "내림차순 정렬"
+
+msgid "Sorted ascending. Click to sort descending"
+msgstr "오름차순으로 정렬됨. 내림차순으로 정렬하려면 클릭"
+
+msgid "Sorted descending. Click to clear"
+msgstr "내림차순으로 정렬됨. 해제하려면 클릭"
+
+msgid "Table Settings"
+msgstr "표 설정"
+
+msgid "Text Alignment"
+msgstr "텍스트 정렬"
+
+msgid "That makes {count} things to compare. Select again so that there are at most {MAX_CELL_CANDIDATES} (the candidates are the ranges selected with Ctrl, the rows selected by their numbers, the columns when two or more are selected, or the cells of a single column)"
+msgstr "비교할 대상이 {count}개가 됩니다. 최대 {MAX_CELL_CANDIDATES}개가 되도록 다시 선택하세요 (후보는 Ctrl로 선택한 범위, 행 번호로 선택한 행, 두 개 이상 선택한 경우의 열, 또는 단일 열의 셀입니다)"
+
+msgid "The added row is hidden by the filters"
+msgstr "추가한 행이 필터에 의해 숨겨졌습니다"
+
+msgid "The candidates add up to {} cells. Comparing three or more is limited to {} cells (select a smaller range, or only two columns, two rows or two ranges to compare)"
+msgstr "후보가 모두 {}개 셀입니다. 세 개 이상 비교할 때는 {}개 셀로 제한됩니다 (더 작은 범위를 선택하거나 비교할 두 열, 두 행 또는 두 범위만 선택하세요)"
+
+msgid "The next condition you press becomes the second, joined with \"{}\". Press again to cancel"
+msgstr "다음에 누르는 조건이 \"{}\"(으)로 연결된 두 번째 조건이 됩니다. 취소하려면 다시 누르세요"
+
+msgid "The original table's tab is closed, so this can't be redone"
+msgstr "원래 표의 탭이 닫혔으므로 다시 실행할 수 없습니다"
+
+msgid "The original table's tab is closed, so this comparison can't be redone"
+msgstr "원래 표의 탭이 닫혔으므로 이 비교를 다시 실행할 수 없습니다"
+
+msgid "The selection is too large (up to {limit} cells) to set colors"
+msgstr "선택 영역이 너무 커서(최대 {limit}개 셀) 색을 설정할 수 없습니다"
+
+msgid "The selection is too large (up to {limit} cells). Open the text beside the grid to edit it"
+msgstr "선택 영역이 너무 큽니다 (최대 {limit}개 셀). 편집하려면 표 옆에 텍스트를 여세요"
+
+msgid "This file is empty. Typing in a cell creates the first row"
+msgstr "이 파일은 비어 있습니다. 셀에 입력하면 첫 번째 행이 만들어집니다"
+
+msgid "This file isn't tracked by git or has never been committed"
+msgstr "이 파일은 Git에서 추적되지 않거나 한 번도 커밋되지 않았습니다"
+
+msgid "This file no longer exists in {} (showing the last contents that could be read)"
+msgstr "이 파일이 더 이상 {}에 없습니다 (마지막으로 읽을 수 있었던 내용을 표시 중)"
+
+msgid "This operation can't be performed on multiple selections."
+msgstr "다중 선택 영역에는 이 작업을 수행할 수 없습니다."
+
+msgid "Too many matches; only the first 100,000 are included"
+msgstr "일치 항목이 너무 많습니다. 처음 100,000개만 포함됩니다"
+
+msgid "Top"
+msgstr "위쪽"
+
+msgid "Type in the search box, then press \"{}\""
+msgstr "검색 상자에 입력한 후 \"{}\"을(를) 누르세요"
+
+msgid "Uniform Height"
+msgstr "균일한 높이"
+
+msgid "Untitled"
+msgstr "제목 없음"
+
+msgid "Use First Row as Header"
+msgstr "첫 번째 행을 머리글로 사용"
+
+msgid "Used as the second condition. Click to clear"
+msgstr "두 번째 조건으로 사용 중. 지우려면 클릭"
+
+msgid "Variable Height"
+msgstr "가변 높이"
+
+msgid "When enabled, row height grows to show all content. When disabled, only the first line is visible — hover a cell to see the rest."
+msgstr "활성화하면 행 높이가 늘어나 모든 내용을 표시합니다. 비활성화하면 첫 줄만 표시됩니다 — 나머지를 보려면 셀 위에 마우스를 올리세요."
+
+msgid "When off, the first row is treated as data too"
+msgstr "끄면 첫 번째 행도 데이터로 처리합니다"
+
+msgid "begins with \"{needle}\""
+msgstr "\"{needle}\"(으)로 시작하는"
+
+msgid "contains \"{needle}\""
+msgstr "\"{needle}\"을(를) 포함하는"
+
+msgid "does not contain \"{needle}\""
+msgstr "\"{needle}\"을(를) 포함하지 않는"
+
+msgid "ends with \"{needle}\""
+msgstr "\"{needle}\"(으)로 끝나는"
+
+msgid "equals \"{needle}\""
+msgstr "\"{needle}\"과(와) 같은"
+
+msgid "is blank"
+msgstr "비어 있는"
+
+msgid "is not blank"
+msgstr "비어 있지 않은"
+
+msgid "rows where the cell {}"
+msgstr "셀이 {} 행"
+
+msgid "rows with blank cells"
+msgstr "빈 셀이 있는 행"
+
+msgid "rows with non-blank cells"
+msgstr "비어 있지 않은 셀이 있는 행"
+
+msgid "{count} cell wasn't replaced because its content had changed"
+msgid_plural "{count} cells weren't replaced because their content had changed"
+msgstr[0] "셀 {count}개는 내용이 변경되어 바꾸지 않았습니다"
+
+msgid "{count} column"
+msgid_plural "{count} columns"
+msgstr[0] "{count}열"
+
+msgid "{count} difference ({} added / {} removed / {} changed)"
+msgid_plural "{count} differences ({} added / {} removed / {} changed)"
+msgstr[0] "차이 {count}개 (추가 {} / 제거 {} / 변경 {})"
+
+msgid "{count} row"
+msgid_plural "{count} rows"
+msgstr[0] "{count}행"
+
+msgid "{selected_rows} of {count} row selected"
+msgid_plural "{selected_rows} of {count} rows selected"
+msgstr[0] "{count}행 중 {selected_rows}행 선택됨"
+
+msgid "{shown_rows} of {count} row"
+msgid_plural "{shown_rows} of {count} rows"
+msgstr[0] "{shown_rows}/{count}행"
+
+msgid "{} (read at {})"
+msgstr "{} ({}에 읽음)"
+
+msgid "{} to switch this tab instead"
+msgstr "대신 이 탭을 전환하려면 {}"
+
+msgid "{} wasn't found (showing the last contents that could be read)"
+msgstr "{}을(를) 찾을 수 없습니다 (마지막으로 읽을 수 있었던 내용을 표시 중)"
+
+msgctxt "cell color"
+msgid "Blue"
+msgstr "파랑"
+
+msgctxt "cell color"
+msgid "Gray"
+msgstr "회색"
+
+msgctxt "cell color"
+msgid "Green"
+msgstr "초록"
+
+msgctxt "cell color"
+msgid "None"
+msgstr "없음"
+
+msgctxt "cell color"
+msgid "Orange"
+msgstr "주황"
+
+msgctxt "cell color"
+msgid "Purple"
+msgstr "보라"
+
+msgctxt "cell color"
+msgid "Red"
+msgstr "빨강"
+
+msgctxt "cell color"
+msgid "Text Color"
+msgstr "글자 색"
+
+msgctxt "cell color"
+msgid "Yellow"
+msgstr "노랑"
+
+msgctxt "table diff"
+msgid "Current"
+msgstr "현재"
+
+msgctxt "table diff"
+msgid "{current} of {total}"
+msgstr "{current}/{total}"
+
+msgctxt "table filter"
+msgid "And"
+msgstr "그리고"
+
+msgctxt "table filter"
+msgid "Clear All"
+msgstr "모두 지우기"
+
+msgctxt "table filter"
+msgid "Or"
+msgstr "또는"
+
+msgctxt "table filter"
+msgid "{} and {}"
+msgstr "{} 그리고 {}"
+
+msgctxt "table filter"
+msgid "{} or {}"
+msgstr "{} 또는 {}"
+
+msgctxt "table grid"
+msgid "Insert Column Left"
+msgstr "왼쪽에 열 삽입"
+
+msgctxt "table grid"
+msgid "Insert Column Right"
+msgstr "오른쪽에 열 삽입"
+
+msgctxt "table grid"
+msgid "Insert Row Above"
+msgstr "위에 행 삽입"
+
+msgctxt "table grid"
+msgid "Insert Row Below"
+msgstr "아래에 행 삽입"

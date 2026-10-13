@@ -1,0 +1,436 @@
+{
+  "Organigramme Mermaid": {
+    "prefix": "mermaid-flowchart",
+    "description": "Insère un organigramme Mermaid.",
+    "body": [
+      "```mermaid",
+      "flowchart ${1:TD}",
+      "    %% [] est une étape et {} une décision. |libellé| annote une branche",
+      "    start[${2:Début}] --> condition{${3:Condition}}",
+      "    condition -->|Oui| work[${4:Traitement}]",
+      "    condition -->|Non| finish[${5:Fin}]",
+      "    work --> finish",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme de séquence Mermaid": {
+    "prefix": "mermaid-sequence",
+    "description": "Insère un diagramme de séquence Mermaid.",
+    "body": [
+      "```mermaid",
+      "sequenceDiagram",
+      "    %% ->> est un appel et -->> une réponse",
+      "    participant User as ${1:Utilisateur}",
+      "    participant App as ${2:Application}",
+      "    User->>App: ${3:Requête}",
+      "    App-->>User: ${4:Réponse}",
+      "    Note over App: ${5:Remarque}",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme de classes Mermaid": {
+    "prefix": "mermaid-class",
+    "description": "Insère un diagramme de classes Mermaid.",
+    "body": [
+      "```mermaid",
+      "classDiagram",
+      "    %% <|-- est l'héritage, *-- la composition et o-- l'agrégation",
+      "    class ${1:Base} {",
+      "        +${2:field}: ${3:Type}",
+      "        +${4:method}()",
+      "    }",
+      "    class ${5:Derived} {",
+      "        +${6:extra}()",
+      "    }",
+      "    ${1:Base} <|-- ${5:Derived}",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme d'états Mermaid": {
+    "prefix": "mermaid-state",
+    "description": "Insère un diagramme d'états Mermaid.",
+    "body": [
+      "```mermaid",
+      "stateDiagram-v2",
+      "    %% [*] est le début et la fin. Le texte après : sur une flèche est le nom de l'événement",
+      "    [*] --> ${1:Idle}",
+      "    ${1:Idle} --> ${2:Running}: ${3:Démarrer}",
+      "    ${2:Running} --> ${1:Idle}: ${4:Terminer}",
+      "    ${2:Running} --> [*]: ${5:Abandonner}",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme entité-association Mermaid": {
+    "prefix": "mermaid-er",
+    "description": "Insère un diagramme entité-association (ER) Mermaid.",
+    "body": [
+      "```mermaid",
+      "erDiagram",
+      "    %% ||--o{ est un-à-plusieurs et }o--o{ plusieurs-à-plusieurs",
+      "    ${1:CUSTOMER} ||--o{ ${2:ORDER} : \"${3:passe}\"",
+      "    ${2:ORDER} ||--|{ ${4:ORDER_ITEM} : \"${5:contient}\"",
+      "    ${1:CUSTOMER} {",
+      "        int id",
+      "        string name",
+      "    }",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme de Gantt Mermaid": {
+    "prefix": "mermaid-gantt",
+    "description": "Insère un diagramme de Gantt Mermaid.",
+    "body": [
+      "```mermaid",
+      "gantt",
+      "    title ${1:Planning de développement}",
+      "    dateFormat YYYY-MM-DD",
+      "    axisFormat %d/%m",
+      "    section ${2:Conception}",
+      "    ${3:Exigences} :done, req, ${4:2026-01-06}, 5d",
+      "    ${5:Conception générale} :active, design, after req, 7d",
+      "    section ${6:Implémentation}",
+      "    ${7:Implémentation} :impl, after design, 10d",
+      "```",
+      "$0"
+    ]
+  },
+  "Graphique en secteurs Mermaid": {
+    "prefix": "mermaid-pie",
+    "description": "Insère un graphique en secteurs Mermaid.",
+    "body": [
+      "```mermaid",
+      "pie title ${1:Répartition}",
+      "    \"${2:Conception}\" : ${3:30}",
+      "    \"${4:Implémentation}\" : ${5:50}",
+      "    \"${6:Tests}\" : ${7:20}",
+      "```",
+      "$0"
+    ]
+  },
+  "Graphe Git Mermaid": {
+    "prefix": "mermaid-gitgraph",
+    "description": "Insère un graphe Git Mermaid (un diagramme des branches).",
+    "body": [
+      "```mermaid",
+      "gitGraph",
+      "    commit id: \"${1:Validation initiale}\"",
+      "    branch ${2:feature}",
+      "    checkout ${2:feature}",
+      "    commit id: \"${3:Ajout d'une fonctionnalité}\"",
+      "    checkout main",
+      "    merge ${2:feature}",
+      "```",
+      "$0"
+    ]
+  },
+  "Carte mentale Mermaid": {
+    "prefix": "mermaid-mindmap",
+    "description": "Insère une carte mentale Mermaid.",
+    "body": [
+      "```mermaid",
+      "mindmap",
+      "  root((${1:Sujet central}))",
+      "    ${2:Catégorie A}",
+      "      ${3:Élément 1}",
+      "      ${4:Élément 2}",
+      "    ${5:Catégorie B}",
+      "      ${6:Élément 3}",
+      "```",
+      "$0"
+    ]
+  },
+  "Chronologie Mermaid": {
+    "prefix": "mermaid-timeline",
+    "description": "Insère une chronologie Mermaid.",
+    "body": [
+      "```mermaid",
+      "timeline",
+      "    title ${1:Historique}",
+      "    ${2:2024} : ${3:Planification}",
+      "    ${4:2025} : ${5:Développement} : ${6:Publication}",
+      "    ${7:2026} : ${8:Exploitation}",
+      "```",
+      "$0"
+    ]
+  },
+  "Parcours utilisateur Mermaid": {
+    "prefix": "mermaid-journey",
+    "description": "Insère un parcours utilisateur Mermaid (les étapes d'une expérience et la satisfaction de chacune).",
+    "body": [
+      "```mermaid",
+      "journey",
+      "    %% Tâche : Satisfaction (1 à 5) : Personnes concernées",
+      "    title ${1:Parcours d'achat}",
+      "    section ${2:Trouver}",
+      "      ${3:Rechercher un produit}: ${4:4}: ${5:Client}",
+      "      Comparer: 3: Client",
+      "    section ${6:Acheter}",
+      "      Ajouter au panier: 5: Client",
+      "      ${7:Payer}: ${8:2}: ${9:Client, Boutique}",
+      "```",
+      "$0"
+    ]
+  },
+  "Graphique à quadrants Mermaid": {
+    "prefix": "mermaid-quadrant",
+    "description": "Insère un graphique à quadrants Mermaid (un nuage de points sur deux axes).",
+    "body": [
+      "```mermaid",
+      "quadrantChart",
+      "    %% Un point s'écrit Nom: [x, y], les deux entre 0 et 1",
+      "    title ${1:Priorités des initiatives}",
+      "    x-axis ${2:Effort faible} --> ${3:Effort élevé}",
+      "    y-axis ${4:Impact faible} --> ${5:Impact élevé}",
+      "    quadrant-1 ${6:Planifier et faire}",
+      "    quadrant-2 ${7:Faire maintenant}",
+      "    quadrant-3 ${8:Faire plus tard}",
+      "    quadrant-4 ${9:Reconsidérer}",
+      "    ${10:Initiative A}: [${11:0.3}, ${12:0.8}]",
+      "    Initiative B: [0.7, 0.6]",
+      "    Initiative C: [0.2, 0.3]",
+      "```",
+      "$0"
+    ]
+  },
+  "Graphique XY Mermaid": {
+    "prefix": "mermaid-xychart",
+    "description": "Insère un graphique XY Mermaid (un graphique en barres ou en lignes).",
+    "body": [
+      "```mermaid",
+      "xychart-beta",
+      "    %% bar dessine des barres et line une ligne. Donnez autant de valeurs que l'axe x compte d'éléments",
+      "    title \"${1:Ventes mensuelles}\"",
+      "    x-axis [${2:\"janv.\", \"févr.\", \"mars\", \"avr.\"}]",
+      "    y-axis \"${3:Ventes (milliers USD)}\" ${4:0} --> ${5:100}",
+      "    bar [${6:30, 45, 60, 80}]",
+      "    line [${7:30, 45, 60, 80}]",
+      "```",
+      "$0"
+    ]
+  },
+  "Graphique radar Mermaid": {
+    "prefix": "mermaid-radar",
+    "description": "Insère un graphique radar Mermaid (des séries comparées selon leur valeur sur chaque axe).",
+    "body": [
+      "```mermaid",
+      "radar-beta",
+      "    %% axis définit les axes et curve une série. Listez les valeurs dans l'ordre des axes",
+      "    title ${1:Comparaison des compétences}",
+      "    axis design[\"Conception\"], build[\"Implémentation\"], test[\"Tests\"], ops[\"Exploitation\"]",
+      "    curve a[\"Personne A\"]{4, 3, 5, 2}",
+      "    curve b[\"Personne B\"]{2, 5, 3, 4}",
+      "    max 5",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme d'exigences Mermaid": {
+    "prefix": "mermaid-requirement",
+    "description": "Insère un diagramme d'exigences Mermaid (les exigences et les éléments qui les satisfont).",
+    "body": [
+      "```mermaid",
+      "requirementDiagram",
+      "    %% requirement déclare une exigence ; element déclare ce qui la satisfait. Reliez-les avec - satisfies ->",
+      "    requirement ${1:login} {",
+      "        id: 1",
+      "        text: \"Les utilisateurs peuvent se connecter\"",
+      "        risk: high",
+      "        verifymethod: test",
+      "    }",
+      "    element ${2:login_page} {",
+      "        type: \"Écran\"",
+      "    }",
+      "    ${2:login_page} - satisfies -> ${1:login}",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme C4 Mermaid": {
+    "prefix": "mermaid-c4",
+    "description": "Insère un diagramme C4 Mermaid (un système, ses utilisateurs et les systèmes externes avec lesquels il interagit).",
+    "body": [
+      "```mermaid",
+      "C4Context",
+      "    %% Person est un utilisateur, System votre système, System_Ext un système externe et Rel une relation",
+      "    title ${1:Vue d'ensemble du système de commandes}",
+      "    Person(customer, \"Client\", \"Commande des produits\")",
+      "    System(shop, \"Système de commandes\", \"Accepte les commandes\")",
+      "    System_Ext(mail, \"Envoi de courrier\", \"Envoie les notifications\")",
+      "    Rel(customer, shop, \"Passe des commandes\")",
+      "    Rel(shop, mail, \"Demande des notifications\")",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme de blocs Mermaid": {
+    "prefix": "mermaid-block",
+    "description": "Insère un diagramme de blocs Mermaid (des cases sur une grille, reliées par des flèches).",
+    "body": [
+      "```mermaid",
+      "block-beta",
+      "    %% columns définit le nombre de colonnes, space est une cellule vide et --> une flèche",
+      "    columns 3",
+      "    input[\"${1:Entrée}\"] process[\"${2:Traitement}\"] output[\"${3:Sortie}\"]",
+      "    space log[\"Journal\"] space",
+      "    input --> process",
+      "    process --> output",
+      "    process --> log",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme de Sankey Mermaid": {
+    "prefix": "mermaid-sankey",
+    "description": "Insère un diagramme de Sankey Mermaid (les flux d'une quantité).",
+    "body": [
+      "```mermaid",
+      "sankey-beta",
+      "    %% Chaque ligne s'écrit source,cible,quantité. Écrivez les noms en lettres et chiffres ASCII (Mermaid ne sait pas lire les noms non ASCII)",
+      "    ${1:Power},Home,30",
+      "    ${1:Power},Factory,50",
+      "    ${2:Gas},Home,20",
+      "    ${2:Gas},Factory,10",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme de paquets Mermaid": {
+    "prefix": "mermaid-packet",
+    "description": "Insère un diagramme de paquets Mermaid (des champs disposés bit par bit).",
+    "body": [
+      "```mermaid",
+      "packet-beta",
+      "    %% bit de début-bit de fin: \"Nom du champ\"",
+      "    title ${1:En-tête UDP}",
+      "    0-15: \"Port source\"",
+      "    16-31: \"Port de destination\"",
+      "    32-47: \"Longueur\"",
+      "    48-63: \"Somme de contrôle\"",
+      "    64-95: \"Données (longueur variable)\"",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme de Venn Mermaid": {
+    "prefix": "mermaid-venn",
+    "description": "Insère un diagramme de Venn Mermaid (des ensembles qui se chevauchent).",
+    "body": [
+      "```mermaid",
+      "venn-beta",
+      "    %% set définit un ensemble et union nomme un chevauchement",
+      "    title ${1:Responsabilités qui se chevauchent}",
+      "    set Front[\"Frontend\"]",
+      "    set Back[\"Backend\"]",
+      "    union Front,Back[\"API\"]",
+      "```",
+      "$0"
+    ]
+  },
+  "Kanban Mermaid": {
+    "prefix": "mermaid-kanban",
+    "description": "Insère un tableau Kanban Mermaid (des cartes en colonnes).",
+    "body": [
+      "```mermaid",
+      "kanban",
+      "    %% Les lignes moins indentées sont des colonnes et les plus indentées des cartes",
+      "    todo[${1:À faire}]",
+      "        spec[Rédiger la spécification]",
+      "        screen[Créer les écrans]",
+      "    doing[${2:En cours}]",
+      "        api[Créer les API]",
+      "    done[${3:Terminé}]",
+      "        setup[Préparer le poste de travail]",
+      "```",
+      "$0"
+    ]
+  },
+  "Carte proportionnelle Mermaid": {
+    "prefix": "mermaid-treemap",
+    "description": "Insère une carte proportionnelle Mermaid (des quantités représentées par des surfaces imbriquées).",
+    "body": [
+      "```mermaid",
+      "treemap-beta",
+      "    %% L'indentation imbrique les éléments. Donnez une valeur à chaque feuille après :",
+      "    \"${1:Développement}\"",
+      "        \"Conception\": 30",
+      "        \"Implémentation\": 50",
+      "    \"${2:Exploitation}\"",
+      "        \"Maintenance\": 15",
+      "        \"Surveillance\": 5",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme d'architecture Mermaid": {
+    "prefix": "mermaid-architecture",
+    "description": "Insère un diagramme d'architecture Mermaid (les composants et leurs connexions).",
+    "body": [
+      "```mermaid",
+      "architecture-beta",
+      "    %% group est un regroupement et service un composant. :L :R :T :B choisissent le côté auquel une ligne se raccorde",
+      "    group app(cloud)[\"${1:Application}\"]",
+      "    service web(server)[\"Serveur web\"] in app",
+      "    service db(database)[\"Base de données\"] in app",
+      "    service disk(disk)[\"Stockage\"] in app",
+      "    web:R -- L:db",
+      "    web:B -- T:disk",
+      "```",
+      "$0"
+    ]
+  },
+  "Arborescence Mermaid": {
+    "prefix": "mermaid-treeview",
+    "description": "Insère une arborescence Mermaid (une hiérarchie comme une arborescence de dossiers).",
+    "body": [
+      "```mermaid",
+      "treeView-beta",
+      "    %% L'indentation indique la hiérarchie",
+      "    \"${1:Projet}\"",
+      "        \"src\"",
+      "            \"main.rs\"",
+      "            \"lib.rs\"",
+      "        \"docs\"",
+      "            \"README.md\"",
+      "```",
+      "$0"
+    ]
+  },
+  "Diagramme d'Ishikawa Mermaid": {
+    "prefix": "mermaid-ishikawa",
+    "description": "Insère un diagramme d'Ishikawa Mermaid (une arête de poisson reliant un effet à ses causes).",
+    "body": [
+      "```mermaid",
+      "ishikawa-beta",
+      "    %% La première ligne est l'effet et les lignes indentées ses causes",
+      "    ${1:Trop de défauts}",
+      "        Personnel",
+      "            Peu d'expérience",
+      "        Méthode",
+      "            Procédures obsolètes",
+      "        Matière",
+      "            Fournisseurs irréguliers",
+      "```",
+      "$0"
+    ]
+  },
+  "Modélisation d'événements Mermaid": {
+    "prefix": "mermaid-eventmodeling",
+    "description": "Insère une modélisation d'événements Mermaid (l'enchaînement des écrans, des commandes et des événements).",
+    "body": [
+      "```mermaid",
+      "eventmodeling",
+      "    %% tf numéro type nom. ui est un écran, cmd une commande, evt un événement et rmo un modèle de lecture. Écrivez les noms en lettres et chiffres ASCII (Mermaid ne sait pas lire les noms non ASCII)",
+      "    tf 01 ui ${1:CartScreen}",
+      "    tf 02 cmd AddItem",
+      "    tf 03 evt ItemAdded",
+      "    tf 04 rmo CartItems ->> 03",
+      "```",
+      "$0"
+    ]
+  }
+}

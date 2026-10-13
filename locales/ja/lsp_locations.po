@@ -1,0 +1,36 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Filter declarations…"
+msgstr "宣言を絞り込む…"
+
+msgid "Filter definitions…"
+msgstr "定義を絞り込む…"
+
+msgid "Filter implementations…"
+msgstr "実装を絞り込む…"
+
+msgid "Filter references…"
+msgstr "参照を絞り込む…"
+
+msgid "Filter type definitions…"
+msgstr "型定義を絞り込む…"
+
+msgid "No declarations found"
+msgstr "宣言が見つかりません"
+
+msgid "No definitions found"
+msgstr "定義が見つかりません"
+
+msgid "No implementations found"
+msgstr "実装が見つかりません"
+
+msgid "No references found"
+msgstr "参照が見つかりません"
+
+msgid "No type definitions found"
+msgstr "型定義が見つかりません"

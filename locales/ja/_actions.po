@@ -770,66 +770,82 @@ msgctxt "action"
 msgid "buffer_search::UseSelectionForFind"
 msgstr "検索: 選択範囲を検索語にする"
 
+#. call graph panel: collapse all
 msgctxt "action"
 msgid "call_graph_panel::CollapseAll"
 msgstr "呼び出しグラフパネル: すべて折りたたむ"
 
+#. call graph panel: collapse selected
 msgctxt "action"
 msgid "call_graph_panel::CollapseSelected"
 msgstr "呼び出しグラフパネル: 選択項目を折りたたむ"
 
+#. call graph panel: copy symbol name
 msgctxt "action"
 msgid "call_graph_panel::CopySymbolName"
 msgstr "呼び出しグラフパネル: 関数名をコピー"
 
+#. call graph panel: expand selected
 msgctxt "action"
 msgid "call_graph_panel::ExpandSelected"
 msgstr "呼び出しグラフパネル: 選択項目を展開"
 
+#. call graph panel: inspect cursor
 msgctxt "action"
 msgid "call_graph_panel::InspectCursor"
 msgstr "呼び出しグラフパネル: カーソル位置の関数を調べる"
 
+#. call graph panel: next root
 msgctxt "action"
 msgid "call_graph_panel::NextRoot"
 msgstr "呼び出しグラフパネル: 次の起点"
 
+#. call graph panel: open selected
 msgctxt "action"
 msgid "call_graph_panel::OpenSelected"
 msgstr "呼び出しグラフパネル: 選択項目を開く"
 
+#. call graph panel: preview selected
 msgctxt "action"
 msgid "call_graph_panel::PreviewSelected"
 msgstr "呼び出しグラフパネル: 選択項目をプレビュー"
 
+#. call graph panel: previous root
 msgctxt "action"
 msgid "call_graph_panel::PreviousRoot"
 msgstr "呼び出しグラフパネル: 前の起点"
 
+#. call graph panel: refresh
 msgctxt "action"
 msgid "call_graph_panel::Refresh"
 msgstr "呼び出しグラフパネル: 更新"
 
+#. call graph panel: show callees
 msgctxt "action"
 msgid "call_graph_panel::ShowCallees"
 msgstr "呼び出しグラフパネル: 呼び出し先を表示"
 
+#. call graph panel: show callers
 msgctxt "action"
 msgid "call_graph_panel::ShowCallers"
 msgstr "呼び出しグラフパネル: 呼び出し元を表示"
 
+#. call graph panel: toggle
 msgctxt "action"
 msgid "call_graph_panel::Toggle"
 msgstr "呼び出しグラフパネル: 表示切り替え"
 
+#. call graph panel: toggle direction
 msgctxt "action"
 msgid "call_graph_panel::ToggleDirection"
 msgstr "呼び出しグラフパネル: 呼び出し元と呼び出し先の切り替え"
 
+#. call graph panel: toggle focus
 msgctxt "action"
 msgid "call_graph_panel::ToggleFocus"
 msgstr "呼び出しグラフパネル: フォーカス切り替え"
 
+#. call graph panel: toggle follow cursor
 msgctxt "action"
 msgid "call_graph_panel::ToggleFollowCursor"
 msgstr "呼び出しグラフパネル: カーソル追従の切り替え"
@@ -2397,12 +2413,12 @@ msgstr "編集: 段落を折り返し直す"
 #. editor: rotate selections backward
 msgctxt "action"
 msgid "editor::RotateSelectionsBackward"
-msgstr "選択: 選択範囲の内容を前方へ回転"
+msgstr "選択: 選択範囲の内容を後方へ回転"
 
 #. editor: rotate selections forward
 msgctxt "action"
 msgid "editor::RotateSelectionsForward"
-msgstr "選択: 選択範囲の内容を後方へ回転"
+msgstr "選択: 選択範囲の内容を前方へ回転"
 
 #. editor: run flycheck
 msgctxt "action"

@@ -1,0 +1,847 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(anonymous)"
+msgstr "(익명)"
+
+msgid "2 years, 11 months ago"
+msgstr "2년 11개월 전"
+
+msgid "Accept"
+msgstr "수락"
+
+msgid "Add Bookmark"
+msgstr "북마크 추가"
+
+msgid "Add Review (drag to select multiple lines)"
+msgstr "리뷰 댓글 추가 (여러 줄을 선택하려면 드래그)"
+
+msgid "Add a review comment..."
+msgstr "리뷰 댓글을 추가하세요..."
+
+msgid "Add comment"
+msgstr "댓글 추가"
+
+msgid "Add to Agent Thread"
+msgstr "에이전트 스레드에 추가"
+
+msgid "Ask Copilot About Selection"
+msgstr "선택 영역에 대해 Copilot에 질문"
+
+msgid "Assign Keybinding"
+msgstr "키 바인딩 할당"
+
+msgid "Bookmarks"
+msgstr "북마크"
+
+msgid "C4Context\n    %% Person is a user, System your system, System_Ext an external one and Rel a relationship\n    title Order System Overview\n    Person(customer, \"Customer\", \"Orders products\")\n    System(shop, \"Order System\", \"Accepts orders\")\n    System_Ext(mail, \"Mail Delivery\", \"Sends notifications\")\n    Rel(customer, shop, \"Places orders\")\n    Rel(shop, mail, \"Requests notifications\")"
+msgstr "C4Context\n    %% Person은 사용자, System은 자체 시스템, System_Ext는 외부 시스템, Rel은 관계입니다\n    title 주문 시스템 개요\n    Person(customer, \"고객\", \"상품을 주문합니다\")\n    System(shop, \"주문 시스템\", \"주문을 접수합니다\")\n    System_Ext(mail, \"메일 발송\", \"알림을 보냅니다\")\n    Rel(customer, shop, \"주문합니다\")\n    Rel(shop, mail, \"알림을 요청합니다\")"
+
+msgid "Can't change this because the selection covers only part of a link or image syntax (such as [text](URL)). Select the whole link, or only its text."
+msgstr "선택 영역이 링크나 이미지 구문([text](URL) 등)의 일부에만 걸쳐 있어 변경할 수 없습니다. 링크 전체 또는 링크의 텍스트만 선택하세요."
+
+msgid "Can't change this because the selection crosses an existing HTML tag (such as a text color or a marker)."
+msgstr "선택 영역이 기존 HTML 태그(글자 색이나 마커 등)에 걸쳐 있어 변경할 수 없습니다."
+
+msgid "Can't change this because wrapping an HTML block in a tag from its start would turn it into a paragraph. Select only the text inside the element."
+msgstr "HTML 블록을 처음부터 태그로 감싸면 단락으로 바뀌므로 변경할 수 없습니다. 요소 안의 텍스트만 선택하세요."
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Class"
+msgstr "클래스"
+
+msgid "Clear Run Status"
+msgstr "실행 상태 지우기"
+
+msgid "Close"
+msgstr "닫기"
+
+msgid "Close Git Blame"
+msgstr "Git Blame 닫기"
+
+msgid "Color"
+msgstr "색"
+
+msgid "Condition when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "중단점에 도달했을 때의 조건입니다. {{}} 안의 식은 보간됩니다."
+
+msgid "Confirm"
+msgstr "확인"
+
+msgid "Conflict with Accept Keybinding"
+msgstr "수락 키 바인딩과 충돌"
+
+msgid "Constant"
+msgstr "상수"
+
+msgid "Constructor"
+msgstr "생성자"
+
+msgid "Copy"
+msgstr "복사"
+
+msgid "Copy Diagnostic"
+msgstr "진단 복사"
+
+msgid "Copy Path"
+msgstr "경로 복사"
+
+msgid "Copy Permalink to Line"
+msgstr "줄 고유 링크 복사"
+
+msgid "Copy Relative Path"
+msgstr "상대 경로 복사"
+
+msgid "Copy Type Contents"
+msgstr "타입 내용 복사"
+
+msgid "Copy and Trim"
+msgstr "공백 제거 후 복사"
+
+msgid "Cut"
+msgstr "잘라내기"
+
+msgid "Declarations"
+msgstr "선언"
+
+msgid "Definition not found"
+msgstr "정의를 찾을 수 없음"
+
+msgid "Definition {index} of {total}"
+msgstr "정의 {index}/{total}"
+
+msgid "Definitions"
+msgstr "정의"
+
+msgid "Disable"
+msgstr "비활성화"
+
+msgid "Edit Bookmark"
+msgstr "북마크 편집"
+
+msgid "Edit Condition Breakpoint"
+msgstr "조건부 중단점 편집"
+
+msgid "Edit Hit Condition Breakpoint"
+msgstr "적중 조건부 중단점 편집"
+
+msgid "Edit Log Breakpoint"
+msgstr "로그 지점 편집"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "Mermaid 다이어그램 편집…"
+
+msgid "Edit Table…"
+msgstr "표 편집…"
+
+msgid "Enable"
+msgstr "활성화"
+
+msgid "Enter bookmark label (Optional)"
+msgstr "북마크 레이블 입력(선택 사항)"
+
+msgid "Enum"
+msgstr "열거형"
+
+msgid "Enum Member"
+msgstr "열거형 멤버"
+
+msgid "Evaluate Selection"
+msgstr "선택 영역 평가"
+
+msgid "Event"
+msgstr "이벤트"
+
+msgid "Expand Excerpt"
+msgstr "발췌 확장"
+
+msgid "Export to PDF"
+msgstr "PDF로 내보내기"
+
+msgid "Failed to copy permalink to line: {err}"
+msgstr "줄 고유 링크를 복사하지 못했습니다: {err}"
+
+msgid "Failed to create buffer"
+msgstr "버퍼를 만들지 못했습니다"
+
+msgid "Failed to open permalink to line: {err}"
+msgstr "줄 고유 링크를 열지 못했습니다: {err}"
+
+msgid "Field"
+msgstr "필드"
+
+msgid "File"
+msgstr "파일"
+
+msgid "Find All References"
+msgstr "모든 참조 찾기"
+
+msgid "Fold All Headings"
+msgstr "모든 제목 접기"
+
+msgid "Fold Excerpt"
+msgstr "발췌 접기"
+
+msgid "Folder"
+msgstr "폴더"
+
+msgid "Format Buffer"
+msgstr "버퍼 포맷"
+
+msgid "Format Selections"
+msgstr "선택 영역 포맷"
+
+msgid "Formatting can't be applied across table cells."
+msgstr "표 셀에 걸쳐 서식을 적용할 수 없습니다."
+
+msgid "Formatting can't be applied inside a link's URL or an image's syntax."
+msgstr "링크의 URL이나 이미지 구문 안에는 서식을 적용할 수 없습니다."
+
+msgid "Formatting can't be applied inside an HTML tag or comment."
+msgstr "HTML 태그나 주석 안에는 서식을 적용할 수 없습니다."
+
+msgid "Formatting can't be changed inside code."
+msgstr "코드 안에서는 서식을 변경할 수 없습니다."
+
+msgid "Formatting did not complete within {} seconds."
+msgstr "포맷이 {}초 안에 완료되지 않았습니다."
+
+msgid "Function"
+msgstr "함수"
+
+msgid "Go to Declaration"
+msgstr "선언으로 이동"
+
+msgid "Go to Definition"
+msgstr "정의로 이동"
+
+msgid "Go to Implementation"
+msgstr "구현으로 이동"
+
+msgid "Go to Type Definition"
+msgstr "타입 정의로 이동"
+
+msgid "Hold"
+msgstr "길게 누르기"
+
+msgid "How many breakpoint hits to ignore"
+msgstr "무시할 중단점 적중 횟수"
+
+msgid "Implementations"
+msgstr "구현"
+
+msgid "Indent"
+msgstr "들여쓰기"
+
+msgid "Insert Collapsible Section (details)"
+msgstr "접을 수 있는 섹션 삽입 (details)"
+
+msgid "Insert Mermaid Diagram"
+msgstr "Mermaid 다이어그램 삽입"
+
+msgid "Interface"
+msgstr "인터페이스"
+
+msgid "Jump"
+msgstr "이동"
+
+msgid "Jump to Edit"
+msgstr "편집 위치로 이동"
+
+msgid "Jump to {file_name}"
+msgstr "{file_name}(으)로 이동"
+
+msgid "Jumped by name match (no result from the language server)"
+msgstr "이름 일치로 이동했습니다 (언어 서버에서 결과 없음)"
+
+msgid "Keyword"
+msgstr "키워드"
+
+msgid "Line {start_line}"
+msgstr "{start_line}줄"
+
+msgid "Lines {start_line}-{end_line}"
+msgstr "{start_line}-{end_line}줄"
+
+msgid "Loading…"
+msgstr "로드 중…"
+
+msgid "Message to log when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "중단점에 도달했을 때 기록할 메시지입니다. {{}} 안의 식은 보간됩니다."
+
+msgid "Method"
+msgstr "메서드"
+
+msgid "Module"
+msgstr "모듈"
+
+msgid "Name match"
+msgstr "이름 일치"
+
+msgid "Next Definition"
+msgstr "다음 정의"
+
+msgid "Next Hunk"
+msgstr "다음 변경 단위"
+
+msgid "Next Signature"
+msgstr "다음 시그니처"
+
+msgid "No definition found in this file or the headers it includes. Git ignores this file, so the folder's symbol index leaves it out; turn on the `symbol_index.include_ignored` setting to include it."
+msgstr "이 파일이나 이 파일이 포함하는 헤더에서 정의를 찾을 수 없습니다. Git이 이 파일을 무시하므로 폴더의 심볼 색인에서 제외됩니다. 포함하려면 `symbol_index.include_ignored` 설정을 켜세요."
+
+msgid "No definition found in this file. Open the folder that holds it to search the whole folder."
+msgstr "이 파일에서 정의를 찾을 수 없습니다. 폴더 전체를 검색하려면 이 파일이 들어 있는 폴더를 여세요."
+
+msgid "No executable code is associated with this line."
+msgstr "이 줄에 연결된 실행 가능한 코드가 없습니다."
+
+msgid "No paragraph has a text size set."
+msgstr "텍스트 크기가 설정된 단락이 없습니다."
+
+msgid "No part of the selection has a marker."
+msgstr "선택 영역에 마커가 있는 부분이 없습니다."
+
+msgid "No part of the selection has a text color."
+msgstr "선택 영역에 글자 색이 있는 부분이 없습니다."
+
+msgid "Only part is shown"
+msgstr "일부만 표시됨"
+
+msgid "Only the location of this definition is known"
+msgstr "이 정의는 위치만 알려져 있습니다"
+
+msgid "Open"
+msgstr "열기"
+
+msgid "Open File"
+msgstr "파일 열기"
+
+msgid "Open Git Blame"
+msgstr "Git Blame 열기"
+
+msgid "Open Markdown Preview"
+msgstr "Markdown 미리 보기 열기"
+
+msgid "Open Markdown Preview to the Side"
+msgstr "측면에 Markdown 미리 보기 열기"
+
+msgid "Open SVG Preview to the Side"
+msgstr "측면에 SVG 미리 보기 열기"
+
+msgid "Open in Terminal"
+msgstr "터미널에서 열기"
+
+msgid "Operator"
+msgstr "연산자"
+
+msgid "Outdent"
+msgstr "내어쓰기"
+
+msgid "Part of the selection couldn't be formatted: {}"
+msgstr "선택 영역의 일부에 서식을 적용하지 못했습니다: {}"
+
+msgid "Paste"
+msgstr "붙여넣기"
+
+msgid "Preview"
+msgstr "미리 보기"
+
+msgid "Previous Definition"
+msgstr "이전 정의"
+
+msgid "Previous Hunk"
+msgstr "이전 변경 단위"
+
+msgid "Previous Signature"
+msgstr "이전 시그니처"
+
+msgid "Property"
+msgstr "속성"
+
+msgid "Reference"
+msgstr "참조"
+
+msgid "References"
+msgstr "참조"
+
+msgid "References to {target}"
+msgstr "{target}에 대한 참조"
+
+msgid "Remove Bookmark"
+msgstr "북마크 제거"
+
+msgid "Rename Symbol"
+msgstr "심볼 이름 변경"
+
+msgid "Restore"
+msgstr "복원"
+
+msgid "Restore Hunk"
+msgstr "변경 단위 복원"
+
+msgid "Reveal In Project Panel"
+msgstr "프로젝트 패널에서 보기"
+
+msgid "Right-Click to Copy Path"
+msgstr "오른쪽 클릭하여 경로 복사"
+
+msgid "Right-click for more options"
+msgstr "더 많은 옵션을 보려면 오른쪽 클릭하세요"
+
+msgid "Run to Cursor"
+msgstr "커서까지 실행"
+
+msgid "Scroll"
+msgstr "스크롤"
+
+msgid "Search Selection on the Web"
+msgstr "선택한 텍스트를 웹에서 검색"
+
+msgid "See Docs"
+msgstr "문서 보기"
+
+msgid "Selections for '{title}'"
+msgstr "'{title}'의 선택 영역"
+
+msgid "Send Selection to Claude Code"
+msgstr "선택 영역을 Claude Code로 보내기"
+
+msgid "Set Breakpoint"
+msgstr "중단점 설정"
+
+msgid "Set Condition Breakpoint"
+msgstr "조건부 중단점 설정"
+
+msgid "Set Hit Condition Breakpoint"
+msgstr "적중 조건부 중단점 설정"
+
+msgid "Set Log Breakpoint"
+msgstr "로그 지점 설정"
+
+msgid "Show Callees in Call Graph"
+msgstr "호출 그래프에서 피호출자 표시"
+
+msgid "Show Callers in Call Graph"
+msgstr "호출 그래프에서 호출자 표시"
+
+msgid "Show Code Actions"
+msgstr "코드 액션 표시"
+
+msgid "Show Incoming Calls"
+msgstr "수신 호출 표시"
+
+msgid "Show Outgoing Calls"
+msgstr "발신 호출 표시"
+
+msgid "Show Symbol Outline"
+msgstr "심볼 아웃라인 표시"
+
+msgid "Snippet"
+msgstr "스니펫"
+
+msgid "Split"
+msgstr "분할"
+
+msgid "Split when wider than {} columns"
+msgstr "{}열보다 넓을 때 분할"
+
+msgid "Stage"
+msgstr "스테이징"
+
+msgid "Stage Hunk"
+msgstr "변경 단위 스테이징"
+
+msgid "Struct"
+msgstr "구조체"
+
+msgid "Text"
+msgstr "텍스트"
+
+msgid "Text size can only be set on paragraphs (not on headings, code blocks, tables, or HTML blocks)."
+msgstr "텍스트 크기는 단락에만 설정할 수 있습니다 (제목, 코드 블록, 표, HTML 블록에는 설정할 수 없음)."
+
+msgid "The diagram text changed while it was being edited. Open it again."
+msgstr "편집하는 동안 다이어그램 텍스트가 변경되었습니다. 다시 여세요."
+
+msgid "The remote instance of Zed does not support this yet. It must be upgraded to {}"
+msgstr "원격 ForgeKairos 인스턴스가 아직 이 기능을 지원하지 않습니다. {}(으)로 업그레이드해야 합니다"
+
+msgid "There is no text to format."
+msgstr "서식을 적용할 텍스트가 없습니다."
+
+msgid "This buffer is read-only, so the diagram can't be written back."
+msgstr "이 버퍼는 읽기 전용이므로 다이어그램을 다시 쓸 수 없습니다."
+
+msgid "Toggle Code Actions"
+msgstr "코드 액션 전환"
+
+msgid "Type Parameter"
+msgstr "타입 매개변수"
+
+msgid "Type contents are not shown: another window has this folder's symbol index open."
+msgstr "타입 내용이 표시되지 않음: 다른 창에서 이 폴더의 심볼 색인을 열고 있습니다."
+
+msgid "Type contents are not shown: the remote server does not support the symbol index."
+msgstr "타입 내용이 표시되지 않음: 원격 서버가 심볼 색인을 지원하지 않습니다."
+
+msgid "Type contents are not shown: the symbol index failed ({error})."
+msgstr "타입 내용이 표시되지 않음: 심볼 색인 오류 ({error})."
+
+msgid "Type contents are not shown: the symbol index is not available in a shared project."
+msgstr "타입 내용이 표시되지 않음: 공유 프로젝트에서는 심볼 색인을 사용할 수 없습니다."
+
+msgid "Type contents: the symbol index is still being built. Hover again in a moment."
+msgstr "타입 내용: 심볼 색인을 아직 빌드하는 중입니다. 잠시 후 다시 마우스를 올리세요."
+
+msgid "Type of {name}:"
+msgstr "{name}의 타입:"
+
+msgid "Types"
+msgstr "타입"
+
+msgid "Unfold All Headings"
+msgstr "모든 제목 펼치기"
+
+msgid "Unfold Excerpt"
+msgstr "발췌 펼치기"
+
+msgid "Unified"
+msgstr "통합"
+
+msgid "Unit"
+msgstr "단위"
+
+msgid "Unknown"
+msgstr "알 수 없음"
+
+msgid "Unset Breakpoint"
+msgstr "중단점 해제"
+
+msgid "Unset breakpoint"
+msgstr "중단점 해제"
+
+msgid "Unstage"
+msgstr "스테이징 해제"
+
+msgid "Unstage Hunk"
+msgstr "변경 단위 스테이징 해제"
+
+msgid "Value"
+msgstr "값"
+
+msgid "Variable"
+msgstr "변수"
+
+msgid "View File History"
+msgstr "파일 기록 보기"
+
+msgid "Your keymap currently overrides the default accept keybinding. To continue, assign one keybinding for the `editor::AcceptEditPrediction` action."
+msgstr "현재 키맵이 기본 수락 키 바인딩을 재정의하고 있습니다. 계속하려면 `editor::AcceptEditPrediction` 작업에 키 바인딩 하나를 할당하세요."
+
+msgid "a parameter of this function"
+msgstr "이 함수의 매개변수"
+
+msgid "architecture-beta\n    %% group is a grouping and service a component. :L :R :T :B choose the side a line connects to\n    group app(cloud)[App]\n    service web(server)[Web Server] in app\n    service db(database)[Database] in app\n    service disk(disk)[Storage] in app\n    web:R -- L:db\n    web:B -- T:disk"
+msgstr "architecture-beta\n    %% group은 그룹, service는 구성 요소입니다. :L :R :T :B로 선이 연결될 변을 선택합니다\n    group app(cloud)[\"앱\"]\n    service web(server)[\"웹 서버\"] in app\n    service db(database)[\"데이터베이스\"] in app\n    service disk(disk)[\"스토리지\"] in app\n    web:R -- L:db\n    web:B -- T:disk"
+
+msgid "at its declaration"
+msgstr "선언 위치"
+
+msgid "block-beta\n    %% columns sets the number of columns, space is an empty cell and --> an arrow\n    columns 3\n    input[\"Input\"] process[\"Process\"] output[\"Output\"]\n    space log[\"Log\"] space\n    input --> process\n    process --> output\n    process --> log"
+msgstr "block-beta\n    %% columns는 열 수를 정하고, space는 빈 칸, -->는 화살표입니다\n    columns 3\n    input[\"입력\"] process[\"처리\"] output[\"출력\"]\n    space log[\"로그\"] space\n    input --> process\n    process --> output\n    process --> log"
+
+msgid "classDiagram\n    %% <|-- is inheritance, *-- composition and o-- aggregation\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+msgstr "classDiagram\n    %% <|--는 상속, *--는 합성, o--는 집합입니다\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+
+msgid "click to change min width"
+msgstr "최소 너비를 변경하려면 클릭"
+
+msgid "could not be followed"
+msgstr "더 이상 따라갈 수 없음"
+
+msgid "debug: {}"
+msgstr "디버그: {}"
+
+msgid "declared at file scope"
+msgstr "파일 범위에서 선언됨"
+
+msgid "declared in this function"
+msgstr "이 함수에서 선언됨"
+
+msgid "erDiagram\n    %% ||--o{{ is one-to-many and }}o--o{{ many-to-many\n    CUSTOMER ||--o{{ ORDER : \"places\"\n    ORDER ||--|{{ ORDER_ITEM : \"contains\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+msgstr "erDiagram\n    %% ||--o{{는 일대다, }}o--o{{는 다대다입니다\n    CUSTOMER ||--o{{ ORDER : \"주문함\"\n    ORDER ||--|{{ ORDER_ITEM : \"포함함\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+
+msgid "eventmodeling\n    %% tf number type name. ui is a screen, cmd a command, evt an event and rmo a read model. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+msgstr "eventmodeling\n    %% tf 번호 종류 이름. ui는 화면, cmd는 명령, evt는 이벤트, rmo는 읽기 모델입니다. 이름은 ASCII 영문자와 숫자로 쓰세요 (Mermaid는 ASCII가 아닌 이름을 읽을 수 없습니다)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+
+msgid "flowchart TD\n    %% [] is a step and {{}} a decision. |label| annotates a branch\n    start[Start] --> condition{{Condition}}\n    condition -->|Yes| work[Process]\n    condition -->|No| finish[End]\n    work --> finish"
+msgstr "flowchart TD\n    %% []는 단계, {{}}는 분기입니다. |레이블|로 분기에 주석을 답니다\n    start[시작] --> condition{{조건}}\n    condition -->|예| work[처리]\n    condition -->|아니요| finish[종료]\n    work --> finish"
+
+msgid "forward declaration"
+msgstr "전방 선언"
+
+msgid "gantt\n    title Development Schedule\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section Design\n    Requirements :done, req, 2026-01-06, 5d\n    Basic design :active, design, after req, 7d\n    section Implementation\n    Implementation :impl, after design, 10d"
+msgstr "gantt\n    title 개발 일정\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section 설계\n    요구 사항 정의 :done, req, 2026-01-06, 5d\n    기본 설계 :active, design, after req, 7d\n    section 구현\n    구현 :impl, after design, 10d"
+
+msgid "gitGraph\n    commit id: \"Initial commit\"\n    branch feature\n    checkout feature\n    commit id: \"Add a feature\"\n    checkout main\n    merge feature"
+msgstr "gitGraph\n    commit id: \"초기 커밋\"\n    branch feature\n    checkout feature\n    commit id: \"기능 추가\"\n    checkout main\n    merge feature"
+
+msgid "guessed by name only"
+msgstr "이름으로만 추정함"
+
+msgid "ishikawa-beta\n    %% The first line is the effect and indented lines its causes\n    Too many defects\n        People\n            Little experience\n        Method\n            Outdated procedures\n        Material\n            Inconsistent suppliers"
+msgstr "ishikawa-beta\n    %% 첫 줄은 결과, 들여쓴 줄은 원인입니다\n    불량이 너무 많음\n        사람\n            경험 부족\n        방법\n            오래된 절차\n        재료\n            공급업체의 품질 편차"
+
+msgid "journey\n    %% Task : Satisfaction (1 to 5) : People involved\n    title Path to Purchase\n    section Find\n      Search for a product: 4: Customer\n      Compare: 3: Customer\n    section Buy\n      Add to cart: 5: Customer\n      Pay: 2: Customer, Store"
+msgstr "journey\n    %% 작업 : 만족도 (1~5) : 관련된 사람\n    title 구매까지의 과정\n    section 찾기\n      상품 검색: 4: 고객\n      비교: 3: 고객\n    section 구매\n      장바구니에 담기: 5: 고객\n      결제: 2: 고객, 매장"
+
+msgid "kanban\n    %% Less indented lines are columns and more indented lines cards\n    todo[To Do]\n        spec[Write the spec]\n        screen[Build the screen]\n    doing[In Progress]\n        api[Build the API]\n    done[Done]\n        setup[Set up the environment]"
+msgstr "kanban\n    %% 들여쓰기가 얕은 줄은 열, 깊은 줄은 카드입니다\n    todo[할 일]\n        spec[사양 작성]\n        screen[화면 만들기]\n    doing[진행 중]\n        api[API 만들기]\n    done[완료]\n        setup[환경 설정]"
+
+msgid "mindmap\n  root((Central Topic))\n    Category A\n      Item 1\n      Item 2\n    Category B\n      Item 3"
+msgstr "mindmap\n  root((중심 주제))\n    분류 A\n      항목 1\n      항목 2\n    분류 B\n      항목 3"
+
+msgid "packet-beta\n    %% start bit-end bit: \"Field name\"\n    title UDP Header\n    0-15: \"Source Port\"\n    16-31: \"Destination Port\"\n    32-47: \"Length\"\n    48-63: \"Checksum\"\n    64-95: \"Data (variable length)\""
+msgstr "packet-beta\n    %% 시작 비트-끝 비트: \"필드 이름\"\n    title UDP 헤더\n    0-15: \"원본 포트\"\n    16-31: \"대상 포트\"\n    32-47: \"길이\"\n    48-63: \"체크섬\"\n    64-95: \"데이터 (가변 길이)\""
+
+msgid "pie title Breakdown\n    \"Design\" : 30\n    \"Implementation\" : 50\n    \"Testing\" : 20"
+msgstr "pie title 내역\n    \"설계\" : 30\n    \"구현\" : 50\n    \"테스트\" : 20"
+
+msgid "quadrantChart\n    %% A point is Name: [x, y], both from 0 to 1\n    title Initiative Priorities\n    x-axis Low Effort --> High Effort\n    y-axis Low Impact --> High Impact\n    quadrant-1 Plan and Do\n    quadrant-2 Do Now\n    quadrant-3 Do Later\n    quadrant-4 Reconsider\n    Initiative A: [0.3, 0.8]\n    Initiative B: [0.7, 0.6]\n    Initiative C: [0.2, 0.3]"
+msgstr "quadrantChart\n    %% 점은 이름: [x, y] 형식이며, 둘 다 0에서 1 사이입니다\n    title 과제 우선순위\n    x-axis 적은 노력 --> 많은 노력\n    y-axis 낮은 효과 --> 높은 효과\n    quadrant-1 계획하고 실행\n    quadrant-2 즉시 실행\n    quadrant-3 나중에 실행\n    quadrant-4 재검토\n    과제 A: [0.3, 0.8]\n    과제 B: [0.7, 0.6]\n    과제 C: [0.2, 0.3]"
+
+msgid "radar-beta\n    %% axis defines the axes and curve a series. List the values in the order of the axes\n    title Skill Comparison\n    axis design[\"Design\"], build[\"Implementation\"], test[\"Testing\"], ops[\"Operations\"]\n    curve a[\"Person A\"]{{4, 3, 5, 2}}\n    curve b[\"Person B\"]{{2, 5, 3, 4}}\n    max 5"
+msgstr "radar-beta\n    %% axis는 축, curve는 계열을 정의합니다. 값은 축 순서대로 나열하세요\n    title 기술 비교\n    axis design[\"설계\"], build[\"구현\"], test[\"테스트\"], ops[\"운영\"]\n    curve a[\"A 씨\"]{{4, 3, 5, 2}}\n    curve b[\"B 씨\"]{{2, 5, 3, 4}}\n    max 5"
+
+msgid "recursive"
+msgstr "재귀"
+
+msgid "requirementDiagram\n    %% requirement declares a requirement; element declares what satisfies it. Connect them with - satisfies ->\n    requirement login {{\n        id: 1\n        text: \"Users can log in\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"Screen\"\n    }}\n    login_page - satisfies -> login"
+msgstr "requirementDiagram\n    %% requirement는 요구 사항을, element는 이를 충족하는 대상을 선언합니다. - satisfies ->로 연결합니다\n    requirement login {{\n        id: 1\n        text: \"사용자가 로그인할 수 있음\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"화면\"\n    }}\n    login_page - satisfies -> login"
+
+msgid "sankey-beta\n    %% Each line is source,target,amount. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10"
+msgstr "sankey-beta\n    %% 각 줄은 원본,대상,양입니다. 이름은 ASCII 영문자와 숫자로 쓰세요 (Mermaid는 ASCII가 아닌 이름을 읽을 수 없습니다)\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10"
+
+msgid "sequenceDiagram\n    %% ->> is a call and -->> a reply\n    participant User as User\n    participant App as App\n    User->>App: Request\n    App-->>User: Response\n    Note over App: Note"
+msgstr "sequenceDiagram\n    %% ->>는 호출, -->>는 응답입니다\n    participant User as 사용자\n    participant App as 앱\n    User->>App: 요청\n    App-->>User: 응답\n    Note over App: 메모"
+
+msgid "stateDiagram-v2\n    %% [*] is the start and the end. The text after : on an arrow is the event name\n    [*] --> Idle\n    Idle --> Running: Start\n    Running --> Idle: Finish\n    Running --> [*]: Abort"
+msgstr "stateDiagram-v2\n    %% [*]는 시작과 끝입니다. 화살표의 : 뒤 텍스트는 이벤트 이름입니다\n    [*] --> Idle\n    Idle --> Running: 시작\n    Running --> Idle: 완료\n    Running --> [*]: 중단"
+
+msgid "the latest version"
+msgstr "최신 버전"
+
+msgid "timeline\n    title History\n    2024 : Planning\n    2025 : Development : Release\n    2026 : Operation"
+msgstr "timeline\n    title 연혁\n    2024 : 기획\n    2025 : 개발 : 출시\n    2026 : 운영"
+
+msgid "treeView-beta\n    %% Indentation shows the hierarchy\n    \"Project\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+msgstr "treeView-beta\n    %% 들여쓰기로 계층을 나타냅니다\n    \"프로젝트\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+
+msgid "treemap-beta\n    %% Indentation nests items. Give each leaf a value after :\n    \"Development\"\n        \"Design\": 30\n        \"Implementation\": 50\n    \"Operations\"\n        \"Maintenance\": 15\n        \"Monitoring\": 5"
+msgstr "treemap-beta\n    %% 들여쓰기로 항목을 중첩합니다. 각 말단 항목에는 : 뒤에 값을 지정하세요\n    \"개발\"\n        \"설계\": 30\n        \"구현\": 50\n    \"운영\"\n        \"유지 관리\": 15\n        \"모니터링\": 5"
+
+msgid "type named by the language server"
+msgstr "언어 서버가 지정한 타입"
+
+msgid "venn-beta\n    %% set defines a set and union names an overlap\n    title Overlapping Responsibilities\n    set Front[\"Frontend\"]\n    set Back[\"Backend\"]\n    union Front,Back[\"API\"]"
+msgstr "venn-beta\n    %% set은 집합을 정의하고, union은 겹치는 부분에 이름을 붙입니다\n    title 담당 영역의 겹침\n    set Front[\"프런트엔드\"]\n    set Back[\"백엔드\"]\n    union Front,Back[\"API\"]"
+
+msgid "xychart-beta\n    %% bar draws bars and line a line. Give as many values as the x-axis has items\n    title \"Monthly Sales\"\n    x-axis [\"Jan\", \"Feb\", \"Mar\", \"Apr\"]\n    y-axis \"Sales (USD thousands)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+msgstr "xychart-beta\n    %% bar는 막대, line은 선을 그립니다. x축 항목 수만큼 값을 지정하세요\n    title \"월별 매출\"\n    x-axis [\"1월\", \"2월\", \"3월\", \"4월\"]\n    y-axis \"매출 (천 USD)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+
+msgid "{alt_as_text}-click to disable\nright-click for more options"
+msgstr "{alt_as_text} 키를 누른 채 클릭하여 비활성화\n마우스 오른쪽 클릭으로 추가 옵션 보기"
+
+msgid "{count} Comment"
+msgid_plural "{count} Comments"
+msgstr[0] "댓글 {count}개"
+
+msgid "{count} more"
+msgid_plural "{count} more"
+msgstr[0] "{count}개 더"
+
+msgid "{tab_kind} (name match)"
+msgstr "{tab_kind} (이름 일치)"
+
+msgid "{tab_kind} for {target}"
+msgstr "{target}의 {tab_kind}"
+
+msgid "{title} (partial: {omitted} not shown)"
+msgstr "{title} (일부: {omitted}개 표시 안 됨)"
+
+msgid "{} to toggle all"
+msgstr "전체를 전환하려면 {}"
+
+msgctxt "markdown color"
+msgid "Blue"
+msgstr "파랑"
+
+msgctxt "markdown color"
+msgid "Gray"
+msgstr "회색"
+
+msgctxt "markdown color"
+msgid "Green"
+msgstr "초록"
+
+msgctxt "markdown color"
+msgid "Orange"
+msgstr "주황"
+
+msgctxt "markdown color"
+msgid "Pink"
+msgstr "분홍"
+
+msgctxt "markdown color"
+msgid "Purple"
+msgstr "보라"
+
+msgctxt "markdown color"
+msgid "Red"
+msgstr "빨강"
+
+msgctxt "markdown color"
+msgid "Yellow"
+msgstr "노랑"
+
+msgctxt "markdown text size"
+msgid "Extra Large"
+msgstr "매우 큼"
+
+msgctxt "markdown text size"
+msgid "Large"
+msgstr "큼"
+
+msgctxt "markdown text size"
+msgid "Small"
+msgstr "작음"
+
+msgctxt "mermaid diagram"
+msgid "Architecture Diagram"
+msgstr "아키텍처 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "Block Diagram"
+msgstr "블록 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "C4 Diagram"
+msgstr "C4 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "Class Diagram"
+msgstr "클래스 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "ER Diagram"
+msgstr "ER 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "Event Modeling"
+msgstr "이벤트 모델링"
+
+msgctxt "mermaid diagram"
+msgid "Flowchart"
+msgstr "순서도"
+
+msgctxt "mermaid diagram"
+msgid "Gantt Chart"
+msgstr "간트 차트"
+
+msgctxt "mermaid diagram"
+msgid "Git Graph"
+msgstr "Git 그래프"
+
+msgctxt "mermaid diagram"
+msgid "Ishikawa Diagram"
+msgstr "이시카와 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "Kanban"
+msgstr "칸반"
+
+msgctxt "mermaid diagram"
+msgid "Mindmap"
+msgstr "마인드맵"
+
+msgctxt "mermaid diagram"
+msgid "Packet Diagram"
+msgstr "패킷 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "Pie Chart"
+msgstr "원형 차트"
+
+msgctxt "mermaid diagram"
+msgid "Quadrant Chart"
+msgstr "사분면 차트"
+
+msgctxt "mermaid diagram"
+msgid "Radar Chart"
+msgstr "레이더 차트"
+
+msgctxt "mermaid diagram"
+msgid "Requirement Diagram"
+msgstr "요구 사항 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "Sankey Diagram"
+msgstr "Sankey 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "Sequence Diagram"
+msgstr "시퀀스 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "State Diagram"
+msgstr "상태 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "Timeline"
+msgstr "타임라인"
+
+msgctxt "mermaid diagram"
+msgid "Tree View"
+msgstr "트리 보기"
+
+msgctxt "mermaid diagram"
+msgid "Treemap"
+msgstr "트리맵"
+
+msgctxt "mermaid diagram"
+msgid "User Journey"
+msgstr "사용자 여정"
+
+msgctxt "mermaid diagram"
+msgid "Venn Diagram"
+msgstr "벤 다이어그램"
+
+msgctxt "mermaid diagram"
+msgid "XY Chart (Bar/Line)"
+msgstr "XY 차트 (막대/선)"
+
+msgctxt "table alignment"
+msgid "Center"
+msgstr "가운데"
+
+msgctxt "table alignment"
+msgid "Default"
+msgstr "기본"
+
+msgctxt "table alignment"
+msgid "Left"
+msgstr "왼쪽"
+
+msgctxt "table alignment"
+msgid "Right"
+msgstr "오른쪽"

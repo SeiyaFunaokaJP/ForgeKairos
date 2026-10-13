@@ -1,0 +1,108 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "A worktree with this name already exists"
+msgstr "Une arborescence de travail portant ce nom existe déjà"
+
+msgid "Automate Setup"
+msgstr "Automatiser la configuration"
+
+msgid "Automate Worktree Setup"
+msgstr "Automatiser la configuration de l'arborescence de travail"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Cannot create a named worktree in a project with multiple repositories"
+msgstr "Impossible de créer une arborescence de travail nommée dans un projet comportant plusieurs dépôts"
+
+msgid "Create"
+msgstr "Créer"
+
+msgid "Create \"{name}\" based on {branch_label}"
+msgstr "Créer \"{name}\" à partir de {branch_label}"
+
+msgid "Create new worktree based on {branch_label}"
+msgstr "Créer une nouvelle arborescence de travail basée sur {branch_label}"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Delete Worktree"
+msgstr "Supprimer l'arborescence de travail"
+
+msgid "Deleting…"
+msgstr "Suppression…"
+
+msgid "Failed to connect"
+msgstr "Échec de la connexion"
+
+msgid "Force Delete"
+msgstr "Forcer la suppression"
+
+msgid "Force Delete Worktree"
+msgstr "Forcer la suppression de l'arborescence de travail"
+
+msgid "Hold {} to force delete"
+msgstr "Maintenez {} pour forcer la suppression"
+
+msgid "Learn more"
+msgstr "En savoir plus"
+
+msgid "Open"
+msgstr "Ouvrir"
+
+msgid "Open in New Window"
+msgstr "Ouvrir dans une nouvelle fenêtre"
+
+msgid "Output from git {operation}"
+msgstr "Sortie de git {operation}"
+
+msgid "Remove Worktree from Window"
+msgstr "Retirer l'arborescence de travail de la fenêtre"
+
+msgid "Requires a Git repository in the project"
+msgstr "Nécessite un dépôt Git dans le projet"
+
+msgid "Select or type to create a worktree…"
+msgstr "Sélectionner ou saisir un nom pour créer une arborescence de travail…"
+
+msgid "Show Error Logs"
+msgstr "Afficher les journaux d'erreurs"
+
+msgid "Some project folders are not git repositories. They were included as-is without creating a worktree."
+msgstr "Certains dossiers du projet ne sont pas des dépôts Git. Ils ont été inclus tels quels sans créer d'arborescence de travail."
+
+msgid "This Window"
+msgstr "Cette fenêtre"
+
+msgid "Use local {}"
+msgstr "Utiliser {} en local"
+
+msgid "View Log"
+msgstr "Afficher le journal"
+
+msgid "Worktree \"{display_name}\" contains modified or untracked files. Force delete it?"
+msgstr "L'arborescence de travail \"{display_name}\" contient des fichiers modifiés ou non suivis. Forcer sa suppression ?"
+
+msgid "Worktree creation is not supported in collaborative projects"
+msgstr "La création d'arborescences de travail n'est pas prise en charge dans les projets collaboratifs"
+
+msgid "You may need to configure git for Github."
+msgstr "Vous devrez peut-être configurer git pour GitHub."
+
+msgid "current branches"
+msgstr "branches actuelles"
+
+msgid "git fetch failed for {}"
+msgstr "Échec de git fetch pour {}"
+
+msgid "git {} failed"
+msgstr "Échec de git {}"

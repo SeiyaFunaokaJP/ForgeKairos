@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Close Other Tabs"
+msgstr "Fermer les autres onglets"
+
+msgid "Close Tab"
+msgstr "Fermer l'onglet"
+
+msgid "Move Tab to New Window"
+msgstr "Déplacer l'onglet vers une nouvelle fenêtre"
+
+msgid "Show All Tabs"
+msgstr "Afficher tous les onglets"

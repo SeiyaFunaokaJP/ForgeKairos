@@ -1,0 +1,60 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Clear Filter"
+msgstr "Borrar filtro"
+
+msgid "Copy Path"
+msgstr "Copiar ruta"
+
+msgid "Copy Relative Path"
+msgstr "Copiar ruta relativa"
+
+msgid "Fold Directory"
+msgstr "Plegar directorio"
+
+msgid "Lines {}- {}"
+msgstr "Líneas {}- {}"
+
+msgid "No matches for query"
+msgstr "No hay coincidencias para la consulta"
+
+msgid "No outlines available"
+msgstr "No hay esquemas disponibles"
+
+msgid "Open in Terminal"
+msgstr "Abrir en terminal"
+
+msgid "Outline Panel"
+msgstr "Panel de esquema"
+
+msgid "Pin Active Outline"
+msgstr "Fijar esquema activo"
+
+msgid "Search buffer symbols…"
+msgstr "Buscar símbolos del búfer…"
+
+msgid "Searching:"
+msgstr "Buscando:"
+
+msgid "Toggle Panel With"
+msgstr "Alternar panel con"
+
+msgid "Unfold Directory"
+msgstr "Desplegar directorio"
+
+msgid "Unknown buffer"
+msgstr "Búfer desconocido"
+
+msgid "Unpin Outline"
+msgstr "Dejar de fijar el esquema"
+
+msgid "Untitled"
+msgstr "Sin título"

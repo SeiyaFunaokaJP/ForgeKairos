@@ -1009,12 +1009,11 @@ fn handle_file_permalink(
                 .ok();
             }
             Err(err) => {
-                let action = if copy {
-                    "copy file permalink"
+                let message = if copy {
+                    i18n::t!("Failed to copy file permalink: {err}")
                 } else {
-                    "open file permalink"
+                    i18n::t!("Failed to open file permalink: {err}")
                 };
-                let message = format!("Failed to {action}: {err}");
                 anyhow::Result::<()>::Err(err).log_err();
 
                 workspace

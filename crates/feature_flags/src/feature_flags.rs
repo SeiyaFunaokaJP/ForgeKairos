@@ -91,8 +91,8 @@ impl FeatureFlagValue for PresenceFlag {
 
     fn label(&self) -> &'static str {
         match self {
-            PresenceFlag::On => "On",
-            PresenceFlag::Off => "Off",
+            PresenceFlag::On => i18n::t!("On"),
+            PresenceFlag::Off => i18n::t!("Off"),
         }
     }
 

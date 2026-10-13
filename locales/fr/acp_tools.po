@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Clear Messages"
+msgstr "Effacer les messages"
+
+msgid "Copy All Messages"
+msgstr "Copier tous les messages"
+
+msgid "Disconnected"
+msgstr "Déconnecté"
+
+msgid "No active connection"
+msgstr "Aucune connexion active"
+
+msgid "No active connections"
+msgstr "Aucune connexion active"
+
+msgid "No connection selected"
+msgstr "Aucune connexion sélectionnée"
+
+msgid "No messages recorded yet"
+msgstr "Aucun message enregistré pour l'instant"
+
+msgid "Reconnecting to {}"
+msgstr "Reconnexion à {}"
+
+msgid "Restart Connection"
+msgstr "Redémarrer la connexion"
+
+msgid "[unrecognized response]"
+msgstr "[réponse non reconnue]"

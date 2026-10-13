@@ -1109,7 +1109,7 @@ impl TitleBar {
                     })
                     .trigger_with_tooltip(trigger, move |_window, cx| {
                         let meta = if is_detached_head {
-                            format!("Detached HEAD: {}", branch_tooltip_label)
+                            i18n::t!("Detached HEAD: {}", branch_tooltip_label)
                         } else {
                             i18n::t!("Currently Checked Out: {}", branch_tooltip_label)
                         };

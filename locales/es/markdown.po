@@ -1,0 +1,102 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "A Gantt chart title cannot be empty."
+msgstr "El título de un diagrama de Gantt no puede estar vacío."
+
+msgid "A class diagram relationship label cannot contain %%. Use a different symbol instead."
+msgstr "La etiqueta de una relación de un diagrama de clases no puede contener %%. Use otro símbolo en su lugar."
+
+msgid "A pie chart item name cannot be empty or contain `%%`."
+msgstr "El nombre de un elemento de un gráfico circular no puede estar vacío ni contener `%%`."
+
+msgid "A pie chart title cannot contain `%%`."
+msgstr "El título de un gráfico circular no puede contener `%%`."
+
+msgid "A section name cannot be empty."
+msgstr "El nombre de una sección no puede estar vacío."
+
+msgid "A section with the same name already exists. Sections with the same name are drawn as one, so use a different name."
+msgstr "Ya existe una sección con el mismo nombre. Las secciones con el mismo nombre se dibujan como una sola, así que use otro nombre."
+
+msgid "A task name cannot be empty, contain `:`, or start with a keyword such as `title` or `section`."
+msgstr "El nombre de una tarea no puede estar vacío, contener `:` ni empezar por una palabra clave como `title` o `section`."
+
+msgid "An empty label cannot be edited here. Add text to it in \"Edit Mermaid Diagram\"."
+msgstr "Una etiqueta vacía no se puede editar aquí. Agréguele texto en \"Editar diagrama de Mermaid\"."
+
+msgid "An item with the same name already exists. A pie chart does not draw a second item with the same name, so use a different name."
+msgstr "Ya existe un elemento con el mismo nombre. Un gráfico circular no dibuja un segundo elemento con el mismo nombre, así que use otro nombre."
+
+msgid "Code"
+msgstr "Código"
+
+msgid "Details"
+msgstr "Detalles"
+
+msgid "Double-click to edit the text"
+msgstr "Haga doble clic para editar el texto"
+
+msgid "Edit Mermaid Diagram"
+msgstr "Editar diagrama de Mermaid"
+
+msgid "Failed to Load Mermaid Diagram"
+msgstr "No se pudo cargar el diagrama de Mermaid"
+
+msgid "Failed to Load: {link_label}"
+msgstr "No se pudo cargar: {link_label}"
+
+msgid "Failed to load mermaid diagram"
+msgstr "No se pudo cargar el diagrama de Mermaid"
+
+msgid "Failed to render the Mermaid diagram: {error}"
+msgstr "No se pudo representar el diagrama de Mermaid: {error}"
+
+msgid "Image failed to load. Open `zed: log` for more details."
+msgstr "No se pudo cargar la imagen. Abra `zed: log` para obtener más detalles."
+
+msgid "In a sequence diagram, a leading wrap: or nowrap: is read as a wrapping directive, so the text cannot start with it."
+msgstr "En un diagrama de secuencia, un wrap: o nowrap: inicial se interpreta como una directiva de ajuste, así que el texto no puede empezar por ellos."
+
+msgid "Preview"
+msgstr "Vista previa"
+
+msgid "Rendering..."
+msgstr "Representando..."
+
+msgid "Reset Zoom"
+msgstr "Restablecer zoom"
+
+msgid "Sequence diagram text cannot be empty. Edit it in \"Edit Mermaid Diagram\"."
+msgstr "El texto de un diagrama de secuencia no puede estar vacío. Edítelo en \"Editar diagrama de Mermaid\"."
+
+msgid "Several elements share this name or ID, so it cannot be edited here. Fix it in \"Edit Mermaid Diagram\"."
+msgstr "Varios elementos comparten este nombre o ID, así que no se puede editar aquí. Corríjalo en \"Editar diagrama de Mermaid\"."
+
+msgid "The attribute name contains characters that cannot be used. Whitespace, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` and key names such as `PK` are not allowed."
+msgstr "El nombre del atributo contiene caracteres que no se pueden usar. No se permiten espacios en blanco, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` ni nombres de clave como `PK`."
+
+msgid "The source location of this label could not be found."
+msgstr "No se encontró la ubicación en el código fuente de esta etiqueta."
+
+msgid "This element shows its ID as is. To change what is shown, give it a description or an alias in \"Edit Mermaid Diagram\"."
+msgstr "Este elemento muestra su ID tal cual. Para cambiar lo que se muestra, asígnele una descripción o un alias en \"Editar diagrama de Mermaid\"."
+
+msgid "This line's label is shared by several links, so it cannot be edited here."
+msgstr "La etiqueta de esta línea la comparten varios enlaces, así que no se puede editar aquí."
+
+msgid "Unwrap Content"
+msgstr "Desajustar contenido"
+
+msgid "Wrap Content"
+msgstr "Ajustar contenido"
+
+msgid "Zoom {percentage}%"
+msgstr "Zoom {percentage}%"

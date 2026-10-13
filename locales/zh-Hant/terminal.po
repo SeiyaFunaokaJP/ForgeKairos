@@ -1,0 +1,171 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid ", capture into ${{{capture}}}"
+msgstr "，擷取至 ${{{capture}}}"
+
+msgid ", on a match capture into ${{{capture}}}"
+msgstr "，符合時擷取至 ${{{capture}}}"
+
+msgid ", {count} step on timeout"
+msgid_plural ", {count} steps on timeout"
+msgstr[0] "，逾時時 {count} 個步驟"
+
+msgid "A saved password can't answer the host key confirmation of a first connection. Connect once with “Remember password” turned off and confirm the host key."
+msgstr "已儲存的密碼無法回應首次連線時的主機金鑰確認。請關閉「記住密碼」連線一次，並確認主機金鑰。"
+
+msgid "Branch: if “{pattern}” is in {target}, run {} step(s), otherwise {} step(s)"
+msgstr "分支：若{target}中有「{pattern}」，則執行 {} 個步驟，否則執行 {} 個步驟"
+
+msgid "Clear screen"
+msgstr "清除畫面"
+
+msgid "Couldn't delete the password ({url})"
+msgstr "無法刪除密碼（{url}）"
+
+msgid "Couldn't read the password ({url})"
+msgstr "無法讀取密碼（{url}）"
+
+msgid "Couldn't save the password ({url})"
+msgstr "無法儲存密碼（{url}）"
+
+msgid "Couldn't write terminal_sessions.json"
+msgstr "無法寫入 terminal_sessions.json"
+
+msgid "Match → Then"
+msgstr "符合 → 則"
+
+msgid "No match → Else"
+msgstr "不符合 → 否則"
+
+msgid "Output since last send"
+msgstr "上次傳送後的輸出"
+
+msgid "Repeat: until stopped ({count} step)"
+msgid_plural "Repeat: until stopped ({count} steps)"
+msgstr[0] "重複：直到停止（{count} 個步驟）"
+
+msgid "Repeat: ×{times} ({count} step)"
+msgid_plural "Repeat: ×{times} ({count} steps)"
+msgstr[0] "重複：{times} 次（{count} 個步驟）"
+
+msgid "Send: {text}"
+msgstr "傳送：{text}"
+
+msgid "Sleep: {} s"
+msgstr "等待秒數：{} 秒"
+
+msgid "Step {label} is of a kind this version can't run (“{kind}”). The macro was not run."
+msgstr "步驟 {label} 的類型是此版本無法執行的（「{kind}」）。未執行巨集。"
+
+msgid "Step {label} is of a kind this version can't run. The macro was not run."
+msgstr "步驟 {label} 的類型是此版本無法執行的。未執行巨集。"
+
+msgid "Step {label}: {problem}. The macro was not run."
+msgstr "步驟 {label}：{problem}。未執行巨集。"
+
+msgid "Step {step_label}: the regular expression “{display_pattern}” is invalid ({error})"
+msgstr "步驟 {step_label}：規則運算式「{display_pattern}」無效（{error}）"
+
+msgid "Step {}: the terminal exited while waiting for “{display_pattern}”"
+msgstr "步驟 {}：等待「{display_pattern}」時終端機已結束"
+
+msgid "Step {}: this version can't run this kind of step"
+msgstr "步驟 {}：此版本無法執行此類型的步驟"
+
+msgid "Step {}: “{display_pattern}” did not appear within {} s"
+msgstr "步驟 {}：「{display_pattern}」未在 {} 秒內出現"
+
+msgid "The saved password was rejected. Enter the password again in Quick Connect."
+msgstr "已儲存的密碼遭到拒絕。請在「快速連線」中重新輸入密碼。"
+
+msgid "The “{field}” of this “{kind}” step has a value this version can't use"
+msgstr "此「{kind}」步驟的「{field}」含有此版本無法使用的值"
+
+msgid "This terminal can't record its output (it has no PTY)"
+msgstr "此終端機無法記錄其輸出（沒有 PTY）"
+
+msgid "This “{kind}” step has a field this version doesn't know (“{field}”)"
+msgstr "此「{kind}」步驟含有此版本不認得的欄位（「{field}」）"
+
+msgid "This “{kind}” step has no “{field}”"
+msgstr "此「{kind}」步驟沒有「{field}」"
+
+msgid "Timeout → Continue"
+msgstr "逾時 → 繼續"
+
+msgid "Unknown step (this version can't run it)"
+msgstr "未知的步驟（此版本無法執行）"
+
+msgid "Unknown step “{kind}” (this version can't run it)"
+msgstr "未知的步驟「{kind}」（此版本無法執行）"
+
+msgid "Variable: ${{{name}}} = “{value}”"
+msgstr "變數：${{{name}}} = 「{value}」"
+
+msgid "Wait for “{pattern}” (up to {} s)"
+msgstr "等待「{pattern}」（最多 {} 秒）"
+
+msgid "Whole screen"
+msgstr "整個畫面"
+
+msgid "[Remote connection lost. The shell keeps running on the remote host; its output will resume after reconnecting]"
+msgstr "[遠端連線中斷。Shell 仍在遠端主機上執行；重新連線後將繼續顯示其輸出]"
+
+msgid "[Remote connection lost. The shell will restart after reconnecting]"
+msgstr "[遠端連線中斷。重新連線後將重新啟動 Shell]"
+
+msgid "[password input omitted]"
+msgstr "[已省略密碼輸入]"
+
+msgid "[{working_directory} was not found, so the shell started in the home directory]"
+msgstr "[找不到 {working_directory}，因此 Shell 已在主目錄中啟動]"
+
+msgid "the output since the last send"
+msgstr "上次傳送後的輸出"
+
+msgid "the whole screen"
+msgstr "整個畫面"
+
+msgctxt "terminal macro"
+msgid "Variable"
+msgstr "變數"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "分支"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "清除畫面"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "重複"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "傳送"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "設定變數"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "等待秒數"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "未知的步驟"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "等待字串"

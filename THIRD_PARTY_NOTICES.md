@@ -61,6 +61,23 @@ the terms and the style to those of the fork's other Japanese translations
 does not have, such as those of the actions and settings the fork adds, are the
 fork's own translations. Nothing was taken from zed-i18n's other files.
 
+### zed-i18n translations for other languages (modified)
+
+| | |
+|---|---|
+| Used for | The first drafts of about 44% of the entries of the Chinese (Simplified and Traditional), Korean, German, French, Spanish and Brazilian Portuguese catalogs |
+| Version | The `zh-CN`, `zh-TW`, `ko-KR`, `de-DE`, `fr-FR`, `es-ES` and `pt-BR` translations at commit `955f1f7421a9104456f99bff8ac112a7ea897ee7` (2026-10-13), made for Zed v1.23.3 |
+| Source | <https://github.com/LI-NA/zed-i18n> (`translations/<language>.json`) |
+| License | GPL-3.0 (the project's catalogs and translations; its tooling is MIT) |
+| Copyright | Copyright (c) 2026 LI-NA and the zed-i18n contributors |
+| Location | `locales/zh-Hans/`, `locales/zh-Hant/`, `locales/ko/`, `locales/de/`, `locales/fr/`, `locales/es/`, `locales/pt-BR/` (bundled into the application) |
+| License text | `LICENSE-GPL` (GPL-3.0, the same license the application is distributed under) |
+
+Changed by this fork (October 2026): an entry was taken only when its English matched
+the fork's message exactly and its placeholders agreed; the taken entries were then
+reviewed against the English and changed to each language's terms, style and product
+name. The other entries are the fork's own translations.
+
 ## Used for development only, not distributed
 
 ### Mermaid

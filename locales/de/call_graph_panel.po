@@ -1,0 +1,211 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(file scope)"
+msgstr "(Dateiebene)"
+
+msgid "All Sources"
+msgstr "Alle Quellen"
+
+msgid "Call Graph Options"
+msgstr "Optionen des Aufrufgraphen"
+
+msgid "Call Graph Panel"
+msgstr "Aufrufgraph-Panel"
+
+msgid "Callees"
+msgstr "Aufgerufene"
+
+msgid "Callees in the call_graph_panel.excluded_callees setting. Click to show them."
+msgstr "Aufgerufene aus der Einstellung call_graph_panel.excluded_callees. Klicken, um sie anzuzeigen."
+
+msgid "Callers"
+msgstr "Aufrufer"
+
+msgid "Calls come from the language server. For C and C++, clangd needs a compile_commands.json to find them."
+msgstr "Aufrufe stammen vom Sprachserver. Für C und C++ benötigt clangd eine compile_commands.json, um sie zu finden."
+
+msgid "Collapse All"
+msgstr "Alle zuklappen"
+
+msgid "Could not find the function at the cursor: {error}"
+msgstr "Die Funktion am Cursor konnte nicht gefunden werden: {error}"
+
+msgid "Could not get the calls: {message}"
+msgstr "Die Aufrufe konnten nicht abgerufen werden: {message}"
+
+msgid "Definition not found"
+msgstr "Definition nicht gefunden"
+
+msgid "Exact: answered by the language server"
+msgstr "Exakt: vom Sprachserver beantwortet"
+
+msgid "Filter shown functions…"
+msgstr "Angezeigte Funktionen filtern…"
+
+msgid "Folders deeper than the file scan depth outside git repositories are not in the symbol index."
+msgstr "Ordner außerhalb von Git-Repositorys, die tiefer als die Dateiscantiefe liegen, sind nicht im Symbolindex."
+
+msgid "Follow the Cursor"
+msgstr "Dem Cursor folgen"
+
+msgid "Function pointer candidate"
+msgstr "Funktionszeiger-Kandidat"
+
+msgid "Function pointer candidate: stored into the member this indirect call goes through, so it may be called there"
+msgstr "Funktionszeiger-Kandidat: im Member gespeichert, über den dieser indirekte Aufruf läuft, und wird daher möglicherweise dort aufgerufen"
+
+msgid "If the language server is still indexing, this is tried again when it finishes."
+msgstr "Wenn der Sprachserver noch indiziert, wird dies nach Abschluss erneut versucht."
+
+msgid "Indexing symbols {done} / {total}"
+msgstr "Symbole werden indiziert {done} / {total}"
+
+msgid "Indirect call: .{field}"
+msgstr "Indirekter Aufruf: .{field}"
+
+msgid "Inspect Cursor"
+msgstr "Cursor untersuchen"
+
+msgid "Inspect the Function at the Cursor"
+msgstr "Funktion am Cursor untersuchen"
+
+msgid "It does not offer call hierarchy. Another language server for this language may."
+msgstr "Er bietet keine Aufrufhierarchie. Ein anderer Sprachserver für diese Sprache bietet sie möglicherweise."
+
+msgid "Language Server Only"
+msgstr "Nur Sprachserver"
+
+msgid "Language server"
+msgstr "Sprachserver"
+
+msgid "Looking for the function at the cursor…"
+msgstr "Funktion am Cursor wird gesucht…"
+
+msgid "Macro"
+msgstr "Makro"
+
+msgid "Macro: a macro the symbol index found by name"
+msgstr "Makro: ein Makro, das der Symbolindex anhand des Namens gefunden hat"
+
+msgid "Name Matches Only"
+msgstr "Nur Namensübereinstimmungen"
+
+msgid "Name match"
+msgstr "Namensübereinstimmung"
+
+msgid "Name match: found by the symbol index by name, not resolved by a language server"
+msgstr "Namensübereinstimmung: vom Symbolindex anhand des Namens gefunden, nicht von einem Sprachserver aufgelöst"
+
+msgid "Name matches found so far may be incomplete; they are asked for again when indexing ends."
+msgstr "Die bisher gefundenen Namensübereinstimmungen sind möglicherweise unvollständig; sie werden nach Abschluss der Indizierung erneut abgefragt."
+
+msgid "Next Root"
+msgstr "Nächster Ausgangspunkt"
+
+msgid "No callees"
+msgstr "Keine Aufgerufenen"
+
+msgid "No callers"
+msgstr "Keine Aufrufer"
+
+msgid "No function selected"
+msgstr "Keine Funktion ausgewählt"
+
+msgid "No language server is running for this file."
+msgstr "Für diese Datei läuft kein Sprachserver."
+
+msgid "Nothing is asked for until then, and each level is asked for only when you expand it."
+msgstr "Bis dahin wird nichts abgefragt, und jede Ebene wird erst abgefragt, wenn Sie sie aufklappen."
+
+msgid "Only the first {limit} calls are shown"
+msgstr "Nur die ersten {limit} Aufrufe werden angezeigt"
+
+msgid "Open a file and put the cursor on a function."
+msgstr "Öffnen Sie eine Datei und setzen Sie den Cursor auf eine Funktion."
+
+msgid "Open the Setting"
+msgstr "Einstellung öffnen"
+
+msgid "Preparing the symbol index…"
+msgstr "Symbolindex wird vorbereitet…"
+
+msgid "Previous Root"
+msgstr "Vorheriger Ausgangspunkt"
+
+msgid "Put the cursor on a function and inspect it to see its calls."
+msgstr "Setzen Sie den Cursor auf eine Funktion und untersuchen Sie sie, um ihre Aufrufe zu sehen."
+
+msgid "Rebuild the Symbol Index"
+msgstr "Symbolindex neu erstellen"
+
+msgid "Recursive: this function is already on the path above"
+msgstr "Rekursiv: Diese Funktion ist bereits im Pfad darüber enthalten"
+
+msgid "Retry"
+msgstr "Erneut versuchen"
+
+msgid "Several functions are named {name}. Choose the root:"
+msgstr "Mehrere Funktionen heißen {name}. Wählen Sie den Ausgangspunkt:"
+
+msgid "Show {count} more"
+msgid_plural "Show {count} more"
+msgstr[0] "{count} weitere anzeigen"
+msgstr[1] "{count} weitere anzeigen"
+
+msgid "Symbol index: in use by another window"
+msgstr "Symbolindex: wird von einem anderen Fenster verwendet"
+
+msgid "Symbol index: not available in a shared project"
+msgstr "Symbolindex: in einem freigegebenen Projekt nicht verfügbar"
+
+msgid "Symbol index: this server does not support it"
+msgstr "Symbolindex: von diesem Server nicht unterstützt"
+
+msgid "Symbol index: {error}"
+msgstr "Symbolindex: {error}"
+
+msgid "Symbol index: {files} files, {definitions} definitions"
+msgstr "Symbolindex: {files} Dateien, {definitions} Definitionen"
+
+msgid "The language server for this file cannot list calls."
+msgstr "Der Sprachserver für diese Datei kann keine Aufrufe auflisten."
+
+msgid "The symbol index is off"
+msgstr "Der Symbolindex ist ausgeschaltet"
+
+msgid "There is no function at the cursor."
+msgstr "Am Cursor befindet sich keine Funktion."
+
+msgid "Turn it on with the symbol_index.enabled setting to find calls by name in C and C++."
+msgstr "Schalten Sie ihn mit der Einstellung symbol_index.enabled ein, um Aufrufe in C und C++ anhand des Namens zu finden."
+
+msgid "{count} definition with this name"
+msgid_plural "{count} definitions with this name"
+msgstr[0] "{count} Definition mit diesem Namen"
+msgstr[1] "{count} Definitionen mit diesem Namen"
+
+msgid "{count} excluded"
+msgid_plural "{count} excluded"
+msgstr[0] "{count} ausgeschlossen"
+msgstr[1] "{count} ausgeschlossen"
+
+msgid "{count} more are not listed"
+msgid_plural "{count} more are not listed"
+msgstr[0] "{count} weiterer ist nicht aufgeführt"
+msgstr[1] "{count} weitere sind nicht aufgeführt"
+
+msgctxt "call graph panel"
+msgid "Refresh"
+msgstr "Aktualisieren"
+
+msgctxt "call graph panel"
+msgid "Sources"
+msgstr "Quellen"

@@ -547,13 +547,13 @@ impl CommitView {
             .justify_center()
             .gap_2()
             .child(
-                Label::new("This commit is at the boundary of a shallow clone.")
+                Label::new(i18n::t!("This commit is at the boundary of a shallow clone."))
                     .color(Color::Muted),
             )
             .child(
-                Label::new(
-                    "Its parent history was not fetched, so the changes it introduced cannot be shown.",
-                )
+                Label::new(i18n::t!(
+                    "Its parent history was not fetched, so the changes it introduced cannot be shown."
+                ))
                 .color(Color::Muted),
             )
             .child(
@@ -568,16 +568,16 @@ impl CommitView {
                             Button::new(
                                 "fetch-unshallow",
                                 if fetch_in_flight {
-                                    "Fetching…"
+                                    i18n::tc!("git fetch", "Fetching…")
                                 } else {
-                                    "Fetch Missing History"
+                                    i18n::t!("Fetch Missing History")
                                 },
                             )
                                 .style(ButtonStyle::Filled)
                                 .disabled(fetch_in_flight)
-                                .tooltip(Tooltip::text(
-                                    "Run `git fetch --unshallow` to download the full history, then show this commit's changes.",
-                                ))
+                                .tooltip(Tooltip::text(i18n::t!(
+                                    "Run `git fetch --unshallow` to download the full history, then show this commit's changes."
+                                )))
                                 .on_click(move |_, window, cx| {
                                     let fetch = crate::commit_tooltip::fetch_unshallow(
                                         repository.clone(),
@@ -613,16 +613,16 @@ impl CommitView {
                         Button::new(
                             "load-shallow-snapshot",
                             if file_filter.is_some() {
-                                "Load File Snapshot"
+                                i18n::t!("Load File Snapshot")
                             } else {
-                                "Load Full Snapshot"
+                                i18n::t!("Load Full Snapshot")
                             },
                         )
                             .style(ButtonStyle::Outlined)
                             .tooltip(Tooltip::text(if file_filter.is_some() {
-                                "Show this file's full contents at this commit as added."
+                                i18n::t!("Show this file's full contents at this commit as added.")
                             } else {
-                                "Show every file at this commit as added. This can be slow in large repositories."
+                                i18n::t!("Show every file at this commit as added. This can be slow in large repositories.")
                             }))
                             .on_click(move |_, window, cx| {
                                 Self::open_with_options(
@@ -917,7 +917,7 @@ impl CommitView {
             async move |repository, sha, stash, commit_view, workspace, cx| {
                 let result = repository.update(cx, |repo, cx| {
                     if !stash_matches_index(&sha, stash, repo) {
-                        return Err(anyhow::anyhow!("Stash has changed, not applying"));
+                        return Err(anyhow::anyhow!(i18n::t!("Stash has changed, not applying")));
                     }
                     Ok(repo.stash_apply(Some(stash), cx))
                 });
@@ -945,7 +945,7 @@ impl CommitView {
             async move |repository, sha, stash, commit_view, workspace, cx| {
                 let result = repository.update(cx, |repo, cx| {
                     if !stash_matches_index(&sha, stash, repo) {
-                        return Err(anyhow::anyhow!("Stash has changed, pop aborted"));
+                        return Err(anyhow::anyhow!(i18n::t!("Stash has changed, pop aborted")));
                     }
                     Ok(repo.stash_pop(Some(stash), cx))
                 });
@@ -973,7 +973,7 @@ impl CommitView {
             async move |repository, sha, stash, commit_view, workspace, cx| {
                 let result = repository.update(cx, |repo, cx| {
                     if !stash_matches_index(&sha, stash, repo) {
-                        return Err(anyhow::anyhow!("Stash has changed, drop aborted"));
+                        return Err(anyhow::anyhow!(i18n::t!("Stash has changed, drop aborted")));
                     }
                     Ok(repo.stash_drop(Some(stash), cx))
                 });

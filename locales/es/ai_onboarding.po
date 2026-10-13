@@ -1,0 +1,163 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "$10 of tokens in Zed agent"
+msgstr "$10 en tokens en el agente de Zed"
+
+msgid "$5 of GPT Luna"
+msgstr "$5 en GPT Luna"
+
+msgid "$5 of tokens in Zed agent"
+msgstr "$5 en tokens en el agente de Zed"
+
+msgid "(Current Plan)"
+msgstr "(Plan actual)"
+
+msgid "14 days from trial start, no credit card required"
+msgstr "14 días desde el inicio de la prueba, no se requiere tarjeta de crédito"
+
+msgid "2,000 accepted edit predictions"
+msgstr "2000 predicciones de edición aceptadas"
+
+msgid "API Keys"
+msgstr "Claves de API"
+
+msgid "Add your own keys to use AI without signing in."
+msgstr "Agregue sus propias claves para usar la IA sin iniciar sesión."
+
+msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
+msgstr "Los comandos del agente se ejecutan dentro de un sandbox del sistema operativo. Tocar archivos fuera del proyecto o abrir un nuevo acceso a la red pide confirmación antes. La ejecución fuera del sandbox no está permitida de forma predeterminada. Aunque se permita, cada comando de terminal pide confirmación, pero un agente iniciado fuera puede usar sus propias herramientas sin preguntar."
+
+msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
+msgstr "También puede seguir usando GitHub Copilot, ya que ya está configurado."
+
+msgid "Alternatively, you can use GitHub Copilot as your edit prediction provider."
+msgstr "También puede usar GitHub Copilot como proveedor de predicciones de edición."
+
+msgid "Before You Use AI"
+msgstr "Antes de usar la IA"
+
+msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
+msgstr "Los comandos que ejecuta el agente, y los propios agentes externos, se ejecutan dentro de un sandbox del sistema operativo (Seatbelt en macOS, bubblewrap en Linux, WSL en Windows). Las operaciones de archivos fuera del proyecto y los nuevos accesos a la red piden su confirmación. La ejecución fuera del sandbox no está permitida de forma predeterminada y se puede permitir en la configuración del sandbox. Aun así, los comandos de terminal que se ejecutan fuera piden su confirmación uno por uno, pero un agente externo o Claude Code iniciado fuera del sandbox puede usar sus propias herramientas sin preguntar."
+
+msgid "Configure Copilot"
+msgstr "Configurar Copilot"
+
+msgid "Configure Providers"
+msgstr "Configurar proveedores"
+
+msgid "Connections made by AI (model providers, agent tools, MCP servers, and external agents) are denied by default unless their host is on the network allowlist, and adding a host asks for your confirmation. The list is under Settings → Network → Network Allowlist. The IDE's own tooling, such as language servers and extensions, is not affected. For an agent started outside the sandbox, the allowlist only reaches programs that honor its proxy settings; it is not enforced."
+msgstr "Las conexiones que realiza la IA (proveedores de modelos, herramientas del agente, servidores MCP y agentes externos) se deniegan de forma predeterminada a menos que su host esté en la lista de permitidos de red, y agregar un host pide su confirmación. La lista está en Configuración → Red → Lista de permitidos de red. Las herramientas propias del IDE, como los servidores de lenguaje y las extensiones, no se ven afectadas. En un agente iniciado fuera del sandbox, la lista de permitidos solo alcanza a los programas que respetan su configuración de proxy; no se impone."
+
+msgid "Connections made by AI are denied unless their host is on the network allowlist, and adding a host asks you first."
+msgstr "Las conexiones que realiza la IA se deniegan a menos que su host esté en la lista de permitidos de red, y agregar un host pide confirmación antes."
+
+msgid "Dismiss"
+msgstr "Cerrar"
+
+msgid "External AI (cloud APIs and external agents) receives the code, file contents, and conversations you give it, and depending on the provider's terms may store them or use them to train models. Local models served on this machine (loopback) send nothing out. Before using external AI for work, check your organization's policy."
+msgstr "La IA externa (API en la nube y agentes externos) recibe el código, el contenido de los archivos y las conversaciones que le proporcione y, según los términos del proveedor, puede almacenarlos o usarlos para entrenar modelos. Los modelos locales servidos en este equipo (loopback) no envían nada al exterior. Antes de usar IA externa en el trabajo, consulte la política de su organización."
+
+msgid "External AI receives the code, files, and conversations you give it and may store them or train on them. Local models on this machine send nothing out."
+msgstr "La IA externa recibe el código, los archivos y las conversaciones que le proporcione y puede almacenarlos o usarlos para entrenamiento. Los modelos locales de este equipo no envían nada al exterior."
+
+msgid "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
+msgstr "GitHub Copilot también se puede usar como proveedor de predicciones de edición, pero es un servicio de IA externo. Habilite las predicciones de edición en Configurar proveedores, en la página IA, y revise la advertencia sobre el riesgo de entrenamiento de modelos."
+
+msgid "Here's what you get:"
+msgstr "Esto es lo que obtiene:"
+
+msgid "Included for 14 days from when your trial started:"
+msgstr "Incluido durante 14 días desde el inicio de su prueba:"
+
+msgid "Network"
+msgstr "Red"
+
+msgid "No credit card required"
+msgstr "No se requiere tarjeta de crédito"
+
+msgid "Open AI Settings"
+msgstr "Abrir configuración de IA"
+
+msgid "Open Configure Providers"
+msgstr "Abrir Configurar proveedores"
+
+msgid "Open Sandbox Settings"
+msgstr "Abrir configuración del sandbox"
+
+msgid "Optional credit packs for additional usage"
+msgstr "Paquetes de créditos opcionales para uso adicional"
+
+msgid "Pro Trial"
+msgstr "Prueba de Pro"
+
+msgid "Sandbox"
+msgstr "Sandbox"
+
+msgid "Sign In to Try GPT Luna"
+msgstr "Iniciar sesión para probar GPT Luna"
+
+msgid "Sign in to try GPT Luna. Your 14 days begin when you start the trial."
+msgstr "Inicie sesión para probar GPT Luna. Sus 14 días comienzan cuando inicia la prueba."
+
+msgid "Start Free Trial"
+msgstr "Iniciar prueba gratuita"
+
+msgid "Start now using API keys from your environment for the following providers:"
+msgstr "Empiece ahora usando claves de API de su entorno para los siguientes proveedores:"
+
+msgid "To prevent abuse of our service, GitHub accounts created fewer than 30 days ago are not eligible for the Pro trial. You can request an exception by reaching out to billing-support@zed.dev"
+msgstr "Para evitar el abuso de nuestro servicio, las cuentas de GitHub creadas hace menos de 30 días no pueden optar a la prueba de Pro. Puede solicitar una excepción escribiendo a billing-support@zed.dev"
+
+msgid "Tokens in the Zed agent"
+msgstr "Tokens en el agente de Zed"
+
+msgid "Unlimited edit predictions"
+msgstr "Predicciones de edición ilimitadas"
+
+msgid "Unlimited prompts with your AI API keys"
+msgstr "Prompts ilimitados con sus claves de API de IA"
+
+msgid "Unlimited use of external agents"
+msgstr "Uso ilimitado de agentes externos"
+
+msgid "Usage-based billing"
+msgstr "Facturación basada en el uso"
+
+msgid "Usage-based billing beyond $5"
+msgstr "Facturación basada en el uso una vez superados los $5"
+
+msgid "Use Copilot"
+msgstr "Usar Copilot"
+
+msgid "Welcome to Zed Business"
+msgstr "Bienvenido a Zed Business"
+
+msgid "Welcome to Zed Pro"
+msgstr "Bienvenido a Zed Pro"
+
+msgid "Welcome to Zed Student"
+msgstr "Bienvenido a Zed Student"
+
+msgid "Welcome to Zed VIP"
+msgstr "Bienvenido a Zed VIP"
+
+msgid "Welcome to the Zed Pro Trial"
+msgstr "Bienvenido a la prueba de Zed Pro"
+
+msgid "Your data"
+msgstr "Sus datos"
+
+msgid "Zed AI (External Service)"
+msgstr "Zed AI (servicio externo)"
+
+msgctxt "plan"
+msgid "Get Started"
+msgstr "Empezar"

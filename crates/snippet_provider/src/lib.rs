@@ -553,7 +553,7 @@ mod tests {
     fn test_built_in_snippets_follow_display_language(cx: &mut TestAppContext) {
         static JAPANESE: LocaleOnlyCatalog = LocaleOnlyCatalog("ja");
         static JAPANESE_IN_JAPAN: LocaleOnlyCatalog = LocaleOnlyCatalog("ja-JP");
-        static BRAZILIAN_PORTUGUESE: LocaleOnlyCatalog = LocaleOnlyCatalog("pt-BR");
+        static ITALIAN: LocaleOnlyCatalog = LocaleOnlyCatalog("it");
 
         let fs = FakeFs::new(cx.background_executor.clone());
         cx.update(|cx| {
@@ -580,7 +580,7 @@ mod tests {
                 );
             }
             {
-                let _locale = i18n::test_support::LocaleOverride::new(Some(&BRAZILIAN_PORTUGUESE));
+                let _locale = i18n::test_support::LocaleOverride::new(Some(&ITALIAN));
                 assert_eq!(
                     built_in_markdown_names(provider, cx),
                     ["Mermaid Sequence Diagram"]

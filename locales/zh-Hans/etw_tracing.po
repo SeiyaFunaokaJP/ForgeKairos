@@ -1,0 +1,60 @@
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cancelling ETW recording..."
+msgstr "正在取消 ETW 录制..."
+
+msgid "ETW recording cancelled"
+msgstr "已取消 ETW 录制"
+
+msgid "ETW recording ended unexpectedly"
+msgstr "ETW 录制意外结束"
+
+msgid "ETW recording failed: {message}"
+msgstr "ETW 录制失败：{message}"
+
+msgid "ETW recording is already in progress"
+msgstr "ETW 录制已在进行中"
+
+msgid "ETW recording is already stopping"
+msgstr "ETW 录制已在停止中"
+
+msgid "ETW recording is already waiting for a save location"
+msgstr "ETW 录制已在等待选择保存位置"
+
+msgid "ETW recording started"
+msgstr "已开始 ETW 录制"
+
+msgid "ETW trace saved to {}"
+msgstr "ETW 跟踪已保存到 {}"
+
+msgid "Failed to cancel ETW recording: {error}"
+msgstr "取消 ETW 录制失败：{error}"
+
+msgid "Failed to complete ETW recording: {error}"
+msgstr "完成 ETW 录制失败：{error}"
+
+msgid "Failed to pick save location: {error}"
+msgstr "选择保存位置失败：{error}"
+
+msgid "Failed to start ETW recording: {error}"
+msgstr "开始 ETW 录制失败：{error}"
+
+msgid "Failed to stop ETW recording: {error}"
+msgstr "停止 ETW 录制失败：{error}"
+
+msgid "No active ETW recording to cancel"
+msgstr "没有可取消的 ETW 录制"
+
+msgid "No active ETW recording to stop"
+msgstr "没有可停止的 ETW 录制"
+
+msgid "Show in File Manager"
+msgstr "在文件管理器中显示"
+
+msgid "Stopping ETW recording..."
+msgstr "正在停止 ETW 录制..."

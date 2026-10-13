@@ -32,9 +32,6 @@ msgstr "AI タブ: 別プロファイル。通信は許可リストの範囲だ�
 msgid "AI tabs need the network allowlist proxy, which is not running, so this tab cannot open pages."
 msgstr "AI タブには通信の許可リストのプロキシが必要ですが、動いていないため、このタブではページを開けません。"
 
-msgid "Add Bookmark"
-msgstr "ブックマークを追加"
-
 msgid "Add Folder"
 msgstr "フォルダーを追加"
 
@@ -49,9 +46,6 @@ msgstr "{url} を止めました: AI タブで開けるのは、許可リスト�
 
 msgid "Bookmark This Page"
 msgstr "このページをブックマークに追加"
-
-msgid "Bookmarks"
-msgstr "ブックマーク"
 
 msgid "Bookmarks are still loading. Try again in a moment."
 msgstr "ブックマークを読み込んでいます。少し待ってからもう一度お試しください。"
@@ -85,9 +79,6 @@ msgstr "削除しますか?"
 
 msgid "Edit"
 msgstr "編集"
-
-msgid "Edit Bookmark"
-msgstr "ブックマークを編集"
 
 msgid "Edit Folder"
 msgstr "フォルダーを編集"
@@ -202,8 +193,20 @@ msgid "AI"
 msgstr "AI"
 
 msgctxt "browser bookmark"
+msgid "Add Bookmark"
+msgstr "ブックマークを追加"
+
+msgctxt "browser bookmark"
+msgid "Bookmarks"
+msgstr "ブックマーク"
+
+msgctxt "browser bookmark"
 msgid "Cancel"
 msgstr "取消"
+
+msgctxt "browser bookmark"
+msgid "Edit Bookmark"
+msgstr "ブックマークを編集"
 
 msgctxt "browser bookmark"
 msgid "Location"

@@ -1,0 +1,301 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Accepts this key and continues connecting (the key is recorded in known_hosts)"
+msgstr "接受此金鑰並繼續連線（金鑰會記錄在 known_hosts 中）"
+
+msgid "Authentication was canceled."
+msgstr "驗證已取消。"
+
+msgid "Brings the items selected on the remote side to the local side"
+msgstr "將遠端選取的項目取回至本機"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Canceled."
+msgstr "已取消。"
+
+msgid "Clear Finished"
+msgstr "清除已完成"
+
+msgid "Connect"
+msgstr "連線"
+
+msgid "Connect first."
+msgstr "請先連線。"
+
+msgid "Connected to {target}."
+msgstr "已連線至 {target}。"
+
+msgid "Connecting to {target}…"
+msgstr "正在連線至 {target}…"
+
+msgid "Connection name"
+msgstr "連線名稱"
+
+msgid "Connections"
+msgstr "連線目標"
+
+msgid "Could not list the remote folder."
+msgstr "無法列出遠端資料夾。"
+
+msgid "Could not open standard input"
+msgstr "無法開啟標準輸入"
+
+msgid "Could not open the folder: {error}"
+msgstr "無法開啟資料夾：{error}"
+
+msgid "Could not pass on the input: {error}"
+msgstr "無法傳遞輸入：{error}"
+
+msgid "Could not run {program}."
+msgstr "無法執行 {program}。"
+
+msgid "Could not save the connection: {error}"
+msgstr "無法儲存連線目標：{error}"
+
+msgid "Could not save the order: {error}"
+msgstr "無法儲存排列順序：{error}"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "Delete \"{names}\" ({side})?"
+msgstr "要刪除「{names}」（{side}）嗎？"
+
+msgid "Disconnect"
+msgstr "中斷連線"
+
+msgid "Disconnected."
+msgstr "已中斷連線。"
+
+msgid "Done"
+msgstr "完成"
+
+msgid "Download"
+msgstr "下載"
+
+msgid "Enter a host name or an IP address."
+msgstr "請輸入主機名稱或 IP 位址。"
+
+msgid "Enter a name."
+msgstr "請輸入名稱。"
+
+msgid "Enter the remote path."
+msgstr "請輸入遠端路徑。"
+
+msgid "Failed"
+msgstr "失敗"
+
+msgid "File Transfer"
+msgstr "檔案傳輸"
+
+msgid "Folder (e.g. Offices/Head Office)"
+msgstr "資料夾（例如：辦公室/總公司）"
+
+msgid "Go to Parent Folder"
+msgstr "前往上層資料夾"
+
+msgid "Host name / IP address"
+msgstr "主機名稱 / IP 位址"
+
+msgid "Loading…"
+msgstr "正在載入…"
+
+msgid "Local"
+msgstr "本機"
+
+msgid "Local side"
+msgstr "本機端"
+
+msgid "More than {limit} files would be transferred. Transfer them in smaller batches."
+msgstr "要傳輸的檔案超過 {limit} 個。請分批傳輸。"
+
+msgid "More than {limit} items would be deleted. Delete them in smaller batches."
+msgstr "要刪除的項目超過 {limit} 個。請分批刪除。"
+
+msgid "Moves down one place within the same folder"
+msgstr "在同一個資料夾中下移一個位置"
+
+msgid "Moves up one place within the same folder"
+msgstr "在同一個資料夾中上移一個位置"
+
+msgid "Name of the new folder ({side})"
+msgstr "新資料夾的名稱（{side}）"
+
+msgid "New name for \"{name}\""
+msgstr "「{name}」的新名稱"
+
+msgid "No"
+msgstr "否"
+
+msgid "No items"
+msgstr "沒有項目"
+
+msgid "No saved connections yet."
+msgstr "尚無已儲存的連線目標。"
+
+msgid "Opens the list of saved connections and Remote SSH hosts"
+msgstr "開啟已儲存的連線目標與遠端 SSH 主機的清單"
+
+msgid "Password (optional)"
+msgstr "密碼（選用）"
+
+msgid "Port"
+msgstr "連接埠"
+
+msgid "Progress"
+msgstr "進度"
+
+msgid "Queued"
+msgstr "已排入佇列"
+
+msgid "Reconnect"
+msgstr "重新連線"
+
+msgid "Remember password"
+msgstr "記住密碼"
+
+msgid "Remote"
+msgstr "遠端"
+
+msgid "Remote SSH"
+msgstr "遠端 SSH"
+
+msgid "Removed the saved password."
+msgstr "已移除已儲存的密碼。"
+
+msgid "Removes the saved password of this connection"
+msgstr "移除此連線目標已儲存的密碼"
+
+msgid "Rename one item at a time."
+msgstr "請一次重新命名一個項目。"
+
+msgid "Running"
+msgstr "執行中"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Save this connection"
+msgstr "儲存此連線目標"
+
+msgid "Saved"
+msgstr "已儲存"
+
+msgid "Saved the connection \"{name}\"."
+msgstr "已儲存連線目標「{name}」。"
+
+msgid "Select the item to rename."
+msgstr "請選取要重新命名的項目。"
+
+msgid "Select the items to delete."
+msgstr "請選取要刪除的項目。"
+
+msgid "Select the items to download on the remote side."
+msgstr "請在遠端選取要下載的項目。"
+
+msgid "Select the items to upload on the local side."
+msgstr "請在本機端選取要上傳的項目。"
+
+msgid "Sends the items selected on the local side to the remote"
+msgstr "將本機端選取的項目傳送至遠端"
+
+msgid "Stopped because the connection was closed."
+msgstr "由於連線已關閉，因此已停止。"
+
+msgid "Stops connecting"
+msgstr "停止連線"
+
+msgid "Target: {side}"
+msgstr "目標：{side}"
+
+msgid "That name cannot be used."
+msgstr "無法使用該名稱。"
+
+msgid "The command failed (it printed no details)."
+msgstr "命令失敗（未輸出任何詳細資料）。"
+
+msgid "The command failed:\n{detail}"
+msgstr "命令失敗：\n{detail}"
+
+msgid "The connection timed out."
+msgstr "連線已逾時。"
+
+msgid "The host name contains characters that cannot be used."
+msgstr "主機名稱含有無法使用的字元。"
+
+msgid "The list of saved connections has not loaded yet."
+msgstr "已儲存的連線目標清單尚未載入。"
+
+msgid "The name contains characters that cannot be used."
+msgstr "名稱含有無法使用的字元。"
+
+msgid "The operation failed:\n{error}"
+msgstr "操作失敗：\n{error}"
+
+msgid "The password is stored in the operating system's credential manager and shared with Quick Connect"
+msgstr "密碼會儲存在作業系統的認證管理員中，並與快速連線共用"
+
+msgid "The password you entered was rejected. Enter it again."
+msgstr "您輸入的密碼遭到拒絕。請重新輸入。"
+
+msgid "The port number is invalid."
+msgstr "連接埠號碼無效。"
+
+msgid "The remote path contains characters that cannot be used."
+msgstr "遠端路徑含有無法使用的字元。"
+
+msgid "The remote path must start with /."
+msgstr "遠端路徑必須以 / 開頭。"
+
+msgid "The saved password was rejected. Enter it again."
+msgstr "已儲存的密碼遭到拒絕。請重新輸入。"
+
+msgid "The user name contains characters that cannot be used."
+msgstr "使用者名稱含有無法使用的字元。"
+
+msgid "This Computer"
+msgstr "這台電腦"
+
+msgid "This Remote ({display_name})"
+msgstr "此遠端（{display_name}）"
+
+msgid "This host's key has not been seen before. Continue connecting?"
+msgstr "先前未曾見過此主機的金鑰。要繼續連線嗎？"
+
+msgid "Upload"
+msgstr "上傳"
+
+msgid "User name"
+msgstr "使用者名稱"
+
+msgid "Writes to the list shared with Quick Connect"
+msgstr "寫入與快速連線共用的清單"
+
+msgid "Yes"
+msgstr "是"
+
+msgctxt "file transfer"
+msgid "New Folder"
+msgstr "新增資料夾"
+
+msgctxt "file transfer"
+msgid "Refresh"
+msgstr "重新整理"
+
+msgctxt "file transfer"
+msgid "Rename"
+msgstr "重新命名"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

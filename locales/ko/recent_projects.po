@@ -1,0 +1,283 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\nUnsaved changes are stored locally."
+msgstr "\n저장되지 않은 변경 사항은 로컬에 저장됩니다."
+
+msgid "Actions"
+msgstr "작업"
+
+msgid "Activate"
+msgstr "활성화"
+
+msgid "Add Folder to this Project"
+msgstr "이 프로젝트에 폴더 추가"
+
+msgid "Add Folders to this Project"
+msgstr "이 프로젝트에 폴더 추가"
+
+msgid "Add Nickname to Server"
+msgstr "서버에 별칭 추가"
+
+msgid "Add WSL Distro"
+msgstr "WSL 배포판 추가"
+
+msgid "Add a nickname for this server"
+msgstr "이 서버의 별칭을 추가하세요"
+
+msgid "As a multi-root folder"
+msgstr "멀티 루트 폴더로"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Cannot open Dev Container from remote project"
+msgstr "원격 프로젝트에서 Dev Container를 열 수 없습니다"
+
+msgid "Close Window"
+msgstr "창 닫기"
+
+msgid "Connect Dev Container"
+msgstr "Dev Container 연결"
+
+msgid "Connect SSH Server"
+msgstr "SSH 서버 연결"
+
+msgid "Connect to Remote"
+msgstr "원격에 연결"
+
+msgid "Connect to a remote host"
+msgstr "원격 호스트에 연결"
+
+msgid "Connected to: {host}"
+msgstr "{host}에 연결됨"
+
+msgid "Connecting to: {host}"
+msgstr "{host}에 연결 중"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "{host}에 대한 연결 시도가 실패했습니다. 다시 시도 중..."
+
+msgid "Copied server address ({}) to clipboard"
+msgstr "서버 주소({})를 클립보드에 복사했습니다"
+
+msgid "Copy Server Address"
+msgstr "서버 주소 복사"
+
+msgid "Creating Dev Container"
+msgstr "Dev Container 생성 중"
+
+msgid "Current Folders"
+msgstr "현재 폴더"
+
+msgid "Delete Remote Project"
+msgstr "원격 프로젝트 삭제"
+
+msgid "Dev Container"
+msgstr "Dev Container"
+
+msgid "Disconnected"
+msgstr "연결 끊김"
+
+msgid "Disconnected from {host}"
+msgstr "{host}와(과) 연결이 끊어졌습니다"
+
+msgid "Don't Show Again"
+msgstr "다시 표시 안 함"
+
+msgid "Edit Nickname"
+msgstr "별칭 편집"
+
+msgid "Enter WSL distro name"
+msgstr "WSL 배포판 이름 입력"
+
+msgid "Enter the command you use to SSH into this server."
+msgstr "이 서버에 SSH로 접속할 때 사용하는 명령을 입력하세요."
+
+msgid "Error Creating Dev Container:"
+msgstr "Dev Container 생성 오류:"
+
+msgid "Exit"
+msgstr "종료"
+
+msgid "Failed to connect"
+msgstr "연결하지 못했습니다"
+
+msgid "Failed to connect over SSH"
+msgstr "SSH로 연결하지 못했습니다"
+
+msgid "Failed to connect to Dev Container"
+msgstr "Dev Container에 연결하지 못했습니다"
+
+msgid "Failed to connect to WSL"
+msgstr "WSL에 연결하지 못했습니다"
+
+msgid "Failed to connect to the remote host"
+msgstr "원격 호스트에 연결하지 못했습니다"
+
+msgid "Failed to open project"
+msgstr "프로젝트를 열지 못했습니다"
+
+msgid "Failed to reconnect"
+msgstr "다시 연결하지 못했습니다"
+
+msgid "Failed to start Dev Container. See logs for details"
+msgstr "Dev Container를 시작하지 못했습니다. 자세한 내용은 로그를 확인하세요"
+
+msgid "Go Back"
+msgstr "뒤로"
+
+msgid "Invalid path"
+msgstr "잘못된 경로"
+
+msgid "Invalid path specified when trying to open a folder inside WSL.\n\nPlease note that Zed currently does not support opening network share folders inside wsl.\n"
+msgstr "WSL 내부의 폴더를 열려고 할 때 잘못된 경로가 지정되었습니다.\n\n현재 ForgeKairos는 WSL 내부에서 네트워크 공유 폴더를 여는 것을 지원하지 않습니다.\n"
+
+msgid "Learn More"
+msgstr "자세히 알아보기"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "{host}와(과)의 연결이 끊어졌습니다. 다시 연결 중..."
+
+msgid "No matches"
+msgstr "일치 항목 없음"
+
+msgid "No matching remote projects."
+msgstr "일치하는 원격 프로젝트가 없습니다."
+
+msgid "No, keep it"
+msgstr "아니요, 유지"
+
+msgid "Open"
+msgstr "열기"
+
+msgid "Open Folder"
+msgstr "폴더 열기"
+
+msgid "Open Local Folders"
+msgstr "로컬 폴더 열기"
+
+msgid "Open Project in This Window"
+msgstr "이 창에서 프로젝트 열기"
+
+msgid "Open Remote Folder"
+msgstr "원격 폴더 열기"
+
+msgid "Open Zed Log"
+msgstr "ForgeKairos 로그 열기"
+
+msgid "Open devcontainer.json"
+msgstr "devcontainer.json 열기"
+
+msgid "Open in New Window"
+msgstr "새 창에서 열기"
+
+msgid "Open projects over SSH, in WSL, or in Dev Containers."
+msgstr "SSH, WSL 또는 Dev Container의 프로젝트를 엽니다."
+
+msgid "Recent Projects"
+msgstr "최근 프로젝트"
+
+msgid "Recently opened projects will show up here"
+msgstr "최근에 연 프로젝트가 여기에 표시됩니다"
+
+msgid "Reconnect"
+msgstr "다시 연결"
+
+msgid "Remote: {host}"
+msgstr "원격: {host}"
+
+msgid "Remove"
+msgstr "제거"
+
+msgid "Remove Distro"
+msgstr "배포판 제거"
+
+msgid "Remove Folder"
+msgstr "폴더 제거"
+
+msgid "Remove Folder from Project"
+msgstr "프로젝트에서 폴더 제거"
+
+msgid "Remove Project from Window"
+msgstr "창에서 프로젝트 제거"
+
+msgid "Remove Server"
+msgstr "서버 제거"
+
+msgid "Remove WSL distro `{}`?"
+msgstr "WSL 배포판 `{}`을(를) 제거하시겠습니까?"
+
+msgid "Remove from Recent Projects"
+msgstr "최근 프로젝트에서 제거"
+
+msgid "Remove from Window"
+msgstr "창에서 제거"
+
+msgid "Remove server `{}`?"
+msgstr "서버 `{}`을(를) 제거하시겠습니까?"
+
+msgid "Retry"
+msgstr "다시 시도"
+
+msgid "Search projects…"
+msgstr "프로젝트 검색…"
+
+msgid "Search remote projects…"
+msgstr "원격 프로젝트 검색…"
+
+msgid "Select"
+msgstr "선택"
+
+msgid "Select Dev Container Configuration"
+msgstr "Dev Container 구성 선택"
+
+msgid "Start Dev Container"
+msgstr "Dev Container 시작"
+
+msgid "This Window"
+msgstr "이 창"
+
+msgid "View Server Options"
+msgstr "서버 옵션 보기"
+
+msgid "Yes, Open in Container"
+msgstr "예, 컨테이너에서 열기"
+
+msgid "Yes, remove it"
+msgstr "예, 제거"
+
+msgid "Your connection to the remote project has been lost."
+msgstr "원격 프로젝트와의 연결이 끊어졌습니다."
+
+msgid "Your connection to {} has been lost due to the server {reason}.{autosave}"
+msgstr "{}에 대한 연결이 끊겼습니다 (서버 {reason}).{autosave}"
+
+msgid "could not parse: {}"
+msgstr "구문 분석하지 못했습니다: {}"
+
+msgid "{worktree_name} contains a Dev Container configuration file. Would you like to re-open it in a container?"
+msgstr "{worktree_name}에 Dev Container 구성 파일이 있습니다. 컨테이너에서 다시 여시겠습니까?"
+
+msgctxt "disconnect reason"
+msgid "not responding"
+msgstr "응답 없음"
+
+msgctxt "disconnect reason"
+msgid "process exiting unexpectedly"
+msgstr "프로세스가 예기치 않게 종료됨"
+
+msgctxt "project picker"
+msgid "New Window"
+msgstr "새 창"
+
+msgctxt "project picker"
+msgid "Open Project in New Window"
+msgstr "새 창에서 프로젝트 열기"

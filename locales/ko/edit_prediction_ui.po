@@ -1,0 +1,272 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Actions"
+msgstr "작업"
+
+msgid "Add your feedback…"
+msgstr "피드백을 입력하세요…"
+
+msgid "All Files"
+msgstr "모든 파일"
+
+msgid "Bad Prediction"
+msgstr "잘못된 예측"
+
+msgid "Check your payment status or contact us at billing-support@zed.dev to continue using this feature."
+msgstr "이 기능을 계속 사용하려면 결제 상태를 확인하거나 billing-support@zed.dev로 문의하세요."
+
+msgid "Choose a Plan"
+msgstr "플랜 선택"
+
+msgid "Configure Excluded Files"
+msgstr "제외 파일 구성"
+
+msgid "Configure Providers"
+msgstr "프로바이더 구성"
+
+msgid "Configure a Provider"
+msgstr "프로바이더 구성"
+
+msgid "Copilot Edit Predictions can't be started: {}"
+msgstr "Copilot 편집 예측을 시작할 수 없습니다: {}"
+
+msgid "Copilot: Next Edit Suggestions"
+msgstr "Copilot: 다음 편집 제안"
+
+msgid "Default"
+msgstr "기본값"
+
+msgid "Disable Copilot Edit Predictions"
+msgstr "Copilot 편집 예측 비활성화"
+
+msgid "Disabled For This File"
+msgstr "이 파일에서 비활성화됨"
+
+msgid "Display Modes"
+msgstr "표시 모드"
+
+msgid "Display predictions inline only when holding a modifier key ({} by default)."
+msgstr "보조 키(기본값: {})를 누르고 있을 때만 예측을 인라인으로 표시합니다."
+
+msgid "Display predictions inline when there are no language server completions available."
+msgstr "언어 서버 자동 완성을 사용할 수 없을 때 예측을 인라인으로 표시합니다."
+
+msgid "Edit Prediction"
+msgstr "편집 예측"
+
+msgid "Edit Prediction Context"
+msgstr "편집 예측 컨텍스트"
+
+msgid "Edit Predictions"
+msgstr "편집 예측"
+
+msgid "Edit predictions are disabled for this organization."
+msgstr "이 조직에서는 편집 예측이 비활성화되어 있습니다."
+
+msgid "Edit predictions are disabled for {}"
+msgstr "{}에서는 편집 예측이 비활성화되어 있습니다"
+
+msgid "Edits Available"
+msgstr "사용 가능한 편집"
+
+msgid "Enable to Use"
+msgstr "사용하려면 활성화"
+
+msgid "Expected Patch"
+msgstr "예상 패치"
+
+msgid "Experiment"
+msgstr "실험"
+
+msgid "Explain what's bad about it before reporting it"
+msgstr "보고하기 전에 무엇이 잘못되었는지 설명하세요"
+
+msgid "Explain why this completion is good or bad. If it's negative, describe what you expected instead."
+msgstr "이 완성 결과가 좋거나 나쁜 이유를 설명하세요. 부정적인 경우 대신 기대했던 내용을 설명하세요."
+
+msgid "External AI warning not accepted"
+msgstr "외부 AI 경고에 동의하지 않음"
+
+msgid "Free tier limit reached"
+msgstr "무료 플랜 한도 도달"
+
+msgid "From most recent to oldest"
+msgstr "최신 항목부터 오래된 항목 순으로"
+
+msgid "GitHub Copilot Edit Predictions"
+msgstr "GitHub Copilot 편집 예측"
+
+msgid "Go to Copilot Settings"
+msgstr "Copilot 설정으로 이동"
+
+msgid "Go to next run"
+msgstr "다음 실행으로 이동"
+
+msgid "Go to previous run"
+msgstr "이전 실행으로 이동"
+
+msgid "Good Prediction"
+msgstr "좋은 예측"
+
+msgid "Help us improve our open dataset model by sharing data from open source repositories. Zed must detect a license file in your repo for this setting to take effect. Files with sensitive data and secrets are excluded by default."
+msgstr "오픈 소스 저장소의 데이터를 공유하여 오픈 데이터셋 모델 개선에 도움을 주세요. 이 설정이 적용되려면 ForgeKairos가 저장소에서 라이선스 파일을 감지해야 합니다. 민감한 데이터와 시크릿이 포함된 파일은 기본적으로 제외됩니다."
+
+msgid "Issue"
+msgstr "문제"
+
+msgid "Learn More"
+msgstr "자세히 알아보기"
+
+msgid "Mercury free tier limit reached"
+msgstr "Mercury 무료 플랜 한도 도달"
+
+msgid "Missing API key for Codestral"
+msgstr "Codestral용 API 키 없음"
+
+msgid "Missing API key for Mercury"
+msgstr "Mercury용 API 키 없음"
+
+msgid "No Edits Produced"
+msgstr "생성된 편집 없음"
+
+msgid "No active completion"
+msgstr "활성 자동 완성 없음"
+
+msgid "No completions yet. Use the editor to generate some, and make sure to rate them!"
+msgstr "아직 완성 결과가 없습니다. 편집기를 사용하여 생성하고, 꼭 평가해 주세요!"
+
+msgid "No data captured."
+msgstr "수집된 데이터가 없습니다."
+
+msgid "No edits produced."
+msgstr "생성된 편집이 없습니다."
+
+msgid "No retrieval runs yet"
+msgstr "아직 검색 실행 없음"
+
+msgid "Ollama model not configured — configure a model before use"
+msgstr "Ollama 모델이 구성되지 않았습니다 — 사용하기 전에 모델을 구성하세요"
+
+msgid "Open your settings to add sensitive paths for which Zed will never predict edits."
+msgstr "설정을 열어 ForgeKairos가 편집을 예측하지 않을 민감한 경로를 추가하세요."
+
+msgid "Powered by Codestral"
+msgstr "Codestral 기반"
+
+msgid "Powered by Mercury"
+msgstr "Mercury 기반"
+
+msgid "Powered by Ollama ({})"
+msgstr "Ollama 기반 ({})"
+
+msgid "Powered by Zeta"
+msgstr "Zeta 기반"
+
+msgid "Predict Edit at Cursor"
+msgstr "커서 위치에서 편집 예측"
+
+msgid "Predicted Patch"
+msgstr "예측된 패치"
+
+msgid "Privacy"
+msgstr "개인 정보"
+
+msgid "Project identified as open source, and you're sharing data."
+msgstr "프로젝트가 오픈 소스로 식별되었으며, 데이터를 공유하고 있습니다."
+
+msgid "Project identified as open source, but you're not sharing data."
+msgstr "프로젝트가 오픈 소스로 식별되었지만, 데이터를 공유하지 않고 있습니다."
+
+msgid "Project not identified as open source, and setting turned off."
+msgstr "프로젝트가 오픈 소스로 식별되지 않았으며, 설정이 꺼져 있습니다."
+
+msgid "Project not identified as open source. No data captured."
+msgstr "프로젝트가 오픈 소스로 식별되지 않았습니다. 수집된 데이터가 없습니다."
+
+msgid "Providers"
+msgstr "프로바이더"
+
+msgid "Rate Predictions"
+msgstr "예측 평가"
+
+msgid "Rated Prediction"
+msgstr "평가된 예측"
+
+msgid "Rated completion."
+msgstr "자동 완성을 평가했습니다."
+
+msgid "Recorded Events & Input"
+msgstr "기록된 이벤트 및 입력"
+
+msgid "Reinstall Copilot Edit Predictions"
+msgstr "Copilot 편집 예측 재설치"
+
+msgid "Show Edit Predictions For"
+msgstr "편집 예측 표시 대상"
+
+msgid "Sign In & Start Using"
+msgstr "로그인하고 사용 시작"
+
+msgid "Sign In Or Configure a Provider"
+msgstr "로그인하거나 프로바이더를 구성하세요"
+
+msgid "Sign In to Copilot Edit Predictions"
+msgstr "Copilot 편집 예측에 로그인"
+
+msgid "Sign Out"
+msgstr "로그아웃"
+
+msgid "Subscribe to increase your limit"
+msgstr "구독하여 한도 늘리기"
+
+msgid "Suggested Edits"
+msgstr "제안된 편집"
+
+msgid "This Buffer"
+msgstr "이 버퍼"
+
+msgid "This file is excluded."
+msgstr "이 파일은 제외되었습니다."
+
+msgid "Training Data Collection"
+msgstr "학습 데이터 수집"
+
+msgid "Upgrade to Zed Pro or contact us."
+msgstr "Zed Pro로 업그레이드하거나 문의하세요."
+
+msgid "Upgrade to a paid plan to continue using the service"
+msgstr "서비스를 계속 사용하려면 유료 플랜으로 업그레이드하세요"
+
+msgid "Usage"
+msgstr "사용량"
+
+msgid "View Docs"
+msgstr "문서 보기"
+
+msgid "You get 2,000 accepted suggestions at every keystroke for free, powered by Zeta, our open-source, open-data model"
+msgstr "오픈 소스, 오픈 데이터 모델인 Zeta를 통해 키 입력마다 수락된 제안 2,000개를 무료로 사용할 수 있습니다"
+
+msgid "You have an outstanding invoice"
+msgstr "미결제 청구서가 있습니다"
+
+msgid "Your GitHub account is less than 30 days old."
+msgstr "GitHub 계정을 만든 지 30일이 지나지 않았습니다."
+
+msgid "{tooltip_text} • Trigger: {trigger_tooltip}"
+msgstr "{tooltip_text} • 트리거: {trigger_tooltip}"
+
+msgctxt "edit prediction display mode"
+msgid "Eager"
+msgstr "적극적"
+
+msgctxt "edit prediction display mode"
+msgid "Subtle"
+msgstr "은은함"

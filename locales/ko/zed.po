@@ -1,0 +1,583 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "About Zed"
+msgstr "ForgeKairos 정보"
+
+msgid "Accessibility Tree"
+msgstr "접근성 트리"
+
+msgid "Add Cursor Above"
+msgstr "위에 커서 추가"
+
+msgid "Add Cursor Below"
+msgstr "아래에 커서 추가"
+
+msgid "An older version is still running, so this session keeps using the older version's data folders:\n{}\n\nQuit the older version and restart to move them to the new folders."
+msgstr "이전 버전이 아직 실행 중이므로 이 세션은 이전 버전의 데이터 폴더를 계속 사용합니다:\n{}\n\n새 폴더로 옮기려면 이전 버전을 종료하고 다시 시작하세요."
+
+msgid "Are you sure you want to quit?"
+msgstr "종료하시겠습니까?"
+
+msgid "Auto (Language Server)"
+msgstr "자동 (언어 서버)"
+
+msgid "Auto (Prettier)"
+msgstr "자동 (Prettier)"
+
+msgid "Auto Signature Help"
+msgstr "자동 시그니처 도움말"
+
+msgid "Auto-restarting {}"
+msgstr "{} 자동 다시 시작 중"
+
+msgid "Backup and Update"
+msgstr "백업 후 업데이트"
+
+msgid "Based on Zed {version}"
+msgstr "Zed {version} 기반"
+
+msgid "Block Quote"
+msgstr "인용"
+
+msgid "Bold"
+msgstr "굵게"
+
+msgid "Buffer Search"
+msgstr "버퍼 검색"
+
+msgid "Bullet List"
+msgstr "글머리 기호 목록"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Clear Events"
+msgstr "이벤트 지우기"
+
+msgid "Clear Outputs"
+msgstr "출력 지우기"
+
+msgid "Code Actions"
+msgstr "코드 액션"
+
+msgid "Code Block"
+msgstr "코드 블록"
+
+msgid "Code Lens"
+msgstr "코드 렌즈"
+
+msgid "Column Git Blame"
+msgstr "Git Blame 열"
+
+msgid "Commit"
+msgstr "커밋"
+
+msgid "Copy"
+msgstr "복사"
+
+msgid "Could not start ReadDirectoryChangesW"
+msgstr "ReadDirectoryChangesW를 시작하지 못했습니다"
+
+msgid "Could not start inotify"
+msgstr "inotify를 시작하지 못했습니다"
+
+msgid "Debug Filesystem Watching"
+msgstr "파일 시스템 감시 디버그"
+
+msgid "Diagnostics"
+msgstr "진단"
+
+msgid "Diff Against Default Branch"
+msgstr "기본 브랜치 기준 Diff"
+
+msgid "Don't ask me again"
+msgstr "다시 묻지 않기"
+
+msgid "Duplicate Selection"
+msgstr "선택 영역 복제"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "Mermaid 다이어그램 편집…"
+
+msgid "Edit Predictions"
+msgstr "편집 예측"
+
+msgid "Edit Table"
+msgstr "표 편집"
+
+msgid "Editor Controls"
+msgstr "편집기 컨트롤"
+
+msgid "Enter adds two trailing spaces (a hard break) to the line it ends, so the line break survives saving. This key does the opposite once. The preview already shows line breaks as they are typed, so this is for line breaks that other tools should keep too."
+msgstr "Enter는 끝나는 줄에 후행 공백 두 개를 추가하여(줄 끝 공백 추가) 저장 후에도 줄 바꿈이 유지되게 합니다. 이 키는 한 번만 그 반대로 동작합니다. 미리 보기는 이미 입력한 대로 줄 바꿈을 표시하므로, 이 기능은 다른 도구에서도 유지되어야 하는 줄 바꿈을 위한 것입니다."
+
+msgid "Error registering {scheme}:// scheme"
+msgstr "{scheme}:// 스킴 등록 오류"
+
+msgid "Error with kernel {}: {}"
+msgstr "커널 {} 오류: {}"
+
+msgid "Executable: {}"
+msgstr "실행 파일: {}"
+
+msgid "Expand Selection"
+msgstr "선택 영역 확장"
+
+msgid "Export as JSON"
+msgstr "JSON으로 내보내기"
+
+msgid "Export to PDF"
+msgstr "PDF로 내보내기"
+
+msgid "Failed to load {path}\n{message}"
+msgstr "{path}을(를) 로드하지 못했습니다\n{message}"
+
+msgid "Failed to migrate settings\n{err}"
+msgstr "설정을 마이그레이션하지 못했습니다\n{err}"
+
+msgid "Failed to move Zed to Applications"
+msgstr "ForgeKairos를 응용 프로그램으로 이동하지 못했습니다"
+
+msgid "Failed to read telemetry log: {}"
+msgstr "원격 분석 로그를 읽지 못했습니다: {}"
+
+msgid "Failed to restore {count} workspace. Check logs for details."
+msgid_plural "Failed to restore {count} workspaces. Check logs for details."
+msgstr[0] "작업 영역 {count}개를 복원하지 못했습니다. 자세한 내용은 로그를 확인하세요."
+
+msgid "Filter events..."
+msgstr "이벤트 필터링..."
+
+msgid "Fold All"
+msgstr "모두 접기"
+
+msgid "Fold at Level 1"
+msgstr "수준 1에서 접기"
+
+msgid "Fold at Level 2"
+msgstr "수준 2에서 접기"
+
+msgid "Fold at Level 3"
+msgstr "수준 3에서 접기"
+
+msgid "Folding"
+msgstr "접기"
+
+msgid "Format Selection"
+msgstr "선택 영역 포맷"
+
+msgid "Format Whole File"
+msgstr "전체 파일 포맷"
+
+msgid "Formats the selection with {formatter}."
+msgstr "{formatter}(으)로 선택 영역을 포맷합니다."
+
+msgid "Formats this file with {formatter}."
+msgstr "{formatter}(으)로 이 파일을 포맷합니다."
+
+msgid "Go to Line/Column"
+msgstr "줄/열로 이동"
+
+msgid "Go to Symbol"
+msgstr "심볼로 이동"
+
+msgid "Hard Break"
+msgstr "줄 끝 공백 추가"
+
+msgid "Hard Break on Enter"
+msgstr "Enter 시 줄 끝 공백 추가"
+
+msgid "Heading 1"
+msgstr "제목 1"
+
+msgid "Heading 2"
+msgstr "제목 2"
+
+msgid "Heading 3"
+msgstr "제목 3"
+
+msgid "Helix Mode"
+msgstr "Helix 모드"
+
+msgid "Horizontal Rule"
+msgstr "가로줄"
+
+msgid "Inlay Hints"
+msgstr "인레이 힌트"
+
+msgid "Inline Assist"
+msgstr "인라인 어시스트"
+
+msgid "Inline Code"
+msgstr "인라인 코드"
+
+msgid "Inline Diagnostics"
+msgstr "인라인 진단"
+
+msgid "Inline Git Blame"
+msgstr "인라인 Git Blame"
+
+msgid "Inline Values"
+msgstr "인라인 값"
+
+msgid "Inline diagnostics are not available until regular diagnostics are enabled."
+msgstr "일반 진단이 활성화되어야 인라인 진단을 사용할 수 있습니다."
+
+msgid "Insert Details Block"
+msgstr "세부 정보 블록 삽입"
+
+msgid "Insert Image"
+msgstr "이미지 삽입"
+
+msgid "Insert Mermaid Diagram"
+msgstr "Mermaid 다이어그램 삽입"
+
+msgid "Installing Zed…"
+msgstr "ForgeKairos 설치 중…"
+
+msgid "Interrupt"
+msgstr "중단"
+
+msgid "Interrupt {} ({})"
+msgstr "{} ({}) 중단"
+
+msgid "Invalid URL: {}"
+msgstr "잘못된 URL: {}"
+
+msgid "Invalid global debug scenarios file\n{error}"
+msgstr "전역 디버그 시나리오 파일이 잘못되었습니다\n{error}"
+
+msgid "Invalid global tasks file\n{error}"
+msgstr "전역 작업 파일이 잘못되었습니다\n{error}"
+
+msgid "Invalid user settings file\n{error}"
+msgstr "사용자 설정 파일이 잘못되었습니다\n{error}"
+
+msgid "Italic"
+msgstr "기울임꼴"
+
+msgid "JSON parse error in keymap file. Bindings not reloaded.\n\n{error}"
+msgstr "키맵 파일의 JSON 구문 분석 오류입니다. 바인딩을 다시 로드하지 않았습니다.\n\n{error}"
+
+msgid "Language Server"
+msgstr "언어 서버"
+
+msgid "Line Numbers"
+msgstr "줄 번호"
+
+msgid "Link"
+msgstr "링크"
+
+msgid "Live native and polling watch roots across the app."
+msgstr "앱 전체에서 현재 활성 상태인 네이티브 및 폴링 감시 루트입니다."
+
+msgid "Log"
+msgstr "로그"
+
+msgid "Marker"
+msgstr "마커"
+
+msgid "Minimap"
+msgstr "미니맵"
+
+msgid "Move Line Down"
+msgstr "줄 아래로 이동"
+
+msgid "Move Line Up"
+msgstr "줄 위로 이동"
+
+msgid "Move Zed to Applications?"
+msgstr "ForgeKairos를 응용 프로그램으로 이동하시겠습니까?"
+
+msgid "Moving Zed to Applications"
+msgstr "ForgeKairos를 응용 프로그램으로 이동 중"
+
+msgid "New Window"
+msgstr "새 창"
+
+msgid "Next Problem"
+msgstr "다음 문제"
+
+msgid "No Code Actions Available"
+msgstr "사용 가능한 코드 액션 없음"
+
+msgid "No events match the current filter"
+msgstr "현재 필터와 일치하는 이벤트가 없습니다"
+
+msgid "No formatter is configured for this file."
+msgstr "이 파일에 구성된 포맷터가 없습니다."
+
+msgid "No local projects are open."
+msgstr "열려 있는 로컬 프로젝트가 없습니다."
+
+msgid "No telemetry events recorded yet"
+msgstr "아직 기록된 원격 분석 이벤트가 없습니다"
+
+msgid "No watch roots."
+msgstr "감시 루트가 없습니다."
+
+msgid "Nothing is selected. Select the text to format."
+msgstr "선택된 항목이 없습니다. 포맷할 텍스트를 선택하세요."
+
+msgid "Nothing running"
+msgstr "실행 중인 항목 없음"
+
+msgid "Numbered List"
+msgstr "번호 매기기 목록"
+
+msgid "Open File"
+msgstr "파일 열기"
+
+msgid "Open Keymap File"
+msgstr "키맵 파일 열기"
+
+msgid "Open Preview"
+msgstr "미리 보기 열기"
+
+msgid "Open Raw Log File"
+msgstr "원본 로그 파일 열기"
+
+msgid "Open Settings File"
+msgstr "설정 파일 열기"
+
+msgid "Paragraph Text Size"
+msgstr "단락 텍스트 크기"
+
+msgid "Paste a URL to open."
+msgstr "열려면 URL을 붙여넣으세요."
+
+msgid "Patterns Zed skips when scanning your open local projects. Excluded files may still produce watcher events."
+msgstr "열려 있는 로컬 프로젝트를 스캔할 때 ForgeKairos가 건너뛰는 패턴입니다. 제외된 파일도 감시자 이벤트를 발생시킬 수 있습니다."
+
+msgid "Preview Markdown"
+msgstr "Markdown 미리 보기"
+
+msgid "Preview SVG"
+msgstr "SVG 미리 보기"
+
+msgid "Preview Tabular Data"
+msgstr "표 형식 데이터 미리 보기"
+
+msgid "Previous Problem"
+msgstr "이전 문제"
+
+msgid "Quit"
+msgstr "종료"
+
+msgid "REPL Menu"
+msgstr "REPL 메뉴"
+
+msgid "Raw Events"
+msgstr "원시 이벤트"
+
+msgid "Raw watcher notifications, oldest first. Times are shown in your local time zone."
+msgstr "감시자의 원시 알림입니다(오래된 순). 시간은 로컬 시간대로 표시됩니다."
+
+msgid "ReadDirectoryChangesW initialization failed: {}\n\nThis may occur on network filesystems and WSL paths. For troubleshooting see: https://zed.dev/docs/windows\n"
+msgstr "ReadDirectoryChangesW 초기화 실패: {}\n\n네트워크 파일 시스템 및 WSL 경로에서 발생할 수 있습니다. 문제 해결 방법: https://zed.dev/docs/windows\n"
+
+msgid "Remove Color"
+msgstr "색 제거"
+
+msgid "Remove Marker"
+msgstr "마커 제거"
+
+msgid "Reset to Default"
+msgstr "기본값으로 초기화"
+
+msgid "Restart Kernel"
+msgstr "커널 다시 시작"
+
+msgid "Restarting {}"
+msgstr "{} 다시 시작 중"
+
+msgid "Run Line"
+msgstr "현재 줄 실행"
+
+msgid "Run Selection"
+msgstr "선택 영역 실행"
+
+msgid "Run code on {} ({})"
+msgstr "{} ({})에서 코드 실행"
+
+msgid "Save failed: {error}"
+msgstr "저장 실패: {error}"
+
+msgid "Scan Exclusions"
+msgstr "스캔 제외"
+
+msgid "Select All"
+msgstr "모두 선택"
+
+msgid "Select Kernel"
+msgstr "커널 선택"
+
+msgid "Select Next Occurrence"
+msgstr "다음 항목 선택"
+
+msgid "Selection Controls"
+msgstr "선택 영역 컨트롤"
+
+msgid "Selection Menu"
+msgstr "선택 영역 메뉴"
+
+msgid "Semantic Highlights"
+msgstr "의미 기반 강조 표시"
+
+msgid "Setup Zed REPL for {}"
+msgstr "{}용 ForgeKairos REPL 설정"
+
+msgid "Shrink Selection"
+msgstr "선택 영역 축소"
+
+msgid "Shut Down Kernel"
+msgstr "커널 종료"
+
+msgid "Skip"
+msgstr "건너뛰기"
+
+msgid "Start REPL for {}"
+msgstr "{}용 REPL 시작"
+
+msgid "Strikethrough"
+msgstr "취소선"
+
+msgid "Task List"
+msgstr "작업 목록"
+
+msgid "Telemetry Log"
+msgstr "원격 분석 로그"
+
+msgid "Text Color"
+msgstr "글자 색"
+
+msgid "The data folders of the older version could not be moved to the new folders, so this session keeps using them:\n{}\n\nClose every program that may be using them and restart to try again."
+msgstr "이전 버전의 데이터 폴더를 새 폴더로 옮길 수 없으므로 이 세션은 해당 폴더를 계속 사용합니다:\n{}\n\n다시 시도하려면 해당 폴더를 사용 중일 수 있는 모든 프로그램을 닫고 다시 시작하세요."
+
+msgid "The older version ({}) has created folders again that this version no longer uses, so changes made in them are not reflected here:\n{}\n\n(older version's folder → folder this version uses)"
+msgstr "이전 버전({})이 이 버전에서 더 이상 사용하지 않는 폴더를 다시 만들었으므로, 그 폴더에서 변경한 내용은 여기에 반영되지 않습니다:\n{}\n\n(이전 버전의 폴더 → 이 버전이 사용하는 폴더)"
+
+msgid "This project has no folders open."
+msgstr "이 프로젝트에 열려 있는 폴더가 없습니다."
+
+msgid "Toggle Fold at Cursor"
+msgstr "커서 위치에서 접기 전환"
+
+msgid "Troubleshoot and Quit"
+msgstr "문제 해결 및 종료"
+
+msgid "Unable to access/open log file at path {}: {e}"
+msgstr "경로 {}의 로그 파일에 액세스하거나 열 수 없습니다: {e}"
+
+msgid "Unfold All"
+msgstr "모두 펼치기"
+
+msgid "Unsupported GPU"
+msgstr "지원되지 않는 GPU"
+
+msgid "Uses `{command}` on the remote host ({host})."
+msgstr "원격 호스트({host})의 `{command}`을(를) 사용합니다."
+
+msgid "Version"
+msgstr "버전"
+
+msgid "View Sessions"
+msgstr "세션 보기"
+
+msgid "Vim Mode"
+msgstr "Vim 모드"
+
+msgid "Waiting for filesystem watcher events…"
+msgstr "파일 시스템 감시자 이벤트 대기 중…"
+
+msgid "Watch Roots"
+msgstr "감시 루트"
+
+msgid "You can't toggle edit predictions for this file as it is within the excluded files list."
+msgstr "이 파일은 제외 파일 목록에 포함되어 있어 편집 예측을 전환할 수 없습니다."
+
+msgid "Your {} file uses deprecated settings which can be automatically updated. A backup will be saved to `{}`"
+msgstr "{} 파일에서 자동으로 업데이트할 수 있는 더 이상 사용되지 않는 설정을 사용하고 있습니다. 백업은 `{}`에 저장됩니다"
+
+msgid "Zed is running from a temporary location. Move it to Applications to finish installing it."
+msgstr "ForgeKairos가 임시 위치에서 실행 중입니다. 설치를 완료하려면 응용 프로그램으로 이동하세요."
+
+msgid "Zed uses {} for rendering and requires a compatible GPU.\n\nCurrently you are using a software emulated GPU ({}) which\nwill result in awful performance.\n\nFor troubleshooting see: {}\nSet ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.\n"
+msgstr "ForgeKairos는 렌더링에 {}을(를) 사용하므로 호환되는 GPU가 필요합니다.\n\n현재 소프트웨어 에뮬레이션 GPU({})를 사용 중이며\n성능이 매우 저하됩니다.\n\n문제 해결 방법: {}\n영구적으로 무시하려면 ZED_ALLOW_EMULATED_GPU=1 환경 변수를 설정하세요.\n"
+
+msgid "Zed will reopen when installation is complete."
+msgstr "설치가 완료되면 ForgeKairos가 다시 열립니다."
+
+msgid "inotify_init returned {}\n\nThis may be due to system-wide limits on inotify instances. For troubleshooting see: https://zed.dev/docs/linux\n"
+msgstr "inotify_init이(가) {}을(를) 반환했습니다\n\n시스템 전체의 inotify 인스턴스 수 제한 때문일 수 있습니다. 문제 해결 방법: https://zed.dev/docs/linux\n"
+
+msgid "kernel: {} ({})"
+msgstr "커널: {} ({})"
+
+msgid "signed in"
+msgstr "로그인됨"
+
+msgid "{command} was not found (put it on PATH or in bin\\)."
+msgstr "{command}을(를) 찾을 수 없습니다 (PATH 또는 bin\\에 두세요)."
+
+msgid "{count} telemetry log entry failed to parse"
+msgid_plural "{count} telemetry log entries failed to parse"
+msgstr[0] "원격 분석 로그 항목 {count}개를 구문 분석하지 못했습니다"
+
+msgid "{formatter} can't format just a selection. Add {{start_line}} / {{end_line}} to its arguments to allow it."
+msgstr "{formatter}은(는) 선택 영역만 포맷할 수 없습니다. 허용하려면 인수에 {{start_line}} / {{end_line}}을(를) 추가하세요."
+
+msgid "{formatter} can't format just a selection. Format the whole file instead."
+msgstr "{formatter}은(는) 선택 영역만 포맷할 수 없습니다. 대신 전체 파일을 포맷하세요."
+
+msgid "{scheme}:// links will now open in {app}."
+msgstr "이제 {scheme}:// 링크가 {app}에서 열립니다."
+
+msgid "{} is shutting down"
+msgstr "{} 종료 중"
+
+msgid "{} is starting"
+msgstr "{} 시작 중"
+
+msgid "{} state unknown"
+msgstr "{} 상태 알 수 없음"
+
+msgid "{} state: {}"
+msgstr "{} 상태: {}"
+
+msgid "{} to open in a split"
+msgstr "분할 영역에서 열려면 {}"
+
+msgid "{} to open in the same tab group"
+msgstr "같은 탭 그룹에서 열려면 {}"
+
+msgid "{} to switch this tab"
+msgstr "이 탭을 전환하려면 {}"
+
+msgctxt "move to applications"
+msgid "No"
+msgstr "아니요"
+
+msgctxt "move to applications"
+msgid "Yes"
+msgstr "예"
+
+msgctxt "quick action bar"
+msgid "Add to Agent Thread"
+msgstr "에이전트 스레드에 추가"
+
+msgctxt "quick action bar"
+msgid "Next Hunk"
+msgstr "다음 변경 단위"
+
+msgctxt "quick action bar"
+msgid "Previous Hunk"
+msgstr "이전 변경 단위"

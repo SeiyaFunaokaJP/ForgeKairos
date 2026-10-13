@@ -1,0 +1,48 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Failed to read SKILL.md metadata: {}"
+msgstr "Falha ao ler os metadados do SKILL.md: {}"
+
+msgid "Failed to read file: {}"
+msgstr "Falha ao ler o arquivo: {}"
+
+msgid "Invalid YAML frontmatter"
+msgstr "Front matter YAML inválido"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "O arquivo SKILL.md excede o tamanho máximo de {}KB"
+
+msgid "SKILL.md missing closing frontmatter delimiter (---)"
+msgstr "Falta o delimitador de fechamento do front matter (---) no SKILL.md"
+
+msgid "SKILL.md must start with YAML frontmatter (---)"
+msgstr "O SKILL.md deve começar com front matter YAML (---)"
+
+msgid "Skill description cannot be empty"
+msgstr "A descrição da habilidade não pode ficar vazia"
+
+msgid "Skill description is {actual_len} characters, exceeding the {max_len}-character limit. The skill was loaded, but long descriptions may consume more model-context tokens."
+msgstr "A descrição da habilidade tem {actual_len} caracteres, excedendo o limite de {max_len} caracteres. A habilidade foi carregada, mas descrições longas podem consumir mais tokens de contexto do modelo."
+
+msgid "Skill description must be at most 1024 characters"
+msgstr "A descrição da habilidade deve ter no máximo 1024 caracteres"
+
+msgid "Skill name cannot be empty"
+msgstr "O nome da habilidade não pode ficar vazio"
+
+msgid "Skill name must be at most 64 characters"
+msgstr "O nome da habilidade deve ter no máximo 64 caracteres"
+
+msgid "Skill name must contain only lowercase letters, numbers, and hyphens"
+msgstr "O nome da habilidade deve conter somente letras minúsculas, números e hifens"
+
+msgid "Skill name must not start or end with a hyphen"
+msgstr "O nome da habilidade não pode começar nem terminar com hífen"

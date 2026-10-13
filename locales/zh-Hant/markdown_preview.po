@@ -1,0 +1,1781 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"{word}\" cannot be used as an attribute type or name (no whitespace, symbols, or PK / FK / UK)."
+msgstr "「{word}」不能用作屬性的型別或名稱（不可包含空白字元、符號，或 PK / FK / UK）。"
+
+msgid "(None yet)"
+msgstr "（尚無）"
+
+msgid "(Not Set)"
+msgstr "（未設定）"
+
+msgid "(Select)"
+msgstr "（選取）"
+
+msgid "(automatic when empty)"
+msgstr "（留空時自動）"
+
+msgid "(default when empty)"
+msgstr "（留空時為預設）"
+
+msgid "(no axis; not drawn)"
+msgstr "（無軸；不繪製）"
+
+msgid "(no category; not drawn)"
+msgstr "（無類別；不繪製）"
+
+msgid "(set by name with $name=; kept as is)"
+msgstr "（以 $name= 依名稱設定；保持原樣）"
+
+msgid "(to rename it, change mainBranchName in the configuration as text)"
+msgstr "（若要重新命名，請以文字變更設定中的 mainBranchName）"
+
+msgid "+method()"
+msgstr "+方法()"
+
+msgid "1 (Very Bad)"
+msgstr "1（非常差）"
+
+msgid "3 (Neutral)"
+msgstr "3（普通）"
+
+msgid "5 (Very Good)"
+msgstr "5（非常好）"
+
+msgid "A `namespace` has an empty name."
+msgstr "有名稱為空的 `namespace`。"
+
+msgid "A class definition has an empty name."
+msgstr "有名稱為空的類別定義。"
+
+msgid "A class has an empty name."
+msgstr "有名稱為空的類別。"
+
+msgid "A file on this machine is copied to images/ in the remote Markdown file's folder, because the remote cannot refer to files on this machine."
+msgstr "這台電腦上的檔案會複製到遠端 Markdown 檔案所在資料夾的 images/ 中，因為遠端無法參照這台電腦上的檔案。"
+
+msgid "A folder cannot be saved as an image: {}"
+msgstr "資料夾無法儲存為影像：{}"
+
+msgid "A later {from} → {to} relationship overrides this one (the later one's kind and text are drawn)."
+msgstr "後面的 {from} → {to} 關聯會覆寫此關聯（會繪製後者的種類和文字）。"
+
+msgid "A multiplicity cannot contain `\"`, `%%{{` or line breaks."
+msgstr "多重性不能包含 `\"`、`%%{{` 或換行。"
+
+msgid "A participant has an empty ID."
+msgstr "有 ID 為空的參與者。"
+
+msgid "A relationship label cannot contain line breaks, `%%{{`, or leading or trailing whitespace."
+msgstr "關聯標籤不能包含換行、`%%{{`，或開頭、結尾的空白字元。"
+
+msgid "A remote file cannot be exported to PDF. Save it locally, then run this again."
+msgstr "無法將遠端檔案匯出為 PDF。請將其儲存至本機，然後再執行一次。"
+
+msgid "A row cannot be inserted above the header row"
+msgstr "無法在標題列上方插入列"
+
+msgid "A state has an empty ID."
+msgstr "有 ID 為空的狀態。"
+
+msgid "A time frame with no arrow gets one automatically from the closest earlier frame in another lane"
+msgstr "沒有箭頭的時間框架，會自動從其他泳道中最接近的前一個框架取得箭頭"
+
+msgid "Activation"
+msgstr "活化"
+
+msgid "Actual Size"
+msgstr "實際大小"
+
+msgid "Add Activation"
+msgstr "新增活化"
+
+msgid "Add Annotation"
+msgstr "新增註記"
+
+msgid "Add Arrow"
+msgstr "新增箭頭"
+
+msgid "Add Attribute"
+msgstr "新增屬性"
+
+msgid "Add Autonumber"
+msgstr "新增自動編號"
+
+msgid "Add Axis"
+msgstr "新增軸"
+
+msgid "Add Bar"
+msgstr "新增長條"
+
+msgid "Add Block"
+msgstr "新增區塊"
+
+msgid "Add Block Branch"
+msgstr "新增區塊分支"
+
+msgid "Add Block End"
+msgstr "新增區塊結尾"
+
+msgid "Add Block Start"
+msgstr "新增區塊開頭"
+
+msgid "Add Boundary"
+msgstr "新增邊界"
+
+msgid "Add Branch"
+msgstr "新增分支"
+
+msgid "Add Card"
+msgstr "新增卡片"
+
+msgid "Add Category"
+msgstr "新增類別"
+
+msgid "Add Central Node"
+msgstr "新增中心節點"
+
+msgid "Add Checkout"
+msgstr "新增簽出"
+
+msgid "Add Cherry-pick"
+msgstr "新增揀選"
+
+msgid "Add Child"
+msgstr "新增子項"
+
+msgid "Add Class"
+msgstr "新增類別"
+
+msgid "Add Class Definition"
+msgstr "新增類別定義"
+
+msgid "Add Column"
+msgstr "新增欄"
+
+msgid "Add Column at End"
+msgstr "在結尾新增欄"
+
+msgid "Add Commit"
+msgstr "新增提交"
+
+msgid "Add Composite State"
+msgstr "新增複合狀態"
+
+msgid "Add Concurrency Divider"
+msgstr "新增並行分隔線"
+
+msgid "Add Data"
+msgstr "新增資料"
+
+msgid "Add Deactivation"
+msgstr "新增結束活化"
+
+msgid "Add Edge"
+msgstr "新增邊"
+
+msgid "Add Element"
+msgstr "新增元素"
+
+msgid "Add Entity"
+msgstr "新增實體"
+
+msgid "Add Event"
+msgstr "新增事件"
+
+msgid "Add Flow"
+msgstr "新增流程"
+
+msgid "Add Frame"
+msgstr "新增框架"
+
+msgid "Add Group"
+msgstr "新增群組"
+
+msgid "Add Item"
+msgstr "新增項目"
+
+msgid "Add Item Below at the Same Level"
+msgstr "在下方新增同層級的項目"
+
+msgid "Add Item Inside (Only Items Without a Value)"
+msgstr "在內部新增項目（僅限沒有值的項目）"
+
+msgid "Add Junction"
+msgstr "新增接合點"
+
+msgid "Add Line"
+msgstr "新增折線"
+
+msgid "Add Link"
+msgstr "新增連結"
+
+msgid "Add Main Bone (Cause)"
+msgstr "新增大骨（原因）"
+
+msgid "Add Member"
+msgstr "新增成員"
+
+msgid "Add Member Line"
+msgstr "新增成員行"
+
+msgid "Add Merge"
+msgstr "新增合併"
+
+msgid "Add Message"
+msgstr "新增訊息"
+
+msgid "Add Node"
+msgstr "新增節點"
+
+msgid "Add Note"
+msgstr "新增附註"
+
+msgid "Add Overlap"
+msgstr "新增重疊"
+
+msgid "Add Participant"
+msgstr "新增參與者"
+
+msgid "Add Participant Creation"
+msgstr "新增參與者建立"
+
+msgid "Add Participant Destruction"
+msgstr "新增參與者終結"
+
+msgid "Add Period"
+msgstr "新增期間"
+
+msgid "Add Point"
+msgstr "新增點"
+
+msgid "Add Relationship"
+msgstr "新增關聯"
+
+msgid "Add Requirement"
+msgstr "新增需求"
+
+msgid "Add Row"
+msgstr "新增列"
+
+msgid "Add Row Below at the Same Level"
+msgstr "在下方新增同層級的列"
+
+msgid "Add Row at End"
+msgstr "在結尾新增列"
+
+msgid "Add Section"
+msgstr "新增區段"
+
+msgid "Add Series"
+msgstr "新增數列"
+
+msgid "Add Service"
+msgstr "新增服務"
+
+msgid "Add Set"
+msgstr "新增集合"
+
+msgid "Add Sibling Below"
+msgstr "在下方新增同層項目"
+
+msgid "Add Space"
+msgstr "新增空格"
+
+msgid "Add State"
+msgstr "新增狀態"
+
+msgid "Add Task"
+msgstr "新增工作"
+
+msgid "Add Top-Level Node"
+msgstr "新增最上層節點"
+
+msgid "Add Transition"
+msgstr "新增轉換"
+
+msgid "Add a Finer Cause"
+msgstr "新增更細的原因"
+
+msgid "Add a block first."
+msgstr "請先新增區塊。"
+
+msgid "Add a class first."
+msgstr "請先新增類別。"
+
+msgid "Add a node first."
+msgstr "請先新增節點。"
+
+msgid "Add a participant first."
+msgstr "請先新增參與者。"
+
+msgid "Add a requirement or an element first."
+msgstr "請先新增需求或元素。"
+
+msgid "Add a state first."
+msgstr "請先新增狀態。"
+
+msgid "Add an Element Inside This Boundary"
+msgstr "在此邊界內新增元素"
+
+msgid "Add an element first."
+msgstr "請先新增元素。"
+
+msgid "Add an entity first."
+msgstr "請先新增實體。"
+
+msgid "Add at least one class."
+msgstr "請至少新增一個類別。"
+
+msgid "Add at least one element or boundary."
+msgstr "請至少新增一個元素或邊界。"
+
+msgid "Add at least one entity."
+msgstr "請至少新增一個實體。"
+
+msgid "Add at least one flow."
+msgstr "請至少新增一個流程。"
+
+msgid "Add at least one frame."
+msgstr "請至少新增一個框架。"
+
+msgid "Add at least one group or service."
+msgstr "請至少新增一個群組或服務。"
+
+msgid "Add at least one participant."
+msgstr "請至少新增一個參與者。"
+
+msgid "Add at least two sets first."
+msgstr "請先新增至少兩個集合。"
+
+msgid "Add box"
+msgstr "新增 box"
+
+msgid "Add class"
+msgstr "新增 class"
+
+msgid "Add classDef"
+msgstr "新增 classDef"
+
+msgid "Add namespace"
+msgstr "新增 namespace"
+
+msgid "Add style"
+msgstr "新增 style"
+
+msgid "Alignment"
+msgstr "對齊方式"
+
+msgid "Alt Text"
+msgstr "替代文字"
+
+msgid "An aligned image goes after the paragraph the cursor is in."
+msgstr "設定對齊方式的影像會放在游標所在段落之後。"
+
+msgid "An aligned image goes after the paragraph the cursor is in. The selected text stays as it is."
+msgstr "設定對齊方式的影像會放在游標所在段落之後。選取的文字會保持原樣。"
+
+msgid "An element has an empty ID."
+msgstr "有 ID 為空的元素。"
+
+msgid "An entity has an empty name."
+msgstr "有名稱為空的實體。"
+
+msgid "An image inside HTML cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "HTML 內的影像無法設定對齊方式。請將對齊方式設為「未設定」。"
+
+msgid "An image inside a link cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "連結內的影像無法設定對齊方式。請將對齊方式設為「未設定」。"
+
+msgid "An image inside a table cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "表格內的影像無法設定對齊方式。請將對齊方式設為「未設定」。"
+
+msgid "An overlap needs at least two sets."
+msgstr "重疊至少需要兩個集合。"
+
+msgid "Annotation"
+msgstr "註記"
+
+msgid "Arrow"
+msgstr "箭頭"
+
+msgid "Arrow on. Click to remove the arrow."
+msgstr "已顯示箭頭。按一下以移除箭頭。"
+
+msgid "Arrows"
+msgstr "箭頭"
+
+msgid "Assignee"
+msgstr "負責人"
+
+msgid "Autonumber Start"
+msgstr "自動編號起始值"
+
+msgid "Axes (an empty name is not written)"
+msgstr "軸（名稱為空時不寫入）"
+
+msgid "Axes and Values (deleting an axis also deletes its value in every series; empty cells at the end are drawn as the minimum)"
+msgstr "軸和值（刪除軸也會刪除每個數列中該軸的值；結尾的空白儲存格會以最小值繪製）"
+
+msgid "Axis Format"
+msgstr "軸格式"
+
+msgid "Axis ID"
+msgstr "軸 ID"
+
+msgid "Axis Labels (an empty axis is not drawn)"
+msgstr "軸標籤（空白的軸不會繪製）"
+
+msgid "Axis {number}"
+msgstr "軸 {number}"
+
+msgid "Blocks (laid out from the top left in the order written; indented rows are nested deeper in groups)"
+msgstr "區塊（依撰寫順序從左上開始排列；縮排的列會更深地巢狀於群組中）"
+
+msgid "Blocks to Apply To"
+msgstr "要套用的區塊"
+
+msgid "Bottom Left (3)"
+msgstr "左下（3）"
+
+msgid "Bottom Right (4)"
+msgstr "右下（4）"
+
+msgid "Browse…"
+msgstr "瀏覽…"
+
+msgid "By Axis Name"
+msgstr "依軸名稱"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot build a path to the copied image."
+msgstr "無法建立複製之影像的路徑。"
+
+msgid "Cannot build the path: {}"
+msgstr "無法建立路徑：{}"
+
+msgid "Cannot convert to PDF. Install Microsoft Edge (msedge.exe) or pandoc."
+msgstr "無法轉換為 PDF。請安裝 Microsoft Edge（msedge.exe）或 pandoc。"
+
+msgid "Cannot create the image file: {}"
+msgstr "無法建立影像檔案：{}"
+
+msgid "Cannot create the images folder: {}"
+msgstr "無法建立 images 資料夾：{}"
+
+msgid "Cannot insert the image link: {reason}"
+msgstr "無法插入影像連結：{reason}"
+
+msgid "Cannot load the image"
+msgstr "無法載入影像"
+
+msgid "Cannot open the Mermaid diagram in the structured editor: {error}"
+msgstr "無法在結構化編輯器中開啟 Mermaid 圖表：{error}"
+
+msgid "Cannot paste the image: {reason}"
+msgstr "無法貼上影像：{reason}"
+
+msgid "Cannot read the file name: {}"
+msgstr "無法讀取檔案名稱：{}"
+
+msgid "Cannot read the image file: {}"
+msgstr "無法讀取影像檔案：{}"
+
+msgid "Cannot remove the image saved on the remote: {}"
+msgstr "無法移除儲存在遠端的影像：{}"
+
+msgid "Categories"
+msgstr "類別"
+
+msgid "Category"
+msgstr "類別"
+
+msgid "Category {number}"
+msgstr "類別 {number}"
+
+msgid "Causes (the leftmost rows are the main bones; indented rows are finer causes)"
+msgstr "原因（最左側的列是大骨；縮排的列是更細的原因）"
+
+msgid "Central topic"
+msgstr "中心主題"
+
+msgid "Checking…"
+msgstr "正在檢查…"
+
+msgid "Choose a diagram type."
+msgstr "請選擇圖表類型。"
+
+msgid "Choose an image file in the system dialog."
+msgstr "在系統對話方塊中選擇影像檔案。"
+
+msgid "Choose an image file on this machine in the system dialog and copy it to images/ on the remote."
+msgstr "在系統對話方塊中選擇這台電腦上的影像檔案，並將其複製到遠端的 images/。"
+
+msgid "Class"
+msgstr "類別"
+
+msgid "Class Definitions (classDef)"
+msgstr "類別定義（classDef）"
+
+msgid "Class Name"
+msgstr "類別名稱"
+
+msgid "Class Names (renaming updates the references too)"
+msgstr "類別名稱（重新命名也會更新參照）"
+
+msgid "Classes (classDef)"
+msgstr "類別（classDef）"
+
+msgid "Column"
+msgstr "欄"
+
+msgid "Column alignment (click to cycle: default → left → center → right)"
+msgstr "欄對齊方式（按一下以循環切換：預設 → 靠左 → 置中 → 靠右）"
+
+msgid "Columns and Cards (columns higher up are drawn further left)"
+msgstr "欄和卡片（越上方的欄繪製在越左側）"
+
+msgid "Comment"
+msgstr "註解"
+
+msgid "Commit"
+msgstr "提交"
+
+msgid "Common Icons"
+msgstr "常用圖示"
+
+msgid "Composite"
+msgstr "複合"
+
+msgid "Composite states are nested too deeply."
+msgstr "複合狀態的巢狀層級太深。"
+
+msgid "CompositeState"
+msgstr "複合狀態"
+
+msgid "Concurrency Divider (--)"
+msgstr "並行分隔線（--）"
+
+msgid "Connection Side"
+msgstr "連線的邊"
+
+msgid "Copy"
+msgstr "複製"
+
+msgid "Copy Link"
+msgstr "複製連結"
+
+msgid "Copy as Markdown"
+msgstr "複製為 Markdown"
+
+msgid "Copy to images/ in the Markdown file's folder"
+msgstr "複製到 Markdown 檔案所在資料夾的 images/"
+
+msgid "Copying the image…"
+msgstr "正在複製影像…"
+
+msgid "Create Mermaid Diagram"
+msgstr "建立 Mermaid 圖表"
+
+msgid "Created by create"
+msgstr "由 create 建立"
+
+msgid "Dashed line (non-identifying relationship). Click for a solid line."
+msgstr "虛線（非識別關聯）。按一下以改為實線。"
+
+msgid "Data"
+msgstr "資料"
+
+msgid "Data (referenced from frames)"
+msgstr "資料（由框架參照）"
+
+msgid "Date"
+msgstr "日期"
+
+msgid "Date Format"
+msgstr "日期格式"
+
+msgid "Date or Duration"
+msgstr "日期或持續時間"
+
+msgid "Deactivation"
+msgstr "結束活化"
+
+msgid "Default (Left to Right)"
+msgstr "預設（由左至右）"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "Delete (also deletes the overlaps, text and style statements that include this set)"
+msgstr "刪除（也會刪除包含此集合的重疊、text 和 style 陳述式）"
+
+msgid "Delete (also deletes this node's flows)"
+msgstr "刪除（也會刪除此節點的流程）"
+
+msgid "Delete (also removes the relationships and styles that use this name)"
+msgstr "刪除（也會移除使用此名稱的關聯和樣式）"
+
+msgid "Delete (arrows from this frame are deleted too)"
+msgstr "刪除（也會刪除從此框架出發的箭頭）"
+
+msgid "Delete (connected edges and styles are deleted too)"
+msgstr "刪除（相連的邊和樣式也會一併刪除）"
+
+msgid "Delete (connected edges are deleted too)"
+msgstr "刪除（相連的邊也會一併刪除）"
+
+msgid "Delete (references to this data are removed too)"
+msgstr "刪除（對此資料的參照也會一併移除）"
+
+msgid "Delete (statements that refer to this class are deleted too)"
+msgstr "刪除（參照此類別的陳述式也會一併刪除）"
+
+msgid "Delete (the classes inside are deleted too)"
+msgstr "刪除（內部的類別也會一併刪除）"
+
+msgid "Delete (the contents move to the enclosing group)"
+msgstr "刪除（內容會移至外層群組）"
+
+msgid "Delete (the participants inside are kept)"
+msgstr "刪除（內部的參與者會保留）"
+
+msgid "Delete (the states and transitions inside are deleted too)"
+msgstr "刪除（內部的狀態和轉換也會一併刪除）"
+
+msgid "Delete Card"
+msgstr "刪除卡片"
+
+msgid "Delete Column"
+msgstr "刪除欄"
+
+msgid "Delete Column and Its Cards"
+msgstr "刪除欄及其卡片"
+
+msgid "Delete Definition (classes already applied stay)"
+msgstr "刪除定義（已套用的類別會保留）"
+
+msgid "Delete Event"
+msgstr "刪除事件"
+
+msgid "Delete Group"
+msgstr "刪除群組"
+
+msgid "Delete Relationship"
+msgstr "刪除關聯"
+
+msgid "Delete Row"
+msgstr "刪除列"
+
+msgid "Delete Section and Its Periods"
+msgstr "刪除區段及其期間"
+
+msgid "Delete Task (tasks that refer to this one with after / until get a date at the same point in time instead)"
+msgstr "刪除工作（以 after / until 參照此工作的工作，會改為使用同一時間點的日期）"
+
+msgid "Delete This Group and Its Contents (connected edges and styles are deleted too)"
+msgstr "刪除此群組及其內容（相連的邊和樣式也會一併刪除）"
+
+msgid "Delete This Item and All Items Inside It"
+msgstr "刪除此項目及其內部的所有項目"
+
+msgid "Delete This Node and Everything Under It"
+msgstr "刪除此節點及其下的所有內容"
+
+msgid "Delete This Row and All Rows Under It"
+msgstr "刪除此列及其下的所有列"
+
+msgid "Delete the Boundary (the elements inside are kept)"
+msgstr "刪除邊界（內部的元素會保留）"
+
+msgid "Delete the Element and Its Relationships"
+msgstr "刪除元素及其關聯"
+
+msgid "Delete the Section and Its Tasks"
+msgstr "刪除區段及其工作"
+
+msgid "Description"
+msgstr "描述"
+
+msgid "Diagram Content"
+msgstr "圖表內容"
+
+msgid "Diagram Type"
+msgstr "圖表類型"
+
+msgid "Direction"
+msgstr "方向"
+
+msgid "Display Name (as)"
+msgstr "顯示名稱（as）"
+
+msgid "Document reference (docref)"
+msgstr "文件參照（docref）"
+
+msgid "Edges"
+msgstr "邊"
+
+msgid "Edit Image"
+msgstr "編輯影像"
+
+msgid "Edit Mermaid Diagram"
+msgstr "編輯 Mermaid 圖表"
+
+msgid "Edit Table"
+msgstr "編輯表格"
+
+msgid "Edit the cells directly. Pasting a range from Excel or a spreadsheet spreads it across the table."
+msgstr "直接編輯儲存格。從 Excel 或試算表貼上範圍時，會展開到整個表格。"
+
+msgid "Editing the image at the cursor. Make your changes and click \"Update\" to apply them."
+msgstr "正在編輯游標處的影像。進行變更後按一下「更新」即可套用。"
+
+msgid "Effect (Problem)"
+msgstr "結果（問題）"
+
+msgid "Element"
+msgstr "元素"
+
+msgid "Element type (type)"
+msgstr "元素類型（type）"
+
+msgid "Elements (what satisfies or verifies a requirement)"
+msgstr "元素（滿足或驗證需求的項目）"
+
+msgid "Elements and Boundaries (indented inside a boundary)"
+msgstr "元素和邊界（邊界內的項目會縮排）"
+
+msgid "End"
+msgstr "結尾"
+
+msgid "Enter a number (px) or a number with %. Leave empty to not set it."
+msgstr "請輸入數字（px）或帶 % 的數字。留空則不設定。"
+
+msgid "Enter the height as a number or a number with %, such as 200 or 50%."
+msgstr "請以數字或帶 % 的數字輸入高度，例如 200 或 50%。"
+
+msgid "Enter the width as a number or a number with %, such as 300 or 50%."
+msgstr "請以數字或帶 % 的數字輸入寬度，例如 300 或 50%。"
+
+msgid "Entities"
+msgstr "實體"
+
+msgid "Entity"
+msgstr "實體"
+
+msgid "Export to PDF"
+msgstr "匯出為 PDF"
+
+msgid "Exported to PDF: {} — click to open"
+msgstr "已匯出為 PDF：{} — 按一下以開啟"
+
+msgid "Exporting to PDF…"
+msgstr "正在匯出為 PDF…"
+
+msgid "Failed to check the remote files."
+msgstr "無法檢查遠端檔案。"
+
+msgid "Failed to copy the image on the remote: {}"
+msgstr "無法在遠端複製影像：{}"
+
+msgid "Failed to copy the image: {error}"
+msgstr "無法複製影像：{error}"
+
+msgid "Failed to export to PDF: {error}"
+msgstr "無法匯出為 PDF：{error}"
+
+msgid "Failed to open the file dialog: {error}"
+msgstr "無法開啟檔案對話方塊：{error}"
+
+msgid "Failed to render the Mermaid diagram: {error}"
+msgstr "無法轉譯 Mermaid 圖表：{error}"
+
+msgid "Failed to save the image: {}"
+msgstr "無法儲存影像：{}"
+
+msgid "Fit to Pane"
+msgstr "符合窗格大小"
+
+msgid "Flows (source → target, amount)"
+msgstr "流程（來源 → 目標，數量）"
+
+msgid "Fold All Headings"
+msgstr "摺疊所有標題"
+
+msgid "Fold Headings at Level {level}"
+msgstr "摺疊層級 {level} 的標題"
+
+msgid "Follows the Previous Task"
+msgstr "接續前一個工作"
+
+msgid "Frames (in time order from the top)"
+msgstr "框架（由上而下依時間順序）"
+
+msgid "Graticule"
+msgstr "經緯網格"
+
+msgid "Group"
+msgstr "群組"
+
+msgid "Group Edge"
+msgstr "群組邊緣"
+
+msgid "Groups"
+msgstr "群組"
+
+msgid "Header Row"
+msgstr "標題列"
+
+msgid "Height"
+msgstr "高度"
+
+msgid "Hidden"
+msgstr "隱藏"
+
+msgid "How the end is written: Date or Duration (5d = 5 days, 2h = 2 hours, 1w = 1 week) / until = until another task starts"
+msgstr "結束的寫法：日期或持續時間（5d = 5 天、2h = 2 小時、1w = 1 週）/ until = 直到另一個工作開始"
+
+msgid "How the start is written: Date / after = when another task ends / Follows the Previous Task = from the end of the task just before it"
+msgstr "開始的寫法：日期 / after = 另一個工作結束時 / 接續前一個工作 = 從前一個工作結束時開始"
+
+msgid "How the task is drawn: Done = done / In progress = active / Critical = crit / Milestone = milestone / Vertical line = vert"
+msgstr "工作的繪製方式：完成 = done / 進行中 = active / 重要 = crit / 里程碑 = milestone / 垂直線 = vert"
+
+msgid "ID and label are optional"
+msgstr "ID 和標籤為選用"
+
+msgid "Icon"
+msgstr "圖示"
+
+msgid "Image File"
+msgstr "影像檔案"
+
+msgid "Image description"
+msgstr "影像描述"
+
+msgid "Image file not found: {}"
+msgstr "找不到影像檔案：{}"
+
+msgid "Images are saved in the images folder next to the document. Save the file first."
+msgstr "影像會儲存在文件旁的 images 資料夾中。請先儲存檔案。"
+
+msgid "Images cannot be saved in a project you joined for collaboration."
+msgstr "無法在您為共同作業而加入的專案中儲存影像。"
+
+msgid "Images cannot be saved next to a Markdown file opened on its own. Open the folder that contains the Markdown file."
+msgstr "無法在單獨開啟的 Markdown 檔案旁儲存影像。請開啟包含該 Markdown 檔案的資料夾。"
+
+msgid "Images from a URL are not shown here."
+msgstr "此處不會顯示來自 URL 的影像。"
+
+msgid "In Axis Order"
+msgstr "依軸順序"
+
+msgid "Indent (Make Child of the Sibling Above)"
+msgstr "縮排（成為上方同層項目的子項）"
+
+msgid "Indent (Move into the Item Above That Has No Value)"
+msgstr "縮排（移入上方沒有值的項目中）"
+
+msgid "Insert"
+msgstr "插入"
+
+msgid "Insert Column to the Left"
+msgstr "在左側插入欄"
+
+msgid "Insert Column to the Right"
+msgstr "在右側插入欄"
+
+msgid "Insert Image"
+msgstr "插入影像"
+
+msgid "Insert Row Above"
+msgstr "在上方插入列"
+
+msgid "Insert Row Below"
+msgstr "在下方插入列"
+
+msgid "Inserts an image at the cursor. An image with an alignment or a size is written as HTML."
+msgstr "在游標處插入影像。設定了對齊方式或大小的影像會以 HTML 寫入。"
+
+msgid "Interactions"
+msgstr "互動"
+
+msgid "Items"
+msgstr "項目"
+
+msgid "Items (indented rows are nested deeper; an item with a value is a box at the end of the tree, an item without a value is a section around them)"
+msgstr "項目（縮排的列巢狀層級更深；有值的項目是樹末端的方塊，沒有值的項目是包圍它們的區段）"
+
+msgid "Items (length in bits and label; the ranges are worked out from the top)"
+msgstr "項目（位元長度和標籤；範圍會從上方開始自動計算）"
+
+msgid "Label"
+msgstr "標籤"
+
+msgid "Leave empty to put everything in one row (auto also works)"
+msgstr "留空則全部放在一列中（也可使用 auto）"
+
+msgid "Legend"
+msgstr "圖例"
+
+msgid "Line Style"
+msgstr "線條樣式"
+
+msgid "Link {position} has a {id}@{{ … }} line, so its line style cannot set interpolate (the curve)."
+msgstr "連結 {position} 有 {id}@{{ … }} 行，因此其線條樣式無法設定 interpolate（曲線）。"
+
+msgid "Link {position} is already styled by a linkStyle line that is kept as text."
+msgstr "連結 {position} 已由保留為文字的 linkStyle 行設定樣式。"
+
+msgid "Links"
+msgstr "連結"
+
+msgid "Load the Document's Version"
+msgstr "載入文件的版本"
+
+msgid "Looking for image files in the project…"
+msgstr "正在專案中尋找影像檔案…"
+
+msgid "Main Branch: {branch}"
+msgstr "主分支：{branch}"
+
+msgid "Markdown Preview"
+msgstr "Markdown 預覽"
+
+msgid "Max"
+msgstr "最大值"
+
+msgid "Member"
+msgstr "成員"
+
+msgid "Memo"
+msgstr "備忘"
+
+msgid "Merge In"
+msgstr "合併進來"
+
+msgid "Mermaid lays out diagrams automatically (positions cannot be set). Here you edit the diagram's elements, links and text."
+msgstr "Mermaid 會自動配置圖表（無法設定位置）。您可以在此編輯圖表的元素、連結和文字。"
+
+msgid "Min"
+msgstr "最小值"
+
+msgid "Move Column Left"
+msgstr "將欄左移"
+
+msgid "Move Column Right"
+msgstr "將欄右移"
+
+msgid "Move Down"
+msgstr "下移"
+
+msgid "Move Left"
+msgstr "左移"
+
+msgid "Move Out of the Group (After the Group)"
+msgstr "移出群組（移至群組之後）"
+
+msgid "Move Right"
+msgstr "右移"
+
+msgid "Move Row Down"
+msgstr "將列下移"
+
+msgid "Move Row Up"
+msgstr "將列上移"
+
+msgid "Move Up"
+msgstr "上移"
+
+msgid "Move into the Group Above"
+msgstr "移入上方的群組"
+
+msgid "Move to Left Column"
+msgstr "移至左欄"
+
+msgid "Move to Right Column"
+msgstr "移至右欄"
+
+msgid "Namespace"
+msgstr "命名空間"
+
+msgid "New Mermaid Diagram ({file})"
+msgstr "新的 Mermaid 圖表（{file}）"
+
+msgid "New block"
+msgstr "新區塊"
+
+msgid "New boundary"
+msgstr "新邊界"
+
+msgid "New box…"
+msgstr "新 box…"
+
+msgid "New card"
+msgstr "新卡片"
+
+msgid "New cause"
+msgstr "新原因"
+
+msgid "New column"
+msgstr "新欄"
+
+msgid "New element"
+msgstr "新元素"
+
+msgid "New item"
+msgstr "新項目"
+
+msgid "New node"
+msgstr "新節點"
+
+msgid "New period"
+msgstr "新期間"
+
+msgid "New point"
+msgstr "新點"
+
+msgid "New section"
+msgstr "新區段"
+
+msgid "New sub-cause"
+msgstr "新的子原因"
+
+msgid "New task"
+msgstr "新工作"
+
+msgid "NewParticipant"
+msgstr "參與者"
+
+msgid "NewState"
+msgstr "狀態"
+
+msgid "No Box"
+msgstr "無 box"
+
+msgid "No Class"
+msgstr "無類別"
+
+msgid "No Group"
+msgstr "無群組"
+
+msgid "No Icon"
+msgstr "無圖示"
+
+msgid "No Mermaid diagram code block was found."
+msgstr "找不到 Mermaid 圖表程式碼區塊。"
+
+msgid "No Priority"
+msgstr "無優先順序"
+
+msgid "No Reference"
+msgstr "無參照"
+
+msgid "No Shape (Shows the ID)"
+msgstr "無形狀（顯示 ID）"
+
+msgid "No arrow. Click to add an arrow."
+msgstr "無箭頭。按一下以新增箭頭。"
+
+msgid "No file was found at this path."
+msgstr "此路徑中找不到檔案。"
+
+msgid "No free name was found in the images folder: {file_name}"
+msgstr "在 images 資料夾中找不到可用的名稱：{file_name}"
+
+msgid "No matching image files."
+msgstr "沒有符合的影像檔案。"
+
+msgid "Nodes"
+msgstr "節點"
+
+msgid "Nodes (indented rows are nested deeper)"
+msgstr "節點（縮排的列巢狀層級更深）"
+
+msgid "Nodes (renaming a node updates all of its flows)"
+msgstr "節點（重新命名節點會更新其所有流程）"
+
+msgid "Nodes with the same name are merged into one when applied"
+msgstr "套用時，同名的節點會合併為一個"
+
+msgid "None"
+msgstr "無"
+
+msgid "None (1, 2, 3…)"
+msgstr "無（1、2、3…）"
+
+msgid "Not Set"
+msgstr "未設定"
+
+msgid "Not Set (Circle)"
+msgstr "未設定（圓形）"
+
+msgid "Not Set (Shown)"
+msgstr "未設定（顯示）"
+
+msgid "Not Set (Vertical)"
+msgstr "未設定（垂直）"
+
+msgid "Not an image file: {}"
+msgstr "不是影像檔案：{}"
+
+msgid "Note"
+msgstr "附註"
+
+msgid "Number"
+msgstr "編號"
+
+msgid "Number of Columns"
+msgstr "欄數"
+
+msgid "Number, separator, type, lane (optional), name. The second line is data in {{ }}."
+msgstr "編號、分隔符號、類型、泳道（選用）、名稱。第二行是以 {{ }} 括住的資料。"
+
+msgid "Numeric Range"
+msgstr "數值範圍"
+
+msgid "Only a tab with a single file open can be exported to PDF."
+msgstr "只有開啟單一檔案的分頁可以匯出為 PDF。"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Operations (run from top to bottom)"
+msgstr "操作（由上而下執行）"
+
+msgid "Order"
+msgstr "順序"
+
+msgid "Orientation"
+msgstr "方向"
+
+msgid "Original size: {width} × {height}"
+msgstr "原始大小：{width} × {height}"
+
+msgid "Outdent (Move After the Parent)"
+msgstr "凸排（移至父項之後）"
+
+msgid "Overlaps (sets, label, size)"
+msgstr "重疊（集合、標籤、大小）"
+
+msgid "Parent"
+msgstr "父項"
+
+msgid "Parent Group"
+msgstr "父群組"
+
+msgid "Participant Creation"
+msgstr "參與者建立"
+
+msgid "Participant Destruction"
+msgstr "參與者終結"
+
+msgid "Participants (listed top to bottom, drawn left to right)"
+msgstr "參與者（由上而下列出，由左至右繪製）"
+
+msgid "Paste Whole Table"
+msgstr "貼上整個表格"
+
+msgid "People"
+msgstr "人員"
+
+msgid "Period"
+msgstr "期間"
+
+msgid "Points (name, x, y; coordinates run from 0 to 1)"
+msgstr "點（名稱、x、y；座標範圍為 0 到 1）"
+
+msgid "Preview"
+msgstr "預覽"
+
+msgid "Preview {}"
+msgstr "預覽 {}"
+
+msgid "Priority: {label}"
+msgstr "優先順序：{label}"
+
+msgid "Quadrant Labels (1–4 are Mermaid's quadrant numbers)"
+msgstr "象限標籤（1–4 為 Mermaid 的象限編號）"
+
+msgid "Range"
+msgstr "範圍"
+
+msgid "Reference: {shown}"
+msgstr "參照：{shown}"
+
+msgid "Relationship"
+msgstr "關聯"
+
+msgid "Relationships"
+msgstr "關聯"
+
+msgid "Remove the arrow drawn after the label (the `-->` with nothing after it)"
+msgstr "移除標籤後繪製的箭頭（後面沒有任何內容的 `-->`）"
+
+msgid "Rename in All Tasks"
+msgstr "在所有工作中重新命名"
+
+msgid "Rendering…"
+msgstr "正在轉譯…"
+
+msgid "Replaces the whole table with the Excel / CSV contents of the clipboard."
+msgstr "以剪貼簿中的 Excel / CSV 內容取代整個表格。"
+
+msgid "Requirement"
+msgstr "需求"
+
+msgid "Requirement text (text)"
+msgstr "需求文字（text）"
+
+msgid "Requirements"
+msgstr "需求"
+
+msgid "Reset (rf): takes no arrow and starts a new flow"
+msgstr "重設（rf）：不接收箭頭，並開始新的流程"
+
+msgid "Rewrite the reference definition {head} (this also changes {count} other place)"
+msgid_plural "Rewrite the reference definition {head} (this also changes {count} other places)"
+msgstr[0] "重寫參考定義 {head}（這也會變更其他 {count} 處）"
+
+msgid "Rewrites the path in the reference definition {head}."
+msgstr "重寫參考定義 {head} 中的路徑。"
+
+msgid "Risk: Not Set"
+msgstr "風險：未設定"
+
+msgid "Save the file with a name before exporting it to PDF."
+msgstr "匯出為 PDF 前，請先為檔案命名並儲存。"
+
+msgid "Saving the image was interrupted."
+msgstr "儲存影像時已中斷。"
+
+msgid "Scale"
+msgstr "刻度"
+
+msgid "Score {current}"
+msgstr "分數 {current}"
+
+msgid "Section"
+msgstr "區段"
+
+msgid "Sections and Periods"
+msgstr "區段與期間"
+
+msgid "Sections and Tasks"
+msgstr "區段與工作"
+
+msgid "Select Image"
+msgstr "選取影像"
+
+msgid "Select a Markdown editor, then run this again."
+msgstr "請選取 Markdown 編輯器，然後再執行一次。"
+
+msgid "Select a Mermaid diagram type to insert…"
+msgstr "選取要插入的 Mermaid 圖表類型…"
+
+msgid "Select a heading level to fold…"
+msgstr "選取要摺疊的標題層級…"
+
+msgid "Series (ID and legend name; the ID is shown when the name is empty)"
+msgstr "數列（ID 與圖例名稱；名稱為空時顯示 ID）"
+
+msgid "Series (in drawing order; names do not appear in the diagram)"
+msgstr "數列（依繪製順序；名稱不會顯示在圖表中）"
+
+msgid "Service"
+msgstr "服務"
+
+msgid "Services and Junctions"
+msgstr "服務與連接點"
+
+msgid "Set by a linkStyle line in the text"
+msgstr "已由文字中的 linkStyle 行設定"
+
+msgid "Sets (ID, label, size)"
+msgstr "集合（ID、標籤、大小）"
+
+msgid "Settings @{{{settings}}}"
+msgstr "設定 @{{{settings}}}"
+
+msgid "Show Numbers"
+msgstr "顯示編號"
+
+msgid "Show Values"
+msgstr "顯示值"
+
+msgid "Shown"
+msgstr "顯示"
+
+msgid "Shown once a diagram type is chosen"
+msgstr "選擇圖表類型後顯示"
+
+msgid "Shows the ID as is"
+msgstr "原樣顯示 ID"
+
+msgid "Size"
+msgstr "大小"
+
+msgid "Size and alignment cannot be written in the reference form ![…][…], so this image is written as HTML. The reference definition {head} stays as it is."
+msgstr "大小與對齊方式無法以參考形式 ![…][…] 撰寫，因此此影像會以 HTML 撰寫。參考定義 {head} 保持不變。"
+
+msgid "Solid line (identifying relationship). Click for a dashed line."
+msgstr "實線（識別關聯）。按一下以改為虛線。"
+
+msgid "Some classDef lines cannot be edited here, such as a line with several names or a name defined more than once (they are kept as text)."
+msgstr "部分 classDef 行無法在此編輯，例如含有多個名稱的行，或名稱重複定義的行（這些行會保留為文字）。"
+
+msgid "Specify an image file."
+msgstr "請指定影像檔案。"
+
+msgid "Start"
+msgstr "開始"
+
+msgid "State IDs (renaming updates the references too)"
+msgstr "狀態 ID（重新命名時也會更新參照）"
+
+msgid "Step"
+msgstr "步驟"
+
+msgid "Style"
+msgstr "樣式"
+
+msgid "Styles (classDef defines a class and class applies it; style styles one block directly)"
+msgstr "樣式（classDef 定義類別，class 套用類別；style 直接為單一區塊設定樣式）"
+
+msgid "Suggestions"
+msgstr "建議"
+
+msgid "Tab / arrow keys move between cells. Ctrl+Enter applies the table to the document."
+msgstr "Tab / 方向鍵可在儲存格之間移動。Ctrl+Enter 會將表格套用至文件。"
+
+msgid "Tab moves between fields. Ctrl+Enter applies to the document."
+msgstr "Tab 可在欄位之間移動。Ctrl+Enter 會套用至文件。"
+
+msgid "Tag"
+msgstr "標籤"
+
+msgid "Tags"
+msgstr "標籤"
+
+msgid "Technology"
+msgstr "技術"
+
+msgid "The ID \"{id}\" is not valid (ASCII letters, digits and _ only; no Mermaid keywords)."
+msgstr "ID「{id}」無效（僅限 ASCII 英文字母、數字與 _；不可使用 Mermaid 關鍵字）。"
+
+msgid "The ID \"{id}\" is not valid (no symbols or Mermaid keywords)."
+msgstr "ID「{id}」無效（不可使用符號或 Mermaid 關鍵字）。"
+
+msgid "The ID \"{id}\" is not valid (no symbols, and it cannot start with a digit)."
+msgstr "ID「{id}」無效（不可使用符號，且不可以數字開頭）。"
+
+msgid "The ID \"{id}\" is used more than once."
+msgstr "ID「{id}」重複使用。"
+
+msgid "The ID \"{id}\" of link {position} is not valid (ASCII letters, digits and _ only; no Mermaid keywords)."
+msgstr "連結 {position} 的 ID「{id}」無效（僅限 ASCII 英文字母、數字與 _；不可使用 Mermaid 關鍵字）。"
+
+msgid "The Markdown buffer could not be found."
+msgstr "找不到 Markdown 緩衝區。"
+
+msgid "The Markdown file is not saved, so the image cannot be copied. Save it first."
+msgstr "Markdown 檔案尚未儲存，因此無法複製影像。請先儲存。"
+
+msgid "The Markdown file is not saved, so the path is written as entered. The image may not show, depending on where the file is saved."
+msgstr "Markdown 檔案尚未儲存，因此路徑會依輸入內容寫入。視檔案的儲存位置而定，影像可能無法顯示。"
+
+msgid "The Markdown file is not saved."
+msgstr "Markdown 檔案尚未儲存。"
+
+msgid "The `namespace` \"{name}\" is empty. Put a class in it or delete the `namespace` (Mermaid cannot draw an empty `namespace`)."
+msgstr "`namespace`「{name}」是空的。請在其中放入類別，或刪除此 `namespace`（Mermaid 無法繪製空的 `namespace`）。"
+
+msgid "The `namespace` name \"{name}\" is not valid."
+msgstr "`namespace` 名稱「{name}」無效。"
+
+msgid "The annotation \"{annotation}\" is not valid (no `<`, `>`, `\"`, `%%`, or leading or trailing whitespace)."
+msgstr "註記「{annotation}」無效（不可包含 `<`、`>`、`\"`、`%%`，或前後空白字元）。"
+
+msgid "The buffer became read-only, so the image link could not be inserted."
+msgstr "緩衝區已變為唯讀，因此無法插入影像連結。"
+
+msgid "The class definition \"{name}\" is defined more than once."
+msgstr "類別定義「{name}」重複定義。"
+
+msgid "The class definition name \"{name}\" is not valid (no whitespace or symbols such as , ; : # %)."
+msgstr "類別定義名稱「{name}」無效（不可包含空白字元或 , ; : # % 等符號）。"
+
+msgid "The class name \"{name}\" is not valid (no whitespace, symbols or Mermaid keywords)."
+msgstr "類別名稱「{name}」無效（不可包含空白字元、符號或 Mermaid 關鍵字）。"
+
+msgid "The classDef names and the name typed here are offered under \"Class\"."
+msgstr "classDef 的名稱與在此輸入的名稱會列在「類別」中供選擇。"
+
+msgid "The clipboard has nothing that can be read as a table."
+msgstr "剪貼簿中沒有可讀取為表格的內容。"
+
+msgid "The diagram was changed in the document after this tab read it. Applying will not write over it: load the document's version, or save this tab to choose whether to overwrite it."
+msgstr "此分頁讀取圖表後，文件中的圖表已被變更。套用不會覆寫該變更：請載入文件中的版本，或儲存此分頁以選擇是否覆寫。"
+
+msgid "The diagram's code block, or the editor it was opened from, is gone, so these edits cannot be applied."
+msgstr "圖表的程式碼區塊或開啟它的編輯器已不存在，因此無法套用這些編輯。"
+
+msgid "The display name of a `namespace` cannot contain `\"` or `%%{{`."
+msgstr "`namespace` 的顯示名稱不可包含 `\"` 或 `%%{{`。"
+
+msgid "The display name of a class cannot contain `\"`, `%%{{` or line breaks."
+msgstr "類別的顯示名稱不可包含 `\"`、`%%{{` 或換行。"
+
+msgid "The generic type \"{generic}\" is not valid."
+msgstr "泛型型別「{generic}」無效。"
+
+msgid "The image is too large ({} MiB). Images of up to {} MiB can be saved."
+msgstr "影像太大（{} MiB）。最多可儲存 {} MiB 的影像。"
+
+msgid "The image's reference definition changed after the dialog was opened. Open the dialog again."
+msgstr "開啟對話方塊後，影像的參考定義已變更。請重新開啟對話方塊。"
+
+msgid "The label \"{label}\" is not valid (it cannot be empty or contain `%%`)."
+msgstr "標籤「{label}」無效（不可為空，也不可包含 `%%`）。"
+
+msgid "The line style of link {position} has characters that cannot be used (; or %%, an unclosed quote, a trailing {{, or a leading comma)."
+msgstr "連結 {position} 的線條樣式包含無法使用的字元（; 或 %%、未閉合的引號、結尾的 {{，或開頭的逗號）。"
+
+msgid "The link ID \"{id}\" is the same as the ID of a node or group."
+msgstr "連結 ID「{id}」與某個節點或群組的 ID 相同。"
+
+msgid "The link ID \"{id}\" is used more than once."
+msgstr "連結 ID「{id}」重複使用。"
+
+msgid "The member \"{member}\" is not valid (no line starting with `}}`, no `%%{{`, and no leading or trailing whitespace)."
+msgstr "成員「{member}」無效（不可有以 `}}` 開頭的行、不可包含 `%%{{`，也不可有前後空白字元）。"
+
+msgid "The member \"{text}\" is not valid (no leading or trailing whitespace, no `%%{{`, and not a line of only `}}`)."
+msgstr "成員「{text}」無效（不可有前後空白字元、不可包含 `%%{{`，也不可為只有 `}}` 的行）。"
+
+msgid "The new Mermaid diagram in \"{file}\" has unsaved edits. Do you want to save it?"
+msgstr "「{file}」中的新 Mermaid 圖表有未儲存的編輯。要儲存嗎？"
+
+msgid "The note text cannot contain `\"`, `%%{{` or line breaks."
+msgstr "附註文字不可包含 `\"`、`%%{{` 或換行。"
+
+msgid "The note text contains characters that are not allowed (leading or trailing whitespace, line breaks, or `%%{{`)."
+msgstr "附註文字包含不允許的字元（前後空白字元、換行或 `%%{{`）。"
+
+msgid "The path cannot be made relative to the Markdown file, so it is written as an absolute path. The image will not show on other machines."
+msgstr "無法將路徑轉為相對於 Markdown 檔案的路徑，因此會以絕對路徑寫入。影像在其他電腦上將無法顯示。"
+
+msgid "The path contains characters that cannot be handled."
+msgstr "路徑包含無法處理的字元。"
+
+msgid "The previous image is still being saved. Try again when it finishes."
+msgstr "上一個影像仍在儲存中。請在完成後再試一次。"
+
+msgid "The project has no image files."
+msgstr "專案中沒有影像檔案。"
+
+msgid "The project was closed."
+msgstr "專案已關閉。"
+
+msgid "The reference definition {head} is also used in {count} other place, so only this image is rewritten in the inline form ![…](…)."
+msgid_plural "The reference definition {head} is also used in {count} other places, so only this image is rewritten in the inline form ![…](…)."
+msgstr[0] "參考定義 {head} 也用於其他 {count} 處，因此只有此影像會以內嵌形式 ![…](…) 重寫。"
+
+msgid "The relationship symbol \"{arrow}\" is not valid."
+msgstr "關聯符號「{arrow}」無效。"
+
+msgid "The remote connection could not be found."
+msgstr "找不到遠端連線。"
+
+msgid "The saved location could not be determined, so the file was not exported to PDF."
+msgstr "無法確定儲存位置，因此未將檔案匯出為 PDF。"
+
+msgid "The selected image is shown here."
+msgstr "選取的影像會顯示在這裡。"
+
+msgid "The source changed, so this label could not be rewritten."
+msgstr "來源已變更，因此無法重寫此標籤。"
+
+msgid "The style of the class definition \"{name}\" has characters that cannot be used (; or %%, an unclosed quote, or a trailing {{)."
+msgstr "類別定義「{name}」的樣式包含無法使用的字元（; 或 %%、未閉合的引號，或結尾的 {{）。"
+
+msgid "The text the image is written into changed after the dialog was opened. Open the dialog again."
+msgstr "開啟對話方塊後，要寫入影像的文字已變更。請重新開啟對話方塊。"
+
+msgid "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+msgstr "標題不可包含 `%%` 或換行（兩端也不可有空格）。"
+
+msgid "The value \"{value}\" of \"{label}\" is not valid (only decimal numbers of 0 or more)."
+msgstr "「{label}」的值「{value}」無效（僅限 0 以上的十進位數字）。"
+
+msgid "The worktree that contains the Markdown file could not be found."
+msgstr "找不到包含此 Markdown 檔案的工作樹。"
+
+msgid "The worktree that contains the Markdown file was closed."
+msgstr "包含此 Markdown 檔案的工作樹已關閉。"
+
+msgid "The {kind} in \"{file}\" has unsaved edits. Do you want to save them?"
+msgstr "「{file}」中的 {kind} 有未儲存的編輯。要儲存嗎？"
+
+msgid "There is no pair of frames to add an arrow between. Add a frame first."
+msgstr "沒有可在其間新增箭頭的一對框架。請先新增框架。"
+
+msgid "This buffer does not belong to a project, so there is nowhere to save the image."
+msgstr "此緩衝區不屬於任何專案，因此沒有可儲存影像的位置。"
+
+msgid "This buffer is read-only, so an image cannot be inserted."
+msgstr "此緩衝區為唯讀，因此無法插入影像。"
+
+msgid "This buffer is read-only, so the diagram cannot be edited."
+msgstr "此緩衝區為唯讀，因此無法編輯圖表。"
+
+msgid "This content cannot be written back: {error}"
+msgstr "無法寫回此內容：{error}"
+
+msgid "This diagram is not supported by the structured editor. Edit it as text. (Diagrams the structured editor supports: {kinds})"
+msgstr "結構化編輯器不支援此圖表。請以文字編輯。（結構化編輯器支援的圖表：{kinds}）"
+
+msgid "This kind of link cannot be opened from the preview"
+msgstr "無法從預覽開啟此類連結"
+
+msgid "Ticket"
+msgstr "票證"
+
+msgid "Ticks"
+msgstr "刻度數"
+
+msgid "Time (tf): an arrow continues from the previous frame"
+msgstr "時間（tf）：箭頭從上一個框架延續"
+
+msgid "Title"
+msgstr "標題"
+
+msgid "To choose again, cancel and open the editor again."
+msgstr "若要重新選擇，請取消後再次開啟編輯器。"
+
+msgid "Top Left (2)"
+msgstr "左上（2）"
+
+msgid "Top Level"
+msgstr "最上層"
+
+msgid "Top Right (1)"
+msgstr "右上（1）"
+
+msgid "Type"
+msgstr "類型"
+
+msgid "Type: Default"
+msgstr "類型：預設"
+
+msgid "Unfold All Headings"
+msgstr "展開所有標題"
+
+msgid "Unsupported diagram type"
+msgstr "不支援的圖表類型"
+
+msgid "Untitled"
+msgstr "未命名"
+
+msgid "Unused (not written until a flow uses it)"
+msgstr "未使用（在有流程使用前不會寫入）"
+
+msgid "Update"
+msgstr "更新"
+
+msgid "Values (deleting a row also deletes its value in every series)"
+msgstr "值（刪除一列也會刪除每個數列中該列的值）"
+
+msgid "Values beyond the number of axes are not drawn. Adding an axis gives those values an axis."
+msgstr "超出軸數量的值不會繪製。新增軸即可為這些值提供軸。"
+
+msgid "Values beyond the number of categories are not drawn. Adding a category gives those values a name."
+msgstr "超出類別數量的值不會繪製。新增類別即可為這些值命名。"
+
+msgid "Verification: Not Set"
+msgstr "驗證：未設定"
+
+msgid "When only one side is set, the aspect ratio is kept."
+msgstr "只設定一邊時，會保持長寬比。"
+
+msgid "Width"
+msgstr "寬度"
+
+msgid "Wrap"
+msgstr "換行"
+
+msgid "Write a classDef, or type a name in \"Class Name\"."
+msgstr "請撰寫 classDef，或在「類別名稱」中輸入名稱。"
+
+msgid "X Axis"
+msgstr "X 軸"
+
+msgid "Y Axis"
+msgstr "Y 軸"
+
+msgid "Zoom In (Ctrl+Scroll)"
+msgstr "放大（Ctrl+捲動）"
+
+msgid "Zoom Out (Ctrl+Scroll)"
+msgstr "縮小（Ctrl+捲動）"
+
+msgid "[*] Start / End"
+msgstr "[*] 開始 / 結束"
+
+msgid "`namespace` blocks are nested too deeply."
+msgstr "`namespace` 區塊巢狀層級過深。"
+
+msgid "after (After Another Task)"
+msgstr "after（在另一項工作之後）"
+
+msgid "bits"
+msgstr "位元"
+
+msgid "box (Group of Participants)"
+msgstr "box（參與者群組）"
+
+msgid "e.g. 200"
+msgstr "例如：200"
+
+msgid "e.g. 300 / 50%"
+msgstr "例如：300 / 50%"
+
+msgid "e.g. fill:#f96,stroke:#333"
+msgstr "例如：fill:#f96,stroke:#333"
+
+msgid "e.g. stroke:#f00,stroke-width:2px"
+msgstr "例如：stroke:#f00,stroke-width:2px"
+
+msgid "end (End of Block)"
+msgstr "end（區塊結尾）"
+
+msgid "right / left / up / down / x / y, separated by commas"
+msgstr "right / left / up / down / x / y，以逗號分隔"
+
+msgid "until (Until Another Task Starts)"
+msgstr "until（直到另一項工作開始）"
+
+msgid "x-axis, left → right"
+msgstr "X 軸，左 → 右"
+
+msgid "y-axis, bottom → top"
+msgstr "Y 軸，下 → 上"
+
+msgid "{count} line of data (edit multiple lines as text)"
+msgid_plural "{count} lines of data (edit multiple lines as text)"
+msgstr[0] "{count} 行資料（多行請以文字編輯）"
+
+msgid "{count} style statement (UpdateElementStyle and the like) is kept as is and follows alias changes."
+msgid_plural "{count} style statements (UpdateElementStyle and the like) are kept as is and follow alias changes."
+msgstr[0] "{count} 個樣式陳述式（UpdateElementStyle 等）會保持原樣，並跟隨別名的變更。"
+
+msgid "{count} text or style statement is kept as is and follows sets that are renamed or deleted."
+msgid_plural "{count} text and style statements are kept as is and follow sets that are renamed or deleted."
+msgstr[0] "{count} 個 text 或 style 陳述式會保持原樣，並跟隨重新命名或刪除的集合。"
+
+msgid "{count} text statement"
+msgid_plural "{count} text statements"
+msgstr[0] "{count} 個 text 陳述式"
+
+msgid "{kind} ({file})"
+msgstr "{kind}（{file}）"
+
+msgid "{label} (Unnamed)"
+msgstr "{label}（未命名）"
+
+msgid "{refusal} The image is referenced without being copied."
+msgstr "{refusal} 影像會以參考方式使用，不會複製。"
+
+msgid "{}: cannot make a path relative to the document"
+msgstr "{}：無法建立相對於文件的路徑"
+
+msgctxt "event modeling frame"
+msgid "Reset"
+msgstr "重設"
+
+msgctxt "event modeling frame"
+msgid "Time"
+msgstr "時間"
+
+msgctxt "image alignment"
+msgid "Center"
+msgstr "置中"
+
+msgctxt "image alignment"
+msgid "Left"
+msgstr "靠左"
+
+msgctxt "image alignment"
+msgid "Right"
+msgstr "靠右"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "mermaid block arrow"
+msgid "Direction"
+msgstr "方向"
+
+msgctxt "mermaid c4 element"
+msgid "Parent"
+msgstr "所屬"
+
+msgctxt "mermaid edge end"
+msgid "From"
+msgstr "起點"
+
+msgctxt "mermaid edge end"
+msgid "To"
+msgstr "終點"
+
+msgctxt "mermaid editor"
+msgid "Apply"
+msgstr "套用"
+
+msgctxt "mermaid editor"
+msgid "Revert"
+msgstr "還原"
+
+msgctxt "mermaid gantt tag separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "mermaid gantt task"
+msgid "Start"
+msgstr "開始"
+
+msgctxt "mermaid journey"
+msgid "Add Task"
+msgstr "新增工作"
+
+msgctxt "mermaid journey"
+msgid "Delete the Section and Its Tasks"
+msgstr "刪除區段及其工作"
+
+msgctxt "mermaid journey"
+msgid "New task"
+msgstr "新工作"
+
+msgctxt "mermaid journey"
+msgid "Sections and Tasks (task name, score and people, separated by commas)"
+msgstr "區段與工作（工作名稱、分數與人員，以逗號分隔）"
+
+msgctxt "mermaid timeline"
+msgid "Event"
+msgstr "事件"
+
+msgctxt "xychart series heading"
+msgid "{kind} {number}"
+msgstr "{kind} {number}"

@@ -1,0 +1,70 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Just now"
+msgstr "Gerade eben"
+
+msgid "Today"
+msgstr "Heute"
+
+msgid "Today at {}"
+msgstr "Heute um {}"
+
+msgid "Yesterday"
+msgstr "Gestern"
+
+msgid "Yesterday at {}"
+msgstr "Gestern um {}"
+
+msgid "{count} day ago"
+msgid_plural "{count} days ago"
+msgstr[0] "vor {count} Tag"
+msgstr[1] "vor {count} Tagen"
+
+msgid "{count} hour ago"
+msgid_plural "{count} hours ago"
+msgstr[0] "vor {count} Stunde"
+msgstr[1] "vor {count} Stunden"
+
+msgid "{count} minute ago"
+msgid_plural "{count} minutes ago"
+msgstr[0] "vor {count} Minute"
+msgstr[1] "vor {count} Minuten"
+
+msgid "{count} month"
+msgid_plural "{count} months"
+msgstr[0] "{count} Monat"
+msgstr[1] "{count} Monaten"
+
+msgid "{count} month ago"
+msgid_plural "{count} months ago"
+msgstr[0] "vor {count} Monat"
+msgstr[1] "vor {count} Monaten"
+
+msgid "{count} week ago"
+msgid_plural "{count} weeks ago"
+msgstr[0] "vor {count} Woche"
+msgstr[1] "vor {count} Wochen"
+
+msgid "{count} year"
+msgid_plural "{count} years"
+msgstr[0] "{count} Jahr"
+msgstr[1] "{count} Jahren"
+
+msgid "{count} year ago"
+msgid_plural "{count} years ago"
+msgstr[0] "vor {count} Jahr"
+msgstr[1] "vor {count} Jahren"
+
+msgid "{month}/{day}/{year}"
+msgstr "{day}.{month}.{year}"
+
+msgid "{years}, {months} ago"
+msgstr "vor {years} und {months}"

@@ -1,0 +1,108 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A worktree with this name already exists"
+msgstr "이 이름의 워크트리가 이미 있습니다"
+
+msgid "Automate Setup"
+msgstr "설정 자동화"
+
+msgid "Automate Worktree Setup"
+msgstr "워크트리 설정 자동화"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Cannot create a named worktree in a project with multiple repositories"
+msgstr "여러 저장소가 있는 프로젝트에서는 이름이 지정된 워크트리를 만들 수 없습니다"
+
+msgid "Create"
+msgstr "만들기"
+
+msgid "Create \"{name}\" based on {branch_label}"
+msgstr "{branch_label}을(를) 기준으로 \"{name}\" 만들기"
+
+msgid "Create new worktree based on {branch_label}"
+msgstr "{branch_label}을(를) 기준으로 새 워크트리 만들기"
+
+msgid "Delete"
+msgstr "삭제"
+
+msgid "Delete Worktree"
+msgstr "워크트리 삭제"
+
+msgid "Deleting…"
+msgstr "삭제 중…"
+
+msgid "Failed to connect"
+msgstr "연결하지 못했습니다"
+
+msgid "Force Delete"
+msgstr "강제 삭제"
+
+msgid "Force Delete Worktree"
+msgstr "워크트리 강제 삭제"
+
+msgid "Hold {} to force delete"
+msgstr "강제 삭제하려면 {}을(를) 누르고 있으세요"
+
+msgid "Learn more"
+msgstr "자세히 알아보기"
+
+msgid "Open"
+msgstr "열기"
+
+msgid "Open in New Window"
+msgstr "새 창에서 열기"
+
+msgid "Output from git {operation}"
+msgstr "git {operation}의 출력"
+
+msgid "Remove Worktree from Window"
+msgstr "창에서 워크트리 제거"
+
+msgid "Requires a Git repository in the project"
+msgstr "프로젝트에 Git 저장소가 필요합니다"
+
+msgid "Select or type to create a worktree…"
+msgstr "선택하거나 입력하여 워크트리 만들기…"
+
+msgid "Show Error Logs"
+msgstr "오류 로그 표시"
+
+msgid "Some project folders are not git repositories. They were included as-is without creating a worktree."
+msgstr "일부 프로젝트 폴더가 git 저장소가 아닙니다. 워크트리를 생성하지 않고 그대로 포함되었습니다."
+
+msgid "This Window"
+msgstr "이 창"
+
+msgid "Use local {}"
+msgstr "로컬 {} 사용"
+
+msgid "View Log"
+msgstr "로그 보기"
+
+msgid "Worktree \"{display_name}\" contains modified or untracked files. Force delete it?"
+msgstr "워크트리 \"{display_name}\"에 수정되었거나 추적되지 않은 파일이 있습니다. 강제로 삭제하시겠습니까?"
+
+msgid "Worktree creation is not supported in collaborative projects"
+msgstr "협업 프로젝트에서는 워크트리 생성이 지원되지 않습니다"
+
+msgid "You may need to configure git for Github."
+msgstr "GitHub용 git 설정이 필요할 수 있습니다."
+
+msgid "current branches"
+msgstr "현재 브랜치"
+
+msgid "git fetch failed for {}"
+msgstr "{}에 대한 git fetch에 실패했습니다"
+
+msgid "git {} failed"
+msgstr "git {} 실패"

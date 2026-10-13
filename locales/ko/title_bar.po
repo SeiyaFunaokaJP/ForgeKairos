@@ -1,0 +1,165 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add to Allowlist and Update"
+msgstr "허용 목록에 추가하고 업데이트"
+
+msgid "Agentic"
+msgstr "에이전트형"
+
+msgid "Application menu"
+msgstr "애플리케이션 메뉴"
+
+msgid "Branch & Stash"
+msgstr "브랜치 및 스태시"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Classic"
+msgstr "클래식"
+
+msgid "Click to Follow"
+msgstr "클릭하여 따라가기"
+
+msgid "Close Announcement Banner"
+msgstr "공지 배너 닫기"
+
+msgid "Connected to: {host}"
+msgstr "{host}에 연결됨"
+
+msgid "Connecting to: {host}"
+msgstr "{host}에 연결 중"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "{host}에 대한 연결 시도가 실패했습니다. 다시 시도 중..."
+
+msgid "Create Branch"
+msgstr "브랜치 만들기"
+
+msgid "Creating {}…"
+msgstr "{} 만드는 중…"
+
+msgid "Currently Checked Out: {}"
+msgstr "현재 체크아웃: {}"
+
+msgid "Currently In Use: {}"
+msgstr "현재 사용 중: {}"
+
+msgid "Custom"
+msgstr "사용자 지정"
+
+msgid "Detached HEAD: {}"
+msgstr "Detached HEAD: {}"
+
+msgid "Dev Container"
+msgstr "Dev Container"
+
+msgid "Disconnected"
+msgstr "연결 끊김"
+
+msgid "Disconnected from {host}"
+msgstr "{host}와(과) 연결이 끊어졌습니다"
+
+msgid "Downloading the update needs network access"
+msgstr "업데이트를 다운로드하려면 네트워크 액세스가 필요합니다"
+
+msgid "Extensions"
+msgstr "확장 프로그램"
+
+msgid "Icon Themes…"
+msgstr "아이콘 테마…"
+
+msgid "Introducing:"
+msgstr "소개:"
+
+msgid "It won't show again for this feature"
+msgstr "이 기능에 대해 다시 표시되지 않습니다"
+
+msgid "Keymap"
+msgstr "키맵"
+
+msgid "Loading {}…"
+msgstr "{} 로드 중…"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "{host}와(과)의 연결이 끊어졌습니다. 다시 연결 중..."
+
+msgid "Mark this project as trusted and unlock all features"
+msgstr "이 프로젝트를 신뢰할 수 있는 항목으로 표시하고 모든 기능을 잠금 해제합니다"
+
+msgid "Open Application Menu"
+msgstr "애플리케이션 메뉴 열기"
+
+msgid "Open Recent Project"
+msgstr "최근 프로젝트 열기"
+
+msgid "Organization"
+msgstr "조직"
+
+msgid "Panel Layout"
+msgstr "패널 레이아웃"
+
+msgid "Please restart Zed to Collaborate"
+msgstr "협업하려면 ForgeKairos를 다시 시작하세요"
+
+msgid "Please update Zed to Collaborate"
+msgstr "협업하려면 ForgeKairos를 업데이트하세요"
+
+msgid "Recent Projects"
+msgstr "최근 프로젝트"
+
+msgid "Remote Project"
+msgstr "원격 프로젝트"
+
+msgid "Restart to update Zed"
+msgstr "ForgeKairos를 업데이트하려면 다시 시작"
+
+msgid "Restricted Mode"
+msgstr "제한 모드"
+
+msgid "Settings"
+msgstr "설정"
+
+msgid "Sign In"
+msgstr "로그인"
+
+msgid "Sign Out"
+msgstr "로그아웃"
+
+msgid "Signing in…"
+msgstr "로그인 중…"
+
+msgid "Themes…"
+msgstr "테마…"
+
+msgid "To download version {version}, these hosts must be added to the network allowlist:\n\n{hosts}\n\nOnce added, connections to them are always allowed. You can remove them at any time on the Network page of the settings."
+msgstr "버전 {version}을(를) 다운로드하려면 다음 호스트를 네트워크 허용 목록에 추가해야 합니다:\n\n{hosts}\n\n추가하면 이 호스트에 대한 연결은 항상 허용됩니다. 설정의 네트워크 페이지에서 언제든지 제거할 수 있습니다."
+
+msgid "Toggle AI chat"
+msgstr "AI 채팅 열기/닫기"
+
+msgid "Update Needs Permission"
+msgstr "업데이트에 권한 필요"
+
+msgid "Updating..."
+msgstr "업데이트 중..."
+
+msgid "User menu"
+msgstr "사용자 메뉴"
+
+msgid "Worktree"
+msgstr "워크트리"
+
+msgid "You're in Restricted Mode"
+msgstr "제한 모드에 있습니다"
+
+msgid "{} is sharing this project. Click to follow."
+msgstr "{}님이 이 프로젝트를 공유하고 있습니다. 따라가려면 클릭하세요."

@@ -1,0 +1,96 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Agent"
+msgstr "代理"
+
+msgid "Claude Code (Sandbox): Connected"
+msgstr "Claude Code（沙箱）：已連線"
+
+msgid "Claude Code in the sandbox is connected to this project (connections: {connection_count}). Click to open the menu\n{assist_summary}"
+msgstr "沙箱中的 Claude Code 已連線至此專案（連線數：{connection_count}）。按一下以開啟選單\n{assist_summary}"
+
+msgid "Claude Code isn't connected"
+msgstr "Claude Code 未連線"
+
+msgid "Copied the MCP configuration. The auth token changes every time Zed starts, so paste it again each time"
+msgstr "已複製 MCP 設定。驗證權杖在每次啟動 ForgeKairos 時都會變更，因此每次都需要重新貼上"
+
+msgid "Copy MCP Configuration"
+msgstr "複製 MCP 設定"
+
+msgid "Couldn't create the MCP configuration: {error}"
+msgstr "無法建立 MCP 設定：{error}"
+
+msgid "External Agent"
+msgstr "外部代理"
+
+msgid "IDE Server: Starting…"
+msgstr "IDE 伺服器：正在啟動…"
+
+msgid "IDE Server: {port}"
+msgstr "IDE 伺服器：{port}"
+
+msgid "IDE Server: {port} ({connected_clients} connected)"
+msgstr "IDE 伺服器：{port}（{connected_clients} 個已連線）"
+
+msgid "IDE tools: highlights, annotations, tours, definitions, references, symbol search"
+msgstr "IDE 工具：醒目提示、註記、導覽、定義、參考、符號搜尋"
+
+msgid "IDE tools: off (turn them on in the \"AI\" settings)"
+msgstr "IDE 工具：關閉（請在「AI」設定中開啟）"
+
+msgid "Listening on 127.0.0.1:{port} (connections: {connection_count}). Click to open the menu\n{assist_summary}"
+msgstr "正在 127.0.0.1:{port} 上接聽（連線數：{connection_count}）。按一下以開啟選單\n{assist_summary}"
+
+msgid "Listening on 127.0.0.1:{port} (connections: {connection_count}). This is a remote workspace, so there is no lock file for CLIs to find it by (paste what \"Copy MCP Configuration\" gives you to connect)\n{assist_summary}"
+msgstr "正在 127.0.0.1:{port} 上接聽（連線數：{connection_count}）。這是遠端工作區，因此沒有可供 CLI 尋找它的鎖定檔（貼上「複製 MCP 設定」提供的內容即可連線）\n{assist_summary}"
+
+msgid "Proposed by the agent: {}"
+msgstr "代理的提議：{}"
+
+msgid "Reason for rejecting (optional, sent to the agent)"
+msgstr "拒絕的原因（選用，會傳送給代理）"
+
+msgid "Remote workspaces get no lock file. From a CLI, use the HTTP endpoint that \"Copy MCP Configuration\" gives you"
+msgstr "遠端工作區沒有鎖定檔。從 CLI 連線時，請使用「複製 MCP 設定」提供的 HTTP 端點"
+
+msgid "Reveal Lock File"
+msgstr "顯示鎖定檔"
+
+msgid "The IDE server isn't running"
+msgstr "IDE 伺服器未執行"
+
+msgid "There's no editor to send"
+msgstr "沒有可傳送的編輯器"
+
+msgid "This diff has been handled"
+msgstr "此差異已處理"
+
+msgid "Unsaved buffers can't be sent to Claude Code"
+msgstr "無法將未儲存的緩衝區傳送給 Claude Code"
+
+msgid "Waiting for a port to listen on"
+msgstr "正在等待可接聽的連接埠"
+
+msgid "{} (connections: {})"
+msgstr "{}（連線數：{}）"
+
+msgctxt "ide server"
+msgid "Disable"
+msgstr "停用"
+
+msgctxt "proposed diff"
+msgid "Accept"
+msgstr "接受"
+
+msgctxt "proposed diff"
+msgid "Reject"
+msgstr "拒絕"

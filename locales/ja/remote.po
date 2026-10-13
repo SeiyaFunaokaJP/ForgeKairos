@@ -125,8 +125,8 @@ msgstr "リモートサーバーがこの ForgeKairos と合っていません (
 msgid "The server that this Zed installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update Zed."
 msgstr "この ForgeKairos が接続先に入れるサーバー自体が合っていない可能性があります。この PC の {folder} を削除してから接続し直すか、ForgeKairos を更新してください。"
 
-msgid "There is no bundled artifact (ADR-F15) and the download failed as well. Build with script\\build.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
-msgstr "同梱アーティファクト (ADR-F15) も無く、ダウンロードにも失敗しました。script\\build.ps1 でビルドして同梱アーティファクトを用意するか、この PC から配信元に接続できることを確認してください"
+msgid "There is no bundled artifact and the download failed as well. Build with script\\build.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
+msgstr "同梱アーティファクトも無く、ダウンロードにも失敗しました。script\\build.ps1 でビルドして同梱アーティファクトを用意するか、この PC から配信元に接続できることを確認してください"
 
 msgid "Uploading remote development server"
 msgstr "リモート開発サーバーを転送しています"

@@ -56,8 +56,8 @@ msgstr "フォルダーを開いていないプロジェクトでは、エージ
 msgid "An account name may use only letters, digits, '-', '_' and '.'"
 msgstr "アカウント名に使えるのは文字・数字・「-」「_」「.」だけです"
 
-msgid "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch}\"."
-msgstr "ブランチ「{merge_request_branch}」は既にあります。作り直すには「既存の {merge_request_branch} を作り直す」にチェックを入れてください。"
+msgid "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch} (needs a force push)\"."
+msgstr "ブランチ「{merge_request_branch}」は既にあります。作り直すには「既存の {merge_request_branch} を作り直す (強制プッシュが必要になります)」にチェックを入れてください。"
 
 msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
 msgstr "detached HEAD では MR ブランチを作れません。先にブランチに切り替えてください。"
@@ -206,11 +206,17 @@ msgstr "起動の承認を取り消せませんでした"
 msgid "Could not save the launch approval"
 msgstr "起動の承認を保存できませんでした"
 
+msgid "Couldn't find any locator for task `{}`. Specify the `attach` or `launch` arguments in your debug scenario definition"
+msgstr "タスク `{}` のロケーターが見つかりませんでした。デバッグシナリオの定義で `attach` または `launch` の引数を指定してください"
+
 msgid "Couldn't remove the token from the credential store"
 msgstr "資格情報ストアからトークンを削除できませんでした"
 
 msgid "Couldn't write the token to the credential store"
 msgstr "資格情報ストアにトークンを書き込めませんでした"
+
+msgid "Debugging is not yet supported via collab"
+msgstr "コラボレーション経由のデバッグにはまだ対応していません"
 
 msgid "Distributions for the WSL architecture `{other}` are not supported, so the agent cannot start inside the sandbox."
 msgstr "WSL のアーキテクチャ `{other}` 向けの配布物は扱えないため、サンドボックスの中でエージェントを起動できません。"
@@ -220,6 +226,37 @@ msgstr "Linux 版 Node.js を取得しています…"
 
 msgid "Downloading the agent for Linux…"
 msgstr "Linux 版のエージェントを取得しています…"
+
+msgid "Failed to exchange authorization code for tokens"
+msgstr "認可コードをトークンと交換できませんでした"
+
+msgid "Failed to parse tasks file content as a JSON array: {e}"
+msgstr "タスクファイルの内容を JSON 配列として解析できませんでした: {e}"
+
+msgid "Failed to persist OAuth session in keychain"
+msgstr "OAuth セッションをキーチェーンに保存できませんでした"
+
+msgid "Failed to resolve OAuth client registration"
+msgstr "OAuth クライアントの登録を解決できませんでした"
+
+msgid "Failed to set breakpoints for {failed_path}"
+msgstr "{failed_path} にブレークポイントを設定できませんでした"
+
+msgid "Failed to set breakpoints for {failed_path} and {count} other path"
+msgid_plural "Failed to set breakpoints for {failed_path} and {count} other paths"
+msgstr[0] "{failed_path} とほか {count} 個のパスにブレークポイントを設定できませんでした"
+
+msgid "Failed to set local debug scenarios in {path}:\n{message}"
+msgstr "{path} のローカルのデバッグシナリオを設定できませんでした:\n{message}"
+
+msgid "Failed to set local settings in {path}:\n{message}"
+msgstr "{path} のローカル設定を適用できませんでした:\n{message}"
+
+msgid "Failed to set local tasks in {path}:\n{message}"
+msgstr "{path} のローカルのタスクを設定できませんでした:\n{message}"
+
+msgid "Failed to start OAuth callback server"
+msgstr "OAuth のコールバックサーバーを起動できませんでした"
 
 msgid "Formatter `{command}` failed with exit code {code}"
 msgstr "フォーマッタ `{command}` が終了コード {code} で失敗しました"
@@ -305,11 +342,20 @@ msgstr "Linux 向けの Node.js が zip 形式です (想定外)。"
 msgid "Node.js is not distributed for the WSL architecture `{other}`, so the agent cannot start inside the sandbox."
 msgstr "WSL のアーキテクチャ `{other}` 向けの Node.js は配布されていないため、サンドボックスの中でエージェントを起動できません。"
 
+msgid "None of the locators for task `{}` completed successfully"
+msgstr "タスク `{}` のロケーターがどれも正常に完了しませんでした"
+
 msgid "Not available on a detached HEAD. Switch to a branch first."
 msgstr "detached HEAD では使えません。先にブランチに切り替えてください。"
 
+msgid "OAuth callback server received an invalid request"
+msgstr "OAuth のコールバックサーバーが不正なリクエストを受け取りました"
+
 msgid "On this OS, the agent's settings folder cannot be created for the sandbox."
 msgstr "この OS では、エージェントの設定フォルダーをサンドボックス用に作成できません。"
+
+msgid "Open Tasks Documentation"
+msgstr "タスクのドキュメントを開く"
 
 msgid "Placing Node.js for Linux in WSL…"
 msgstr "Linux 版 Node.js を WSL に配置しています…"
@@ -319,6 +365,12 @@ msgstr "Linux 版のエージェントを WSL に配置しています…"
 
 msgid "Running npm install inside the sandbox…"
 msgstr "サンドボックスの中で npm install を実行しています…"
+
+msgid "Server returned 401 Unauthorized on a non-HTTP transport"
+msgstr "HTTP 以外のトランスポートでサーバーが 401 Unauthorized を返しました"
+
+msgid "Server returned 401 Unauthorized. Check your configured Authorization header."
+msgstr "サーバーが 401 Unauthorized を返しました。設定した Authorization ヘッダーを確認してください。"
 
 msgid "Some changes could not be put back, so they were kept in the stash (stash@{{0}}). Restore them from the stash in the Git panel."
 msgstr "変更の一部を元に戻せなかったため、stash に退避しました (stash@{{0}})。Git パネルの stash から戻してください。"

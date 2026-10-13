@@ -5,6 +5,9 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid " [modified]"
+msgstr " [変更あり]"
+
 msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
 msgstr "同じ名前のファイルまたはフォルダーがすでに存在します。置き換えると現在の内容が上書きされます。"
 
@@ -13,6 +16,12 @@ msgstr "引数が必要です"
 
 msgid "Cancel"
 msgstr "キャンセル"
+
+msgid "Cannot save buffer with absolute path"
+msgstr "絶対パスではバッファーを保存できません"
+
+msgid "Default Vim Bindings"
+msgstr "既定の Vim キーバインド"
 
 msgid "Disable Vim Mode"
 msgstr "Vim モードを無効にします"
@@ -34,6 +43,9 @@ msgstr "引数が不正です: {}"
 
 msgid "No file name"
 msgstr "ファイル名がありません"
+
+msgid "Nothing in register {}"
+msgstr "レジスタ {} は空です"
 
 msgid "Overwriting the current file with selected buffer content requires '!'."
 msgstr "選択範囲の内容で現在のファイルを上書きするには '!' を付けてください。"
@@ -58,6 +70,12 @@ msgstr "無効にすると VSCode と同じように、ファイルを開いた�
 
 msgid "When enabled, you edit with Vim key bindings."
 msgstr "有効にすると Vim のキーバインドで操作します。"
+
+msgid "[No Name]"
+msgstr "[無名]"
+
+msgid "{filename}{modified} {lines} lines --{percentage}%--"
+msgstr "{filename}{modified} {lines} 行 --{percentage}%--"
 
 msgid "{path} already exists. Do you want to replace it?"
 msgstr "{path} はすでに存在します。置き換えますか?"

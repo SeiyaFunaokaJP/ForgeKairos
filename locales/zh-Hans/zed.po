@@ -1,0 +1,583 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "About Zed"
+msgstr "关于 ForgeKairos"
+
+msgid "Accessibility Tree"
+msgstr "无障碍树"
+
+msgid "Add Cursor Above"
+msgstr "在上方添加光标"
+
+msgid "Add Cursor Below"
+msgstr "在下方添加光标"
+
+msgid "An older version is still running, so this session keeps using the older version's data folders:\n{}\n\nQuit the older version and restart to move them to the new folders."
+msgstr "旧版本仍在运行，因此此会话继续使用旧版本的数据文件夹：\n{}\n\n退出旧版本并重启，即可将其移动到新文件夹。"
+
+msgid "Are you sure you want to quit?"
+msgstr "确定要退出吗？"
+
+msgid "Auto (Language Server)"
+msgstr "自动（语言服务器）"
+
+msgid "Auto (Prettier)"
+msgstr "自动（Prettier）"
+
+msgid "Auto Signature Help"
+msgstr "自动签名帮助"
+
+msgid "Auto-restarting {}"
+msgstr "正在自动重启 {}"
+
+msgid "Backup and Update"
+msgstr "备份并更新"
+
+msgid "Based on Zed {version}"
+msgstr "基于 Zed {version}"
+
+msgid "Block Quote"
+msgstr "引用"
+
+msgid "Bold"
+msgstr "粗体"
+
+msgid "Buffer Search"
+msgstr "缓冲区搜索"
+
+msgid "Bullet List"
+msgstr "项目符号列表"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Clear Events"
+msgstr "清除事件"
+
+msgid "Clear Outputs"
+msgstr "清除输出"
+
+msgid "Code Actions"
+msgstr "代码操作"
+
+msgid "Code Block"
+msgstr "代码块"
+
+msgid "Code Lens"
+msgstr "Code Lens"
+
+msgid "Column Git Blame"
+msgstr "Git 追溯（列）"
+
+msgid "Commit"
+msgstr "提交"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Could not start ReadDirectoryChangesW"
+msgstr "无法启动 ReadDirectoryChangesW"
+
+msgid "Could not start inotify"
+msgstr "无法启动 inotify"
+
+msgid "Debug Filesystem Watching"
+msgstr "调试文件系统监视"
+
+msgid "Diagnostics"
+msgstr "诊断"
+
+msgid "Diff Against Default Branch"
+msgstr "与默认分支比较"
+
+msgid "Don't ask me again"
+msgstr "不再询问"
+
+msgid "Duplicate Selection"
+msgstr "创建选区副本"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "编辑 Mermaid 图…"
+
+msgid "Edit Predictions"
+msgstr "编辑预测"
+
+msgid "Edit Table"
+msgstr "编辑表格"
+
+msgid "Editor Controls"
+msgstr "编辑器控件"
+
+msgid "Enter adds two trailing spaces (a hard break) to the line it ends, so the line break survives saving. This key does the opposite once. The preview already shows line breaks as they are typed, so this is for line breaks that other tools should keep too."
+msgstr "按 Enter 时会在所结束的行末尾添加两个空格（硬换行），使换行在保存后保留。此键会执行一次相反的操作。预览已经会按输入原样显示换行，因此这是为了让其他工具也保留换行。"
+
+msgid "Error registering {scheme}:// scheme"
+msgstr "注册 {scheme}:// 协议时出错"
+
+msgid "Error with kernel {}: {}"
+msgstr "内核 {} 出错：{}"
+
+msgid "Executable: {}"
+msgstr "可执行文件：{}"
+
+msgid "Expand Selection"
+msgstr "扩展选区"
+
+msgid "Export as JSON"
+msgstr "导出为 JSON"
+
+msgid "Export to PDF"
+msgstr "导出为 PDF"
+
+msgid "Failed to load {path}\n{message}"
+msgstr "无法加载 {path}\n{message}"
+
+msgid "Failed to migrate settings\n{err}"
+msgstr "迁移设置失败\n{err}"
+
+msgid "Failed to move Zed to Applications"
+msgstr "将 ForgeKairos 移动到 Applications 失败"
+
+msgid "Failed to read telemetry log: {}"
+msgstr "读取遥测日志失败：{}"
+
+msgid "Failed to restore {count} workspace. Check logs for details."
+msgid_plural "Failed to restore {count} workspaces. Check logs for details."
+msgstr[0] "无法恢复 {count} 个工作区。请查看日志了解详情。"
+
+msgid "Filter events..."
+msgstr "筛选事件..."
+
+msgid "Fold All"
+msgstr "全部折叠"
+
+msgid "Fold at Level 1"
+msgstr "折叠到第 1 级"
+
+msgid "Fold at Level 2"
+msgstr "折叠到第 2 级"
+
+msgid "Fold at Level 3"
+msgstr "折叠到第 3 级"
+
+msgid "Folding"
+msgstr "折叠"
+
+msgid "Format Selection"
+msgstr "格式化选区"
+
+msgid "Format Whole File"
+msgstr "格式化整个文件"
+
+msgid "Formats the selection with {formatter}."
+msgstr "使用 {formatter} 格式化选区。"
+
+msgid "Formats this file with {formatter}."
+msgstr "使用 {formatter} 格式化此文件。"
+
+msgid "Go to Line/Column"
+msgstr "转到行/列"
+
+msgid "Go to Symbol"
+msgstr "转到符号"
+
+msgid "Hard Break"
+msgstr "行尾空格换行"
+
+msgid "Hard Break on Enter"
+msgstr "按 Enter 时行尾空格换行"
+
+msgid "Heading 1"
+msgstr "标题 1"
+
+msgid "Heading 2"
+msgstr "标题 2"
+
+msgid "Heading 3"
+msgstr "标题 3"
+
+msgid "Helix Mode"
+msgstr "Helix 模式"
+
+msgid "Horizontal Rule"
+msgstr "水平线"
+
+msgid "Inlay Hints"
+msgstr "内嵌提示"
+
+msgid "Inline Assist"
+msgstr "内联辅助"
+
+msgid "Inline Code"
+msgstr "行内代码"
+
+msgid "Inline Diagnostics"
+msgstr "内联诊断"
+
+msgid "Inline Git Blame"
+msgstr "内联 Git 追溯"
+
+msgid "Inline Values"
+msgstr "内联值"
+
+msgid "Inline diagnostics are not available until regular diagnostics are enabled."
+msgstr "启用常规诊断后才能使用内联诊断。"
+
+msgid "Insert Details Block"
+msgstr "插入折叠块（details）"
+
+msgid "Insert Image"
+msgstr "插入图像"
+
+msgid "Insert Mermaid Diagram"
+msgstr "插入 Mermaid 图"
+
+msgid "Installing Zed…"
+msgstr "正在安装 ForgeKairos…"
+
+msgid "Interrupt"
+msgstr "中断"
+
+msgid "Interrupt {} ({})"
+msgstr "中断 {}（{}）"
+
+msgid "Invalid URL: {}"
+msgstr "无效的 URL：{}"
+
+msgid "Invalid global debug scenarios file\n{error}"
+msgstr "全局调试场景文件无效\n{error}"
+
+msgid "Invalid global tasks file\n{error}"
+msgstr "全局任务文件无效\n{error}"
+
+msgid "Invalid user settings file\n{error}"
+msgstr "用户设置文件无效\n{error}"
+
+msgid "Italic"
+msgstr "斜体"
+
+msgid "JSON parse error in keymap file. Bindings not reloaded.\n\n{error}"
+msgstr "键映射文件中存在 JSON 解析错误。键绑定未重新加载。\n\n{error}"
+
+msgid "Language Server"
+msgstr "语言服务器"
+
+msgid "Line Numbers"
+msgstr "行号"
+
+msgid "Link"
+msgstr "链接"
+
+msgid "Live native and polling watch roots across the app."
+msgstr "整个应用中当前生效的原生监视根目录和轮询监视根目录。"
+
+msgid "Log"
+msgstr "日志"
+
+msgid "Marker"
+msgstr "标记"
+
+msgid "Minimap"
+msgstr "缩略图"
+
+msgid "Move Line Down"
+msgstr "下移行"
+
+msgid "Move Line Up"
+msgstr "上移行"
+
+msgid "Move Zed to Applications?"
+msgstr "将 ForgeKairos 移动到 Applications？"
+
+msgid "Moving Zed to Applications"
+msgstr "正在将 ForgeKairos 移动到 Applications"
+
+msgid "New Window"
+msgstr "新建窗口"
+
+msgid "Next Problem"
+msgstr "下一个问题"
+
+msgid "No Code Actions Available"
+msgstr "没有可用的代码操作"
+
+msgid "No events match the current filter"
+msgstr "没有事件匹配当前筛选器"
+
+msgid "No formatter is configured for this file."
+msgstr "未为此文件配置格式化程序。"
+
+msgid "No local projects are open."
+msgstr "没有打开的本地项目。"
+
+msgid "No telemetry events recorded yet"
+msgstr "尚未记录任何遥测事件"
+
+msgid "No watch roots."
+msgstr "没有监视根目录。"
+
+msgid "Nothing is selected. Select the text to format."
+msgstr "未选择任何内容。请选择要格式化的文本。"
+
+msgid "Nothing running"
+msgstr "没有正在运行的内核"
+
+msgid "Numbered List"
+msgstr "编号列表"
+
+msgid "Open File"
+msgstr "打开文件"
+
+msgid "Open Keymap File"
+msgstr "打开键映射文件"
+
+msgid "Open Preview"
+msgstr "打开预览"
+
+msgid "Open Raw Log File"
+msgstr "打开原始日志文件"
+
+msgid "Open Settings File"
+msgstr "打开设置文件"
+
+msgid "Paragraph Text Size"
+msgstr "段落文本大小"
+
+msgid "Paste a URL to open."
+msgstr "粘贴 URL 以打开。"
+
+msgid "Patterns Zed skips when scanning your open local projects. Excluded files may still produce watcher events."
+msgstr "ForgeKairos 扫描已打开的本地项目时跳过的模式。被排除的文件仍可能产生监视器事件。"
+
+msgid "Preview Markdown"
+msgstr "预览 Markdown"
+
+msgid "Preview SVG"
+msgstr "预览 SVG"
+
+msgid "Preview Tabular Data"
+msgstr "预览表格数据"
+
+msgid "Previous Problem"
+msgstr "上一个问题"
+
+msgid "Quit"
+msgstr "退出"
+
+msgid "REPL Menu"
+msgstr "REPL 菜单"
+
+msgid "Raw Events"
+msgstr "原始事件"
+
+msgid "Raw watcher notifications, oldest first. Times are shown in your local time zone."
+msgstr "监视器的原始通知，按从旧到新排列。时间以本地时区显示。"
+
+msgid "ReadDirectoryChangesW initialization failed: {}\n\nThis may occur on network filesystems and WSL paths. For troubleshooting see: https://zed.dev/docs/windows\n"
+msgstr "ReadDirectoryChangesW 初始化失败：{}\n\n这可能发生在网络文件系统和 WSL 路径上。故障排除请参阅：https://zed.dev/docs/windows\n"
+
+msgid "Remove Color"
+msgstr "移除颜色"
+
+msgid "Remove Marker"
+msgstr "移除标记"
+
+msgid "Reset to Default"
+msgstr "重置为默认值"
+
+msgid "Restart Kernel"
+msgstr "重启内核"
+
+msgid "Restarting {}"
+msgstr "正在重启 {}"
+
+msgid "Run Line"
+msgstr "运行当前行"
+
+msgid "Run Selection"
+msgstr "运行选区"
+
+msgid "Run code on {} ({})"
+msgstr "在 {}（{}）上运行代码"
+
+msgid "Save failed: {error}"
+msgstr "保存失败：{error}"
+
+msgid "Scan Exclusions"
+msgstr "扫描排除项"
+
+msgid "Select All"
+msgstr "全选"
+
+msgid "Select Kernel"
+msgstr "选择内核"
+
+msgid "Select Next Occurrence"
+msgstr "选择下一个匹配项"
+
+msgid "Selection Controls"
+msgstr "选区操作"
+
+msgid "Selection Menu"
+msgstr "选区菜单"
+
+msgid "Semantic Highlights"
+msgstr "语义高亮"
+
+msgid "Setup Zed REPL for {}"
+msgstr "为 {} 配置 ForgeKairos REPL"
+
+msgid "Shrink Selection"
+msgstr "收缩选区"
+
+msgid "Shut Down Kernel"
+msgstr "关闭内核"
+
+msgid "Skip"
+msgstr "跳过"
+
+msgid "Start REPL for {}"
+msgstr "启动 {} 的 REPL"
+
+msgid "Strikethrough"
+msgstr "删除线"
+
+msgid "Task List"
+msgstr "任务列表"
+
+msgid "Telemetry Log"
+msgstr "遥测日志"
+
+msgid "Text Color"
+msgstr "文本颜色"
+
+msgid "The data folders of the older version could not be moved to the new folders, so this session keeps using them:\n{}\n\nClose every program that may be using them and restart to try again."
+msgstr "无法将旧版本的数据文件夹移动到新文件夹，因此此会话继续使用它们：\n{}\n\n请关闭所有可能正在使用它们的程序，然后重启以重试。"
+
+msgid "The older version ({}) has created folders again that this version no longer uses, so changes made in them are not reflected here:\n{}\n\n(older version's folder → folder this version uses)"
+msgstr "旧版本（{}）再次创建了此版本已不再使用的文件夹，因此在其中所做的更改不会反映到此处：\n{}\n\n（旧版本的文件夹 → 此版本使用的文件夹）"
+
+msgid "This project has no folders open."
+msgstr "此项目没有打开的文件夹。"
+
+msgid "Toggle Fold at Cursor"
+msgstr "切换光标处的折叠"
+
+msgid "Troubleshoot and Quit"
+msgstr "排查并退出"
+
+msgid "Unable to access/open log file at path {}: {e}"
+msgstr "无法访问或打开路径 {} 处的日志文件：{e}"
+
+msgid "Unfold All"
+msgstr "全部展开"
+
+msgid "Unsupported GPU"
+msgstr "不支持的 GPU"
+
+msgid "Uses `{command}` on the remote host ({host})."
+msgstr "使用远程主机（{host}）上的 `{command}`。"
+
+msgid "Version"
+msgstr "版本"
+
+msgid "View Sessions"
+msgstr "查看会话"
+
+msgid "Vim Mode"
+msgstr "Vim 模式"
+
+msgid "Waiting for filesystem watcher events…"
+msgstr "正在等待文件系统监视器事件…"
+
+msgid "Watch Roots"
+msgstr "监视根目录"
+
+msgid "You can't toggle edit predictions for this file as it is within the excluded files list."
+msgstr "无法为此文件切换编辑预测，因为该文件在排除文件列表中。"
+
+msgid "Your {} file uses deprecated settings which can be automatically updated. A backup will be saved to `{}`"
+msgstr "你的 {} 文件使用了已弃用的设置，可以自动更新。备份将保存到 `{}`"
+
+msgid "Zed is running from a temporary location. Move it to Applications to finish installing it."
+msgstr "ForgeKairos 正从临时位置运行。将其移动到 Applications 以完成安装。"
+
+msgid "Zed uses {} for rendering and requires a compatible GPU.\n\nCurrently you are using a software emulated GPU ({}) which\nwill result in awful performance.\n\nFor troubleshooting see: {}\nSet ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.\n"
+msgstr "ForgeKairos 使用 {} 进行渲染，需要兼容的 GPU。\n\n你当前使用的是软件模拟的 GPU（{}），\n这会导致性能极差。\n\n故障排除请参阅：{}\n设置环境变量 ZED_ALLOW_EMULATED_GPU=1 可永久忽略此提示。\n"
+
+msgid "Zed will reopen when installation is complete."
+msgstr "安装完成后 ForgeKairos 将重新打开。"
+
+msgid "inotify_init returned {}\n\nThis may be due to system-wide limits on inotify instances. For troubleshooting see: https://zed.dev/docs/linux\n"
+msgstr "inotify_init 返回了 {}\n\n这可能是由于系统范围内 inotify 实例数量的限制。故障排除请参阅：https://zed.dev/docs/linux\n"
+
+msgid "kernel: {} ({})"
+msgstr "内核：{}（{}）"
+
+msgid "signed in"
+msgstr "已登录"
+
+msgid "{command} was not found (put it on PATH or in bin\\)."
+msgstr "未找到 {command}（请将其放在 PATH 或 bin\\ 中）。"
+
+msgid "{count} telemetry log entry failed to parse"
+msgid_plural "{count} telemetry log entries failed to parse"
+msgstr[0] "{count} 条遥测日志条目解析失败"
+
+msgid "{formatter} can't format just a selection. Add {{start_line}} / {{end_line}} to its arguments to allow it."
+msgstr "{formatter} 无法只格式化选区。在其参数中添加 {{start_line}} / {{end_line}} 即可支持。"
+
+msgid "{formatter} can't format just a selection. Format the whole file instead."
+msgstr "{formatter} 无法只格式化选区。请改为格式化整个文件。"
+
+msgid "{scheme}:// links will now open in {app}."
+msgstr "{scheme}:// 链接今后将在 {app} 中打开。"
+
+msgid "{} is shutting down"
+msgstr "{} 正在关闭"
+
+msgid "{} is starting"
+msgstr "{} 正在启动"
+
+msgid "{} state unknown"
+msgstr "{} 状态未知"
+
+msgid "{} state: {}"
+msgstr "{} 状态：{}"
+
+msgid "{} to open in a split"
+msgstr "按 {} 在拆分窗格中打开"
+
+msgid "{} to open in the same tab group"
+msgstr "按 {} 在同一标签页组中打开"
+
+msgid "{} to switch this tab"
+msgstr "按 {} 切换此标签页"
+
+msgctxt "move to applications"
+msgid "No"
+msgstr "否"
+
+msgctxt "move to applications"
+msgid "Yes"
+msgstr "是"
+
+msgctxt "quick action bar"
+msgid "Add to Agent Thread"
+msgstr "添加到智能体会话"
+
+msgctxt "quick action bar"
+msgid "Next Hunk"
+msgstr "下一个差异块"
+
+msgctxt "quick action bar"
+msgid "Previous Hunk"
+msgstr "上一个差异块"

@@ -764,7 +764,7 @@ fn translated_dropdowns() -> Vec<(
             "StatusUntrackedFilesSetting",
             settings::StatusUntrackedFilesSetting::VARIANTS,
             true,
-            vec!["すべて", "通常", "報告しない"],
+            vec!["すべて", "フォルダーのみ", "報告しない"],
         ),
         (
             "DefaultDockPanel",

@@ -1,0 +1,241 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "<global>"
+msgstr "<global>"
+
+msgid "<no arguments>"
+msgstr "<sin argumentos>"
+
+msgid "Action"
+msgstr "Acción"
+
+msgid "Action '{}' not found"
+msgstr "No se encontró la acción '{}'"
+
+msgid "Action Arguments"
+msgstr "Argumentos de la acción"
+
+msgid "Action name is required"
+msgstr "Se requiere el nombre de la acción"
+
+msgid "Arguments"
+msgstr "Argumentos"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Cannot remove a keybinding that does not exist"
+msgstr "No se puede quitar un atajo de teclado que no existe"
+
+msgid "Clear Keystrokes"
+msgstr "Borrar pulsaciones de teclas"
+
+msgid "Copy Action"
+msgstr "Copiar acción"
+
+msgid "Copy Context"
+msgstr "Copiar contexto"
+
+msgid "Could not save updated keybinding"
+msgstr "No se pudo guardar el atajo de teclado actualizado"
+
+msgid "Create Keybinding"
+msgstr "Crear atajo de teclado"
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "Edit Arguments"
+msgstr "Editar argumentos"
+
+msgid "Edit Context"
+msgstr "Editar contexto"
+
+msgid "Edit Keybinding"
+msgstr "Editar atajo de teclado"
+
+msgid "Edit Keystroke"
+msgstr "Editar pulsación"
+
+msgid "Edit in JSON"
+msgstr "Editar en JSON"
+
+msgid "Edit this binding"
+msgstr "Editar este atajo"
+
+msgid "Failed to load keymap file"
+msgstr "No se pudo cargar el archivo del mapa de teclas"
+
+msgid "Failed to parse action arguments as JSON"
+msgstr "No se pudieron analizar los argumentos de la acción como JSON"
+
+msgid "Failed to parse key context"
+msgstr "No se pudo analizar el contexto de teclas"
+
+msgid "Failed to update keybinding"
+msgstr "No se pudo actualizar el atajo de teclado"
+
+msgid "Failed to validate action arguments"
+msgstr "No se pudieron validar los argumentos de la acción"
+
+msgid "Failed to write keymap file"
+msgstr "No se pudo escribir el archivo del mapa de teclas"
+
+msgid "Filter action names…"
+msgstr "Filtrar nombres de acciones…"
+
+msgid "Filters"
+msgstr "Filtros"
+
+msgid "Hit it three times to execute"
+msgstr "Presiónelo tres veces para ejecutar"
+
+msgid "Keybinding Context"
+msgstr "Contexto de atajo de teclado"
+
+msgid "Keymap Editor"
+msgstr "Editor de mapa de teclas"
+
+msgid "Keystrokes"
+msgstr "Pulsaciones"
+
+msgid "Keystrokes cannot be empty"
+msgstr "Las pulsaciones no pueden estar vacías"
+
+msgid "No Action"
+msgstr "Sin acción"
+
+msgid "No conflicting keybinds found"
+msgstr "No se encontraron atajos de teclado en conflicto"
+
+msgid "No conflicting keybinds found that match the provided query"
+msgstr "No se encontraron atajos de teclado en conflicto que coincidan con la consulta"
+
+msgid "No keybinds found matching the entered keystrokes"
+msgstr "No se encontraron atajos de teclado que coincidan con las pulsaciones escritas"
+
+msgid "No matches found for the provided query"
+msgstr "No se encontraron coincidencias para la consulta proporcionada"
+
+msgid "REC"
+msgstr "REC"
+
+msgid "SEARCH"
+msgstr "BUSCAR"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Saved edits to the {} action."
+msgstr "Se guardaron las ediciones en la acción {}."
+
+msgid "Search by Keystrokes"
+msgstr "Buscar por pulsaciones de teclas"
+
+msgid "Show Matching Keybindings"
+msgstr "Mostrar atajos de teclado coincidentes"
+
+msgid "Show matching keybinds"
+msgstr "Mostrar atajos de teclado coincidentes"
+
+msgid "Source"
+msgstr "Origen"
+
+msgid "Start Recording"
+msgstr "Iniciar grabación"
+
+msgid "Start Searching"
+msgstr "Iniciar búsqueda"
+
+msgid "Stop Recording"
+msgstr "Detener grabación"
+
+msgid "Stop Searching"
+msgstr "Detener búsqueda"
+
+msgid "There is {count} binding with the same keystrokes."
+msgid_plural "There are {count} bindings with the same keystrokes."
+msgstr[0] "Hay {count} atajo con las mismas pulsaciones de teclas."
+msgstr[1] "Hay {count} atajos con las mismas pulsaciones de teclas."
+
+msgid "This action is unbound"
+msgstr "Esta acción no tiene atajo"
+
+msgid "This binding is overridden by other bindings."
+msgstr "Este atajo queda anulado por otros atajos."
+
+msgid "This binding is overridden by other bindings.\nUse {}+click to edit this binding"
+msgstr "Este atajo queda anulado por otros atajos.\nUse {}+clic para editar este atajo"
+
+msgid "This binding is overridden."
+msgstr "Este atajo está anulado."
+
+msgid "This keybinding is overridden by the '{}' binding from {}."
+msgstr "Este atajo de teclado queda anulado por el atajo '{}' de {}."
+
+msgid "Toggle Exact Match Mode"
+msgstr "Alternar modo de coincidencia exacta"
+
+msgid "Type an action name"
+msgstr "Escriba un nombre de acción"
+
+msgid "Use {}+click to show all conflicts"
+msgstr "Use {}+clic para mostrar todos los conflictos"
+
+msgid "User"
+msgstr "Usuario"
+
+msgid "View"
+msgstr "Ver"
+
+msgid "View conflicts"
+msgstr "Ver conflictos"
+
+msgid "Your keybind would conflict with other actions"
+msgstr "Su atajo de teclado entraría en conflicto con otras acciones"
+
+msgid "Your keybind would conflict with the \"{}\" action"
+msgstr "Su atajo de teclado entraría en conflicto con la acción \"{}\""
+
+msgid "Your keybind would conflict with the \"{}\" action and {} other bindings"
+msgstr "Su atajo de teclado entraría en conflicto con la acción \"{}\" y con otros {} atajos"
+
+msgid "the vim keymap"
+msgstr "el mapa de teclas de Vim"
+
+msgid "your base keymap"
+msgstr "su mapa de teclas base"
+
+msgid "your keymap"
+msgstr "su mapa de teclas"
+
+msgctxt "keybinding"
+msgid "Categories"
+msgstr "Categorías"
+
+msgctxt "keybinding"
+msgid "Conflicts"
+msgstr "Conflictos"
+
+msgctxt "keybinding"
+msgid "Context"
+msgstr "Contexto"
+
+msgctxt "keybinding"
+msgid "Create"
+msgstr "Agregar"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "Predeterminado"

@@ -1,0 +1,67 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Auto-updates disabled for non-bundled app."
+msgstr "번들되지 않은 앱에서는 자동 업데이트가 비활성화됩니다."
+
+msgid "Could not auto-update because the required rsync utility was not found."
+msgstr "필요한 rsync 유틸리티를 찾을 수 없어 자동 업데이트하지 못했습니다."
+
+msgid "Could not check for updates"
+msgstr "업데이트를 확인하지 못했습니다"
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "호스트를 허용 목록에 추가하지 못했습니다: {error}"
+
+msgid "Couldn't check for updates: GitHub answered with HTTP status {status}."
+msgstr "업데이트를 확인하지 못했습니다: GitHub이 HTTP 상태 {status}을(를) 반환했습니다."
+
+msgid "Couldn't check for updates: GitHub could not be reached ({error})."
+msgstr "업데이트를 확인하지 못했습니다: GitHub에 연결할 수 없습니다 ({error})."
+
+msgid "Couldn't check for updates: GitHub has no release list for {repository}. The repository may be private or not published yet."
+msgstr "업데이트를 확인하지 못했습니다: GitHub에 {repository}의 릴리스 목록이 없습니다. 저장소가 비공개이거나 아직 공개되지 않았을 수 있습니다."
+
+msgid "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minute."
+msgid_plural "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minutes."
+msgstr[0] "업데이트를 확인하지 못했습니다: 로그인하지 않은 상태의 GitHub 요청 한도에 도달했습니다. {count}분 후 다시 시도하세요."
+
+msgid "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again later."
+msgstr "업데이트를 확인하지 못했습니다: 로그인하지 않은 상태의 GitHub 요청 한도에 도달했습니다. 나중에 다시 시도하세요."
+
+msgid "Couldn't check for updates: GitHub's release list was not in the expected format."
+msgstr "업데이트를 확인하지 못했습니다: GitHub의 릴리스 목록이 예상한 형식이 아닙니다."
+
+msgid "Downloading remote server"
+msgstr "원격 서버 다운로드 중"
+
+msgid "Fetching remote server release"
+msgstr "원격 서버 릴리스 가져오는 중"
+
+msgid "Install it with: sudo apt install rsync"
+msgstr "다음 명령으로 설치하세요: sudo apt install rsync"
+
+msgid "Install it with: sudo dnf install rsync"
+msgstr "다음 명령으로 설치하세요: sudo dnf install rsync"
+
+msgid "Install it with: sudo pacman -S rsync"
+msgstr "다음 명령으로 설치하세요: sudo pacman -S rsync"
+
+msgid "Install pkgs.rsync from nixpkgs"
+msgstr "nixpkgs에서 pkgs.rsync를 설치하세요"
+
+msgid "Please install rsync using your package manager"
+msgstr "패키지 관리자를 사용하여 rsync를 설치하세요"
+
+msgid "Zed was installed via a package manager."
+msgstr "ForgeKairos가 패키지 관리자를 통해 설치되었습니다."
+
+msgid "rsync is required for auto-updates but is not installed. {install_hint}"
+msgstr "자동 업데이트에는 rsync가 필요하지만 설치되어 있지 않습니다. {install_hint}"

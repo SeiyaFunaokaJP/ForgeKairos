@@ -1,0 +1,149 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid " and "
+msgstr " e "
+
+msgid "-click"
+msgstr "-clique"
+
+msgid "Add Project"
+msgstr "Adicionar projeto"
+
+msgid "Archive Thread"
+msgstr "Arquivar conversa"
+
+msgid "Based on {}"
+msgstr "Com base em {}"
+
+msgid "Clear Search"
+msgstr "Limpar pesquisa"
+
+msgid "Close Terminal"
+msgstr "Fechar terminal"
+
+msgid "Close Worktree"
+msgstr "Fechar árvore de trabalho"
+
+msgid "Create New Worktree…"
+msgstr "Criar nova árvore de trabalho…"
+
+msgid "Discard Draft"
+msgstr "Descartar rascunho"
+
+msgid "Failed to regenerate thread title."
+msgstr "Falha ao gerar o título da conversa novamente."
+
+msgid "Failed to restore worktree: {error}"
+msgstr "Falha ao restaurar a árvore de trabalho: {error}"
+
+msgid "Focus Last Project"
+msgstr "Focar último projeto"
+
+msgid "Focus Project"
+msgstr "Focar projeto"
+
+msgid "Focus Sidebar"
+msgstr "Focar barra lateral"
+
+msgid "Hide Thread History"
+msgstr "Ocultar histórico de conversas"
+
+msgid "Import Threads"
+msgstr "Importar conversas"
+
+msgid "Import Threads from External Agents"
+msgstr "Importar conversas de agentes externos"
+
+msgid "Import Threads from Other Channels"
+msgstr "Importar conversas de outros canais"
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client."
+msgstr "Importe conversas de agentes como Claude Agent, Codex e outros, sejam elas iniciadas no ForgeKairos ou em outro cliente."
+
+msgid "Import threads from {} to continue where you left off."
+msgstr "Importe conversas de {} para continuar de onde parou."
+
+msgid "Looking for threads from external agents?"
+msgstr "Procurando conversas de agentes externos?"
+
+msgid "Move Down"
+msgstr "Mover para baixo"
+
+msgid "Move Up"
+msgstr "Mover para cima"
+
+msgid "New Thread In…"
+msgstr "Nova conversa em…"
+
+msgid "No model is configured for summarizing thread titles."
+msgstr "Nenhum modelo está configurado para resumir os títulos das conversas."
+
+msgid "No threads match your search."
+msgstr "Nenhuma conversa corresponde à sua pesquisa."
+
+msgid "No threads yet"
+msgstr "Nenhuma conversa ainda"
+
+msgid "Open Project in New Window"
+msgstr "Abrir projeto em nova janela"
+
+msgid "Open Thread as Markdown"
+msgstr "Abrir conversa como Markdown"
+
+msgid "Open Worktrees"
+msgstr "Árvores de trabalho abertas"
+
+msgid "Regenerate Thread Title"
+msgstr "Gerar título da conversa novamente"
+
+msgid "Remote Project"
+msgstr "Projeto remoto"
+
+msgid "Remove"
+msgstr "Remover"
+
+msgid "Rename Thread"
+msgstr "Renomear conversa"
+
+msgid "Rename Title"
+msgstr "Renomear título"
+
+msgid "Search threads…"
+msgstr "Pesquisar conversas…"
+
+msgid "Show Thread History"
+msgstr "Mostrar histórico de conversas"
+
+msgid "Start New Agent Thread"
+msgstr "Iniciar nova conversa do agente"
+
+msgid "Stop Generation"
+msgstr "Parar geração"
+
+msgid "Thread started outside the sandbox"
+msgstr "Conversa iniciada fora do sandbox"
+
+msgid "Threads Sidebar"
+msgstr "Barra lateral de conversas"
+
+msgid "Threads found from other channels"
+msgstr "Conversas encontradas em outros canais"
+
+msgid "Toggle Sidebar"
+msgstr "Alternar barra lateral"
+
+msgid "Workspace Info"
+msgstr "Informações do espaço de trabalho"
+
+msgid "{count} thread is waiting for confirmation"
+msgid_plural "{count} threads are waiting for confirmation"
+msgstr[0] "{count} conversa está aguardando confirmação"
+msgstr[1] "{count} conversas estão aguardando confirmação"

@@ -1,0 +1,378 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"{name}\" cannot be used as a branch name."
+msgstr "\"{name}\"은(는) 브랜치 이름으로 사용할 수 없습니다."
+
+msgid "\"{name}\" is the repository's default branch, so it cannot be the MR branch. Choose another name."
+msgstr "\"{name}\"은(는) 저장소의 기본 브랜치이므로 MR 브랜치가 될 수 없습니다. 다른 이름을 선택하세요."
+
+msgid "\"{prefix}:\" can only be used while the graph shows all branches."
+msgstr "\"{prefix}:\"은(는) 그래프에 모든 브랜치가 표시될 때만 사용할 수 있습니다."
+
+msgid "\"{prefix}:\" cannot be used in a file's history."
+msgstr "\"{prefix}:\"은(는) 파일 기록에서 사용할 수 없습니다."
+
+msgid "\"{prefix}:{value}\" names the whole repository, so it does not narrow the search. Write the name of a file or folder."
+msgstr "\"{prefix}:{value}\"은(는) 저장소 전체를 가리키므로 검색 범위를 좁히지 않습니다. 파일 또는 폴더의 이름을 쓰세요."
+
+msgid "\"{scratch_branch}\" is not a scratch branch, so it cannot be deleted."
+msgstr "\"{scratch_branch}\"은(는) 임시 브랜치가 아니므로 삭제할 수 없습니다."
+
+msgid "\"{scratch_branch}\" is not a scratch branch, so the MR branch cannot be built on it."
+msgstr "\"{scratch_branch}\"은(는) 임시 브랜치가 아니므로 그 위에 MR 브랜치를 구성할 수 없습니다."
+
+msgid "\"{what}\" needs git {minimum} or later (this git is {version})."
+msgstr "\"{what}\"에는 git {minimum} 이상이 필요합니다 (현재 git은 {version})."
+
+msgid "A branch name cannot contain \"..\", \"@{{\" or \"//\"."
+msgstr "브랜치 이름에는 \"..\", \"@{{\", \"//\"를 포함할 수 없습니다."
+
+msgid "A branch name cannot contain spaces."
+msgstr "브랜치 이름에는 공백을 포함할 수 없습니다."
+
+msgid "A branch name cannot contain ~ ^ : ? * [ \\."
+msgstr "브랜치 이름에는 ~ ^ : ? * [ \\를 포함할 수 없습니다."
+
+msgid "A branch name cannot have a part that starts with \".\" or ends with \".lock\"."
+msgstr "브랜치 이름에 \".\"로 시작하거나 \".lock\"으로 끝나는 부분이 있으면 안 됩니다."
+
+msgid "A branch name cannot start or end with \"/\", or end with \".\"."
+msgstr "브랜치 이름은 \"/\"로 시작하거나 끝날 수 없으며, \".\"로 끝날 수 없습니다."
+
+msgid "A branch name cannot start with \"-\"."
+msgstr "브랜치 이름은 \"-\"로 시작할 수 없습니다."
+
+msgid "A branch name cannot start with \"refs/\"."
+msgstr "브랜치 이름은 \"refs/\"로 시작할 수 없습니다."
+
+msgid "A rebase may have stopped partway (git before {major}.{minor} cannot tell for sure)"
+msgstr "리베이스가 도중에 멈췄을 수 있습니다 ({major}.{minor} 이전의 git에서는 확실히 판단할 수 없습니다)"
+
+msgid "A row has no commits."
+msgstr "커밋이 없는 행이 있습니다."
+
+msgid "An old git (older than {minimum}; this one is {version}) cannot turn off hooks, so the AI cannot run git commands. Update git to let it."
+msgstr "오래된 git({minimum} 이전, 현재 git은 {version})은 훅을 끌 수 없으므로 AI가 git 명령을 실행할 수 없습니다. 허용하려면 git을 업데이트하세요."
+
+msgid "Branch \"{branch}\" cannot be used in a search."
+msgstr "브랜치 \"{branch}\"은(는) 검색에 사용할 수 없습니다."
+
+msgid "Cannot read \"sha:{value}\". Write 4 to 40 hexadecimal digits."
+msgstr "\"sha:{value}\"을(를) 읽을 수 없습니다. 4~40자리의 16진수를 쓰세요."
+
+msgid "Cannot read \"{prefix}:{value}\". Write one of yes, no or only."
+msgstr "\"{prefix}:{value}\"을(를) 읽을 수 없습니다. yes, no, only 중 하나를 쓰세요."
+
+msgid "Cannot read the date in \"{prefix}:{value}\". Write it like 2026-09-01, \"2026-09-01 12:00\", or 3d, 2w, 1m, 1y."
+msgstr "\"{prefix}:{value}\"의 날짜를 읽을 수 없습니다. 2026-09-01, \"2026-09-01 12:00\" 또는 3d, 2w, 1m, 1y와 같이 쓰세요."
+
+msgid "Could not determine the base commit."
+msgstr "기준 커밋을 확인할 수 없습니다."
+
+msgid "Could not determine the commits in the MR box."
+msgstr "MR 상자의 커밋을 확인할 수 없습니다."
+
+msgid "Could not determine the range to rewrite."
+msgstr "다시 쓸 범위를 확인할 수 없습니다."
+
+msgid "Could not search the commits: {error}"
+msgstr "커밋을 검색하지 못했습니다: {error}"
+
+msgid "Enter a commit message."
+msgstr "커밋 메시지를 입력하세요."
+
+msgid "Enter an MR branch name."
+msgstr "MR 브랜치 이름을 입력하세요."
+
+msgid "Names starting with \"{prefix}\" are kept for scratch branches."
+msgstr "\"{prefix}\"(으)로 시작하는 이름은 임시 브랜치용으로 예약되어 있습니다."
+
+msgid "No tag has \"{value}\" in its name."
+msgstr "이름에 \"{value}\"이(가) 포함된 태그가 없습니다."
+
+msgid "Only one \"{prefix}:\" condition can be given."
+msgstr "\"{prefix}:\" 조건은 하나만 지정할 수 있습니다."
+
+msgid "Squashed commits need a message."
+msgstr "스쿼시한 커밋에는 메시지가 필요합니다."
+
+msgid "Stopped because the ignored local files {names} and {count} more would be overwritten and lost during the rewrite. Move them somewhere else and try again."
+msgstr "무시된 로컬 파일 {names} 외 {count}개가 다시 쓰기 도중 덮어써져 손실되므로 중지했습니다. 다른 위치로 옮긴 후 다시 시도하세요."
+
+msgid "Stopped because the ignored local files {names} would be overwritten and lost during the rewrite. Move them somewhere else and try again."
+msgstr "무시된 로컬 파일 {names}이(가) 다시 쓰기 도중 덮어써져 손실되므로 중지했습니다. 다른 위치로 옮긴 후 다시 시도하세요."
+
+msgid "The \"{prefix}:\" conditions contradict each other."
+msgstr "\"{prefix}:\" 조건이 서로 모순됩니다."
+
+msgid "The MR box has no commits."
+msgstr "MR 상자에 커밋이 없습니다."
+
+msgid "The SSH key of the picked git account was not found: {path}"
+msgstr "선택한 Git 계정의 SSH 키를 찾을 수 없습니다: {path}"
+
+msgid "The account has no email"
+msgstr "계정에 이메일이 없습니다"
+
+msgid "The account has no host"
+msgstr "계정에 호스트가 없습니다"
+
+msgid "The account has no login"
+msgstr "계정에 로그인 이름이 없습니다"
+
+msgid "The account has no user name"
+msgstr "계정에 사용자 이름이 없습니다"
+
+msgid "The account's SSH key must be given as an absolute path"
+msgstr "계정의 SSH 키는 절대 경로로 지정해야 합니다"
+
+msgid "The account's SSH key path contains a control character"
+msgstr "계정의 SSH 키 경로에 제어 문자가 포함되어 있습니다"
+
+msgid "The account's host must be a host name such as github.com, optionally with a port"
+msgstr "계정의 호스트는 github.com 같은 호스트 이름이어야 합니다 (포트를 붙일 수 있음)"
+
+msgid "The account's login cannot contain spaces, '/', ':' or '@'"
+msgstr "계정의 로그인 이름에는 공백, '/', ':', '@'를 포함할 수 없습니다"
+
+msgid "The account's name and email cannot contain '<', '>' or control characters"
+msgstr "계정의 이름과 이메일에는 '<', '>' 또는 제어 문자를 포함할 수 없습니다"
+
+msgid "The account's signing key contains a control character"
+msgstr "계정의 서명 키에 제어 문자가 포함되어 있습니다"
+
+msgid "The author filter is empty."
+msgstr "작성자 필터가 비어 있습니다."
+
+msgid "The branch to go back to is unknown, so there is no way back from the scratch branch."
+msgstr "돌아갈 브랜치를 알 수 없어 임시 브랜치에서 돌아갈 방법이 없습니다."
+
+msgid "The changed-text filter is empty."
+msgstr "변경된 텍스트 필터가 비어 있습니다."
+
+msgid "The commit to fold the changes into is unknown."
+msgstr "변경 사항을 합칠 커밋을 알 수 없습니다."
+
+msgid "The default branch was not found, so \"{prefix}:\" cannot narrow the search."
+msgstr "기본 브랜치를 찾을 수 없어 \"{prefix}:\"(으)로 검색 범위를 좁힐 수 없습니다."
+
+msgid "The file filter \"{path}\" names the whole repository, so it does not narrow the search."
+msgstr "파일 필터 \"{path}\"은(는) 저장소 전체를 가리키므로 검색 범위를 좁히지 않습니다."
+
+msgid "The gpg settings of the untrusted repository are not used. Committed without a signature."
+msgstr "신뢰할 수 없는 저장소의 gpg 설정은 사용하지 않습니다. 서명 없이 커밋했습니다."
+
+msgid "The name of branch \"{branch}\" cannot be used in a search."
+msgstr "브랜치 \"{branch}\"의 이름은 검색에 사용할 수 없습니다."
+
+msgid "The original branch \"{origin_branch}\" cannot be the MR branch. Choose another name."
+msgstr "원래 브랜치 \"{origin_branch}\"은(는) MR 브랜치가 될 수 없습니다. 다른 이름을 선택하세요."
+
+msgid "The period is reversed (\"{since_word}\" is later than \"{until_word}\")."
+msgstr "기간이 반대입니다 (\"{since_word}\"이(가) \"{until_word}\"보다 늦습니다)."
+
+msgid "The sha filter \"{sha_prefix}\" is not hexadecimal."
+msgstr "sha 필터 \"{sha_prefix}\"은(는) 16진수가 아닙니다."
+
+msgid "The version of git could not be determined, so it is not known whether git can turn off hooks, and the AI cannot run git commands."
+msgstr "git 버전을 확인할 수 없어 git이 훅을 끌 수 있는지 알 수 없으므로 AI가 git 명령을 실행할 수 없습니다."
+
+msgid "There are no files to fold in."
+msgstr "합칠 파일이 없습니다."
+
+msgid "There is no branch \"{branch}\"."
+msgstr "\"{branch}\" 브랜치가 없습니다."
+
+msgid "This git ({version}) does not support rebase --autostash, so commit or stash the changes in the working tree first (git {minimum} or later is needed)."
+msgstr "이 git({version})은(는) rebase --autostash를 지원하지 않으므로 먼저 작업 트리의 변경 사항을 커밋하거나 스태시하세요(git {minimum} 이상 필요)."
+
+msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot stop the repository's settings from running programs, so \"{operation}\" cannot run. Trust the project to run it."
+msgstr "이 프로젝트는 신뢰되지 않았으며, 오래된 git({minimum} 미만, 현재 {version})은(는) 저장소 설정이 프로그램을 실행하는 것을 막을 수 없으므로 \"{operation}\"을(를) 실행할 수 없습니다. 실행하려면 프로젝트를 신뢰하세요."
+
+msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot turn off hooks, so \"{operation}\" cannot run. Trust the project to run it."
+msgstr "이 프로젝트는 신뢰되지 않았으며, 오래된 git({minimum} 미만, 현재 {version})은(는) 훅을 끌 수 없으므로 \"{operation}\"을(를) 실행할 수 없습니다. 실행하려면 프로젝트를 신뢰하세요."
+
+msgid "core.sshCommand is set in git's configuration (Git for Windows sets it when told to use the external OpenSSH)"
+msgstr "git 구성에 core.sshCommand가 설정되어 있습니다(Git for Windows에서 외부 OpenSSH를 사용하도록 설정하면 설정됨)"
+
+msgid "git exited with status {code}."
+msgstr "git이 상태 {code}(으)로 종료되었습니다."
+
+msgid "git terminated abnormally."
+msgstr "git이 비정상적으로 종료되었습니다."
+
+msgid "git that connects to a remote was not run because the uploadpack / receivepack settings of the untrusted repository can start programs"
+msgstr "신뢰할 수 없는 저장소의 uploadpack / receivepack 설정이 프로그램을 시작할 수 있으므로 원격에 연결하는 git을 실행하지 않았습니다"
+
+msgid "git was not run because the filters of the untrusted repository could not be turned off"
+msgstr "신뢰할 수 없는 저장소의 필터를 끌 수 없으므로 git을 실행하지 않았습니다"
+
+msgid "unknown version"
+msgstr "알 수 없는 버전"
+
+msgid "{variable} is set in the environment"
+msgstr "환경에 {variable}이(가) 설정되어 있습니다"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "작성자"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "브랜치"
+
+msgctxt "commit search"
+msgid "Change"
+msgstr "변경"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "파일"
+
+msgctxt "commit search"
+msgid "Merge"
+msgstr "병합"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "이후"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "태그"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "이전"
+
+msgctxt "commit search"
+msgid "no"
+msgstr "아니요"
+
+msgctxt "commit search"
+msgid "only"
+msgstr "해당 항목만"
+
+msgctxt "commit search"
+msgid "yes"
+msgstr "예"
+
+msgctxt "git result"
+msgid "Checkout"
+msgstr "체크아웃"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "체리픽"
+
+msgctxt "git result"
+msgid "Commit"
+msgstr "커밋"
+
+msgctxt "git result"
+msgid "Create branch"
+msgstr "브랜치 만들기"
+
+msgctxt "git result"
+msgid "Create worktree"
+msgstr "워크트리 만들기"
+
+msgctxt "git result"
+msgid "Fetch"
+msgstr "페치"
+
+msgctxt "git result"
+msgid "Filter by file"
+msgstr "파일로 필터링"
+
+msgctxt "git result"
+msgid "Force push (--force-with-lease)"
+msgstr "강제 푸시 (--force-with-lease)"
+
+msgctxt "git result"
+msgid "Merge"
+msgstr "병합"
+
+msgctxt "git result"
+msgid "Move worktree"
+msgstr "워크트리 이동"
+
+msgctxt "git result"
+msgid "Pull"
+msgstr "풀"
+
+msgctxt "git result"
+msgid "Push"
+msgstr "푸시"
+
+msgctxt "git result"
+msgid "Rebase"
+msgstr "리베이스"
+
+msgctxt "git result"
+msgid "Remove worktree"
+msgstr "워크트리 제거"
+
+msgctxt "git result"
+msgid "Repair worktree"
+msgstr "워크트리 복구"
+
+msgctxt "git result"
+msgid "Restore checkpoint"
+msgstr "체크포인트 복원"
+
+msgctxt "git result"
+msgid "Restore files"
+msgstr "파일 복원"
+
+msgctxt "git result"
+msgid "Revert"
+msgstr "되돌리기"
+
+msgctxt "git result"
+msgid "Search by changed text"
+msgstr "변경된 텍스트로 검색"
+
+msgctxt "git result"
+msgid "Skip this commit"
+msgstr "이 커밋 건너뛰기"
+
+msgctxt "git result"
+msgid "Stash including untracked files"
+msgstr "추적되지 않은 파일을 포함하여 스태시"
+
+msgctxt "git result"
+msgid "Stash staged changes"
+msgstr "스테이징된 변경 사항 스태시"
+
+msgctxt "git result"
+msgid "Stash that leaves newly staged files"
+msgstr "새로 스테이징된 파일을 남기는 스태시"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "브랜치 전환"
+
+msgctxt "git sequencer"
+msgid "cherry-pick"
+msgstr "체리픽"
+
+msgctxt "git sequencer"
+msgid "rebase"
+msgstr "리베이스"
+
+msgctxt "git sequencer"
+msgid "revert"
+msgstr "되돌리기"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

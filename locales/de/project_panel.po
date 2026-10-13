@@ -1,0 +1,268 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "\n\n1 of these has unsaved changes, which will be lost."
+msgstr "\n\n1 davon enthält nicht gespeicherte Änderungen, die verloren gehen."
+
+msgid "\n\nIt has unsaved changes, which will be lost."
+msgstr "\n\nSie enthält nicht gespeicherte Änderungen, die verloren gehen."
+
+msgid "\n\n{dirty_buffers} of these have unsaved changes, which will be lost."
+msgstr "\n\n{dirty_buffers} davon enthalten nicht gespeicherte Änderungen, die verloren gehen."
+
+msgid ".. 1 file not shown"
+msgstr ".. 1 Datei nicht angezeigt"
+
+msgid ".. {omitted_count} files not shown"
+msgstr ".. {omitted_count} Dateien nicht angezeigt"
+
+msgid "A file or folder with name {} already exists in the destination folder. Do you want to replace it?"
+msgstr "Im Zielordner ist bereits eine Datei oder ein Ordner mit dem Namen {} vorhanden. Möchten Sie das Element ersetzen?"
+
+msgid "Add Folders to Project…"
+msgstr "Ordner zum Projekt hinzufügen…"
+
+msgid "Add to .git/info/exclude"
+msgstr "Zu .git/info/exclude hinzufügen"
+
+msgid "Add to .gitignore"
+msgstr "Zu .gitignore hinzufügen"
+
+msgid "Apply Patch File…"
+msgstr "Patchdatei anwenden…"
+
+msgid "Are you sure you want to permanently delete the following {} files?\n{}"
+msgstr "Möchten Sie die folgenden {} Dateien wirklich endgültig löschen?\n{}"
+
+msgid "Are you sure you want to permanently delete {}?"
+msgstr "Möchten Sie {} wirklich endgültig löschen?"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Change Folder…"
+msgstr "Ordner ändern…"
+
+msgid "Collapse All"
+msgstr "Alle zuklappen"
+
+msgid "Compare Marked Files"
+msgstr "Markierte Dateien vergleichen"
+
+msgid "Copy"
+msgstr "Kopieren"
+
+msgid "Copy File Permalink"
+msgstr "Datei-Permalink kopieren"
+
+msgid "Copy Path"
+msgstr "Pfad kopieren"
+
+msgid "Copy Relative Path"
+msgstr "Relativen Pfad kopieren"
+
+msgid "Create Patch File…"
+msgstr "Patchdatei erstellen…"
+
+msgid "Created an excluded directory at {}.\nAlter `file_scan_exclusions` in the settings to show it in the panel"
+msgstr "Unter {} wurde ein ausgeschlossener Ordner erstellt.\nÄndern Sie `file_scan_exclusions` in den Einstellungen, um ihn im Panel anzuzeigen"
+
+msgid "Cut"
+msgstr "Ausschneiden"
+
+msgid "Discard changes to {}?"
+msgstr "Änderungen an {} verwerfen?"
+
+msgid "Disconnected from SSH host"
+msgstr "Verbindung zum SSH-Host getrennt"
+
+msgid "Disconnected from remote project"
+msgstr "Verbindung zum Remote-Projekt getrennt"
+
+msgid "Do you want to trash the following {} files?\n{}"
+msgstr "Möchten Sie die folgenden {} Dateien in den Papierkorb verschieben?\n{}"
+
+msgid "Do you want to trash {}?"
+msgstr "Möchten Sie {} in den Papierkorb verschieben?"
+
+msgid "Download"
+msgstr "Herunterladen"
+
+msgid "Download..."
+msgstr "Herunterladen..."
+
+msgid "Downloaded {} files"
+msgstr "{} Dateien heruntergeladen"
+
+msgid "Downloading 0/{} files..."
+msgstr "0/{} Dateien werden heruntergeladen..."
+
+msgid "Downloading {}/{} files..."
+msgstr "{}/{} Dateien werden heruntergeladen..."
+
+msgid "Duplicate"
+msgstr "Duplizieren"
+
+msgid "Expand All"
+msgstr "Alle aufklappen"
+
+msgid "Failed to add to .git/info/exclude: {}"
+msgstr "Fehler beim Hinzufügen zu .git/info/exclude: {}"
+
+msgid "Failed to add to .gitignore: {}"
+msgstr "Fehler beim Hinzufügen zu .gitignore: {}"
+
+msgid "Failed to delete {failed_count} of {total_count} file."
+msgstr "{failed_count} von {total_count} Datei konnte nicht gelöscht werden."
+
+msgid "Failed to delete {failed_count} of {total_count} files."
+msgstr "{failed_count} von {total_count} Dateien konnten nicht gelöscht werden."
+
+msgid "Failed to open file"
+msgstr "Datei konnte nicht geöffnet werden"
+
+msgid "Failed to refresh"
+msgstr "Aktualisieren fehlgeschlagen"
+
+msgid "Failed to restore `{name}`. It may have been permanently deleted."
+msgstr "`{name}` konnte nicht wiederhergestellt werden. Das Element wurde möglicherweise dauerhaft gelöscht."
+
+msgid "Failed to restore `{name}`. Something already exists at its original location."
+msgstr "`{name}` konnte nicht wiederhergestellt werden. Am ursprünglichen Speicherort ist bereits etwas vorhanden."
+
+msgid "Failed to restore {}: {}"
+msgstr "{} konnte nicht wiederhergestellt werden: {}"
+
+msgid "Failed to trash `{name}`."
+msgstr "`{name}` konnte nicht in den Papierkorb verschoben werden."
+
+msgid "Failed to trash `{name}`. It no longer exists."
+msgstr "`{name}` konnte nicht in den Papierkorb verschoben werden. Das Element ist nicht mehr vorhanden."
+
+msgid "Failed to trash {failed_count} of {total_count} file."
+msgstr "{failed_count} von {total_count} Datei konnte nicht in den Papierkorb verschoben werden."
+
+msgid "Failed to trash {failed_count} of {total_count} files."
+msgstr "{failed_count} von {total_count} Dateien konnten nicht in den Papierkorb verschoben werden."
+
+msgid "Failed to {operation} `{from_name}` to `{to_name}`. A file or folder already exists there."
+msgstr "`{from_name}` konnte nicht in `{to_name}` {operation} werden. Dort ist bereits eine Datei oder ein Ordner vorhanden."
+
+msgid "Failed to {operation} `{from_name}`. It no longer exists."
+msgstr "`{from_name}` konnte nicht {operation} werden. Das Element ist nicht mehr vorhanden."
+
+msgid "File or directory '{}' already exists at location. Please choose a different name."
+msgstr "Die Datei oder das Verzeichnis „{}“ ist an diesem Ort bereits vorhanden. Bitte wählen Sie einen anderen Namen."
+
+msgid "File or directory name cannot be empty."
+msgstr "Der Datei- oder Verzeichnisname darf nicht leer sein."
+
+msgid "File or directory name contains leading or trailing whitespace."
+msgstr "Der Datei- oder Verzeichnisname enthält führenden oder nachgestellten Leerraum."
+
+msgid "Find in Folder…"
+msgstr "Im Ordner suchen…"
+
+msgid "Fold Directory"
+msgstr "Verzeichnis zusammenfassen"
+
+msgid "New File"
+msgstr "Neue Datei"
+
+msgid "New Folder"
+msgstr "Neuer Ordner"
+
+msgid "Open File Permalink"
+msgstr "Datei-Permalink öffnen"
+
+msgid "Open Markdown Preview"
+msgstr "Markdown-Vorschau öffnen"
+
+msgid "Open in Default App"
+msgstr "In Standard-App öffnen"
+
+msgid "Open in Terminal"
+msgstr "Im Terminal öffnen"
+
+msgid "Paste"
+msgstr "Einfügen"
+
+msgid "Project Panel"
+msgstr "Projektpanel"
+
+msgid "Redo"
+msgstr "Wiederholen"
+
+msgid "Redo Failed"
+msgstr "Wiederholen fehlgeschlagen"
+
+msgid "Refresh"
+msgstr "Aktualisieren"
+
+msgid "Remove from Project"
+msgstr "Aus Projekt entfernen"
+
+msgid "Rename"
+msgstr "Umbenennen"
+
+msgid "Replace"
+msgstr "Ersetzen"
+
+msgid "Restore"
+msgstr "Wiederherstellen"
+
+msgid "Search Inside"
+msgstr "Darin suchen"
+
+msgid "Symbolic Link"
+msgstr "Symbolischer Link"
+
+msgid "This cannot be undone."
+msgstr "Dies kann nicht rückgängig gemacht werden."
+
+msgid "Trash"
+msgstr "In den Papierkorb verschieben"
+
+msgid "Undo"
+msgstr "Rückgängig"
+
+msgid "Undo Failed"
+msgstr "Rückgängigmachen fehlgeschlagen"
+
+msgid "Unfold Directory"
+msgstr "Zusammenfassung aufheben"
+
+msgid "View History"
+msgstr "Verlauf anzeigen"
+
+msgid "item"
+msgstr "Element"
+
+msgid "{} entries"
+msgstr "{} Einträge"
+
+msgid "{} is not shared by the host. This could be because it has been marked as `private`"
+msgstr "{} wird vom Host nicht freigegeben. Möglicherweise wurde es als `private` markiert"
+
+msgctxt "delete permanently"
+msgid "Delete"
+msgstr "Löschen"
+
+msgctxt "discard file changes"
+msgid "Restore File"
+msgstr "Datei wiederherstellen"
+
+msgctxt "file operation"
+msgid "move"
+msgstr "verschoben"
+
+msgctxt "file operation"
+msgid "rename"
+msgstr "umbenannt"

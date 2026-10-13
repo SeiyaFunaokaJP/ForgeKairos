@@ -1,0 +1,970 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid " Checks right away without waiting."
+msgstr " Prüft sofort, ohne zu warten."
+
+msgid " If it doesn't, runs the “On Timeout” steps and moves on."
+msgstr " Falls nicht, werden die Schritte unter „Bei Zeitüberschreitung“ ausgeführt und es wird fortgefahren."
+
+msgid " If it doesn't, stops the macro."
+msgstr " Falls nicht, wird das Makro beendet."
+
+msgid " On a match, puts the line found into ${{{name}}}."
+msgstr " Bei einem Treffer wird die gefundene Zeile in ${{{name}}} gespeichert."
+
+msgid " On a match, puts the matched part into ${{{name}}}."
+msgstr " Bei einem Treffer wird der übereinstimmende Teil in ${{{name}}} gespeichert."
+
+msgid " Puts the line found into ${{{name}}}."
+msgstr " Speichert die gefundene Zeile in ${{{name}}}."
+
+msgid " Puts the matched part into ${{{name}}}."
+msgstr " Speichert den übereinstimmenden Teil in ${{{name}}}."
+
+msgid "${{{name}}} (step {})"
+msgstr "${{{name}}} (Schritt {})"
+
+msgid "${{{name}}} gets its value only after this branch, so “Else” runs here."
+msgstr "${{{name}}} erhält seinen Wert erst nach dieser Verzweigung, daher wird hier „Sonst“ ausgeführt."
+
+msgid "(0 = repeat until stopped)"
+msgstr "(0 = bis zum Abbruch wiederholen)"
+
+msgid "(0 repeats until stopped)"
+msgstr "(0 wiederholt bis zum Abbruch)"
+
+msgid "(No folder)"
+msgstr "(Kein Ordner)"
+
+msgid "(None)"
+msgstr "(Keine)"
+
+msgid "A folder with this name already exists."
+msgstr "Ein Ordner mit diesem Namen ist bereits vorhanden."
+
+msgid "A repetition right after ${{{name}}} applies only to the last character of its value, and when the value is empty it applies to the character before it or makes the regular expression invalid. To apply it to the whole value, wrap it as (?:${{{name}}})."
+msgstr "Eine Wiederholung direkt nach ${{{name}}} gilt nur für das letzte Zeichen seines Werts; ist der Wert leer, gilt sie für das Zeichen davor oder macht den regulären Ausdruck ungültig. Um sie auf den gesamten Wert anzuwenden, schließen Sie ihn als (?:${{{name}}}) ein."
+
+msgid "A step of a kind this version can't run"
+msgstr "Ein Schritt einer Art, die diese Version nicht ausführen kann"
+
+msgid "A step of a kind this version can't run (“{kind}”)"
+msgstr "Ein Schritt einer Art, die diese Version nicht ausführen kann („{kind}“)"
+
+msgid "A step of a kind this version can't run (“{kind}”). Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "Ein Schritt einer Art, die diese Version nicht ausführen kann („{kind}“). Beim Speichern bleibt er unverändert erhalten, aber ein Makro, das ihn enthält, kann nicht ausgeführt werden."
+
+msgid "A step of a kind this version can't run. Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "Ein Schritt einer Art, die diese Version nicht ausführen kann. Beim Speichern bleibt er unverändert erhalten, aber ein Makro, das ihn enthält, kann nicht ausgeführt werden."
+
+msgid "Add Step"
+msgstr "Schritt hinzufügen"
+
+msgid "Add a step here"
+msgstr "Hier einen Schritt hinzufügen"
+
+msgid "Another connection took over this shell"
+msgstr "Eine andere Verbindung hat diese Shell übernommen"
+
+msgid "Branch: runs the “Then” steps if the “Target” (output since last send / whole screen / variable) contains the “Text to match”, and the “Else” steps if not. It checks right away without waiting, so to check a response, put a “Wait for Text” step before it."
+msgstr "Verzweigung: Führt die Schritte unter „Dann“ aus, wenn das „Ziel“ (Ausgabe seit dem letzten Senden / gesamter Bildschirm / Variable) den „Zu suchenden Text“ enthält, andernfalls die Schritte unter „Sonst“. Die Prüfung erfolgt sofort ohne Warten; um eine Antwort zu prüfen, setzen Sie daher einen Schritt „Auf Text warten“ davor."
+
+msgid "Branching on a value: set the branch's “Target” to “Variable” to check the value of that variable. A variable that has no value yet takes “Else”. Named groups of a regular expression can pull part of a value out into another variable."
+msgstr "Verzweigen nach einem Wert: Legen Sie das „Ziel“ der Verzweigung auf „Variable“ fest, um den Wert dieser Variablen zu prüfen. Eine Variable, die noch keinen Wert hat, führt zu „Sonst“. Benannte Gruppen eines regulären Ausdrucks können einen Teil eines Werts in eine andere Variable übernehmen."
+
+msgid "Brings the shell back to this tab (the other connection is detached)"
+msgstr "Holt die Shell in diesen Tab zurück (die andere Verbindung wird getrennt)"
+
+msgid "Broadcast Input to All Panes"
+msgstr "Eingabe an alle Bereiche senden"
+
+msgid "Broadcasting input"
+msgstr "Eingabe wird an alle gesendet"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Cancel creating the folder"
+msgstr "Erstellen des Ordners abbrechen"
+
+msgid "Cancel renaming"
+msgstr "Umbenennen abbrechen"
+
+msgid "Capture Into"
+msgstr "Erfassen in"
+
+msgid "Chooses the steps to run by whether the output or a variable contains some text"
+msgstr "Wählt die auszuführenden Schritte danach aus, ob die Ausgabe oder eine Variable bestimmten Text enthält"
+
+msgid "Claude Code (Outside the Sandbox)"
+msgstr "Claude Code (außerhalb der Sandbox)"
+
+msgid "Clears the screen and the scrollback"
+msgstr "Löscht den Bildschirm und den Scrollback"
+
+msgid "Close"
+msgstr "Schließen"
+
+msgid "Close Help"
+msgstr "Hilfe schließen"
+
+msgid "Close Terminal Tab"
+msgstr "Terminal-Tab schließen"
+
+msgid "Collapse All"
+msgstr "Alle zuklappen"
+
+msgid "Connect"
+msgstr "Verbinden"
+
+msgid "Connection name (for saving)"
+msgstr "Verbindungsname (zum Speichern)"
+
+msgid "Connects to network devices over SSH or Telnet."
+msgstr "Verbindet sich über SSH oder Telnet mit Netzwerkgeräten."
+
+msgid "Copy"
+msgstr "Kopieren"
+
+msgid "Couldn't choose a location: {error}"
+msgstr "Es konnte kein Speicherort ausgewählt werden: {error}"
+
+msgid "Couldn't connect: {error}"
+msgstr "Verbindung fehlgeschlagen: {error}"
+
+msgid "Couldn't create the folder"
+msgstr "Der Ordner konnte nicht erstellt werden"
+
+msgid "Couldn't delete"
+msgstr "Löschen fehlgeschlagen"
+
+msgid "Couldn't delete the folder"
+msgstr "Der Ordner konnte nicht gelöscht werden"
+
+msgid "Couldn't move the folder"
+msgstr "Der Ordner konnte nicht verschoben werden"
+
+msgid "Couldn't open the log: {error}"
+msgstr "Das Protokoll konnte nicht geöffnet werden: {error}"
+
+msgid "Couldn't reach the remote shell, so the terminal restarted with a new shell."
+msgstr "Die Remote-Shell war nicht erreichbar, daher wurde das Terminal mit einer neuen Shell neu gestartet."
+
+msgid "Couldn't reach the remote shell, so the terminal restarted without surviving disconnects."
+msgstr "Die Remote-Shell war nicht erreichbar, daher wurde das Terminal ohne Schutz vor Verbindungsabbrüchen neu gestartet."
+
+msgid "Couldn't rename the folder"
+msgstr "Der Ordner konnte nicht umbenannt werden"
+
+msgid "Couldn't restart the terminal: {error}"
+msgstr "Das Terminal konnte nicht neu gestartet werden: {error}"
+
+msgid "Couldn't resume logging: {error}"
+msgstr "Die Protokollierung konnte nicht fortgesetzt werden: {error}"
+
+msgid "Couldn't run the command in the terminal: {error}"
+msgstr "Der Befehl konnte nicht im Terminal ausgeführt werden: {error}"
+
+msgid "Couldn't save whether the folder is open"
+msgstr "Es konnte nicht gespeichert werden, ob der Ordner geöffnet ist"
+
+msgid "Couldn't save: {error}"
+msgstr "Speichern fehlgeschlagen: {error}"
+
+msgid "Couldn't start logging: {error}"
+msgstr "Die Protokollierung konnte nicht gestartet werden: {error}"
+
+msgid "Create New"
+msgstr "Neu erstellen"
+
+msgid "Create a folder with this name"
+msgstr "Einen Ordner mit diesem Namen erstellen"
+
+msgid "Creates a folder to group macros"
+msgstr "Erstellt einen Ordner zum Gruppieren von Makros"
+
+msgid "Delete"
+msgstr "Löschen"
+
+msgid "Delete with Macros"
+msgstr "Mit Makros löschen"
+
+msgid "Delete “{name}”?"
+msgstr "„{name}“ löschen?"
+
+msgid "Deletes this connection (and its saved password)"
+msgstr "Löscht diese Verbindung (und ihr gespeichertes Passwort)"
+
+msgid "Deletes this step"
+msgstr "Löscht diesen Schritt"
+
+msgid "Delete…"
+msgstr "Löschen…"
+
+msgid "Deleting the folder “{folder}”. What should happen to the macros in it?"
+msgstr "Der Ordner „{folder}“ wird gelöscht. Was soll mit den darin enthaltenen Makros geschehen?"
+
+msgid "Description (optional)"
+msgstr "Beschreibung (optional)"
+
+msgid "Discard and Switch"
+msgstr "Verwerfen und wechseln"
+
+msgid "Drag onto a “+” along or at the end of a line to move the step"
+msgstr "Ziehen Sie den Schritt auf ein „+“ entlang oder am Ende einer Linie, um ihn zu verschieben"
+
+msgid "Duplicate"
+msgstr "Duplizieren"
+
+msgid "Edit"
+msgstr "Bearbeiten"
+
+msgid "Edit Macros…"
+msgstr "Makros bearbeiten…"
+
+msgid "Edit Settings"
+msgstr "Einstellungen bearbeiten"
+
+msgid "Edit settings.json"
+msgstr "settings.json bearbeiten"
+
+msgid "Edit “{name}”"
+msgstr "„{name}“ bearbeiten"
+
+msgid "Enter a folder name."
+msgstr "Geben Sie einen Ordnernamen ein."
+
+msgid "Enter a host name or IP address."
+msgstr "Geben Sie einen Hostnamen oder eine IP-Adresse ein."
+
+msgid "Enter a macro name."
+msgstr "Geben Sie einen Makronamen ein."
+
+msgid "Enter a variable name and a value. Wherever a later step says ${{name}}, it becomes the value."
+msgstr "Geben Sie einen Variablennamen und einen Wert ein. Überall, wo ein späterer Schritt ${{Name}} enthält, wird der Wert eingesetzt."
+
+msgid "Enter the interval in seconds, 0 or more."
+msgstr "Geben Sie das Intervall in Sekunden ein (0 oder mehr)."
+
+msgid "Enter the repeat count as a whole number, 0 or more."
+msgstr "Geben Sie die Anzahl der Wiederholungen als ganze Zahl ein (0 oder mehr)."
+
+msgid "Enter the repeat interval in seconds, 0 or more."
+msgstr "Geben Sie das Wiederholungsintervall in Sekunden ein (0 oder mehr)."
+
+msgid "Example: Send “show version” → Wait for Text “Version (?<ver>[0-9.]+)” (regular expression) → Branch (Target: variable ver, text to match “^15\\.”, regular expression) → Then: Send “…”"
+msgstr "Beispiel: Senden „show version“ → Auf Text warten „Version (?<ver>[0-9.]+)“ (regulärer Ausdruck) → Verzweigung (Ziel: Variable ver, zu suchender Text „^15\\.“, regulärer Ausdruck) → Dann: Senden „…“"
+
+msgid "Expand All"
+msgstr "Alle aufklappen"
+
+msgid "Expected text (${{variable}} allowed)"
+msgstr "Erwarteter Text (${{Variable}} zulässig)"
+
+msgid "Failed to spawn terminal"
+msgstr "Terminal konnte nicht gestartet werden"
+
+msgid "File Transfer…"
+msgstr "Dateiübertragung…"
+
+msgid "Filter by folder, name, or tag"
+msgstr "Nach Ordner, Name oder Tag filtern"
+
+msgid "Filter by folder, name, or tag…"
+msgstr "Nach Ordner, Name oder Tag filtern…"
+
+msgid "Folder"
+msgstr "Ordner"
+
+msgid "Folder (e.g. Sites/HQ; optional)"
+msgstr "Ordner (z. B. Standorte/Zentrale; optional)"
+
+msgid "Folder name"
+msgstr "Ordnername"
+
+msgid "Forgets the saved password of this connection"
+msgstr "Entfernt das gespeicherte Passwort dieser Verbindung"
+
+msgid "Hides the list of saved macros to widen the editor"
+msgstr "Blendet die Liste gespeicherter Makros aus, um den Editor zu verbreitern"
+
+msgid "Host name / IP address"
+msgstr "Hostname / IP-Adresse"
+
+msgid "How Branches and Variables Work"
+msgstr "So funktionieren Verzweigungen und Variablen"
+
+msgid "Inline Assist"
+msgstr "Inline-Assistent"
+
+msgid "Install Claude Code"
+msgstr "Claude Code installieren"
+
+msgid "Interval (seconds)"
+msgstr "Intervall (Sekunden)"
+
+msgid "Invalid port number."
+msgstr "Ungültige Portnummer."
+
+msgid "Invalid regular expression: {error}"
+msgstr "Ungültiger regulärer Ausdruck: {error}"
+
+msgid "Keep Editing"
+msgstr "Weiter bearbeiten"
+
+msgid "Kind"
+msgstr "Art"
+
+msgid "Launch Claude Code"
+msgstr "Claude Code starten"
+
+msgid "Launch Claude Code Outside the Sandbox"
+msgstr "Claude Code außerhalb der Sandbox starten"
+
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+msgid "Location: {}"
+msgstr "Speicherort: {}"
+
+msgid "Logging to {file_name}"
+msgstr "Protokollierung in {file_name}"
+
+msgid "Macro"
+msgstr "Makro"
+
+msgid "Macro name"
+msgstr "Makroname"
+
+msgid "Macro to Run After Connecting"
+msgstr "Nach dem Verbinden auszuführendes Makro"
+
+msgid "Macro “{name}” finished"
+msgstr "Makro „{name}“ abgeschlossen"
+
+msgid "Macro “{name}”: {error}"
+msgstr "Makro „{name}“: {error}"
+
+msgid "Macro: {name}"
+msgstr "Makro: {name}"
+
+msgid "More Buttons"
+msgstr "Weitere Schaltflächen"
+
+msgid "Move Down"
+msgstr "Nach unten verschieben"
+
+msgid "Move Macros to Unfiled"
+msgstr "Makros nach „Ohne Ordner“ verschieben"
+
+msgid "Move Up"
+msgstr "Nach oben verschieben"
+
+msgid "New Center Terminal"
+msgstr "Neues Terminal in der Mitte"
+
+msgid "New Folder…"
+msgstr "Neuer Ordner…"
+
+msgid "New Macro"
+msgstr "Neues Makro"
+
+msgid "New Macro in Folder"
+msgstr "Neues Makro im Ordner"
+
+msgid "New Terminal"
+msgstr "Neues Terminal"
+
+msgid "New…"
+msgstr "Neu…"
+
+msgid "No macros match the filter"
+msgstr "Keine Makros entsprechen dem Filter"
+
+msgid "No macros — add one here"
+msgstr "Keine Makros – hier eines hinzufügen"
+
+msgid "No saved macros"
+msgstr "Keine gespeicherten Makros"
+
+msgid "No step sets ${{{name}}}, so this branch always runs “Else”."
+msgstr "Kein Schritt setzt ${{{name}}}, daher führt diese Verzweigung immer „Sonst“ aus."
+
+msgid "No step sets {nowhere}. When the macro runs, it stays as written."
+msgstr "Kein Schritt setzt {nowhere}. Bei der Ausführung des Makros bleibt es unverändert."
+
+msgid "Open File Transfer"
+msgstr "Dateiübertragung öffnen"
+
+msgid "Open Log File Location"
+msgstr "Speicherort der Protokolldatei öffnen"
+
+msgid "Open Log in Editor"
+msgstr "Protokoll im Editor öffnen"
+
+msgid "Open Settings"
+msgstr "Einstellungen öffnen"
+
+msgid "Opens a new macro with the same contents"
+msgstr "Öffnet ein neues Makro mit demselben Inhalt"
+
+msgid "Opens an empty macro on the right"
+msgstr "Öffnet rechts ein leeres Makro"
+
+msgid "Opens the menu for moving and folding"
+msgstr "Öffnet das Menü zum Verschieben und Zuklappen"
+
+msgid "Optional"
+msgstr "Optional"
+
+msgid "Overwrite"
+msgstr "Überschreiben"
+
+msgid "Password (optional)"
+msgstr "Passwort (optional)"
+
+msgid "Paste"
+msgstr "Einfügen"
+
+msgid "Paste Text"
+msgstr "Text einfügen"
+
+msgid "Port"
+msgstr "Port"
+
+msgid "Prefixes each line of the log being recorded with the time. Takes effect from the next line."
+msgstr "Stellt jeder Zeile des aufgezeichneten Protokolls die Uhrzeit voran. Gilt ab der nächsten Zeile."
+
+msgid "Process ID (PID): {}"
+msgstr "Prozess-ID (PID): {}"
+
+msgid "Quick Connect"
+msgstr "Schnellverbindung"
+
+msgid "Quick Connect…"
+msgstr "Schnellverbindung…"
+
+msgid "Reconnect"
+msgstr "Erneut verbinden"
+
+msgid "Reconnects to the remote shell and resumes its output"
+msgstr "Verbindet sich erneut mit der Remote-Shell und setzt deren Ausgabe fort"
+
+msgid "Record a Log"
+msgstr "Protokoll aufzeichnen"
+
+msgid "Regular Expression"
+msgstr "Regulärer Ausdruck"
+
+msgid "Remember password"
+msgstr "Passwort speichern"
+
+msgid "Remote connection lost"
+msgstr "Remote-Verbindung unterbrochen"
+
+msgid "Remote connection lost. The shell keeps running on the remote host; reconnect to resume its output"
+msgstr "Remote-Verbindung unterbrochen. Die Shell läuft auf dem Remote-Host weiter; verbinden Sie sich erneut, um ihre Ausgabe fortzusetzen"
+
+msgid "Rename"
+msgstr "Umbenennen"
+
+msgid "Rename Folder"
+msgstr "Ordner umbenennen"
+
+msgid "Rename to this name"
+msgstr "In diesen Namen umbenennen"
+
+msgid "Renames the folder (the macros in it move along)"
+msgstr "Benennt den Ordner um (die darin enthaltenen Makros werden mit verschoben)"
+
+msgid "Repeat Count"
+msgstr "Anzahl der Wiederholungen"
+
+msgid "Repeats the steps inside it the given number of times"
+msgstr "Wiederholt die enthaltenen Schritte so oft wie angegeben"
+
+msgid "Repeats until stopped"
+msgstr "Wiederholt bis zum Abbruch"
+
+msgid "Repeats {count} time"
+msgid_plural "Repeats {count} times"
+msgstr[0] "Wiederholt {count}-mal"
+msgstr[1] "Wiederholt {count}-mal"
+
+msgid "Rerun task"
+msgstr "Aufgabe erneut ausführen"
+
+msgid "Restart"
+msgstr "Neu starten"
+
+msgid "Restarts the shell in the same working directory"
+msgstr "Startet die Shell im selben Arbeitsverzeichnis neu"
+
+msgid "Restoring terminals…"
+msgstr "Terminals werden wiederhergestellt…"
+
+msgid "Run"
+msgstr "Ausführen"
+
+msgid "Run Macro…"
+msgstr "Makro ausführen…"
+
+msgid "Run Repeatedly"
+msgstr "Wiederholt ausführen"
+
+msgid "Run Repeatedly…"
+msgstr "Wiederholt ausführen…"
+
+msgid "Run the Next Step"
+msgstr "Nächsten Schritt ausführen"
+
+msgid "Running macro “{name}” ({detail})"
+msgstr "Makro „{name}“ wird ausgeführt ({detail})"
+
+msgid "Runs the macro “{name}” repeatedly."
+msgstr "Führt das Makro „{name}“ wiederholt aus."
+
+msgid "Runs this macro with a repeat count and interval you choose."
+msgstr "Führt dieses Makro mit einer von Ihnen gewählten Anzahl an Wiederholungen und einem Intervall aus."
+
+msgid "Runs “Then” if {target} contains {}, and “Else” if not."
+msgstr "Führt „Dann“ aus, wenn in {target} {} enthalten ist, andernfalls „Sonst“."
+
+msgid "Runs “Then” if {target} matches the regular expression {}, and “Else” if not."
+msgstr "Führt „Dann“ aus, wenn es in {target} einen Treffer für den regulären Ausdruck {} gibt, andernfalls „Sonst“."
+
+msgid "Save"
+msgstr "Speichern"
+
+msgid "Saved"
+msgstr "Gespeichert"
+
+msgid "Saved Connections"
+msgstr "Gespeicherte Verbindungen"
+
+msgid "Saved Macros ({listed} / {total})"
+msgstr "Gespeicherte Makros ({listed} / {total})"
+
+msgid "Saved Macros ({total})"
+msgstr "Gespeicherte Makros ({total})"
+
+msgid "Seconds"
+msgstr "Sekunden"
+
+msgid "Select All"
+msgstr "Alle auswählen"
+
+msgid "Send Enter at the End"
+msgstr "Am Ende Enter senden"
+
+msgid "Sends text to the terminal"
+msgstr "Sendet Text an das Terminal"
+
+msgid "Sets ${{{name}}} to {}. Wherever a later step says ${{{name}}}, it becomes this value."
+msgstr "Setzt ${{{name}}} auf {}. Überall, wo ein späterer Schritt ${{{name}}} enthält, wird dieser Wert eingesetzt."
+
+msgid "Sets a variable. Wherever a later step says ${{name}}, it becomes the value"
+msgstr "Legt eine Variable fest. Überall, wo ein späterer Schritt ${{Name}} enthält, wird der Wert eingesetzt"
+
+msgid "Setting variables: a “Set Variable” step, or the “Capture Into” field of “Wait for Text” and “Branch” (it gets the line found, or the matched part for a regular expression). A named group (?<name>…) of a regular expression puts the part it matched into the variable of that name."
+msgstr "Variablen festlegen: ein Schritt „Variable festlegen“ oder das Feld „Erfassen in“ von „Auf Text warten“ und „Verzweigung“ (es erhält die gefundene Zeile bzw. bei einem regulären Ausdruck den übereinstimmenden Teil). Eine benannte Gruppe (?<name>…) eines regulären Ausdrucks speichert den übereinstimmenden Teil in der Variablen dieses Namens."
+
+msgid "Shows only the heading and summary of every step"
+msgstr "Zeigt von jedem Schritt nur Überschrift und Zusammenfassung an"
+
+msgid "Shows the fields of every step"
+msgstr "Zeigt die Felder jedes Schritts an"
+
+msgid "Shows the list of saved macros"
+msgstr "Zeigt die Liste der gespeicherten Makros an"
+
+msgid "Spawn Task"
+msgstr "Aufgabe starten"
+
+msgid "Split Down"
+msgstr "Nach unten teilen"
+
+msgid "Split Left"
+msgstr "Nach links teilen"
+
+msgid "Split Pane"
+msgstr "Bereich teilen"
+
+msgid "Split Right"
+msgstr "Nach rechts teilen"
+
+msgid "Split Up"
+msgstr "Nach oben teilen"
+
+msgid "Split into 2×2"
+msgstr "In 2×2 teilen"
+
+msgid "Split into 3 Columns"
+msgstr "In 3 Spalten teilen"
+
+msgid "Start Logging (Choose Location)…"
+msgstr "Protokollierung starten (Speicherort auswählen)…"
+
+msgid "Start Logging (Default Location)"
+msgstr "Protokollierung starten (Standardspeicherort)"
+
+msgid "Starting terminal…"
+msgstr "Terminal wird gestartet…"
+
+msgid "Step {label}: enter a variable name."
+msgstr "Schritt {label}: Geben Sie einen Variablennamen ein."
+
+msgid "Step {label}: enter the expected text."
+msgstr "Schritt {label}: Geben Sie den erwarteten Text ein."
+
+msgid "Step {label}: enter the repeat count as a whole number, 0 or more."
+msgstr "Schritt {label}: Geben Sie die Anzahl der Wiederholungen als ganze Zahl ein (0 oder mehr)."
+
+msgid "Step {label}: enter the text to match."
+msgstr "Schritt {label}: Geben Sie den zu suchenden Text ein."
+
+msgid "Step {label}: enter the variable to check."
+msgstr "Schritt {label}: Geben Sie die zu prüfende Variable ein."
+
+msgid "Step {label}: invalid number of seconds."
+msgstr "Schritt {label}: Ungültige Anzahl an Sekunden."
+
+msgid "Step {label}: invalid regular expression."
+msgstr "Schritt {label}: Ungültiger regulärer Ausdruck."
+
+msgid "Step {label}: the variable name can't contain $, {{ or }}."
+msgstr "Schritt {label}: Der Variablenname darf weder $ noch {{ oder }} enthalten."
+
+msgid "Step {label}: the variable to capture into can't contain $, {{ or }}."
+msgstr "Schritt {label}: Die Variable zum Erfassen darf weder $ noch {{ oder }} enthalten."
+
+msgid "Step {label}: the variable to check can't contain $, {{ or }}."
+msgstr "Schritt {label}: Die zu prüfende Variable darf weder $ noch {{ oder }} enthalten."
+
+msgid "Steps ({})"
+msgstr "Schritte ({})"
+
+msgid "Steps to Repeat ({})"
+msgstr "Zu wiederholende Schritte ({})"
+
+msgid "Stop Broadcasting Input to All Panes"
+msgstr "Eingabe nicht mehr an alle Bereiche senden"
+
+msgid "Stop Logging"
+msgstr "Protokollierung beenden"
+
+msgid "Stop the Macro"
+msgstr "Makro beenden"
+
+msgid "Stopped macro “{}”"
+msgstr "Makro „{}“ beendet"
+
+msgid "Tags (comma-separated, optional)"
+msgstr "Tags (kommagetrennt, optional)"
+
+msgid "Terminal Panel"
+msgstr "Terminal-Panel"
+
+msgid "Text to match (${{variable}} allowed)"
+msgstr "Zu suchender Text (${{Variable}} zulässig)"
+
+msgid "Text to send (${{variable}} allowed)"
+msgstr "Zu sendender Text (${{Variable}} zulässig)"
+
+msgid "The host name contains characters that aren't allowed."
+msgstr "Der Hostname enthält unzulässige Zeichen."
+
+msgid "The macro \"{name}\" has unsaved edits. Do you want to save it?"
+msgstr "Das Makro „{name}“ hat nicht gespeicherte Änderungen. Möchten Sie es speichern?"
+
+msgid "The password is kept in the OS credential manager and is never written to terminal_sessions.json"
+msgstr "Das Passwort wird in der Anmeldeinformationsverwaltung des Betriebssystems gespeichert und nie in terminal_sessions.json geschrieben"
+
+msgid "The remote Zed server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
+msgstr "Der Remote-ForgeKairos-Server unterstützt keinen Schutz vor Verbindungsabbrüchen, daher wurde das Terminal mit einer einfachen Shell neu gestartet."
+
+msgid "The repeat count is empty"
+msgstr "Die Anzahl der Wiederholungen ist leer"
+
+msgid "The settings file hasn't finished loading. Wait a moment and try again."
+msgstr "Die Einstellungsdatei ist noch nicht vollständig geladen. Warten Sie einen Moment, und versuchen Sie es erneut."
+
+msgid "The terminal panel is unavailable."
+msgstr "Das Terminal-Panel ist nicht verfügbar."
+
+msgid "The user name contains characters that aren't allowed."
+msgstr "Der Benutzername enthält unzulässige Zeichen."
+
+msgid "There is no terminal to run the macro in. Open a terminal."
+msgstr "Es gibt kein Terminal, in dem das Makro ausgeführt werden kann. Öffnen Sie ein Terminal."
+
+msgid "This folder already has a macro with this name."
+msgstr "Dieser Ordner enthält bereits ein Makro mit diesem Namen."
+
+msgid "This macro has been changed elsewhere since this tab opened it. Do you want to overwrite it?"
+msgstr "Dieses Makro wurde an anderer Stelle geändert, seit dieser Tab es geöffnet hat. Möchten Sie es überschreiben?"
+
+msgid "This macro has been deleted or renamed elsewhere. Saving creates it again as “{name}”."
+msgstr "Dieses Makro wurde an anderer Stelle gelöscht oder umbenannt. Beim Speichern wird es erneut als „{name}“ erstellt."
+
+msgid "This new macro has unsaved edits. Do you want to save it?"
+msgstr "Dieses neue Makro hat nicht gespeicherte Änderungen. Möchten Sie es speichern?"
+
+msgid "Timeout (seconds)"
+msgstr "Zeitlimit (Sekunden)"
+
+msgid "Timestamps"
+msgstr "Zeitstempel"
+
+msgid "Transfers files with this host over SFTP / FTP"
+msgstr "Überträgt Dateien mit diesem Host über SFTP / FTP"
+
+msgid "Unfiled"
+msgstr "Ohne Ordner"
+
+msgid "User name (SSH)"
+msgstr "Benutzername (SSH)"
+
+msgid "Using variables: write ${{name}} in the text to send, the expected text, the text to match, or the value to set, and it is replaced by the value when the macro runs. To send ${{ as text, write $${{."
+msgstr "Variablen verwenden: Schreiben Sie ${{Name}} in den zu sendenden Text, den erwarteten Text, den zu suchenden Text oder den festzulegenden Wert; beim Ausführen des Makros wird es durch den Wert ersetzt. Um ${{ als Text zu senden, schreiben Sie $${{."
+
+msgid "Value"
+msgstr "Wert"
+
+msgid "Value to set (${{variable}} allowed too)"
+msgstr "Festzulegender Wert (${{Variable}} ebenfalls zulässig)"
+
+msgid "Variable name"
+msgstr "Variablenname"
+
+msgid "Variable to Check"
+msgstr "Zu prüfende Variable"
+
+msgid "Variables: none yet (create them with “Set Variable” or “Capture Into”)"
+msgstr "Variablen: noch keine (erstellen Sie sie mit „Variable festlegen“ oder „Erfassen in“)"
+
+msgid "Variables: {listed}"
+msgstr "Variablen: {listed}"
+
+msgid "Waits for the given number of seconds"
+msgstr "Wartet die angegebene Anzahl an Sekunden"
+
+msgid "Waits until the given text appears in the output"
+msgstr "Wartet, bis der angegebene Text in der Ausgabe erscheint"
+
+msgid "Waits up to {seconds} s for {} to appear in new output.{}"
+msgstr "Wartet bis zu {seconds} s, bis {} in der neuen Ausgabe erscheint.{}"
+
+msgid "Waits {seconds} s"
+msgstr "Wartet {seconds} s"
+
+msgid "Your changes haven't been saved. Discard them and open a new macro?"
+msgstr "Ihre Änderungen wurden nicht gespeichert. Verwerfen und ein neues Makro öffnen?"
+
+msgid "Your changes haven't been saved. Discard them and open “{}”?"
+msgstr "Ihre Änderungen wurden nicht gespeichert. Verwerfen und „{}“ öffnen?"
+
+msgid "an empty string"
+msgstr "eine leere Zeichenfolge"
+
+msgid "claude was not found on PATH. Run “terminal: install claude code” from the command palette first."
+msgstr "claude wurde im PATH nicht gefunden. Führen Sie zuerst „Terminal: Claude Code installieren (offizieller Befehl)“ in der Befehlspalette aus."
+
+msgid "claude was not found on the remote host. Install it by running this command in a terminal on the remote host:\ncurl -fsSL https://claude.ai/install.sh | bash\nIt is installed to `~/.local/bin/claude` and can be launched from then on."
+msgstr "claude wurde auf dem Remote-Host nicht gefunden. Installieren Sie es, indem Sie diesen Befehl in einem Terminal auf dem Remote-Host ausführen:\ncurl -fsSL https://claude.ai/install.sh | bash\nEs wird in `~/.local/bin/claude` installiert und kann danach gestartet werden."
+
+msgid "no count"
+msgstr "keine Anzahl"
+
+msgid "npm was not found on PATH. Installing Claude Code requires Node.js. Install Node.js from https://nodejs.org/ and try again."
+msgstr "npm wurde im PATH nicht gefunden. Zum Installieren von Claude Code ist Node.js erforderlich. Installieren Sie Node.js von https://nodejs.org/, und versuchen Sie es erneut."
+
+msgid "npm was not found on the remote host. Install Node.js in a terminal on the remote host and try again."
+msgstr "npm wurde auf dem Remote-Host nicht gefunden. Installieren Sie Node.js in einem Terminal auf dem Remote-Host, und versuchen Sie es erneut."
+
+msgid "repeat {}, step"
+msgstr "Wiederholung {}, Schritt"
+
+msgid "repeat {}/{count}, step"
+msgstr "Wiederholung {}/{count}, Schritt"
+
+msgid "run {}, step {step}"
+msgstr "Durchlauf {}, Schritt {step}"
+
+msgid "run {}/{count}, step {step}"
+msgstr "Durchlauf {}/{count}, Schritt {step}"
+
+msgid "telnet was not found. Add “Telnet Client” from Windows “Optional features”, or run `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` in PowerShell as an administrator."
+msgstr "telnet wurde nicht gefunden. Fügen Sie unter „Optionale Features“ von Windows den „Telnet-Client“ hinzu, oder führen Sie `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` in PowerShell als Administrator aus."
+
+msgid "the expected text"
+msgstr "der erwartete Text"
+
+msgid "the output after the last send"
+msgstr "der Ausgabe nach dem letzten Senden"
+
+msgid "the text to match"
+msgstr "der zu suchende Text"
+
+msgid "the value of ${{{name}}}"
+msgstr "dem Wert von ${{{name}}}"
+
+msgid "the variable's value"
+msgstr "dem Wert der Variablen"
+
+msgid "the whole screen"
+msgstr "dem gesamten Bildschirm"
+
+msgid "until stopped"
+msgstr "bis zum Abbruch"
+
+msgid "{base} (copy {suffix})"
+msgstr "{base} (Kopie {suffix})"
+
+msgid "{base} (copy)"
+msgstr "{base} (Kopie)"
+
+msgid "{count} step"
+msgid_plural "{count} steps"
+msgstr[0] "{count} Schritt"
+msgstr[1] "{count} Schritte"
+
+msgid "{count} time"
+msgid_plural "{count} times"
+msgstr[0] "{count}-mal"
+msgstr[1] "{count}-mal"
+
+msgid "{detail} → {inner_iteration} {}/{} “{}”"
+msgstr "{detail} → {inner_iteration} {}/{} „{}“"
+
+msgid "{detail}, branch: {}"
+msgstr "{detail}, Verzweigung: {}"
+
+msgid "{display_path}\nClick to open it in the editor and follow its end."
+msgstr "{display_path}\nKlicken, um die Datei im Editor zu öffnen und ihrem Ende zu folgen."
+
+msgid "{heading}: {count} step (edit deeper nesting in the JSON file)"
+msgid_plural "{heading}: {count} steps (edit deeper nesting in the JSON file)"
+msgstr[0] "{heading}: {count} Schritt (tiefere Verschachtelung in der JSON-Datei bearbeiten)"
+msgstr[1] "{heading}: {count} Schritte (tiefere Verschachtelung in der JSON-Datei bearbeiten)"
+
+msgid "{later} gets its value only after this step. Here it stays as written."
+msgstr "{later} erhält seinen Wert erst nach diesem Schritt. Hier bleibt es unverändert."
+
+msgid "{problem}. Fix it in terminal_sessions.json. Saving here keeps it as it was, but a macro that contains it can't be run."
+msgstr "{problem}. Korrigieren Sie dies in terminal_sessions.json. Beim Speichern hier bleibt es unverändert erhalten, aber ein Makro, das es enthält, kann nicht ausgeführt werden."
+
+msgid "{program} was not found on PATH."
+msgstr "{program} wurde im PATH nicht gefunden."
+
+msgid "{steps} / until stopped"
+msgstr "{steps} / bis zum Abbruch"
+
+msgid "{steps} / ×{times}"
+msgstr "{steps} / ×{times}"
+
+msgid "“{fallback}”"
+msgstr "„{fallback}“"
+
+msgid "“{text}”"
+msgstr "„{text}“"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "terminal"
+msgid "Add to Agent Thread"
+msgstr "Zum Agent-Thread hinzufügen"
+
+msgctxt "terminal"
+msgid "Clear"
+msgstr "Leeren"
+
+msgctxt "terminal"
+msgid "Stop Logging"
+msgstr "Protokollierung beenden"
+
+msgctxt "terminal"
+msgid "Zoom In"
+msgstr "Vergrößern"
+
+msgctxt "terminal"
+msgid "Zoom Out"
+msgstr "Verkleinern"
+
+msgctxt "terminal macro"
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgctxt "terminal macro"
+msgid "Collapse"
+msgstr "Zuklappen"
+
+msgctxt "terminal macro"
+msgid "Else"
+msgstr "Sonst"
+
+msgctxt "terminal macro"
+msgid "Expand"
+msgstr "Aufklappen"
+
+msgctxt "terminal macro"
+msgid "New"
+msgstr "Neu"
+
+msgctxt "terminal macro"
+msgid "On Timeout"
+msgstr "Bei Zeitüberschreitung"
+
+msgctxt "terminal macro"
+msgid "Target"
+msgstr "Ziel"
+
+msgctxt "terminal macro"
+msgid "Then"
+msgstr "Dann"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "Verzweigung"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "Bildschirm leeren"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "Wiederholung"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "Senden"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "Variable festlegen"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "Pause"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "Unbekannter Schritt"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "Auf Text warten"
+
+msgctxt "terminal tab title"
+msgid "Failed to spawn terminal"
+msgstr "Terminal konnte nicht gestartet werden"

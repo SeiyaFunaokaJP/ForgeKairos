@@ -52,7 +52,8 @@ enum Command {
         #[arg(long)]
         skip_tests: bool,
     },
-    /// List string literals with Japanese in them in `crates/`, split into test and non-test code.
+    /// List string literals with Japanese, Chinese or Korean in them in `crates/`, split into test
+    /// and non-test code.
     Scan {
         #[arg(long, default_value = ".")]
         repo: PathBuf,
@@ -73,7 +74,7 @@ enum Command {
         /// A file listing allowed paths, one per line (`#` starts a comment).
         #[arg(long)]
         allow_list: Option<PathBuf>,
-        /// Instead of Japanese, list the literals outside tests that name upstream's
+        /// Instead of CJK text, list the literals outside tests that name upstream's
         /// application, other than the messages of the i18n macros, and exit with 1 when one
         /// is missing from `tooling/i18n/brand_sources.txt` or a line there matches nothing.
         #[arg(long, conflicts_with_all = ["fail_on_prod", "allow", "allow_list"])]
@@ -221,7 +222,7 @@ fn main() -> Result<()> {
     }
 }
 
-/// Crates whose Japanese belongs to the translation machinery itself (test catalogs, examples).
+/// Crates whose CJK text belongs to the translation machinery itself (test catalogs, examples).
 const I18N_CRATES: [&str; 4] = ["i18n", "i18n_catalog", "i18n_settings", "i18n_macros"];
 
 fn scan(
@@ -294,7 +295,7 @@ fn scan(
             .filter(|literal| !literal.in_test && !is_allowed(&literal.crate_name, &literal.path))
             .count();
         if offending > 0 {
-            eprintln!("{offending} Japanese literals outside tests (run with --list to see them)");
+            eprintln!("{offending} CJK literals outside tests (run with --list to see them)");
             std::process::exit(1);
         }
     }

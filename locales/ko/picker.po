@@ -1,0 +1,36 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Actions…"
+msgstr "작업…"
+
+msgid "No matches"
+msgstr "일치 항목 없음"
+
+msgid "Open"
+msgstr "열기"
+
+msgid "Preview"
+msgstr "미리 보기"
+
+msgid "Preview Below"
+msgstr "아래에 미리 보기"
+
+msgid "Preview to the Right"
+msgstr "오른쪽에 미리 보기"
+
+msgid "Project Scan in Progress…"
+msgstr "프로젝트 스캔 진행 중…"
+
+msgid "Select"
+msgstr "선택"
+
+msgid "Toggle Multi Select"
+msgstr "다중 선택 전환"

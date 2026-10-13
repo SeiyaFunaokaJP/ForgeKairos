@@ -1,0 +1,28 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Adapter Logs"
+msgstr "어댑터 로그"
+
+msgid "DAP Logs"
+msgstr "DAP 로그"
+
+msgid "Initialization Sequence"
+msgstr "초기화 시퀀스"
+
+msgid "No adapter selected"
+msgstr "선택된 어댑터 없음"
+
+msgid "RPC Messages"
+msgstr "RPC 메시지"
+
+msgctxt "dap log"
+msgid "Clear"
+msgstr "지우기"

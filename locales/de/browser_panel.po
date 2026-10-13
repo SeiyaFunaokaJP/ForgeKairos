@@ -1,0 +1,228 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "AI Browser"
+msgstr "KI-Browser"
+
+msgid "AI agents open the browser tabs they drive here, to debug web apps. These AI tabs use their own browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents."
+msgstr "KI-Agenten öffnen hier die Browser-Tabs, die sie steuern, um Web-Apps zu debuggen. Diese KI-Tabs verwenden ein eigenes Browserprofil, und ihr Datenverkehr ist auf die Netzwerk-Zulassungsliste beschränkt; localhost ist immer zugelassen. Ihre eigenen Browser-Tabs werden KI-Agenten nie angezeigt."
+
+msgid "AI control is off"
+msgstr "KI-Steuerung ist ausgeschaltet"
+
+msgid "AI control of the built-in browser is off, so AI agents cannot open tabs here."
+msgstr "Die KI-Steuerung des integrierten Browsers ist ausgeschaltet, daher können KI-Agenten hier keine Tabs öffnen."
+
+msgid "AI control of the built-in browser is on: AI agents can open and drive tabs here."
+msgstr "Die KI-Steuerung des integrierten Browsers ist eingeschaltet: KI-Agenten können hier Tabs öffnen und steuern."
+
+msgid "AI control paused"
+msgstr "KI-Steuerung angehalten"
+
+msgid "AI is operating…"
+msgstr "KI steuert…"
+
+msgid "AI tab: separate profile, network limited to the allowlist"
+msgstr "KI-Tab: eigenes Profil, Netzwerk auf die Zulassungsliste beschränkt"
+
+msgid "AI tabs need the network allowlist proxy, which is not running, so this tab cannot open pages."
+msgstr "KI-Tabs benötigen den Proxy der Netzwerk-Zulassungsliste, der nicht läuft, daher kann dieser Tab keine Seiten öffnen."
+
+msgid "Add Folder"
+msgstr "Ordner hinzufügen"
+
+msgid "Back"
+msgstr "Zurück"
+
+msgid "Blocked a download in this AI tab: {url}"
+msgstr "Download in diesem KI-Tab blockiert: {url}"
+
+msgid "Blocked {url}: AI tabs only open http and https pages on the network allowlist."
+msgstr "{url} blockiert: KI-Tabs öffnen nur http- und https-Seiten aus der Netzwerk-Zulassungsliste."
+
+msgid "Bookmark This Page"
+msgstr "Lesezeichen für diese Seite hinzufügen"
+
+msgid "Bookmarks are still loading. Try again in a moment."
+msgstr "Lesezeichen werden noch geladen. Versuchen Sie es gleich erneut."
+
+msgid "Browser"
+msgstr "Browser"
+
+msgid "Browser Panel"
+msgstr "Browser-Panel"
+
+msgid "Close Bookmarks"
+msgstr "Lesezeichen schließen"
+
+msgid "Copied the selection to the clipboard. Paste it to ask your question."
+msgstr "Die Auswahl wurde in die Zwischenablage kopiert. Fügen Sie sie ein, um Ihre Frage zu stellen."
+
+msgid "Couldn't load the page."
+msgstr "Die Seite konnte nicht geladen werden."
+
+msgid "Couldn't save the bookmarks."
+msgstr "Die Lesezeichen konnten nicht gespeichert werden."
+
+msgid "Delete"
+msgstr "Löschen"
+
+msgid "Delete the folder and everything in it?"
+msgstr "Den Ordner und seinen gesamten Inhalt löschen?"
+
+msgid "Delete?"
+msgstr "Löschen?"
+
+msgid "Edit"
+msgstr "Bearbeiten"
+
+msgid "Edit Folder"
+msgstr "Ordner bearbeiten"
+
+msgid "Enter a URL or search terms"
+msgstr "URL oder Suchbegriffe eingeben"
+
+msgid "Enter a URL."
+msgstr "Geben Sie eine URL ein."
+
+msgid "Enter a name."
+msgstr "Geben Sie einen Namen ein."
+
+msgid "Forward"
+msgstr "Vorwärts"
+
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+msgid "Move to Editor Area"
+msgstr "In den Editorbereich verschieben"
+
+msgid "New AI Tab"
+msgstr "Neuer KI-Tab"
+
+msgid "New Tab"
+msgstr "Neuer Tab"
+
+msgid "No bookmarks yet. Use the star button in the toolbar to add the current page."
+msgstr "Noch keine Lesezeichen. Fügen Sie die aktuelle Seite mit der Stern-Schaltfläche in der Symbolleiste hinzu."
+
+msgid "Open Developer Tools"
+msgstr "Entwicklertools öffnen"
+
+msgid "Open Download Page"
+msgstr "Downloadseite öffnen"
+
+msgid "Open This Page at Startup"
+msgstr "Diese Seite beim Start öffnen"
+
+msgid "Open a page first."
+msgstr "Öffnen Sie zuerst eine Seite."
+
+msgid "Open in External Browser"
+msgstr "Im externen Browser öffnen"
+
+msgid "Open the Setting"
+msgstr "Einstellung öffnen"
+
+msgid "Reload"
+msgstr "Neu laden"
+
+msgid "Resume"
+msgstr "Fortsetzen"
+
+msgid "Save"
+msgstr "Speichern"
+
+msgid "Set the startup page to {url}."
+msgstr "Die Startseite wurde auf {url} festgelegt."
+
+msgid "Show Folder Contents"
+msgstr "Ordnerinhalt anzeigen"
+
+msgid "Show Window"
+msgstr "Fenster anzeigen"
+
+msgid "Shown in a separate window"
+msgstr "In einem separaten Fenster angezeigt"
+
+msgid "Split Right"
+msgstr "Nach rechts teilen"
+
+msgid "Starting the built-in browser…"
+msgstr "Integrierter Browser wird gestartet…"
+
+msgid "Stop AI"
+msgstr "KI stoppen"
+
+msgid "The AI tab's browser could not start: {detail}"
+msgstr "Der Browser des KI-Tabs konnte nicht gestartet werden: {detail}"
+
+msgid "The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime."
+msgstr "Die WebView2-Runtime wurde nicht gefunden. Installieren Sie die Microsoft Edge WebView2-Runtime."
+
+msgid "The built-in browser couldn't be started in this window."
+msgstr "Der integrierte Browser konnte in diesem Fenster nicht gestartet werden."
+
+msgid "The built-in browser isn't supported on this platform."
+msgstr "Der integrierte Browser wird auf dieser Plattform nicht unterstützt."
+
+msgid "This page stopped working."
+msgstr "Diese Seite funktioniert nicht mehr."
+
+msgid "Top Level"
+msgstr "Oberste Ebene"
+
+msgid "Turn On in Settings"
+msgstr "In den Einstellungen einschalten"
+
+msgid "WebKitGTK 4.1 wasn't found. Install libwebkit2gtk-4.1-0 (Debian/Ubuntu) or webkit2gtk4.1 (Fedora)."
+msgstr "WebKitGTK 4.1 wurde nicht gefunden. Installieren Sie libwebkit2gtk-4.1-0 (Debian/Ubuntu) oder webkit2gtk4.1 (Fedora)."
+
+msgid "You can also open an AI tab yourself, for example to sign in to the app under test first."
+msgstr "Sie können einen KI-Tab auch selbst öffnen, zum Beispiel, um sich vorher bei der zu testenden App anzumelden."
+
+msgid "{url} — Ctrl-click or middle-click to open in a new tab"
+msgstr "{url} — Ctrl+Klick oder Mittelklick zum Öffnen in einem neuen Tab"
+
+msgctxt "browser AI tab badge"
+msgid "AI"
+msgstr "KI"
+
+msgctxt "browser bookmark"
+msgid "Add Bookmark"
+msgstr "Lesezeichen hinzufügen"
+
+msgctxt "browser bookmark"
+msgid "Bookmarks"
+msgstr "Lesezeichen"
+
+msgctxt "browser bookmark"
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgctxt "browser bookmark"
+msgid "Edit Bookmark"
+msgstr "Lesezeichen bearbeiten"
+
+msgctxt "browser bookmark"
+msgid "Location"
+msgstr "Speicherort"
+
+msgctxt "browser bookmark"
+msgid "Move Down"
+msgstr "Nach unten verschieben"
+
+msgctxt "browser bookmark"
+msgid "Move Up"
+msgstr "Nach oben verschieben"
+
+msgctxt "browser bookmark"
+msgid "Name"
+msgstr "Name"

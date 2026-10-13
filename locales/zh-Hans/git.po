@@ -1,0 +1,378 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"{name}\" cannot be used as a branch name."
+msgstr "“{name}”不能用作分支名称。"
+
+msgid "\"{name}\" is the repository's default branch, so it cannot be the MR branch. Choose another name."
+msgstr "“{name}”是仓库的默认分支，因此不能作为 MR 分支。请选择其他名称。"
+
+msgid "\"{prefix}:\" can only be used while the graph shows all branches."
+msgstr "只有在图中显示所有分支时才能使用“{prefix}:”。"
+
+msgid "\"{prefix}:\" cannot be used in a file's history."
+msgstr "不能在文件的历史记录中使用“{prefix}:”。"
+
+msgid "\"{prefix}:{value}\" names the whole repository, so it does not narrow the search. Write the name of a file or folder."
+msgstr "“{prefix}:{value}”指向整个仓库，因此无法缩小搜索范围。请填写文件或文件夹的名称。"
+
+msgid "\"{scratch_branch}\" is not a scratch branch, so it cannot be deleted."
+msgstr "“{scratch_branch}”不是临时分支，因此无法删除。"
+
+msgid "\"{scratch_branch}\" is not a scratch branch, so the MR branch cannot be built on it."
+msgstr "“{scratch_branch}”不是临时分支，因此无法在其上构建 MR 分支。"
+
+msgid "\"{what}\" needs git {minimum} or later (this git is {version})."
+msgstr "“{what}”需要 git {minimum} 或更高版本（当前 git 为 {version}）。"
+
+msgid "A branch name cannot contain \"..\", \"@{{\" or \"//\"."
+msgstr "分支名称不能包含“..”、“@{{”或“//”。"
+
+msgid "A branch name cannot contain spaces."
+msgstr "分支名称不能包含空格。"
+
+msgid "A branch name cannot contain ~ ^ : ? * [ \\."
+msgstr "分支名称不能包含 ~ ^ : ? * [ \\。"
+
+msgid "A branch name cannot have a part that starts with \".\" or ends with \".lock\"."
+msgstr "分支名称中不能有以“.”开头或以“.lock”结尾的部分。"
+
+msgid "A branch name cannot start or end with \"/\", or end with \".\"."
+msgstr "分支名称不能以“/”开头或结尾，也不能以“.”结尾。"
+
+msgid "A branch name cannot start with \"-\"."
+msgstr "分支名称不能以“-”开头。"
+
+msgid "A branch name cannot start with \"refs/\"."
+msgstr "分支名称不能以“refs/”开头。"
+
+msgid "A rebase may have stopped partway (git before {major}.{minor} cannot tell for sure)"
+msgstr "变基可能中途停止了（git {major}.{minor} 之前的版本无法确定）"
+
+msgid "A row has no commits."
+msgstr "有一行不包含任何提交。"
+
+msgid "An old git (older than {minimum}; this one is {version}) cannot turn off hooks, so the AI cannot run git commands. Update git to let it."
+msgstr "旧版 git（早于 {minimum}；当前为 {version}）无法关闭钩子，因此 AI 无法运行 git 命令。请更新 git 以允许其运行。"
+
+msgid "Branch \"{branch}\" cannot be used in a search."
+msgstr "分支“{branch}”不能用于搜索。"
+
+msgid "Cannot read \"sha:{value}\". Write 4 to 40 hexadecimal digits."
+msgstr "无法读取“sha:{value}”。请填写 4 到 40 位十六进制数字。"
+
+msgid "Cannot read \"{prefix}:{value}\". Write one of yes, no or only."
+msgstr "无法读取“{prefix}:{value}”。请填写 yes、no 或 only 之一。"
+
+msgid "Cannot read the date in \"{prefix}:{value}\". Write it like 2026-09-01, \"2026-09-01 12:00\", or 3d, 2w, 1m, 1y."
+msgstr "无法读取“{prefix}:{value}”中的日期。请按 2026-09-01、\"2026-09-01 12:00\" 或 3d、2w、1m、1y 这样的格式填写。"
+
+msgid "Could not determine the base commit."
+msgstr "无法确定基准提交。"
+
+msgid "Could not determine the commits in the MR box."
+msgstr "无法确定 MR 收集箱中的提交。"
+
+msgid "Could not determine the range to rewrite."
+msgstr "无法确定要改写的范围。"
+
+msgid "Could not search the commits: {error}"
+msgstr "无法搜索提交：{error}"
+
+msgid "Enter a commit message."
+msgstr "请输入提交消息。"
+
+msgid "Enter an MR branch name."
+msgstr "请输入 MR 分支名称。"
+
+msgid "Names starting with \"{prefix}\" are kept for scratch branches."
+msgstr "以“{prefix}”开头的名称保留给临时分支使用。"
+
+msgid "No tag has \"{value}\" in its name."
+msgstr "没有名称中包含“{value}”的标签。"
+
+msgid "Only one \"{prefix}:\" condition can be given."
+msgstr "只能指定一个“{prefix}:”条件。"
+
+msgid "Squashed commits need a message."
+msgstr "压缩后的提交需要消息。"
+
+msgid "Stopped because the ignored local files {names} and {count} more would be overwritten and lost during the rewrite. Move them somewhere else and try again."
+msgstr "由于被忽略的本地文件 {names} 及另外 {count} 个文件会在改写过程中被覆盖并丢失，已停止。请将它们移到其他位置后重试。"
+
+msgid "Stopped because the ignored local files {names} would be overwritten and lost during the rewrite. Move them somewhere else and try again."
+msgstr "由于被忽略的本地文件 {names} 会在改写过程中被覆盖并丢失，已停止。请将它们移到其他位置后重试。"
+
+msgid "The \"{prefix}:\" conditions contradict each other."
+msgstr "“{prefix}:”条件相互矛盾。"
+
+msgid "The MR box has no commits."
+msgstr "MR 收集箱中没有提交。"
+
+msgid "The SSH key of the picked git account was not found: {path}"
+msgstr "找不到所选 git 账户的 SSH 密钥：{path}"
+
+msgid "The account has no email"
+msgstr "该账户没有电子邮件地址"
+
+msgid "The account has no host"
+msgstr "该账户没有主机"
+
+msgid "The account has no login"
+msgstr "该账户没有登录名"
+
+msgid "The account has no user name"
+msgstr "该账户没有用户名"
+
+msgid "The account's SSH key must be given as an absolute path"
+msgstr "账户的 SSH 密钥必须以绝对路径指定"
+
+msgid "The account's SSH key path contains a control character"
+msgstr "账户的 SSH 密钥路径包含控制字符"
+
+msgid "The account's host must be a host name such as github.com, optionally with a port"
+msgstr "账户的主机必须是 github.com 这样的主机名，可以带端口"
+
+msgid "The account's login cannot contain spaces, '/', ':' or '@'"
+msgstr "账户的登录名不能包含空格、“/”、“:”或“@”"
+
+msgid "The account's name and email cannot contain '<', '>' or control characters"
+msgstr "账户的名称和电子邮件地址不能包含“<”、“>”或控制字符"
+
+msgid "The account's signing key contains a control character"
+msgstr "账户的签名密钥包含控制字符"
+
+msgid "The author filter is empty."
+msgstr "作者筛选条件为空。"
+
+msgid "The branch to go back to is unknown, so there is no way back from the scratch branch."
+msgstr "要返回的分支未知，因此无法从临时分支返回。"
+
+msgid "The changed-text filter is empty."
+msgstr "更改文本筛选条件为空。"
+
+msgid "The commit to fold the changes into is unknown."
+msgstr "要并入更改的目标提交未知。"
+
+msgid "The default branch was not found, so \"{prefix}:\" cannot narrow the search."
+msgstr "找不到默认分支，因此“{prefix}:”无法缩小搜索范围。"
+
+msgid "The file filter \"{path}\" names the whole repository, so it does not narrow the search."
+msgstr "文件筛选条件“{path}”指向整个仓库，因此无法缩小搜索范围。"
+
+msgid "The gpg settings of the untrusted repository are not used. Committed without a signature."
+msgstr "不使用不受信任仓库的 gpg 设置。已在不签名的情况下提交。"
+
+msgid "The name of branch \"{branch}\" cannot be used in a search."
+msgstr "分支“{branch}”的名称不能用于搜索。"
+
+msgid "The original branch \"{origin_branch}\" cannot be the MR branch. Choose another name."
+msgstr "原始分支“{origin_branch}”不能作为 MR 分支。请选择其他名称。"
+
+msgid "The period is reversed (\"{since_word}\" is later than \"{until_word}\")."
+msgstr "时间段颠倒了（“{since_word}”晚于“{until_word}”）。"
+
+msgid "The sha filter \"{sha_prefix}\" is not hexadecimal."
+msgstr "sha 筛选条件“{sha_prefix}”不是十六进制数。"
+
+msgid "The version of git could not be determined, so it is not known whether git can turn off hooks, and the AI cannot run git commands."
+msgstr "无法确定 git 的版本，因此无法得知 git 能否关闭钩子，AI 无法运行 git 命令。"
+
+msgid "There are no files to fold in."
+msgstr "没有要并入的文件。"
+
+msgid "There is no branch \"{branch}\"."
+msgstr "没有分支“{branch}”。"
+
+msgid "This git ({version}) does not support rebase --autostash, so commit or stash the changes in the working tree first (git {minimum} or later is needed)."
+msgstr "此 git（{version}）不支持 rebase --autostash，请先提交或储藏工作树中的更改（需要 git {minimum} 或更高版本）。"
+
+msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot stop the repository's settings from running programs, so \"{operation}\" cannot run. Trust the project to run it."
+msgstr "此项目不受信任，而旧版 git（低于 {minimum}；当前为 {version}）无法阻止仓库设置运行程序，因此无法运行“{operation}”。信任该项目即可运行。"
+
+msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot turn off hooks, so \"{operation}\" cannot run. Trust the project to run it."
+msgstr "此项目不受信任，而旧版 git（低于 {minimum}；当前为 {version}）无法关闭钩子，因此无法运行“{operation}”。信任该项目即可运行。"
+
+msgid "core.sshCommand is set in git's configuration (Git for Windows sets it when told to use the external OpenSSH)"
+msgstr "git 配置中设置了 core.sshCommand（将 Git for Windows 设为使用外部 OpenSSH 时会写入此项）"
+
+msgid "git exited with status {code}."
+msgstr "git 已退出，状态码为 {code}。"
+
+msgid "git terminated abnormally."
+msgstr "git 异常终止。"
+
+msgid "git that connects to a remote was not run because the uploadpack / receivepack settings of the untrusted repository can start programs"
+msgstr "由于不受信任的仓库的 uploadpack / receivepack 设置可能会启动程序，未运行连接远程的 git"
+
+msgid "git was not run because the filters of the untrusted repository could not be turned off"
+msgstr "由于无法关闭不受信任的仓库的过滤器（filter），未运行 git"
+
+msgid "unknown version"
+msgstr "未知版本"
+
+msgid "{variable} is set in the environment"
+msgstr "环境变量中设置了 {variable}"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "作者"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "分支"
+
+msgctxt "commit search"
+msgid "Change"
+msgstr "更改"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "文件"
+
+msgctxt "commit search"
+msgid "Merge"
+msgstr "合并"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "起始"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "标签"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "截止"
+
+msgctxt "commit search"
+msgid "no"
+msgstr "否"
+
+msgctxt "commit search"
+msgid "only"
+msgstr "仅"
+
+msgctxt "commit search"
+msgid "yes"
+msgstr "是"
+
+msgctxt "git result"
+msgid "Checkout"
+msgstr "签出"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "拣选（cherry-pick）"
+
+msgctxt "git result"
+msgid "Commit"
+msgstr "提交"
+
+msgctxt "git result"
+msgid "Create branch"
+msgstr "创建分支"
+
+msgctxt "git result"
+msgid "Create worktree"
+msgstr "创建工作树"
+
+msgctxt "git result"
+msgid "Fetch"
+msgstr "提取"
+
+msgctxt "git result"
+msgid "Filter by file"
+msgstr "按文件筛选"
+
+msgctxt "git result"
+msgid "Force push (--force-with-lease)"
+msgstr "强制推送（--force-with-lease）"
+
+msgctxt "git result"
+msgid "Merge"
+msgstr "合并"
+
+msgctxt "git result"
+msgid "Move worktree"
+msgstr "移动工作树"
+
+msgctxt "git result"
+msgid "Pull"
+msgstr "拉取"
+
+msgctxt "git result"
+msgid "Push"
+msgstr "推送"
+
+msgctxt "git result"
+msgid "Rebase"
+msgstr "变基"
+
+msgctxt "git result"
+msgid "Remove worktree"
+msgstr "删除工作树"
+
+msgctxt "git result"
+msgid "Repair worktree"
+msgstr "修复工作树"
+
+msgctxt "git result"
+msgid "Restore checkpoint"
+msgstr "恢复到检查点"
+
+msgctxt "git result"
+msgid "Restore files"
+msgstr "还原文件"
+
+msgctxt "git result"
+msgid "Revert"
+msgstr "还原提交（revert）"
+
+msgctxt "git result"
+msgid "Search by changed text"
+msgstr "按更改内容搜索"
+
+msgctxt "git result"
+msgid "Skip this commit"
+msgstr "跳过此提交"
+
+msgctxt "git result"
+msgid "Stash including untracked files"
+msgstr "储藏（包括未跟踪的文件）"
+
+msgctxt "git result"
+msgid "Stash staged changes"
+msgstr "储藏已暂存的更改"
+
+msgctxt "git result"
+msgid "Stash that leaves newly staged files"
+msgstr "储藏（保留新暂存的文件）"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "切换分支"
+
+msgctxt "git sequencer"
+msgid "cherry-pick"
+msgstr "拣选（cherry-pick）"
+
+msgctxt "git sequencer"
+msgid "rebase"
+msgstr "变基（rebase）"
+
+msgctxt "git sequencer"
+msgid "revert"
+msgstr "还原提交（revert）"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

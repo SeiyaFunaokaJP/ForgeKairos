@@ -8,8 +8,8 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgid "// Zed egress allowlist (.forgekairos-docs/DESIGN.md §4)\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
-msgstr "// ForgeKairos egress allowlist (.forgekairos-docs/DESIGN.md §4)\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgid "// Zed egress allowlist\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// ForgeKairos egress allowlist\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
 
 msgid "A command server: Zed starts the executable and talks to it over standard input and output."
 msgstr "A command server: ForgeKairos starts the executable and talks to it over standard input and output."
@@ -141,6 +141,9 @@ msgstr "Or set the {} env var and restart ForgeKairos."
 
 msgid "Paste a GitHub .md URL to fetch it and fill out the form. For private files, Zed retries using GITHUB_TOKEN, if set."
 msgstr "Paste a GitHub .md URL to fetch it and fill out the form. For private files, ForgeKairos retries using GITHUB_TOKEN, if set."
+
+msgid "Patterns Zed skips when scanning your open local projects. Excluded files may still produce watcher events."
+msgstr "Patterns ForgeKairos skips when scanning your open local projects. Excluded files may still produce watcher events."
 
 msgid "Please restart Zed to Collaborate"
 msgstr "Please restart ForgeKairos to Collaborate"

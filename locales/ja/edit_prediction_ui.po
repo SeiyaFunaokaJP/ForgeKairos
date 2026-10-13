@@ -38,6 +38,9 @@ msgstr "Copilot Edit Predictions を起動できません: {}"
 msgid "Copilot: Next Edit Suggestions"
 msgstr "Copilot: 次の編集候補"
 
+msgid "Default"
+msgstr "既定"
+
 msgid "Disable Copilot Edit Predictions"
 msgstr "Copilot Edit Predictions を無効化"
 
@@ -55,6 +58,9 @@ msgstr "言語サーバーの補完候補がないときに、予測をインラ
 
 msgid "Edit Prediction"
 msgstr "編集予測"
+
+msgid "Edit Prediction Context"
+msgstr "編集予測のコンテキスト"
 
 msgid "Edit Predictions"
 msgstr "編集予測"
@@ -74,6 +80,9 @@ msgstr "使用するには有効化"
 msgid "Expected Patch"
 msgstr "期待されるパッチ"
 
+msgid "Experiment"
+msgstr "実験"
+
 msgid "Explain what's bad about it before reporting it"
 msgstr "報告する前に、何が問題かを説明してください"
 
@@ -89,8 +98,17 @@ msgstr "無料枠の上限に達しました"
 msgid "From most recent to oldest"
 msgstr "新しい順"
 
+msgid "GitHub Copilot Edit Predictions"
+msgstr "GitHub Copilot の編集予測"
+
 msgid "Go to Copilot Settings"
 msgstr "Copilot の設定を開く"
+
+msgid "Go to next run"
+msgstr "次の実行へ移動"
+
+msgid "Go to previous run"
+msgstr "前の実行へ移動"
 
 msgid "Good Prediction"
 msgstr "良好な予測"
@@ -127,6 +145,9 @@ msgstr "データは収集されません。"
 
 msgid "No edits produced."
 msgstr "編集は生成されませんでした。"
+
+msgid "No retrieval runs yet"
+msgstr "取得の実行はまだありません"
 
 msgid "Ollama model not configured — configure a model before use"
 msgstr "Ollama のモデルが未設定です。使用する前にモデルを設定してください。"
@@ -238,3 +259,11 @@ msgstr "GitHub アカウントの作成から 30 日が経過していません�
 
 msgid "{tooltip_text} • Trigger: {trigger_tooltip}"
 msgstr "{tooltip_text} • トリガー: {trigger_tooltip}"
+
+msgctxt "edit prediction display mode"
+msgid "Eager"
+msgstr "積極的"
+
+msgctxt "edit prediction display mode"
+msgid "Subtle"
+msgstr "控えめ"

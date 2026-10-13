@@ -14,5 +14,8 @@ msgstr "キーバインドを変更…"
 msgid "Execute a command..."
 msgstr "コマンドを実行..."
 
+msgid "Remove from Command History"
+msgstr "コマンド履歴から削除"
+
 msgid "Run"
 msgstr "実行"

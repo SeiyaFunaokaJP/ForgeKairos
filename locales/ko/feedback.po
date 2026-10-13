@@ -1,0 +1,18 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Copied into clipboard"
+msgstr "클립보드에 복사됨"
+
+msgid "Installed extensions ({}):\n{}"
+msgstr "설치된 확장 프로그램 ({}):\n{}"
+
+msgid "No extensions installed."
+msgstr "설치된 확장 프로그램이 없습니다."

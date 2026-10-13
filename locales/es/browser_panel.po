@@ -1,0 +1,228 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "AI Browser"
+msgstr "Navegador de IA"
+
+msgid "AI agents open the browser tabs they drive here, to debug web apps. These AI tabs use their own browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents."
+msgstr "Los agentes de IA abren aquí las pestañas del navegador que controlan, para depurar aplicaciones web. Estas pestañas de IA usan su propio perfil de navegador y su tráfico se limita a la lista de permitidos de red; localhost siempre está permitido. Sus propias pestañas del navegador nunca se muestran a los agentes de IA."
+
+msgid "AI control is off"
+msgstr "El control por IA está desactivado"
+
+msgid "AI control of the built-in browser is off, so AI agents cannot open tabs here."
+msgstr "El control del navegador integrado por la IA está desactivado, por lo que los agentes de IA no pueden abrir pestañas aquí."
+
+msgid "AI control of the built-in browser is on: AI agents can open and drive tabs here."
+msgstr "El control del navegador integrado por la IA está activado: los agentes de IA pueden abrir y controlar pestañas aquí."
+
+msgid "AI control paused"
+msgstr "Control por IA en pausa"
+
+msgid "AI is operating…"
+msgstr "La IA está operando…"
+
+msgid "AI tab: separate profile, network limited to the allowlist"
+msgstr "Pestaña de IA: perfil independiente, red limitada a la lista de permitidos"
+
+msgid "AI tabs need the network allowlist proxy, which is not running, so this tab cannot open pages."
+msgstr "Las pestañas de IA necesitan el proxy de la lista de permitidos de red, que no se está ejecutando, por lo que esta pestaña no puede abrir páginas."
+
+msgid "Add Folder"
+msgstr "Agregar carpeta"
+
+msgid "Back"
+msgstr "Atrás"
+
+msgid "Blocked a download in this AI tab: {url}"
+msgstr "Se bloqueó una descarga en esta pestaña de IA: {url}"
+
+msgid "Blocked {url}: AI tabs only open http and https pages on the network allowlist."
+msgstr "Se bloqueó {url}: las pestañas de IA solo abren páginas http y https que están en la lista de permitidos de red."
+
+msgid "Bookmark This Page"
+msgstr "Agregar esta página a marcadores"
+
+msgid "Bookmarks are still loading. Try again in a moment."
+msgstr "Los marcadores todavía se están cargando. Inténtelo de nuevo en un momento."
+
+msgid "Browser"
+msgstr "Navegador"
+
+msgid "Browser Panel"
+msgstr "Panel del navegador"
+
+msgid "Close Bookmarks"
+msgstr "Cerrar marcadores"
+
+msgid "Copied the selection to the clipboard. Paste it to ask your question."
+msgstr "Se copió la selección en el portapapeles. Péguela para hacer su pregunta."
+
+msgid "Couldn't load the page."
+msgstr "No se pudo cargar la página."
+
+msgid "Couldn't save the bookmarks."
+msgstr "No se pudieron guardar los marcadores."
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Delete the folder and everything in it?"
+msgstr "¿Eliminar la carpeta y todo su contenido?"
+
+msgid "Delete?"
+msgstr "¿Eliminar?"
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "Edit Folder"
+msgstr "Editar carpeta"
+
+msgid "Enter a URL or search terms"
+msgstr "Escriba una URL o términos de búsqueda"
+
+msgid "Enter a URL."
+msgstr "Escriba una URL."
+
+msgid "Enter a name."
+msgstr "Escriba un nombre."
+
+msgid "Forward"
+msgstr "Adelante"
+
+msgid "Loading…"
+msgstr "Cargando…"
+
+msgid "Move to Editor Area"
+msgstr "Mover al área del editor"
+
+msgid "New AI Tab"
+msgstr "Nueva pestaña de IA"
+
+msgid "New Tab"
+msgstr "Nueva pestaña"
+
+msgid "No bookmarks yet. Use the star button in the toolbar to add the current page."
+msgstr "Todavía no hay marcadores. Use el botón de estrella de la barra de herramientas para agregar la página actual."
+
+msgid "Open Developer Tools"
+msgstr "Abrir herramientas de desarrollo"
+
+msgid "Open Download Page"
+msgstr "Abrir página de descarga"
+
+msgid "Open This Page at Startup"
+msgstr "Abrir esta página al iniciar"
+
+msgid "Open a page first."
+msgstr "Abra primero una página."
+
+msgid "Open in External Browser"
+msgstr "Abrir en el navegador externo"
+
+msgid "Open the Setting"
+msgstr "Abrir la configuración"
+
+msgid "Reload"
+msgstr "Recargar"
+
+msgid "Resume"
+msgstr "Reanudar"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Set the startup page to {url}."
+msgstr "Se estableció la página de inicio en {url}."
+
+msgid "Show Folder Contents"
+msgstr "Mostrar el contenido de la carpeta"
+
+msgid "Show Window"
+msgstr "Mostrar ventana"
+
+msgid "Shown in a separate window"
+msgstr "Se muestra en una ventana independiente"
+
+msgid "Split Right"
+msgstr "Dividir hacia la derecha"
+
+msgid "Starting the built-in browser…"
+msgstr "Iniciando el navegador integrado…"
+
+msgid "Stop AI"
+msgstr "Detener la IA"
+
+msgid "The AI tab's browser could not start: {detail}"
+msgstr "No se pudo iniciar el navegador de la pestaña de IA: {detail}"
+
+msgid "The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime."
+msgstr "No se encontró el runtime de WebView2. Instale Microsoft Edge WebView2 Runtime."
+
+msgid "The built-in browser couldn't be started in this window."
+msgstr "No se pudo iniciar el navegador integrado en esta ventana."
+
+msgid "The built-in browser isn't supported on this platform."
+msgstr "El navegador integrado no es compatible con esta plataforma."
+
+msgid "This page stopped working."
+msgstr "Esta página dejó de funcionar."
+
+msgid "Top Level"
+msgstr "Nivel superior"
+
+msgid "Turn On in Settings"
+msgstr "Activar en la configuración"
+
+msgid "WebKitGTK 4.1 wasn't found. Install libwebkit2gtk-4.1-0 (Debian/Ubuntu) or webkit2gtk4.1 (Fedora)."
+msgstr "No se encontró WebKitGTK 4.1. Instale libwebkit2gtk-4.1-0 (Debian/Ubuntu) o webkit2gtk4.1 (Fedora)."
+
+msgid "You can also open an AI tab yourself, for example to sign in to the app under test first."
+msgstr "También puede abrir una pestaña de IA usted mismo, por ejemplo para iniciar sesión antes en la aplicación que se está probando."
+
+msgid "{url} — Ctrl-click or middle-click to open in a new tab"
+msgstr "{url} — Ctrl+clic o clic con el botón central para abrir en una nueva pestaña"
+
+msgctxt "browser AI tab badge"
+msgid "AI"
+msgstr "IA"
+
+msgctxt "browser bookmark"
+msgid "Add Bookmark"
+msgstr "Agregar marcador"
+
+msgctxt "browser bookmark"
+msgid "Bookmarks"
+msgstr "Marcadores"
+
+msgctxt "browser bookmark"
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgctxt "browser bookmark"
+msgid "Edit Bookmark"
+msgstr "Editar marcador"
+
+msgctxt "browser bookmark"
+msgid "Location"
+msgstr "Ubicación"
+
+msgctxt "browser bookmark"
+msgid "Move Down"
+msgstr "Bajar"
+
+msgctxt "browser bookmark"
+msgid "Move Up"
+msgstr "Subir"
+
+msgctxt "browser bookmark"
+msgid "Name"
+msgstr "Nombre"

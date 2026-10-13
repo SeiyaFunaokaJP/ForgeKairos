@@ -1,0 +1,966 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " Checks right away without waiting."
+msgstr " 不等待，立即检查。"
+
+msgid " If it doesn't, runs the “On Timeout” steps and moves on."
+msgstr " 如果未出现，则运行“超时时”步骤并继续。"
+
+msgid " If it doesn't, stops the macro."
+msgstr " 如果未出现，则中止宏。"
+
+msgid " On a match, puts the line found into ${{{name}}}."
+msgstr " 匹配时，将找到的行放入 ${{{name}}}。"
+
+msgid " On a match, puts the matched part into ${{{name}}}."
+msgstr " 匹配时，将匹配的部分放入 ${{{name}}}。"
+
+msgid " Puts the line found into ${{{name}}}."
+msgstr " 将找到的行放入 ${{{name}}}。"
+
+msgid " Puts the matched part into ${{{name}}}."
+msgstr " 将匹配的部分放入 ${{{name}}}。"
+
+msgid "${{{name}}} (step {})"
+msgstr "${{{name}}}（步骤 {}）"
+
+msgid "${{{name}}} gets its value only after this branch, so “Else” runs here."
+msgstr "${{{name}}} 要在此分支之后才会获得值，因此此处运行“否则”。"
+
+msgid "(0 = repeat until stopped)"
+msgstr "（0 = 重复直到中止）"
+
+msgid "(0 repeats until stopped)"
+msgstr "（0 表示重复直到中止）"
+
+msgid "(No folder)"
+msgstr "（无文件夹）"
+
+msgid "(None)"
+msgstr "（无）"
+
+msgid "A folder with this name already exists."
+msgstr "同名文件夹已存在。"
+
+msgid "A repetition right after ${{{name}}} applies only to the last character of its value, and when the value is empty it applies to the character before it or makes the regular expression invalid. To apply it to the whole value, wrap it as (?:${{{name}}})."
+msgstr "紧跟在 ${{{name}}} 之后的重复只作用于其值的最后一个字符；值为空时，它会作用于前面的字符，或使正则表达式无效。要作用于整个值，请将其包裹为 (?:${{{name}}})。"
+
+msgid "A step of a kind this version can't run"
+msgstr "此版本无法运行的步骤类型"
+
+msgid "A step of a kind this version can't run (“{kind}”)"
+msgstr "此版本无法运行的步骤类型（“{kind}”）"
+
+msgid "A step of a kind this version can't run (“{kind}”). Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "此版本无法运行的步骤类型（“{kind}”）。保存时会保持原样，但包含它的宏无法运行。"
+
+msgid "A step of a kind this version can't run. Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "此版本无法运行的步骤类型。保存时会保持原样，但包含它的宏无法运行。"
+
+msgid "Add Step"
+msgstr "添加步骤"
+
+msgid "Add a step here"
+msgstr "在此处添加步骤"
+
+msgid "Another connection took over this shell"
+msgstr "另一个连接接管了此 Shell"
+
+msgid "Branch: runs the “Then” steps if the “Target” (output since last send / whole screen / variable) contains the “Text to match”, and the “Else” steps if not. It checks right away without waiting, so to check a response, put a “Wait for Text” step before it."
+msgstr "分支：如果“目标”（上次发送后的输出 / 整个屏幕 / 变量）包含“要匹配的文本”，则运行“那么”步骤，否则运行“否则”步骤。它不等待而立即检查，因此要检查响应，请在它前面放置一个“等待文本”步骤。"
+
+msgid "Branching on a value: set the branch's “Target” to “Variable” to check the value of that variable. A variable that has no value yet takes “Else”. Named groups of a regular expression can pull part of a value out into another variable."
+msgstr "按值分支：将分支的“目标”设置为“变量”可检查该变量的值。尚无值的变量会走“否则”。正则表达式的命名组可以将值的一部分提取到另一个变量中。"
+
+msgid "Brings the shell back to this tab (the other connection is detached)"
+msgstr "将 Shell 收回到此标签页（另一个连接将被分离）"
+
+msgid "Broadcast Input to All Panes"
+msgstr "向所有窗格同时输入"
+
+msgid "Broadcasting input"
+msgstr "正在同时输入"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cancel creating the folder"
+msgstr "取消创建文件夹"
+
+msgid "Cancel renaming"
+msgstr "取消重命名"
+
+msgid "Capture Into"
+msgstr "捕获到"
+
+msgid "Chooses the steps to run by whether the output or a variable contains some text"
+msgstr "根据输出或变量是否包含某些文本来选择要运行的步骤"
+
+msgid "Claude Code (Outside the Sandbox)"
+msgstr "Claude Code（沙盒外）"
+
+msgid "Clears the screen and the scrollback"
+msgstr "清除屏幕和回滚缓冲区"
+
+msgid "Close"
+msgstr "关闭"
+
+msgid "Close Help"
+msgstr "关闭帮助"
+
+msgid "Close Terminal Tab"
+msgstr "关闭终端标签页"
+
+msgid "Collapse All"
+msgstr "全部折叠"
+
+msgid "Connect"
+msgstr "连接"
+
+msgid "Connection name (for saving)"
+msgstr "连接名称（用于保存）"
+
+msgid "Connects to network devices over SSH or Telnet."
+msgstr "通过 SSH 或 Telnet 连接到网络设备。"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Couldn't choose a location: {error}"
+msgstr "无法选择位置：{error}"
+
+msgid "Couldn't connect: {error}"
+msgstr "无法连接：{error}"
+
+msgid "Couldn't create the folder"
+msgstr "无法创建文件夹"
+
+msgid "Couldn't delete"
+msgstr "无法删除"
+
+msgid "Couldn't delete the folder"
+msgstr "无法删除文件夹"
+
+msgid "Couldn't move the folder"
+msgstr "无法移动文件夹"
+
+msgid "Couldn't open the log: {error}"
+msgstr "无法打开日志：{error}"
+
+msgid "Couldn't reach the remote shell, so the terminal restarted with a new shell."
+msgstr "无法访问远程 Shell，因此终端已使用新的 Shell 重新启动。"
+
+msgid "Couldn't reach the remote shell, so the terminal restarted without surviving disconnects."
+msgstr "无法访问远程 Shell，因此终端已重新启动，但不再保持断线后的会话。"
+
+msgid "Couldn't rename the folder"
+msgstr "无法重命名文件夹"
+
+msgid "Couldn't restart the terminal: {error}"
+msgstr "无法重启终端：{error}"
+
+msgid "Couldn't resume logging: {error}"
+msgstr "无法恢复日志记录：{error}"
+
+msgid "Couldn't run the command in the terminal: {error}"
+msgstr "无法在终端中运行命令：{error}"
+
+msgid "Couldn't save whether the folder is open"
+msgstr "无法保存文件夹的展开状态"
+
+msgid "Couldn't save: {error}"
+msgstr "无法保存：{error}"
+
+msgid "Couldn't start logging: {error}"
+msgstr "无法开始记录日志：{error}"
+
+msgid "Create New"
+msgstr "新建"
+
+msgid "Create a folder with this name"
+msgstr "以此名称创建文件夹"
+
+msgid "Creates a folder to group macros"
+msgstr "创建用于对宏进行分组的文件夹"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete with Macros"
+msgstr "连同宏一起删除"
+
+msgid "Delete “{name}”?"
+msgstr "删除“{name}”？"
+
+msgid "Deletes this connection (and its saved password)"
+msgstr "删除此连接（及其已保存的密码）"
+
+msgid "Deletes this step"
+msgstr "删除此步骤"
+
+msgid "Delete…"
+msgstr "删除…"
+
+msgid "Deleting the folder “{folder}”. What should happen to the macros in it?"
+msgstr "正在删除文件夹“{folder}”。其中的宏应如何处理？"
+
+msgid "Description (optional)"
+msgstr "描述（可选）"
+
+msgid "Discard and Switch"
+msgstr "放弃并切换"
+
+msgid "Drag onto a “+” along or at the end of a line to move the step"
+msgstr "拖动到线条中间或末尾的“+”上即可移动此步骤"
+
+msgid "Duplicate"
+msgstr "创建副本"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Edit Macros…"
+msgstr "编辑宏…"
+
+msgid "Edit Settings"
+msgstr "编辑设置"
+
+msgid "Edit settings.json"
+msgstr "编辑 settings.json"
+
+msgid "Edit “{name}”"
+msgstr "编辑“{name}”"
+
+msgid "Enter a folder name."
+msgstr "请输入文件夹名称。"
+
+msgid "Enter a host name or IP address."
+msgstr "请输入主机名或 IP 地址。"
+
+msgid "Enter a macro name."
+msgstr "请输入宏名称。"
+
+msgid "Enter a variable name and a value. Wherever a later step says ${{name}}, it becomes the value."
+msgstr "输入变量名和值。之后的步骤中凡是写有 ${{变量名}} 的地方，都会替换为该值。"
+
+msgid "Enter the interval in seconds, 0 or more."
+msgstr "请输入间隔秒数（0 或更大）。"
+
+msgid "Enter the repeat count as a whole number, 0 or more."
+msgstr "请输入重复次数（0 或更大的整数）。"
+
+msgid "Enter the repeat interval in seconds, 0 or more."
+msgstr "请输入重复间隔秒数（0 或更大）。"
+
+msgid "Example: Send “show version” → Wait for Text “Version (?<ver>[0-9.]+)” (regular expression) → Branch (Target: variable ver, text to match “^15\\.”, regular expression) → Then: Send “…”"
+msgstr "示例：发送“show version”→ 等待文本“Version (?<ver>[0-9.]+)”（正则表达式）→ 分支（目标：变量 ver，要匹配的文本“^15\\.”，正则表达式）→ 那么：发送“…”"
+
+msgid "Expand All"
+msgstr "全部展开"
+
+msgid "Expected text (${{variable}} allowed)"
+msgstr "期望的文本（可使用 ${{变量}}）"
+
+msgid "Failed to spawn terminal"
+msgstr "启动终端失败"
+
+msgid "File Transfer…"
+msgstr "文件传输…"
+
+msgid "Filter by folder, name, or tag"
+msgstr "按文件夹、名称或标签筛选"
+
+msgid "Filter by folder, name, or tag…"
+msgstr "按文件夹、名称或标签筛选…"
+
+msgid "Folder"
+msgstr "文件夹"
+
+msgid "Folder (e.g. Sites/HQ; optional)"
+msgstr "文件夹（例如 Sites/HQ；可选）"
+
+msgid "Folder name"
+msgstr "文件夹名称"
+
+msgid "Forgets the saved password of this connection"
+msgstr "忘记此连接已保存的密码"
+
+msgid "Hides the list of saved macros to widen the editor"
+msgstr "隐藏已保存的宏列表以加宽编辑器"
+
+msgid "Host name / IP address"
+msgstr "主机名 / IP 地址"
+
+msgid "How Branches and Variables Work"
+msgstr "分支和变量的工作方式"
+
+msgid "Inline Assist"
+msgstr "内联辅助"
+
+msgid "Install Claude Code"
+msgstr "安装 Claude Code"
+
+msgid "Interval (seconds)"
+msgstr "间隔（秒）"
+
+msgid "Invalid port number."
+msgstr "端口号无效。"
+
+msgid "Invalid regular expression: {error}"
+msgstr "正则表达式无效：{error}"
+
+msgid "Keep Editing"
+msgstr "继续编辑"
+
+msgid "Kind"
+msgstr "类型"
+
+msgid "Launch Claude Code"
+msgstr "启动 Claude Code"
+
+msgid "Launch Claude Code Outside the Sandbox"
+msgstr "在沙盒外启动 Claude Code"
+
+msgid "Loading…"
+msgstr "正在加载…"
+
+msgid "Location: {}"
+msgstr "位置：{}"
+
+msgid "Logging to {file_name}"
+msgstr "正在记录到 {file_name}"
+
+msgid "Macro"
+msgstr "宏"
+
+msgid "Macro name"
+msgstr "宏名称"
+
+msgid "Macro to Run After Connecting"
+msgstr "连接后运行的宏"
+
+msgid "Macro “{name}” finished"
+msgstr "宏“{name}”已完成"
+
+msgid "Macro “{name}”: {error}"
+msgstr "宏“{name}”：{error}"
+
+msgid "Macro: {name}"
+msgstr "宏：{name}"
+
+msgid "More Buttons"
+msgstr "更多按钮"
+
+msgid "Move Down"
+msgstr "下移"
+
+msgid "Move Macros to Unfiled"
+msgstr "将宏移至未分类"
+
+msgid "Move Up"
+msgstr "上移"
+
+msgid "New Center Terminal"
+msgstr "在中央区域新建终端"
+
+msgid "New Folder…"
+msgstr "新建文件夹…"
+
+msgid "New Macro"
+msgstr "新建宏"
+
+msgid "New Macro in Folder"
+msgstr "在文件夹中新建宏"
+
+msgid "New Terminal"
+msgstr "新建终端"
+
+msgid "New…"
+msgstr "新建…"
+
+msgid "No macros match the filter"
+msgstr "没有与筛选条件匹配的宏"
+
+msgid "No macros — add one here"
+msgstr "没有宏——在此处添加"
+
+msgid "No saved macros"
+msgstr "没有已保存的宏"
+
+msgid "No step sets ${{{name}}}, so this branch always runs “Else”."
+msgstr "没有步骤设置 ${{{name}}}，因此此分支始终运行“否则”。"
+
+msgid "No step sets {nowhere}. When the macro runs, it stays as written."
+msgstr "没有步骤设置 {nowhere}。运行宏时，它将保持原样。"
+
+msgid "Open File Transfer"
+msgstr "打开文件传输"
+
+msgid "Open Log File Location"
+msgstr "打开日志文件位置"
+
+msgid "Open Log in Editor"
+msgstr "在编辑器中打开日志"
+
+msgid "Open Settings"
+msgstr "打开设置"
+
+msgid "Opens a new macro with the same contents"
+msgstr "以相同内容打开新宏"
+
+msgid "Opens an empty macro on the right"
+msgstr "在右侧打开空宏"
+
+msgid "Opens the menu for moving and folding"
+msgstr "打开用于移动和折叠的菜单"
+
+msgid "Optional"
+msgstr "可选"
+
+msgid "Overwrite"
+msgstr "覆盖"
+
+msgid "Password (optional)"
+msgstr "密码（可选）"
+
+msgid "Paste"
+msgstr "粘贴"
+
+msgid "Paste Text"
+msgstr "粘贴文本"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "Prefixes each line of the log being recorded with the time. Takes effect from the next line."
+msgstr "在正在记录的日志的每一行前加上时间。从下一行开始生效。"
+
+msgid "Process ID (PID): {}"
+msgstr "进程 ID (PID)：{}"
+
+msgid "Quick Connect"
+msgstr "快速连接"
+
+msgid "Quick Connect…"
+msgstr "快速连接…"
+
+msgid "Reconnect"
+msgstr "重新连接"
+
+msgid "Reconnects to the remote shell and resumes its output"
+msgstr "重新连接到远程 Shell 并继续显示其输出"
+
+msgid "Record a Log"
+msgstr "记录日志"
+
+msgid "Regular Expression"
+msgstr "正则表达式"
+
+msgid "Remember password"
+msgstr "记住密码"
+
+msgid "Remote connection lost"
+msgstr "远程连接已断开"
+
+msgid "Remote connection lost. The shell keeps running on the remote host; reconnect to resume its output"
+msgstr "远程连接已断开。Shell 仍在远程主机上运行；重新连接即可继续显示其输出"
+
+msgid "Rename"
+msgstr "重命名"
+
+msgid "Rename Folder"
+msgstr "重命名文件夹"
+
+msgid "Rename to this name"
+msgstr "重命名为此名称"
+
+msgid "Renames the folder (the macros in it move along)"
+msgstr "重命名文件夹（其中的宏随之移动）"
+
+msgid "Repeat Count"
+msgstr "重复次数"
+
+msgid "Repeats the steps inside it the given number of times"
+msgstr "将其中的步骤重复指定的次数"
+
+msgid "Repeats until stopped"
+msgstr "重复直到中止"
+
+msgid "Repeats {count} time"
+msgid_plural "Repeats {count} times"
+msgstr[0] "重复 {count} 次"
+
+msgid "Rerun task"
+msgstr "重新运行任务"
+
+msgid "Restart"
+msgstr "重启"
+
+msgid "Restarts the shell in the same working directory"
+msgstr "在同一工作目录中重新启动 Shell"
+
+msgid "Restoring terminals…"
+msgstr "正在恢复终端…"
+
+msgid "Run"
+msgstr "运行"
+
+msgid "Run Macro…"
+msgstr "运行宏…"
+
+msgid "Run Repeatedly"
+msgstr "重复运行"
+
+msgid "Run Repeatedly…"
+msgstr "重复运行…"
+
+msgid "Run the Next Step"
+msgstr "运行下一个步骤"
+
+msgid "Running macro “{name}” ({detail})"
+msgstr "正在运行宏“{name}”（{detail}）"
+
+msgid "Runs the macro “{name}” repeatedly."
+msgstr "重复运行宏“{name}”。"
+
+msgid "Runs this macro with a repeat count and interval you choose."
+msgstr "以你选择的重复次数和间隔运行此宏。"
+
+msgid "Runs “Then” if {target} contains {}, and “Else” if not."
+msgstr "如果{target}包含{}，则运行“那么”，否则运行“否则”。"
+
+msgid "Runs “Then” if {target} matches the regular expression {}, and “Else” if not."
+msgstr "如果{target}与正则表达式{}匹配，则运行“那么”，否则运行“否则”。"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Saved"
+msgstr "已保存"
+
+msgid "Saved Connections"
+msgstr "已保存的连接"
+
+msgid "Saved Macros ({listed} / {total})"
+msgstr "已保存的宏（{listed} / {total}）"
+
+msgid "Saved Macros ({total})"
+msgstr "已保存的宏（{total}）"
+
+msgid "Seconds"
+msgstr "秒数"
+
+msgid "Select All"
+msgstr "全选"
+
+msgid "Send Enter at the End"
+msgstr "末尾发送 Enter"
+
+msgid "Sends text to the terminal"
+msgstr "向终端发送文本"
+
+msgid "Sets ${{{name}}} to {}. Wherever a later step says ${{{name}}}, it becomes this value."
+msgstr "将 ${{{name}}} 设置为{}。之后的步骤中凡是写有 ${{{name}}} 的地方，都会替换为此值。"
+
+msgid "Sets a variable. Wherever a later step says ${{name}}, it becomes the value"
+msgstr "设置变量。之后的步骤中凡是写有 ${{变量名}} 的地方，都会替换为该值"
+
+msgid "Setting variables: a “Set Variable” step, or the “Capture Into” field of “Wait for Text” and “Branch” (it gets the line found, or the matched part for a regular expression). A named group (?<name>…) of a regular expression puts the part it matched into the variable of that name."
+msgstr "设置变量：使用“设置变量”步骤，或“等待文本”和“分支”的“捕获到”字段（获得找到的行，使用正则表达式时为匹配的部分）。正则表达式的命名组 (?<name>…) 会将其匹配的部分放入同名变量。"
+
+msgid "Shows only the heading and summary of every step"
+msgstr "仅显示每个步骤的标题和摘要"
+
+msgid "Shows the fields of every step"
+msgstr "显示每个步骤的字段"
+
+msgid "Shows the list of saved macros"
+msgstr "显示已保存的宏列表"
+
+msgid "Spawn Task"
+msgstr "运行任务"
+
+msgid "Split Down"
+msgstr "向下拆分"
+
+msgid "Split Left"
+msgstr "向左拆分"
+
+msgid "Split Pane"
+msgstr "拆分窗格"
+
+msgid "Split Right"
+msgstr "向右拆分"
+
+msgid "Split Up"
+msgstr "向上拆分"
+
+msgid "Split into 2×2"
+msgstr "拆分为 2×2"
+
+msgid "Split into 3 Columns"
+msgstr "拆分为 3 列"
+
+msgid "Start Logging (Choose Location)…"
+msgstr "开始记录日志（选择位置）…"
+
+msgid "Start Logging (Default Location)"
+msgstr "开始记录日志（默认位置）"
+
+msgid "Starting terminal…"
+msgstr "正在启动终端…"
+
+msgid "Step {label}: enter a variable name."
+msgstr "步骤 {label}：请输入变量名。"
+
+msgid "Step {label}: enter the expected text."
+msgstr "步骤 {label}：请输入期望的文本。"
+
+msgid "Step {label}: enter the repeat count as a whole number, 0 or more."
+msgstr "步骤 {label}：请输入重复次数（0 或更大的整数）。"
+
+msgid "Step {label}: enter the text to match."
+msgstr "步骤 {label}：请输入要匹配的文本。"
+
+msgid "Step {label}: enter the variable to check."
+msgstr "步骤 {label}：请输入要检查的变量。"
+
+msgid "Step {label}: invalid number of seconds."
+msgstr "步骤 {label}：秒数无效。"
+
+msgid "Step {label}: invalid regular expression."
+msgstr "步骤 {label}：正则表达式无效。"
+
+msgid "Step {label}: the variable name can't contain $, {{ or }}."
+msgstr "步骤 {label}：变量名不能包含 $、{{ 或 }}。"
+
+msgid "Step {label}: the variable to capture into can't contain $, {{ or }}."
+msgstr "步骤 {label}：要捕获到的变量不能包含 $、{{ 或 }}。"
+
+msgid "Step {label}: the variable to check can't contain $, {{ or }}."
+msgstr "步骤 {label}：要检查的变量不能包含 $、{{ 或 }}。"
+
+msgid "Steps ({})"
+msgstr "步骤（{}）"
+
+msgid "Steps to Repeat ({})"
+msgstr "要重复的步骤（{}）"
+
+msgid "Stop Broadcasting Input to All Panes"
+msgstr "停止向所有窗格同时输入"
+
+msgid "Stop Logging"
+msgstr "停止记录日志"
+
+msgid "Stop the Macro"
+msgstr "中止宏"
+
+msgid "Stopped macro “{}”"
+msgstr "已中止宏“{}”"
+
+msgid "Tags (comma-separated, optional)"
+msgstr "标签（以逗号分隔，可选）"
+
+msgid "Terminal Panel"
+msgstr "终端面板"
+
+msgid "Text to match (${{variable}} allowed)"
+msgstr "要匹配的文本（可使用 ${{变量}}）"
+
+msgid "Text to send (${{variable}} allowed)"
+msgstr "要发送的文本（可使用 ${{变量}}）"
+
+msgid "The host name contains characters that aren't allowed."
+msgstr "主机名包含不允许的字符。"
+
+msgid "The macro \"{name}\" has unsaved edits. Do you want to save it?"
+msgstr "宏“{name}”有未保存的编辑。是否保存？"
+
+msgid "The password is kept in the OS credential manager and is never written to terminal_sessions.json"
+msgstr "密码保存在操作系统的凭据管理器中，绝不会写入 terminal_sessions.json"
+
+msgid "The remote Zed server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
+msgstr "远程 ForgeKairos 服务器不支持在断开连接后保持会话，因此终端已使用普通 Shell 重新启动。"
+
+msgid "The repeat count is empty"
+msgstr "重复次数为空"
+
+msgid "The settings file hasn't finished loading. Wait a moment and try again."
+msgstr "设置文件尚未加载完成。请稍候再试。"
+
+msgid "The terminal panel is unavailable."
+msgstr "终端面板不可用。"
+
+msgid "The user name contains characters that aren't allowed."
+msgstr "用户名包含不允许的字符。"
+
+msgid "There is no terminal to run the macro in. Open a terminal."
+msgstr "没有可运行宏的终端。请打开一个终端。"
+
+msgid "This folder already has a macro with this name."
+msgstr "此文件夹中已有同名的宏。"
+
+msgid "This macro has been changed elsewhere since this tab opened it. Do you want to overwrite it?"
+msgstr "自此标签页打开此宏以来，它已在其他地方被更改。是否覆盖？"
+
+msgid "This macro has been deleted or renamed elsewhere. Saving creates it again as “{name}”."
+msgstr "此宏已在其他地方被删除或重命名。保存将以“{name}”重新创建它。"
+
+msgid "This new macro has unsaved edits. Do you want to save it?"
+msgstr "此新宏有未保存的编辑。是否保存？"
+
+msgid "Timeout (seconds)"
+msgstr "超时（秒）"
+
+msgid "Timestamps"
+msgstr "时间戳"
+
+msgid "Transfers files with this host over SFTP / FTP"
+msgstr "通过 SFTP / FTP 与此主机传输文件"
+
+msgid "Unfiled"
+msgstr "未分类"
+
+msgid "User name (SSH)"
+msgstr "用户名（SSH）"
+
+msgid "Using variables: write ${{name}} in the text to send, the expected text, the text to match, or the value to set, and it is replaced by the value when the macro runs. To send ${{ as text, write $${{."
+msgstr "使用变量：在要发送的文本、期望的文本、要匹配的文本或要设置的值中写入 ${{name}}，运行宏时它会被替换为变量的值。要将 ${{ 作为文本发送，请写 $${{。"
+
+msgid "Value"
+msgstr "值"
+
+msgid "Value to set (${{variable}} allowed too)"
+msgstr "要设置的值（也可使用 ${{变量}}）"
+
+msgid "Variable name"
+msgstr "变量名"
+
+msgid "Variable to Check"
+msgstr "要检查的变量"
+
+msgid "Variables: none yet (create them with “Set Variable” or “Capture Into”)"
+msgstr "变量：暂无（可通过“设置变量”或“捕获到”创建）"
+
+msgid "Variables: {listed}"
+msgstr "变量：{listed}"
+
+msgid "Waits for the given number of seconds"
+msgstr "等待指定的秒数"
+
+msgid "Waits until the given text appears in the output"
+msgstr "等待直到指定的文本出现在输出中"
+
+msgid "Waits up to {seconds} s for {} to appear in new output.{}"
+msgstr "最多等待 {seconds} 秒，直到{}出现在新输出中。{}"
+
+msgid "Waits {seconds} s"
+msgstr "等待 {seconds} 秒"
+
+msgid "Your changes haven't been saved. Discard them and open a new macro?"
+msgstr "你的更改尚未保存。是否放弃更改并打开新宏？"
+
+msgid "Your changes haven't been saved. Discard them and open “{}”?"
+msgstr "你的更改尚未保存。是否放弃更改并打开“{}”？"
+
+msgid "an empty string"
+msgstr "空字符串"
+
+msgid "claude was not found on PATH. Run “terminal: install claude code” from the command palette first."
+msgstr "在 PATH 中未找到 claude。请先从命令面板运行“终端: 安装 Claude Code（官方命令）”。"
+
+msgid "claude was not found on the remote host. Install it by running this command in a terminal on the remote host:\ncurl -fsSL https://claude.ai/install.sh | bash\nIt is installed to `~/.local/bin/claude` and can be launched from then on."
+msgstr "在远程主机上未找到 claude。请在远程主机的终端中运行以下命令进行安装：\ncurl -fsSL https://claude.ai/install.sh | bash\n它将安装到 `~/.local/bin/claude`，之后即可启动。"
+
+msgid "no count"
+msgstr "无次数"
+
+msgid "npm was not found on PATH. Installing Claude Code requires Node.js. Install Node.js from https://nodejs.org/ and try again."
+msgstr "在 PATH 中未找到 npm。安装 Claude Code 需要 Node.js。请从 https://nodejs.org/ 安装 Node.js 后重试。"
+
+msgid "npm was not found on the remote host. Install Node.js in a terminal on the remote host and try again."
+msgstr "在远程主机上未找到 npm。请在远程主机的终端中安装 Node.js 后重试。"
+
+msgid "repeat {}, step"
+msgstr "重复第 {} 次，步骤"
+
+msgid "repeat {}/{count}, step"
+msgstr "重复 {}/{count}，步骤"
+
+msgid "run {}, step {step}"
+msgstr "第 {} 次运行，步骤 {step}"
+
+msgid "run {}/{count}, step {step}"
+msgstr "运行 {}/{count}，步骤 {step}"
+
+msgid "telnet was not found. Add “Telnet Client” from Windows “Optional features”, or run `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` in PowerShell as an administrator."
+msgstr "未找到 telnet。请从 Windows 的“可选功能”中添加“Telnet 客户端”，或以管理员身份在 PowerShell 中运行 `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient`。"
+
+msgid "the expected text"
+msgstr "期望的文本"
+
+msgid "the output after the last send"
+msgstr "上次发送后的输出"
+
+msgid "the text to match"
+msgstr "要匹配的文本"
+
+msgid "the value of ${{{name}}}"
+msgstr "${{{name}}} 的值"
+
+msgid "the variable's value"
+msgstr "变量的值"
+
+msgid "the whole screen"
+msgstr "整个屏幕"
+
+msgid "until stopped"
+msgstr "直到中止"
+
+msgid "{base} (copy {suffix})"
+msgstr "{base}（副本 {suffix}）"
+
+msgid "{base} (copy)"
+msgstr "{base}（副本）"
+
+msgid "{count} step"
+msgid_plural "{count} steps"
+msgstr[0] "{count} 个步骤"
+
+msgid "{count} time"
+msgid_plural "{count} times"
+msgstr[0] "{count} 次"
+
+msgid "{detail} → {inner_iteration} {}/{} “{}”"
+msgstr "{detail} → {inner_iteration} {}/{}“{}”"
+
+msgid "{detail}, branch: {}"
+msgstr "{detail}，分支：{}"
+
+msgid "{display_path}\nClick to open it in the editor and follow its end."
+msgstr "{display_path}\n点击可在编辑器中打开并跟随其末尾。"
+
+msgid "{heading}: {count} step (edit deeper nesting in the JSON file)"
+msgid_plural "{heading}: {count} steps (edit deeper nesting in the JSON file)"
+msgstr[0] "{heading}：{count} 个步骤（更深的嵌套请在 JSON 文件中编辑）"
+
+msgid "{later} gets its value only after this step. Here it stays as written."
+msgstr "{later} 要在此步骤之后才会获得值。此处它将保持原样。"
+
+msgid "{problem}. Fix it in terminal_sessions.json. Saving here keeps it as it was, but a macro that contains it can't be run."
+msgstr "{problem}。请在 terminal_sessions.json 中修正。在此处保存会保持原样，但包含它的宏无法运行。"
+
+msgid "{program} was not found on PATH."
+msgstr "在 PATH 中未找到 {program}。"
+
+msgid "{steps} / until stopped"
+msgstr "{steps} / 直到中止"
+
+msgid "{steps} / ×{times}"
+msgstr "{steps} / ×{times}"
+
+msgid "“{fallback}”"
+msgstr "“{fallback}”"
+
+msgid "“{text}”"
+msgstr "“{text}”"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "terminal"
+msgid "Add to Agent Thread"
+msgstr "添加到智能体会话"
+
+msgctxt "terminal"
+msgid "Clear"
+msgstr "清除"
+
+msgctxt "terminal"
+msgid "Stop Logging"
+msgstr "停止记录日志"
+
+msgctxt "terminal"
+msgid "Zoom In"
+msgstr "放大"
+
+msgctxt "terminal"
+msgid "Zoom Out"
+msgstr "缩小"
+
+msgctxt "terminal macro"
+msgid "Cancel"
+msgstr "中止"
+
+msgctxt "terminal macro"
+msgid "Collapse"
+msgstr "折叠"
+
+msgctxt "terminal macro"
+msgid "Else"
+msgstr "否则"
+
+msgctxt "terminal macro"
+msgid "Expand"
+msgstr "展开"
+
+msgctxt "terminal macro"
+msgid "New"
+msgstr "新建"
+
+msgctxt "terminal macro"
+msgid "On Timeout"
+msgstr "超时时"
+
+msgctxt "terminal macro"
+msgid "Target"
+msgstr "目标"
+
+msgctxt "terminal macro"
+msgid "Then"
+msgstr "那么"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "分支"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "清屏"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "重复"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "发送"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "设置变量"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "等待秒数"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "未知步骤"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "等待文本"
+
+msgctxt "terminal tab title"
+msgid "Failed to spawn terminal"
+msgstr "启动终端失败"

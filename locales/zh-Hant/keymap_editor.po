@@ -1,0 +1,240 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "<global>"
+msgstr "<全域>"
+
+msgid "<no arguments>"
+msgstr "<無引數>"
+
+msgid "Action"
+msgstr "動作"
+
+msgid "Action '{}' not found"
+msgstr "找不到動作「{}」"
+
+msgid "Action Arguments"
+msgstr "動作引數"
+
+msgid "Action name is required"
+msgstr "動作名稱為必填"
+
+msgid "Arguments"
+msgstr "引數"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot remove a keybinding that does not exist"
+msgstr "無法移除不存在的按鍵繫結"
+
+msgid "Clear Keystrokes"
+msgstr "清除按鍵輸入"
+
+msgid "Copy Action"
+msgstr "複製動作"
+
+msgid "Copy Context"
+msgstr "複製上下文"
+
+msgid "Could not save updated keybinding"
+msgstr "無法儲存更新後的按鍵繫結"
+
+msgid "Create Keybinding"
+msgstr "建立按鍵繫結"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "Edit"
+msgstr "編輯"
+
+msgid "Edit Arguments"
+msgstr "編輯引數"
+
+msgid "Edit Context"
+msgstr "編輯上下文"
+
+msgid "Edit Keybinding"
+msgstr "編輯按鍵繫結"
+
+msgid "Edit Keystroke"
+msgstr "編輯按鍵輸入"
+
+msgid "Edit in JSON"
+msgstr "在 JSON 中編輯"
+
+msgid "Edit this binding"
+msgstr "編輯此繫結"
+
+msgid "Failed to load keymap file"
+msgstr "無法載入按鍵對應檔案"
+
+msgid "Failed to parse action arguments as JSON"
+msgstr "無法將動作引數剖析為 JSON"
+
+msgid "Failed to parse key context"
+msgstr "無法剖析按鍵上下文"
+
+msgid "Failed to update keybinding"
+msgstr "無法更新按鍵繫結"
+
+msgid "Failed to validate action arguments"
+msgstr "無法驗證動作引數"
+
+msgid "Failed to write keymap file"
+msgstr "無法寫入按鍵對應檔案"
+
+msgid "Filter action names…"
+msgstr "篩選動作名稱…"
+
+msgid "Filters"
+msgstr "篩選條件"
+
+msgid "Hit it three times to execute"
+msgstr "按三次以執行"
+
+msgid "Keybinding Context"
+msgstr "按鍵繫結上下文"
+
+msgid "Keymap Editor"
+msgstr "按鍵對應編輯器"
+
+msgid "Keystrokes"
+msgstr "按鍵輸入"
+
+msgid "Keystrokes cannot be empty"
+msgstr "按鍵輸入不可為空"
+
+msgid "No Action"
+msgstr "無動作"
+
+msgid "No conflicting keybinds found"
+msgstr "找不到衝突的按鍵繫結"
+
+msgid "No conflicting keybinds found that match the provided query"
+msgstr "找不到符合所提供查詢的衝突按鍵繫結"
+
+msgid "No keybinds found matching the entered keystrokes"
+msgstr "找不到符合所輸入按鍵輸入的按鍵繫結"
+
+msgid "No matches found for the provided query"
+msgstr "找不到符合所提供查詢的結果"
+
+msgid "REC"
+msgstr "記錄"
+
+msgid "SEARCH"
+msgstr "搜尋"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Saved edits to the {} action."
+msgstr "已儲存 {} 動作的編輯內容。"
+
+msgid "Search by Keystrokes"
+msgstr "依按鍵輸入搜尋"
+
+msgid "Show Matching Keybindings"
+msgstr "顯示相符的按鍵繫結"
+
+msgid "Show matching keybinds"
+msgstr "顯示相符的按鍵繫結"
+
+msgid "Source"
+msgstr "來源"
+
+msgid "Start Recording"
+msgstr "開始記錄"
+
+msgid "Start Searching"
+msgstr "開始搜尋"
+
+msgid "Stop Recording"
+msgstr "停止記錄"
+
+msgid "Stop Searching"
+msgstr "停止搜尋"
+
+msgid "There is {count} binding with the same keystrokes."
+msgid_plural "There are {count} bindings with the same keystrokes."
+msgstr[0] "有 {count} 個按鍵繫結使用相同的按鍵輸入。"
+
+msgid "This action is unbound"
+msgstr "此動作未繫結"
+
+msgid "This binding is overridden by other bindings."
+msgstr "此繫結已被其他繫結覆寫。"
+
+msgid "This binding is overridden by other bindings.\nUse {}+click to edit this binding"
+msgstr "此按鍵繫結已被其他按鍵繫結覆寫。\n使用 {}+按一下以編輯此按鍵繫結"
+
+msgid "This binding is overridden."
+msgstr "此按鍵繫結已被覆寫。"
+
+msgid "This keybinding is overridden by the '{}' binding from {}."
+msgstr "此按鍵繫結已被「{}」按鍵繫結（來自 {}）覆寫。"
+
+msgid "Toggle Exact Match Mode"
+msgstr "切換完全相符模式"
+
+msgid "Type an action name"
+msgstr "輸入動作名稱"
+
+msgid "Use {}+click to show all conflicts"
+msgstr "使用 {}+按一下以顯示所有衝突"
+
+msgid "User"
+msgstr "使用者"
+
+msgid "View"
+msgstr "檢視"
+
+msgid "View conflicts"
+msgstr "檢視衝突"
+
+msgid "Your keybind would conflict with other actions"
+msgstr "按鍵繫結會與其他動作衝突"
+
+msgid "Your keybind would conflict with the \"{}\" action"
+msgstr "按鍵繫結會與「{}」動作衝突"
+
+msgid "Your keybind would conflict with the \"{}\" action and {} other bindings"
+msgstr "您的按鍵繫結會與「{}」動作及其他 {} 個按鍵繫結衝突"
+
+msgid "the vim keymap"
+msgstr "Vim 按鍵對應"
+
+msgid "your base keymap"
+msgstr "您的基礎按鍵對應"
+
+msgid "your keymap"
+msgstr "您的按鍵對應"
+
+msgctxt "keybinding"
+msgid "Categories"
+msgstr "類別"
+
+msgctxt "keybinding"
+msgid "Conflicts"
+msgstr "衝突"
+
+msgctxt "keybinding"
+msgid "Context"
+msgstr "內容"
+
+msgctxt "keybinding"
+msgid "Create"
+msgstr "新增"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "預設"

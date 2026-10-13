@@ -1,0 +1,87 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid " [modified]"
+msgstr " [modifié]"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "Un fichier ou un dossier portant le même nom existe déjà. Le remplacer écrasera son contenu actuel."
+
+msgid "Argument required"
+msgstr "Argument requis"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Cannot save buffer with absolute path"
+msgstr "Impossible d'enregistrer un tampon avec un chemin absolu"
+
+msgid "Default Vim Bindings"
+msgstr "Combinaisons de touches Vim par défaut"
+
+msgid "Disable Vim Mode"
+msgstr "Désactiver le mode Vim"
+
+msgid "Enable Vim Mode"
+msgstr "Activer le mode Vim"
+
+msgid "Failed to :w"
+msgstr "Échec de :w"
+
+msgid "Failed to save"
+msgstr "Échec de l'enregistrement"
+
+msgid "Failed to write lines"
+msgstr "Échec de l'écriture des lignes"
+
+msgid "Invalid argument: {}"
+msgstr "Argument invalide : {}"
+
+msgid "No file name"
+msgstr "Nom de fichier manquant"
+
+msgid "Nothing in register {}"
+msgstr "Rien dans le registre {}"
+
+msgid "Overwriting the current file with selected buffer content requires '!'."
+msgstr "L'écrasement du fichier courant avec le contenu sélectionné du tampon nécessite '!'."
+
+msgid "Partial buffer write requires file name."
+msgstr "L'écriture partielle du tampon nécessite un nom de fichier."
+
+msgid "Replace"
+msgstr "Remplacer"
+
+msgid "Use ! to write partial buffer"
+msgstr "Utilisez ! pour écrire une partie du tampon"
+
+msgid "Vim: Off"
+msgstr "Vim : désactivé"
+
+msgid "Vim: On"
+msgstr "Vim : activé"
+
+msgid "When disabled, you can type as soon as you open a file, just like in VSCode."
+msgstr "Si cette option est désactivée, vous pouvez saisir du texte dès l'ouverture d'un fichier, comme dans VSCode."
+
+msgid "When enabled, you edit with Vim key bindings."
+msgstr "Si cette option est activée, vous modifiez le texte avec les combinaisons de touches de Vim."
+
+msgid "[No Name]"
+msgstr "[Sans nom]"
+
+msgid "{filename}{modified} {lines} lines --{percentage}%--"
+msgstr "{filename}{modified} {lines} lignes --{percentage} %--"
+
+msgid "{path} already exists. Do you want to replace it?"
+msgstr "{path} existe déjà. Voulez-vous le remplacer ?"
+
+msgid "{} already exists. Do you want to replace it?"
+msgstr "{} existe déjà. Voulez-vous le remplacer ?"

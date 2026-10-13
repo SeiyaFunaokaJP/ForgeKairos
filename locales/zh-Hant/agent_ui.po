@@ -1,0 +1,2640 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " (Outside Sandbox)"
+msgstr "（沙箱外）"
+
+msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
+msgstr "「設定 > AI > 沙箱」中的「允許在沙箱外執行」已關閉，因此不會在沙箱外啟動任何項目，且一律在沙箱外啟動代理或 Claude Code 的設定也會被忽略。若要允許，請開啟該設定。"
+
+msgid "\"{title}\" is required."
+msgstr "「{title}」為必填。"
+
+msgid "\"{title}\" must be a number."
+msgstr "「{title}」必須是數字。"
+
+msgid "\"{title}\" must be an integer."
+msgstr "「{title}」必須是整數。"
+
+msgid "(Current Plan)"
+msgstr "（目前方案）"
+
+msgid "(added)"
+msgstr "（已加入）"
+
+msgid "(not added)"
+msgstr "（未加入）"
+
+msgid "/tmp (isolated)"
+msgstr "/tmp（隔離）"
+
+msgid "1 Queued Message"
+msgstr "1 則佇列訊息"
+
+msgid "1 Skill Loaded with a Long Description"
+msgstr "已載入 1 個含過長描述的技能"
+
+msgid "1 global rule"
+msgstr "1 條全域規則"
+
+msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
+msgstr "含有萬用字元的主機（{pattern}）無法透過同意加入允許清單。"
+
+msgid "ACP Agent"
+msgstr "ACP 代理"
+
+msgid "ACP Registry"
+msgstr "ACP 登錄庫"
+
+msgid "AI Judge (Auto-Run If Safe)"
+msgstr "由 AI 判斷（安全時自動執行）"
+
+msgid "AI Judge On"
+msgstr "由 AI 判斷：開啟"
+
+msgid "AI judge: canceled — {}"
+msgstr "AI 判斷：已取消 — {}"
+
+msgid "AI judge: not applicable — {}"
+msgstr "AI 判斷：不適用 — {}"
+
+msgid "AI judge: safe (auto-run) — {}"
+msgstr "AI 判斷：安全（自動執行）— {}"
+
+msgid "AI judge: safe (auto-run, earlier verdict reused) — {}"
+msgstr "AI 判斷：安全（自動執行，沿用先前的判斷）— {}"
+
+msgid "AI judge: unsafe — {}"
+msgstr "AI 判斷：不安全 — {}"
+
+msgid "AI judging…"
+msgstr "AI 正在判斷…"
+
+msgid "API Error"
+msgstr "API 錯誤"
+
+msgid "API Key"
+msgstr "API 金鑰"
+
+msgid "API key is saved in {store}"
+msgstr "API 金鑰已儲存在 {store} 中"
+
+msgid "API key is set (plain text in settings.json)"
+msgstr "已設定 API 金鑰（以純文字存於 settings.json）"
+
+msgid "AVX2 could not be confirmed on the WSL CPU, so the Linux build of Claude Code (x64) cannot run."
+msgstr "無法確認 WSL 的 CPU 支援 AVX2，因此 Claude Code 的 Linux 版本（x64）無法執行。"
+
+msgid "AVX2 could not be confirmed on the remote host's CPU, so the Linux build of Claude Code (x64) cannot run."
+msgstr "無法確認遠端主機的 CPU 支援 AVX2，因此 Claude Code 的 Linux 版本（x64）無法執行。"
+
+msgid "About {tokens} tokens"
+msgstr "大約 {tokens} 個 Token"
+
+msgid "Accept Generation"
+msgstr "接受產生"
+
+msgid "Accept Transform"
+msgstr "接受轉換"
+
+msgid "Account"
+msgstr "帳戶"
+
+msgid "Actions"
+msgstr "動作"
+
+msgid "Add API Key…"
+msgstr "新增 API 金鑰…"
+
+msgid "Add Context"
+msgstr "新增上下文"
+
+msgid "Add More Agents"
+msgstr "新增更多代理"
+
+msgid "Add New Profile"
+msgstr "新增設定檔"
+
+msgid "Add Server…"
+msgstr "新增伺服器…"
+
+msgid "Add a prompt…"
+msgstr "新增提示…"
+
+msgid "Add to Allowlist and Check"
+msgstr "加入允許清單並檢查"
+
+msgid "Add to Allowlist and Continue"
+msgstr "加入允許清單並繼續"
+
+msgid "Add to Allowlist and Install"
+msgstr "加入允許清單並安裝"
+
+msgid "Add to Allowlist and Start"
+msgstr "加入允許清單並啟動"
+
+msgid "Add to Allowlist and Update"
+msgstr "加入允許清單並更新"
+
+msgid "Agent"
+msgstr "代理"
+
+msgid "Agent Changes Rejected"
+msgstr "代理變更遭拒"
+
+msgid "Agent Diff"
+msgstr "代理差異"
+
+msgid "Agent Panel"
+msgstr "代理面板"
+
+msgid "Agent Profiles"
+msgstr "代理設定檔"
+
+msgid "Agent Update Available"
+msgstr "有代理更新可用"
+
+msgid "Agent stopped due to an error"
+msgstr "代理因錯誤而停止"
+
+msgid "Agree and Install"
+msgstr "同意並安裝"
+
+msgid "Agree and Update"
+msgstr "同意並更新"
+
+msgid "All"
+msgstr "全部"
+
+msgid "All Done"
+msgstr "全部完成"
+
+msgid "All Options"
+msgstr "所有選項"
+
+msgid "All Sidebar Thread Metadata"
+msgstr "側邊欄所有會話的中繼資料"
+
+msgid "All domains (unrestricted)"
+msgstr "所有網域（不受限制）"
+
+msgid "All paths except protected Git metadata"
+msgstr "所有路徑（受保護的 Git 中繼資料除外）"
+
+msgid "All tools are disabled because this project isn't trusted"
+msgstr "由於此專案不受信任，所有工具皆已停用"
+
+msgid "Allow"
+msgstr "允許"
+
+msgid "Allowed for this thread:"
+msgstr "此會話允許："
+
+msgid "Already rated this completion"
+msgstr "已評分過此產生結果"
+
+msgid "Also possible by placing your cursor inside the terminal and using regular terminal bindings."
+msgstr "也可以將游標置於終端機內，並使用一般的終端機按鍵繫結。"
+
+msgid "Always for selected commands"
+msgstr "對選取的命令一律允許"
+
+msgid "An API key is still written in plain text in settings.json under `agent_servers` → `{}` → `env` → `{variable}`. Save the key here to move it to {store}, or remove it."
+msgstr "settings.json 中的 `agent_servers` → `{}` → `env` → `{variable}` 仍以純文字寫著 API 金鑰。請在此儲存金鑰以將其移至 {store}，或將其移除。"
+
+msgid "An Error Happened"
+msgstr "發生錯誤"
+
+msgid "Anthropic will retain inference logs."
+msgstr "Anthropic 將保留推論記錄。"
+
+msgid "Apply"
+msgstr "套用"
+
+msgid "Archive Thread"
+msgstr "封存會話"
+
+msgid "Associate the \"{}\" thread with..."
+msgstr "將「{}」會話關聯至..."
+
+msgid "Attachments {tokens}"
+msgstr "附件 {tokens}"
+
+msgid "Authenticate"
+msgstr "驗證"
+
+msgid "Authenticate to connect this server"
+msgstr "驗證以連線至此伺服器"
+
+msgid "Authenticate to {}"
+msgstr "向 {} 進行驗證"
+
+msgid "Authenticating to {}…"
+msgstr "正在向 {} 進行驗證…"
+
+msgid "Authenticating…"
+msgstr "正在驗證…"
+
+msgid "Authentication Failed"
+msgstr "驗證失敗"
+
+msgid "Authentication Required"
+msgstr "需要驗證"
+
+msgid "Auto (Outline If Large)"
+msgstr "自動（過大時使用大綱）"
+
+msgid "Auto-Approve (In Sandbox)"
+msgstr "全自動（沙箱內）"
+
+msgid "Auto-Approve On"
+msgstr "全自動：開啟"
+
+msgid "Awaiting Confirmation"
+msgstr "等待確認"
+
+msgid "Awaiting Confirmation ({pending_count})"
+msgstr "等待確認（{pending_count}）"
+
+msgid "Bad Result"
+msgstr "不良結果"
+
+msgid "Branch Diff"
+msgstr "分支差異"
+
+msgid "Can write anywhere except the protected paths, which is nearly the same as running outside the sandbox"
+msgstr "可寫入受保護路徑以外的任何位置，這幾乎等同於在沙箱外執行"
+
+msgid "Can't Start in the Sandbox"
+msgstr "無法在沙箱中啟動"
+
+msgid "Can't Start {} in the Sandbox"
+msgstr "無法在沙箱中啟動 {}"
+
+msgid "Can't rate, still generating..."
+msgstr "仍在產生中，無法評分..."
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cancel Restore"
+msgstr "取消還原"
+
+msgid "Cancel Without Adding"
+msgstr "不新增並取消"
+
+msgid "Canceled"
+msgstr "已取消"
+
+msgid "Canceled because the Claude Code download server did not respond for 60 seconds."
+msgstr "Claude Code 下載伺服器 60 秒內沒有回應，因此已取消。"
+
+msgid "Canceled because the Claude Code download server tried to redirect to another location."
+msgstr "Claude Code 下載伺服器嘗試重新導向至其他位置，因此已取消。"
+
+msgid "Canceled because {url} is larger than expected."
+msgstr "{url} 比預期的大，因此已取消。"
+
+msgid "Canceled checking for Claude Code updates."
+msgstr "已取消檢查 Claude Code 更新。"
+
+msgid "Canceled downloading the Linux build of Claude Code."
+msgstr "已取消下載 Claude Code 的 Linux 版本。"
+
+msgid "Cannot switch to the form because the JSON could not be read: {error}"
+msgstr "無法讀取 JSON，因此無法切換至表單：{error}"
+
+msgid "Change"
+msgstr "變更"
+
+msgid "Change Mode"
+msgstr "變更模式"
+
+msgid "Change Model"
+msgstr "變更模型"
+
+msgid "Change Profile"
+msgstr "變更設定檔"
+
+msgid "Change Thinking Effort"
+msgstr "變更思考深度"
+
+msgid "Change Tool Permissions"
+msgstr "變更工具權限"
+
+msgid "Changes will be discarded"
+msgstr "變更將被捨棄"
+
+msgid "Changes won't be discarded"
+msgstr "變更不會被捨棄"
+
+msgid "Chat about anything with no tools."
+msgstr "不使用工具，隨意聊天。"
+
+msgid "Chat about your codebase."
+msgstr "討論程式碼庫。"
+
+msgid "Check for Claude Code Updates"
+msgstr "檢查 Claude Code 更新"
+
+msgid "Check the server docs for required arguments and environment variables."
+msgstr "請查看伺服器文件以了解必要的引數與環境變數。"
+
+msgid "Checking the Claude Code already placed…"
+msgstr "正在檢查已放置的 Claude Code…"
+
+msgid "Choose a different model or configure other providers to get started"
+msgstr "選擇其他模型或設定其他提供者以開始使用"
+
+msgid "Choose from Local Folders"
+msgstr "從本機資料夾選擇"
+
+msgid "Choose one of the following authentication options:"
+msgstr "選擇下列其中一種驗證選項："
+
+msgid "Claude (Anthropic)"
+msgstr "Claude（Anthropic）"
+
+msgid "Claude Code (Sandbox)"
+msgstr "Claude Code（沙箱）"
+
+msgid "Claude Code (sandbox) is still starting for this project. Try again once it has started."
+msgstr "此專案的 Claude Code（沙箱）仍在啟動中。請在啟動完成後再試一次。"
+
+msgid "Claude Code (sandbox) needs hosts added to the allowlist to connect"
+msgstr "Claude Code（沙箱）需要將主機加入允許清單才能連線"
+
+msgid "Claude Code changed while it was being sent to the remote host. Please try again."
+msgstr "Claude Code 在傳送至遠端主機的期間有所變更。請再試一次。"
+
+msgid "Claude Code for the sandbox is only available on Windows (WSL)."
+msgstr "沙箱用的 Claude Code 只能在 Windows（WSL）上使用。"
+
+msgid "Claude Code will start, but the IDE integration (diff tabs and diagnostics) is not available: "
+msgstr "Claude Code 會啟動，但無法使用 IDE 整合（差異分頁與診斷）： "
+
+msgid "Clear All"
+msgstr "全部清除"
+
+msgid "Clear Plan"
+msgstr "清除計畫"
+
+msgid "Clear Search"
+msgstr "清除搜尋"
+
+msgid "Click to Collapse"
+msgstr "按一下以摺疊"
+
+msgid "Click to Preview"
+msgstr "按一下以預覽"
+
+msgid "Click to copy rating ID"
+msgstr "按一下以複製評分 ID"
+
+msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
+msgstr "按一下以開啟與此代理的會話。這裡不會更新任何項目，也不會停止執行中的工作階段。新連線的會話會啟動最新版本，執行中的會話則會顯示更新橫幅。"
+
+msgid "Clipboard does not contain text"
+msgstr "剪貼簿不含文字內容"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Close Assistant"
+msgstr "關閉助理"
+
+msgid "Close Search"
+msgstr "關閉搜尋"
+
+msgid "Close Tab"
+msgstr "關閉分頁"
+
+msgid "Close Thread History"
+msgstr "關閉會話歷程"
+
+msgid "Codex on Windows"
+msgstr "Windows 上的 Codex"
+
+msgid "Commands"
+msgstr "命令"
+
+msgid "Compacting Context…"
+msgstr "正在壓縮上下文…"
+
+msgid "Compaction Canceled"
+msgstr "壓縮已取消"
+
+msgid "Compaction Failed"
+msgstr "壓縮失敗"
+
+msgid "Completed"
+msgstr "已完成"
+
+msgid "Completed Plan"
+msgstr "已完成的計畫"
+
+msgid "Configure"
+msgstr "設定"
+
+msgid "Configure Built-in Tools"
+msgstr "設定內建工具"
+
+msgid "Configure Default Model"
+msgstr "設定預設模型"
+
+msgid "Configure MCP Server"
+msgstr "設定 MCP 伺服器"
+
+msgid "Configure MCP Tools"
+msgstr "設定 MCP 工具"
+
+msgid "Configure Provider"
+msgstr "設定提供者"
+
+msgid "Configure Server"
+msgstr "設定伺服器"
+
+msgid "Configure Windows-drive warning"
+msgstr "設定 Windows 磁碟機警告"
+
+msgid "Configure a provider to get started"
+msgstr "設定提供者以開始使用"
+
+msgid "Configure unicode confusables warning"
+msgstr "設定 Unicode 易混淆字元警告"
+
+msgid "Configure {}"
+msgstr "設定 {}"
+
+msgid "Confirm Actions"
+msgstr "確認動作"
+
+msgid "Connecting Server…"
+msgstr "正在連線至伺服器…"
+
+msgid "Connection Interrupted"
+msgstr "連線中斷"
+
+msgid "Context"
+msgstr "上下文"
+
+msgid "Context Compacted"
+msgstr "上下文已壓縮"
+
+msgid "Context Compaction"
+msgstr "上下文壓縮"
+
+msgid "Context Too Large"
+msgstr "上下文過大"
+
+msgid "Continue Iterating"
+msgstr "繼續作業"
+
+msgid "Copy"
+msgstr "複製"
+
+msgid "Copy Code"
+msgstr "複製程式碼"
+
+msgid "Copy Command"
+msgstr "複製命令"
+
+msgid "Copy Error Message"
+msgstr "複製錯誤訊息"
+
+msgid "Copy Link"
+msgstr "複製連結"
+
+msgid "Copy This Agent Response"
+msgstr "複製此代理回應"
+
+msgid "Copy as Markdown"
+msgstr "複製為 Markdown"
+
+msgid "Cost"
+msgstr "費用"
+
+msgid "Cost Multiplier: {}"
+msgstr "費用倍率：{}"
+
+msgid "Cost per Million Tokens: {}"
+msgstr "每百萬個 Token 費用：{}"
+
+msgid "Cost: {}"
+msgstr "費用：{}"
+
+msgid "Could not authenticate with {provider}."
+msgstr "無法向 {provider} 進行驗證。"
+
+msgid "Could not check the Claude Code already placed in WSL."
+msgstr "無法檢查已放置在 WSL 中的 Claude Code。"
+
+msgid "Could not check the Claude Code already placed on the remote host."
+msgstr "無法檢查已放置在遠端主機上的 Claude Code。"
+
+msgid "Could not check the folder `{path}` that writes are allowed to"
+msgstr "無法檢查允許寫入的資料夾 `{path}`"
+
+msgid "Could not create the Claude Code settings folder on the remote host."
+msgstr "無法在遠端主機上建立 Claude Code 設定資料夾。"
+
+msgid "Could not create the download folder."
+msgstr "無法建立下載資料夾。"
+
+msgid "Could not determine the WSL architecture (exit code {code}): {stderr}"
+msgstr "無法判定 WSL 的架構（結束代碼 {code}）：{stderr}"
+
+msgid "Could not determine the WSL architecture."
+msgstr "無法判定 WSL 的架構。"
+
+msgid "Could not determine the home directory on the remote host (internal error)."
+msgstr "無法判定遠端主機上的主目錄（內部錯誤）。"
+
+msgid "Could not determine the home directory on the remote host."
+msgstr "無法判定遠端主機上的主目錄。"
+
+msgid "Could not determine the remote host's architecture."
+msgstr "無法判定遠端主機的架構。"
+
+msgid "Could not extract the downloaded Claude Code."
+msgstr "無法解壓縮下載的 Claude Code。"
+
+msgid "Could not fetch {url} (HTTP {status})."
+msgstr "無法擷取 {url}（HTTP {status}）。"
+
+msgid "Could not fetch {url}."
+msgstr "無法擷取 {url}。"
+
+msgid "Could not find a repository to review."
+msgstr "找不到要檢閱的儲存庫。"
+
+msgid "Could not find workspace to import from."
+msgstr "找不到可供匯入的工作區。"
+
+msgid "Could not pass the connection details to the IDE integration relay"
+msgstr "無法將連線詳細資料傳遞給 IDE 整合轉送程式"
+
+msgid "Could not place Claude Code in WSL."
+msgstr "無法將 Claude Code 放置到 WSL 中。"
+
+msgid "Could not place Claude Code on the remote host."
+msgstr "無法將 Claude Code 放置到遠端主機上。"
+
+msgid "Could not read the release information."
+msgstr "無法讀取發行資訊。"
+
+msgid "Could not read the {channel} version number ({text})."
+msgstr "無法讀取 {channel} 的版本號碼（{text}）。"
+
+msgid "Could not run a command on the remote host."
+msgstr "無法在遠端主機上執行命令。"
+
+msgid "Could not run the command in the terminal: {error}"
+msgstr "無法在終端機中執行命令：{error}"
+
+msgid "Could not save the downloaded Claude Code. Check the free space on the disk."
+msgstr "無法儲存下載的 Claude Code。請檢查磁碟的可用空間。"
+
+msgid "Could not start Claude Code (sandbox): "
+msgstr "無法啟動 Claude Code（沙箱）： "
+
+msgid "Could not start WSL. Check that WSL is installed."
+msgstr "無法啟動 WSL。請確認已安裝 WSL。"
+
+msgid "Could not start the IDE integration relay on the remote host"
+msgstr "無法在遠端主機上啟動 IDE 整合轉送程式"
+
+msgid "Could not verify the signature of the Claude Code release information. Canceled because it may have been tampered with."
+msgstr "無法驗證 Claude Code 發行資訊的簽章。由於可能已遭竄改，因此已取消。"
+
+msgid "Couldn't create a sandbox"
+msgstr "無法建立沙箱"
+
+msgid "Couldn't remove the API key: {error}"
+msgstr "無法移除 API 金鑰：{error}"
+
+msgid "Couldn't save the API key: {error}"
+msgstr "無法儲存 API 金鑰：{error}"
+
+msgid "Credentials Missing"
+msgstr "缺少認證資訊"
+
+msgid "Current Thread"
+msgstr "目前會話"
+
+msgid "Current version: v{from}"
+msgstr "目前版本：v{from}"
+
+msgid "Current:"
+msgstr "目前："
+
+msgid "Currently using {}, which does not report a valid --version"
+msgstr "目前使用 {}，但其 --version 輸出未包含有效版本"
+
+msgid "Currently using {}, which is only version {} (need at least {minimum_version})"
+msgstr "目前使用的 {} 版本僅為 {}（至少需要 {minimum_version}）"
+
+msgid "Custom Profiles"
+msgstr "自訂設定檔"
+
+msgid "Customize"
+msgstr "自訂"
+
+msgid "Cut"
+msgstr "剪下"
+
+msgid "Cycle Favorite Models"
+msgstr "循環切換最愛模型"
+
+msgid "Cycle Thinking Effort"
+msgstr "循環切換思考深度"
+
+msgid "Cycle Through Modes"
+msgstr "循環切換模式"
+
+msgid "Cycle Through Profiles"
+msgstr "循環切換設定檔"
+
+msgid "Decline"
+msgstr "拒絕"
+
+msgid "Declined"
+msgstr "已拒絕"
+
+msgid "Defined in your settings:"
+msgstr "設定中定義："
+
+msgid "Delete Profile"
+msgstr "刪除設定檔"
+
+msgid "Delete Thread"
+msgstr "刪除會話"
+
+msgid "Deny"
+msgstr "拒絕"
+
+msgid "Destination"
+msgstr "目的地"
+
+msgid "Diagnostics"
+msgstr "診斷"
+
+msgid "Did not find any workspaces to import from."
+msgstr "找不到任何可供匯入的工作區。"
+
+msgid "Disable Fast Mode"
+msgstr "停用快速模式"
+
+msgid "Disable Full Screen"
+msgstr "停用全螢幕"
+
+msgid "Disable Thinking Mode"
+msgstr "停用思考模式"
+
+msgid "Disabled in Restricted Mode"
+msgstr "在受限模式中停用"
+
+msgid "Discard Interrupted Edit"
+msgstr "捨棄已中斷的編輯"
+
+msgid "Dismiss"
+msgstr "關閉"
+
+msgid "Dismiss Notice"
+msgstr "關閉通知"
+
+msgid "Dismiss Warning"
+msgstr "關閉警告"
+
+msgid "Dismiss notice: {}"
+msgstr "關閉通知：{}"
+
+msgid "Don't show this warning again"
+msgstr "不要再顯示此警告"
+
+msgid "Download the Linux build of Claude Code v{version}"
+msgstr "下載 Claude Code v{version} 的 Linux 版本"
+
+msgid "Downloading Claude Code requires adding hosts to the allowlist"
+msgstr "下載 Claude Code 需要將主機加入允許清單"
+
+msgid "Downloading Claude Code… ({received} / {total} MB)"
+msgstr "正在下載 Claude Code…（{received} / {total} MB）"
+
+msgid "Downloads the Claude Code that runs in the remote host's sandbox from Anthropic's download server on this PC, and sends it to the remote host after checking its signature and hash."
+msgstr "在這台電腦上從 Anthropic 的下載伺服器下載要在遠端主機沙箱中執行的 Claude Code，並在檢查其簽章與雜湊後傳送至遠端主機。"
+
+msgid "Downloads the Claude Code that runs in the sandbox (WSL) from Anthropic's download server, and places it in WSL after checking its signature and hash."
+msgstr "從 Anthropic 的下載伺服器下載要在沙箱（WSL）中執行的 Claude Code，並在檢查其簽章與雜湊後放置到 WSL 中。"
+
+msgid "Edit"
+msgstr "編輯"
+
+msgid "Edit Queued Message"
+msgstr "編輯佇列訊息"
+
+msgid "Edit Thread Title"
+msgstr "編輯會話標題"
+
+msgid "Edit in Form"
+msgstr "在表單中編輯"
+
+msgid "Edit in JSON"
+msgstr "在 JSON 中編輯"
+
+msgid "Edit message － @ to include context"
+msgstr "編輯訊息 － @ 以加入上下文"
+
+msgid "Editing previous messages is not available for {} yet."
+msgstr "{} 尚不支援編輯先前的訊息。"
+
+msgid "Editing will restart the thread from this point."
+msgstr "編輯會從此處重新開始會話。"
+
+msgid "Editing {count} file…"
+msgid_plural "Editing {count} files…"
+msgstr[0] "正在編輯 {count} 個檔案…"
+
+msgid "Edits"
+msgstr "編輯"
+
+msgid "Enable Fast Mode"
+msgstr "啟用快速模式"
+
+msgid "Enable Full Screen"
+msgstr "啟用全螢幕"
+
+msgid "Enable Now"
+msgstr "立即啟用"
+
+msgid "Enable Thinking Mode"
+msgstr "啟用思考模式"
+
+msgid "Enable and Don't Show Again"
+msgstr "啟用並不要再顯示"
+
+msgid "Ensure skill descriptions are at most {MAX_SKILL_DESCRIPTION_LEN} characters; longer ones may consume more model-context tokens."
+msgstr "確保技能描述不超過 {MAX_SKILL_DESCRIPTION_LEN} 個字元；較長的描述可能會消耗更多模型上下文 Token。"
+
+msgid "Enter client secret (leave empty for public clients)"
+msgstr "輸入用戶端密碼（公用用戶端留空）"
+
+msgid "Enter your OAuth client secret, or leave empty for public clients"
+msgstr "輸入 OAuth 用戶端密碼，公用用戶端則留空"
+
+msgid "Error Loading {}"
+msgstr "載入 {} 時發生錯誤"
+
+msgid "Estimated tokens for the attachments (at 4 bytes per token)."
+msgstr "附件的估計 Token 數（以每個 Token 4 位元組計算）。"
+
+msgid "Everything below this line was sent as output from this subagent to the main agent."
+msgstr "此行以下的所有內容均為此子代理傳送給主代理的輸出。"
+
+msgid "Execute Generated Command"
+msgstr "執行產生的命令"
+
+msgid "Exited with code {code}"
+msgstr "已結束，結束代碼為 {code}"
+
+msgid "Expand Message Editor"
+msgstr "展開訊息編輯器"
+
+msgid "Expected exactly one context server configuration"
+msgstr "預期剛好有一項 MCP 伺服器設定"
+
+msgid "Expected exactly one key-value pair"
+msgstr "預期剛好有一組鍵值對"
+
+msgid "Expected object"
+msgstr "預期為物件"
+
+msgid "External agents are not yet supported in shared projects."
+msgstr "共用專案尚不支援外部代理。"
+
+msgid "Extracting and checking the hash…"
+msgstr "正在解壓縮並檢查雜湊…"
+
+msgid "Failed to Install"
+msgstr "安裝失敗"
+
+msgid "Failed to Install {}"
+msgstr "{} 安裝失敗"
+
+msgid "Failed to Launch"
+msgstr "啟動失敗"
+
+msgid "Failed to add the hosts to the allowlist: {error}"
+msgstr "無法將主機加入允許清單：{error}"
+
+msgid "Failed to authenticate with {} provider"
+msgstr "無法向 {} 提供者進行驗證"
+
+msgid "Failed to convert image"
+msgstr "無法轉換影像"
+
+msgid "Failed to decode clipboard content (expected base64)"
+msgstr "無法解碼剪貼簿內容（預期為 base64）"
+
+msgid "Failed to fetch sessions: {error}"
+msgstr "無法取得工作階段：{error}"
+
+msgid "Failed to list sessions."
+msgstr "無法列出工作階段。"
+
+msgid "Failed to load the agent registry. Please check your connection and try again."
+msgstr "無法載入代理登錄庫。請檢查連線後再試一次。"
+
+msgid "Failed to parse thread data from clipboard"
+msgstr "無法從剪貼簿解析會話資料"
+
+msgid "Favorite"
+msgstr "加入最愛"
+
+msgid "Favorite Model"
+msgstr "將模型加入最愛"
+
+msgid "Favorites"
+msgstr "最愛"
+
+msgid "Fetching Agent Threads…"
+msgstr "正在取得代理會話…"
+
+msgid "Fetching Sessions…"
+msgstr "正在取得工作階段…"
+
+msgid "Files & Directories"
+msgstr "檔案與資料夾"
+
+msgid "Finished running tools"
+msgstr "工具執行完成"
+
+msgid "Follow the {}"
+msgstr "跟隨 {}"
+
+msgid "Follow {}"
+msgstr "跟隨 {}"
+
+msgid "For agents distributed via npx, npm picks the version at launch, so the installed version cannot be determined. Whether an update is available is not shown here."
+msgstr "透過 npx 發佈的代理，其版本由 npm 在啟動時決定，因此無法判定已安裝的版本。這裡不會顯示是否有可用的更新。"
+
+msgid "For best performance, run Codex in Windows Subsystem for Linux (WSL2)"
+msgstr "為取得最佳效能，請在 Windows Subsystem for Linux (WSL2) 中執行 Codex"
+
+msgid "Fork Profile"
+msgstr "以此為基礎建立設定檔"
+
+msgid "Fork {base_profile}"
+msgstr "以 {base_profile} 為基礎建立"
+
+msgid "Free Usage Exceeded"
+msgstr "已超出免費使用額度"
+
+msgid "Generate"
+msgstr "產生"
+
+msgid "Generating Changes…"
+msgstr "正在產生變更…"
+
+msgid "Get help to write anything."
+msgstr "取得撰寫任何內容的協助。"
+
+msgid "Git Operations: Off"
+msgstr "Git 操作：關閉"
+
+msgid "Git Operations: On"
+msgstr "Git 操作：開啟"
+
+msgid "Go Back"
+msgstr "返回"
+
+msgid "Go to File"
+msgstr "移至檔案"
+
+msgid "Good Result"
+msgstr "良好結果"
+
+msgid "Google"
+msgstr "Google"
+
+msgid "Helpful Response"
+msgstr "有幫助的回應"
+
+msgid "Hide Thread History in Panel"
+msgstr "在面板中隱藏會話歷程"
+
+msgid "Hosts Need to Be Added to the Allowlist"
+msgstr "需要將主機加入允許清單"
+
+msgid "Hosts that need to be allowed:"
+msgstr "需要允許的主機："
+
+msgid "Hosts that need to be allowed: {hosts} ({status})"
+msgstr "需要允許的主機：{hosts}（{status}）"
+
+msgid "I understand and wish to proceed"
+msgstr "我了解並願意繼續"
+
+msgid "IDE Tools"
+msgstr "IDE 工具"
+
+msgid "Image"
+msgstr "影像"
+
+msgid "Import External Agent Threads"
+msgstr "匯入外部代理會話"
+
+msgid "Import Threads"
+msgstr "匯入會話"
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client. Choose which agents to include, and their threads will appear in your thread history."
+msgstr "匯入 Claude Agent、Codex 等代理的會話，無論這些會話是在 ForgeKairos 或其他用戶端中開始。選擇要包含的代理，其會話就會出現在會話歷程中。"
+
+msgid "Imported {count} thread from other channels."
+msgid_plural "Imported {count} threads from other channels."
+msgstr[0] "已從其他頻道匯入 {count} 個會話。"
+
+msgid "Imported {count} thread."
+msgid_plural "Imported {count} threads."
+msgstr[0] "已匯入 {count} 個會話。"
+
+msgid "Importing threads from this agent is not possible as it doesn't support ACP's session/list capability."
+msgstr "無法從此代理匯入會話，因為它不支援 ACP 的 session/list 功能。"
+
+msgid "In Queue"
+msgstr "佇列中"
+
+msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
+msgstr "無論是「全自動」或「由 AI 判斷」，內建安全性規則、您設定的拒絕與確認模式、沙箱，以及寫入設定檔案時的確認仍然有效。終端機命令會在沙箱內執行，而專案外的檔案操作與網路的新增在所有模式下都會確認。在沙箱外執行的終端機命令也會每次確認。可用的工具由設定檔決定，而不是由模式決定。使用「由 AI 判斷」時，判斷的內容（命令與路徑）會傳送給判斷用模型的提供者，因此建議使用本機模型。"
+
+msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
+msgstr "在沙箱中，Claude Code 只會連線至下列 Anthropic 主機。這些主機會加入整個 IDE 的允許清單，也會套用至內建代理的命令。\n需要允許的主機：{hosts}"
+
+msgid "In the sandbox, {agent} connects only to the following hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
+msgstr "在沙箱中，{agent} 只會連線至下列主機。這些主機會加入整個 IDE 的允許清單，也會套用至內建代理的命令。\n需要允許的主機：{hosts}"
+
+msgid "In the sandbox, {} connects to hosts that aren't in the IDE-wide allowlist: {}"
+msgstr "在沙箱中，{} 會連線至不在整個 IDE 允許清單中的主機：{}"
+
+msgid "Includes the active file, which is attached automatically."
+msgstr "包含會自動附加的使用中檔案。"
+
+msgid "Inline assistant error: {}"
+msgstr "內嵌助理錯誤：{}"
+
+msgid "Input Requested by {}"
+msgstr "{} 要求輸入"
+
+msgid "Input:"
+msgstr "輸入："
+
+msgid "Install"
+msgstr "安裝"
+
+msgid "Install New Servers…"
+msgstr "安裝新伺服器…"
+
+msgid "Install {name}"
+msgstr "安裝 {name}"
+
+msgid "Installed"
+msgstr "已安裝"
+
+msgid "Installing {name}…"
+msgstr "正在安裝 {name}…"
+
+msgid "Installs {name} from the ACP registry, then starts a thread with it. You sign in on the agent's own screen."
+msgstr "從 ACP 登錄庫安裝 {name}，然後以其開始新的會話。請在代理本身的畫面中登入。"
+
+msgid "Install…"
+msgstr "安裝…"
+
+msgid "Interrupt Generation"
+msgstr "中斷產生"
+
+msgid "Interrupt Transform"
+msgstr "中斷轉換"
+
+msgid "Interrupt the agent at its next step to send this message. When off, queued messages wait for the agent to finish."
+msgstr "在代理進入下一個步驟時中斷，以傳送此訊息。關閉時，佇列訊息會等待代理完成。"
+
+msgid "Interrupted Edit"
+msgstr "已中斷的編輯"
+
+msgid "Invalid IDE session identifier (internal error): {session_id}"
+msgstr "IDE 工作階段識別碼無效（內部錯誤）：{session_id}"
+
+msgid "Invalid host for Claude Code to connect to (internal error): {error}"
+msgstr "Claude Code 要連線的主機無效（內部錯誤）：{error}"
+
+msgid "Invalid project identifier (internal error): {project_key}"
+msgstr "專案識別碼無效（內部錯誤）：{project_key}"
+
+msgid "It currently only operates by default on \"{}\"."
+msgstr "目前預設只會在「{}」上運作。"
+
+msgid "Keep"
+msgstr "保留"
+
+msgid "Keep All"
+msgstr "全部保留"
+
+msgid "Latest"
+msgstr "最新"
+
+msgid "Launch Claude Code"
+msgstr "啟動 Claude Code"
+
+msgid "Launch Claude Code Outside the Sandbox…"
+msgstr "在沙箱外啟動 Claude Code…"
+
+msgid "Launches the official Claude Code CLI in a tab of this panel. You sign in on the CLI's screen."
+msgstr "在此面板的分頁中啟動官方 Claude Code CLI。請在 CLI 的畫面中登入。"
+
+msgid "Learn More"
+msgstr "深入了解"
+
+msgid "Link only"
+msgstr "僅連結"
+
+msgid "Loading Added Context…"
+msgstr "正在載入已加入的上下文…"
+
+msgid "Loading or resuming sessions is not supported by this agent."
+msgstr "此代理不支援載入或繼續工作階段。"
+
+msgid "Loading registry..."
+msgstr "正在載入登錄庫..."
+
+msgid "Loading…"
+msgstr "正在載入…"
+
+msgid "Local"
+msgstr "本機"
+
+msgid "Local Model (Ollama, LM Studio, …)"
+msgstr "本機模型（Ollama、LM Studio…）"
+
+msgid "Local Models"
+msgstr "本機模型"
+
+msgid "Log In with Claude Code (Subscription)"
+msgstr "以 Claude Code 登入（訂閱）"
+
+msgid "Log Out"
+msgstr "登出"
+
+msgid "MCP Server Commands"
+msgstr "MCP 伺服器命令"
+
+msgid "MCP Servers"
+msgstr "MCP 伺服器"
+
+msgid "Make Subagent Full Screen"
+msgstr "將子代理設為全螢幕"
+
+msgid "Manage AI Connections…"
+msgstr "管理 AI 連線…"
+
+msgid "Message the {}, @ to include context, / for commands"
+msgstr "傳送訊息給 {} — @ 以加入上下文，/ 以使用命令"
+
+msgid "Message {} — @ to include context"
+msgstr "傳送訊息給 {} — @ 以加入上下文"
+
+msgid "Message {} — @ to include context, / for commands"
+msgstr "傳送訊息給 {} — @ 以加入上下文，/ 以使用命令"
+
+msgid "Minimize Message Editor"
+msgstr "最小化訊息編輯器"
+
+msgid "Minimize Subagent"
+msgstr "最小化子代理"
+
+msgid "Missing registry entry."
+msgstr "缺少登錄庫項目。"
+
+msgid "Model {} was not found"
+msgstr "找不到模型 {}"
+
+msgid "Move Back to Panel"
+msgstr "移回面板"
+
+msgid "Negative Feedback"
+msgstr "負面回饋"
+
+msgid "Network Access"
+msgstr "網路存取權"
+
+msgid "Network access"
+msgstr "網路存取權"
+
+msgid "New Agent Thread"
+msgstr "新的代理會話"
+
+msgid "New Profile"
+msgstr "新增設定檔"
+
+msgid "New Tab"
+msgstr "新增分頁"
+
+msgid "New Thread"
+msgstr "新增會話"
+
+msgid "New Thread…"
+msgstr "新增會話…"
+
+msgid "New Version Available"
+msgstr "有新版本可用"
+
+msgid "New message"
+msgstr "新訊息"
+
+msgid "New {} Thread"
+msgstr "新增 {} 會話"
+
+msgid "Next Alternative"
+msgstr "下一個候選"
+
+msgid "Next Hunk"
+msgstr "下一個區塊"
+
+msgid "Next Match"
+msgstr "下一個符合項目"
+
+msgid "Next in Queue"
+msgstr "佇列中的下一個"
+
+msgid "No Model Selected"
+msgstr "未選取模型"
+
+msgid "No active native thread to copy"
+msgstr "沒有可複製的原生會話"
+
+msgid "No active thread"
+msgstr "沒有使用中的會話"
+
+msgid "No agents available."
+msgstr "沒有可用的代理。"
+
+msgid "No agents match your search."
+msgstr "沒有符合搜尋條件的代理。"
+
+msgid "No changes to review"
+msgstr "沒有可檢閱的變更"
+
+msgid "No clipboard content available"
+msgstr "剪貼簿沒有內容"
+
+msgid "No configured model"
+msgstr "未設定模型"
+
+msgid "No credentials are configured for {provider}."
+msgstr "尚未為 {provider} 設定認證資訊。"
+
+msgid "No external agents available."
+msgstr "沒有可用的外部代理。"
+
+msgid "No installed agents match your search."
+msgstr "沒有符合搜尋條件的已安裝代理。"
+
+msgid "No installed agents."
+msgstr "沒有已安裝的代理。"
+
+msgid "No matches"
+msgstr "沒有符合項目"
+
+msgid "No metadata found for active thread"
+msgstr "找不到使用中會話的中繼資料"
+
+msgid "No model is available from this provider yet. Shows why and what to do."
+msgstr "此提供者目前尚無可用的模型。會顯示原因與處理方式。"
+
+msgid "No model is configured for summarizing thread titles."
+msgstr "尚未設定用於摘要會話標題的模型。"
+
+msgid "No model selected"
+msgstr "未選取模型"
+
+msgid "No new threads found to import."
+msgstr "找不到可匯入的新會話。"
+
+msgid "No output available"
+msgstr "沒有可用的輸出"
+
+msgid "No profiles match your search."
+msgstr "沒有設定檔符合搜尋。"
+
+msgid "No profiles."
+msgstr "沒有設定檔。"
+
+msgid "No recent projects found"
+msgstr "找不到最近的專案"
+
+msgid "No threads"
+msgstr "沒有會話"
+
+msgid "No threads found to import."
+msgstr "找不到可匯入的會話。"
+
+msgid "No threads match your search."
+msgstr "沒有會話符合搜尋。"
+
+msgid "No threads yet."
+msgstr "尚無會話。"
+
+msgid "No uninstalled agents match your search."
+msgstr "沒有符合搜尋條件的未安裝代理。"
+
+msgid "No uninstalled agents."
+msgstr "沒有未安裝的代理。"
+
+msgid "None"
+msgstr "無"
+
+msgid "Not Helpful Response"
+msgstr "沒有幫助的回應"
+
+msgid "Not Installed"
+msgstr "未安裝"
+
+msgid "Not installed yet. Installs {name} from the ACP registry, after asking about the hosts it needs, and then starts a thread with it."
+msgstr "尚未安裝。會先詢問所需的主機，再從 ACP 登錄庫安裝 {name}，然後以其開始新的會話。"
+
+msgid "Not set up yet. Add the key or sign in right here, and a new thread opens once it works."
+msgstr "尚未設定。請直接在這裡新增金鑰或登入，可以使用後就會開啟新的會話。"
+
+msgid "Not supported on this platform"
+msgstr "此平台不支援"
+
+msgid "Note: {} cannot be offered with Zero Data Retention."
+msgstr "注意：{} 無法在 Zero Data Retention 模式下使用。"
+
+msgid "Official CLI Tab"
+msgstr "官方 CLI 分頁"
+
+msgid "Older"
+msgstr "更早"
+
+msgid "On 2026-06-15, Anthropic announced that use with a subscription (such as Claude Pro or Max) continues as before. You can turn it off in settings."
+msgstr "Anthropic 已於 2026-06-15 宣布，透過訂閱（例如 Claude Pro 或 Max）的使用方式將維持不變。您可以在設定中將其關閉。"
+
+msgid "Only a link is sent, and the agent reads the contents with its tools (no estimate)"
+msgstr "只傳送連結，由代理使用其工具讀取內容（不估算）"
+
+msgid "Only reads and edits files. Does not run commands."
+msgstr "只讀取與編輯檔案。不執行命令。"
+
+msgid "Only this time"
+msgstr "僅此次"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Open ACP Registry"
+msgstr "開啟 ACP 登錄庫"
+
+msgid "Open Again"
+msgstr "再次開啟"
+
+msgid "Open Docs"
+msgstr "開啟文件"
+
+msgid "Open File"
+msgstr "開啟檔案"
+
+msgid "Open Global Rules"
+msgstr "開啟全域規則"
+
+msgid "Open Project Rules"
+msgstr "開啟專案規則"
+
+msgid "Open Repository"
+msgstr "開啟儲存庫"
+
+msgid "Open Sandbox Settings"
+msgstr "開啟沙箱設定"
+
+msgid "Open Skill"
+msgstr "開啟技能"
+
+msgid "Open Tabs"
+msgstr "開啟的分頁"
+
+msgid "Open Thread List"
+msgstr "開啟會話清單"
+
+msgid "Open Thread as Markdown"
+msgstr "以 Markdown 開啟會話"
+
+msgid "Open Thread in Right Split"
+msgstr "在右側分割中開啟會話"
+
+msgid "Open Thread in Tab"
+msgstr "在分頁中開啟會話"
+
+msgid "Open Trust Settings"
+msgstr "開啟信任設定"
+
+msgid "Open a project to load a thread"
+msgstr "開啟專案以載入會話"
+
+msgid "Open in Right Split"
+msgstr "在右側分割中開啟"
+
+msgid "Open in Tab"
+msgstr "在分頁中開啟"
+
+msgid "Open in WSL"
+msgstr "在 WSL 中開啟"
+
+msgid "Open the settings to configure providers"
+msgstr "開啟設定以設定提供者"
+
+msgid "Open the settings to configure the selected provider"
+msgstr "開啟設定以設定所選提供者"
+
+msgid "OpenAI"
+msgstr "OpenAI"
+
+msgid "Or type @ to include context"
+msgstr "或輸入 @ 以加入上下文"
+
+msgid "Other"
+msgstr "其他"
+
+msgid "Output Limit Reached"
+msgstr "已達輸出上限"
+
+msgid "Output exceeded terminal max lines and was truncated, the model received the first {}."
+msgstr "輸出超過終端機的最大行數而被截斷，模型只收到前 {} 的內容。"
+
+msgid "Output is {} long, and to avoid unexpected token usage, only {} was sent back to the agent."
+msgstr "輸出長度為 {}，為避免非預期的 Token 用量，僅將其中 {} 傳回代理。"
+
+msgid "Output was truncated"
+msgstr "輸出已被截斷"
+
+msgid "Output:"
+msgstr "輸出："
+
+msgid "Outside the Sandbox"
+msgstr "沙箱外"
+
+msgid "Outside the Sandbox (Asks First)"
+msgstr "沙箱外（先詢問）"
+
+msgid "Package downloads by npm and the agent's network traffic after installation go through the child-process proxy and are subject to the allowlist. However, the extra hosts that a package's install scripts need cannot be listed in advance, and they are blocked and fail if they are not on the allowlist. Prefer Binary agents when possible."
+msgstr "npm 下載套件以及代理在安裝後的網路流量，都會經由子處理序 Proxy 並受允許清單管控。不過，套件的安裝指令碼額外需要的主機無法事先列出，若不在允許清單中就會遭封鎖而失敗。可能的話，請優先使用 Binary 類型的代理。"
+
+msgid "Past Week"
+msgstr "上週"
+
+msgid "Paste"
+msgstr "貼上"
+
+msgid "Paste as Plain Text"
+msgstr "以純文字貼上"
+
+msgid "Permission Denied"
+msgstr "權限遭拒"
+
+msgid "Places it in WSL after checking its signature and hash."
+msgstr "在檢查其簽章與雜湊後放置到 WSL 中。"
+
+msgid "Placing in WSL…"
+msgstr "正在放置到 WSL 中…"
+
+msgid "Placing on the remote host…"
+msgstr "正在放置到遠端主機上…"
+
+msgid "Plan"
+msgstr "計畫"
+
+msgid "Positive Feedback"
+msgstr "正面回饋"
+
+msgid "Preparing Claude Code (sandbox)…"
+msgstr "正在準備 Claude Code（沙箱）…"
+
+msgid "Preparing the sandbox and IDE integration…"
+msgstr "正在準備沙箱與 IDE 整合…"
+
+msgid "Previous Alternative"
+msgstr "上一個候選"
+
+msgid "Previous Hunk"
+msgstr "上一個區塊"
+
+msgid "Previous Match"
+msgstr "上一個符合項目"
+
+msgid "Profile name"
+msgstr "設定檔名稱"
+
+msgid "Profiles"
+msgstr "設定檔"
+
+msgid "Provider Unavailable"
+msgstr "提供者無法使用"
+
+msgid "Provider {} was not found"
+msgstr "找不到提供者 {}"
+
+msgid "Queue and Send"
+msgstr "加入佇列並傳送"
+
+msgid "Ran without sandbox"
+msgstr "已在沙箱外執行"
+
+msgid "Rate Limit Reached"
+msgstr "已達到速率限制"
+
+msgid "Rate this response as helpful. Sends the current conversation to the Zed team."
+msgstr "將此回應評為有幫助。會將目前的會話傳送給 Zed 團隊。"
+
+msgid "Rate this response as not helpful. Sends the current conversation to the Zed team."
+msgstr "將此回應評為沒有幫助。會將目前的會話傳送給 Zed 團隊。"
+
+msgid "Rating the thread sends all of your current conversation to the Zed team."
+msgstr "評分此會話會將目前會話的所有內容傳送給 Zed 團隊。"
+
+msgid "Raw Input:"
+msgstr "原始輸入："
+
+msgid "Reading and writing files and running commands are unavailable until you trust the folder."
+msgstr "在您信任該資料夾之前，無法讀寫檔案或執行命令。"
+
+msgid "Reads the {channel} version number from Anthropic's download server."
+msgstr "從 Anthropic 的下載伺服器讀取 {channel} 的版本號碼。"
+
+msgid "Reason"
+msgstr "原因"
+
+msgid "Reauthenticate"
+msgstr "重新驗證"
+
+msgid "Recent Projects"
+msgstr "最近的專案"
+
+msgid "Recommended"
+msgstr "建議"
+
+msgid "Reconnect"
+msgstr "重新連線"
+
+msgid "Reconnect Now"
+msgstr "立即重新連線"
+
+msgid "Regenerate Thread Title"
+msgstr "重新產生會話標題"
+
+msgid "Reject"
+msgstr "拒絕"
+
+msgid "Reject All"
+msgstr "全部拒絕"
+
+msgid "Reload Agent"
+msgstr "重新載入代理"
+
+msgid "Remove"
+msgstr "移除"
+
+msgid "Remove Key"
+msgstr "移除金鑰"
+
+msgid "Remove Message from Queue"
+msgstr "從佇列移除訊息"
+
+msgid "Removes the key from {store} and from settings.json"
+msgstr "從 {store} 與 settings.json 中移除金鑰"
+
+msgid "Request Failed"
+msgstr "要求失敗"
+
+msgid "Request Refused"
+msgstr "要求遭拒"
+
+msgid "Required"
+msgstr "必填"
+
+msgid "Restart Generation"
+msgstr "重新開始產生"
+
+msgid "Restart Outside the Sandbox…"
+msgstr "在沙箱外重新啟動…"
+
+msgid "Restart Transform"
+msgstr "重新啟動轉換"
+
+msgid "Restore Checkpoint"
+msgstr "還原檢查點"
+
+msgid "Restores all files in the project to the content they had at this point in the conversation."
+msgstr "將專案中的所有檔案還原至對話中此時間點的內容。"
+
+msgid "Restricted Mode"
+msgstr "受限模式"
+
+msgid "Resume Outside the Sandbox…"
+msgstr "在沙箱外繼續…"
+
+msgid "Resumed Session"
+msgstr "已繼續的工作階段"
+
+msgid "Retry"
+msgstr "重試"
+
+msgid "Retry Generation"
+msgstr "重試產生"
+
+msgid "Retrying with {fallback_model}"
+msgstr "正在使用 {fallback_model} 重試"
+
+msgid "Retrying. Next attempt in 1 second (Attempt {} of {})."
+msgstr "正在重試。下次嘗試於 1 秒後開始（第 {} 次，共 {} 次）。"
+
+msgid "Retrying. Next attempt in 1 second."
+msgstr "正在重試。1 秒後進行下一次嘗試。"
+
+msgid "Retrying. Next attempt in {next_attempt_in_secs} seconds (Attempt {} of {})."
+msgstr "正在重試。下次嘗試於 {next_attempt_in_secs} 秒後開始（第 {} 次，共 {} 次）。"
+
+msgid "Retrying. Next attempt in {next_attempt_in_secs} seconds."
+msgstr "正在重試。{next_attempt_in_secs} 秒後進行下一次嘗試。"
+
+msgid "Review"
+msgstr "檢閱"
+
+msgid "Review All Files"
+msgstr "檢閱所有檔案"
+
+msgid "Review Before Sending"
+msgstr "傳送前先檢閱"
+
+msgid "Review Changes"
+msgstr "檢閱變更"
+
+msgid "Review: {}"
+msgstr "檢閱：{}"
+
+msgid "Right-click to switch between full text and summary"
+msgstr "按右鍵以切換全文與摘要"
+
+msgid "Rules"
+msgstr "規則"
+
+msgid "Rules have been migrated to Skills."
+msgstr "規則已移轉至技能。"
+
+msgid "Rules-to-skills migration rerun. Please double-check AGENTS.md and Skills for missing or duplicated prompts."
+msgstr "規則轉技能的移轉已重新執行。請仔細檢查 AGENTS.md 和技能，確認是否有遺漏或重複的提示。"
+
+msgid "Run Command"
+msgstr "執行命令"
+
+msgid "Running Outside the Sandbox Is Not Allowed"
+msgstr "不允許在沙箱外執行"
+
+msgid "Runs `{program}` on the remote host with that host user's permissions (outside the sandbox)."
+msgstr "以該主機使用者的權限（在沙箱外）執行遠端主機上的 `{program}`。"
+
+msgid "Runs outside the sandbox (with Zed's own permissions)"
+msgstr "在沙箱外執行（使用 ForgeKairos 本身的權限）"
+
+msgid "Sandbox"
+msgstr "沙箱"
+
+msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
+msgstr "沙箱若能寫入 Windows 磁碟機上的位置，可能無法提供完整的檔案系統隔離。"
+
+msgid "Sandboxing"
+msgstr "沙箱"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Saving…"
+msgstr "正在儲存…"
+
+msgid "Scroll"
+msgstr "捲動"
+
+msgid "Scroll to Bottom"
+msgstr "捲動至底端"
+
+msgid "Scroll to Subagent"
+msgstr "捲動至子代理"
+
+msgid "Scroll to Top"
+msgstr "捲動至頂端"
+
+msgid "Scroll to User Message"
+msgstr "捲動至使用者訊息"
+
+msgid "Search MCP tools…"
+msgstr "搜尋 MCP 工具…"
+
+msgid "Search agents..."
+msgstr "搜尋代理..."
+
+msgid "Search all threads…"
+msgstr "搜尋所有會話…"
+
+msgid "Search built-in tools…"
+msgstr "搜尋內建工具…"
+
+msgid "Search profiles…"
+msgstr "搜尋設定檔…"
+
+msgid "Search this thread…"
+msgstr "搜尋此會話…"
+
+msgid "Search threads…"
+msgstr "搜尋會話…"
+
+msgid "Select"
+msgstr "選取"
+
+msgid "Select Effort"
+msgstr "選取思考深度"
+
+msgid "Select Images"
+msgstr "選取影像"
+
+msgid "Select Model"
+msgstr "選取模型"
+
+msgid "Select Options…"
+msgstr "選取選項…"
+
+msgid "Select a Model"
+msgstr "選取模型"
+
+msgid "Select a model from the model picker below to get started."
+msgstr "從下方的模型選取器中選取模型以開始使用。"
+
+msgid "Select a model…"
+msgstr "選取模型…"
+
+msgid "Select an option…"
+msgstr "選取選項…"
+
+msgid "Selected Agent"
+msgstr "已選取的代理"
+
+msgid "Selection"
+msgstr "選取"
+
+msgid "Send Immediately"
+msgstr "立即傳送"
+
+msgid "Send Message"
+msgstr "傳送訊息"
+
+msgid "Send Now"
+msgstr "立即傳送"
+
+msgid "Send as Summary"
+msgstr "以摘要傳送"
+
+msgid "Send in Full"
+msgstr "傳送全文"
+
+msgid "Sends it to the remote host after checking its signature and hash."
+msgstr "在檢查其簽章與雜湊後傳送至遠端主機。"
+
+msgid "Sent as an outline (or just a reference) because it is large"
+msgstr "由於內容過大，以大綱（或僅以參考）傳送"
+
+msgid "Server exited with status {status}"
+msgstr "伺服器已結束，狀態為 {status}"
+
+msgid "Set Up…"
+msgstr "設定…"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Show"
+msgstr "顯示"
+
+msgid "Show All Threads"
+msgstr "顯示所有會話"
+
+msgid "Show Only Archived Threads"
+msgstr "僅顯示已封存會話"
+
+msgid "Show Thread History in Panel"
+msgstr "在面板中顯示會話歷程"
+
+msgid "Sign In…"
+msgstr "登入…"
+
+msgid "Skill Failed to Load"
+msgstr "技能載入失敗"
+
+msgid "Skill Omitted from Model Catalog"
+msgstr "技能未納入模型目錄"
+
+msgid "Skills"
+msgstr "技能"
+
+msgid "Some tools are disabled because this project isn't trusted"
+msgstr "由於此專案不受信任，部分工具已停用"
+
+msgid "Some tools are disabled. Click to review trust settings."
+msgstr "部分工具已停用。按一下以檢閱信任設定。"
+
+msgid "Spawning Agent…"
+msgstr "正在啟動代理…"
+
+msgid "Split Right"
+msgstr "向右分割"
+
+msgid "Start (This Thread Only)"
+msgstr "啟動（僅限此會話）"
+
+msgid "Start (This Time Only)"
+msgstr "啟動（僅此次）"
+
+msgid "Start Claude Code outside the sandbox?"
+msgstr "要在沙箱外啟動 Claude Code 嗎？"
+
+msgid "Start New Agent Thread"
+msgstr "開始新的代理會話"
+
+msgid "Start New Thread"
+msgstr "開始新會話"
+
+msgid "Start Outside the Sandbox (This Thread Only)"
+msgstr "在沙箱外啟動（僅限此會話）"
+
+msgid "Start Outside the Sandbox…"
+msgstr "在沙箱外啟動…"
+
+msgid "Start `{program}` outside the sandbox?"
+msgstr "要在沙箱外啟動 `{program}` 嗎？"
+
+msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
+msgstr "在沙箱外啟動時，此代理會以 ForgeKairos 本身的權限執行，也能執行專案的 Hook 與 MCP 伺服器。每個會話在啟動前都會詢問您。"
+
+msgid "Starts a thread of {agent} on {provider}'s models. The key or sign-in is the one in Settings > AI > LLM Providers."
+msgstr "以 {provider} 的模型開始 {agent} 的會話。金鑰或登入使用「設定 > AI > LLM 提供者」中的設定。"
+
+msgid "Starts a thread with {name} through the Agent Client Protocol. You sign in with the agent's own sign-in."
+msgstr "透過 Agent Client Protocol 開始與 {name} 的會話。請使用代理本身的登入方式登入。"
+
+msgid "Steer"
+msgstr "引導"
+
+msgid "Stop Following the {}"
+msgstr "停止跟隨 {}"
+
+msgid "Stop Following {}"
+msgstr "停止跟隨 {}"
+
+msgid "Stop Generation"
+msgstr "停止產生"
+
+msgid "Stop Subagent"
+msgstr "停止子代理"
+
+msgid "Stop This Command"
+msgstr "停止此命令"
+
+msgid "Subagent"
+msgstr "子代理"
+
+msgid "Subagent Canceled"
+msgstr "子代理已取消"
+
+msgid "Subagent Cancelled"
+msgstr "子代理已取消"
+
+msgid "Subagent Failed"
+msgstr "子代理失敗"
+
+msgid "Subagent Output"
+msgstr "子代理輸出"
+
+msgid "Subagents Awaiting Permission:"
+msgstr "等待授權的子代理："
+
+msgid "Submit"
+msgstr "送出"
+
+msgid "Submitted"
+msgstr "已送出"
+
+msgid "Subscription"
+msgstr "訂閱"
+
+msgid "Subscription or API Key"
+msgstr "訂閱或 API 金鑰"
+
+msgid "Subscription or API key: you sign in on Claude Code's own screen, and Zed never handles the credentials. The subscription can be turned off in Settings."
+msgstr "訂閱或 API 金鑰：請在 Claude Code 本身的畫面中登入，ForgeKairos 不會處理認證資訊。可以在設定中關閉訂閱。"
+
+msgid "Subscription sign-in is turned off by `allow_subscription_sign_in` in settings. You can still use an API key."
+msgstr "訂閱登入已由設定中的 `allow_subscription_sign_in` 關閉。仍可使用 API 金鑰。"
+
+msgid "Subscription sign-in is turned off in this agent's settings (`allow_subscription_sign_in`)."
+msgstr "訂閱登入已在此代理的設定（`allow_subscription_sign_in`）中關閉。"
+
+msgid "Switch to {}"
+msgstr "切換至 {}"
+
+msgid "Symbols"
+msgstr "符號"
+
+msgid "Tab"
+msgstr "分頁"
+
+msgid "Tab Bar"
+msgstr "分頁列"
+
+msgid "Target"
+msgstr "目標"
+
+msgid "Terminal"
+msgstr "終端機"
+
+msgid "Terminal inline assistant error: {}"
+msgstr "終端機內嵌助理錯誤：{}"
+
+msgid "Thanks for your feedback!"
+msgstr "感謝您的意見回饋！"
+
+msgid "The Claude Code sent to the remote host could not be found. Please try again."
+msgstr "找不到已傳送至遠端主機的 Claude Code。請再試一次。"
+
+msgid "The JSON is hidden because the saved settings contain values that look like secrets."
+msgstr "由於已儲存的設定中含有疑似秘密資訊的值，因此隱藏 JSON。"
+
+msgid "The Zed server on the remote host is not ready yet (internal error)."
+msgstr "遠端主機上的 ForgeKairos 伺服器尚未就緒（內部錯誤）。"
+
+msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
+msgstr "遠端主機上的 ForgeKairos 伺服器尚未就緒。請等待連線完成後再試一次。"
+
+msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
+msgstr "代理可以讀取儲存庫，但無法變更。按一下以為此會話開啟 Git 操作。"
+
+msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
+msgstr "代理可以暫存、提交、切換分支等（Hook 已停用，且無網路存取）。每個命令都依循 git 工具的權限。按一下以為此會話關閉此功能。"
+
+msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
+msgstr "代理無法使用 `getDiagnostics`，因此看不到編輯器所顯示的錯誤與警告。{reason}"
+
+msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
+msgstr "代理已新增至 settings.json，但尚未載入。請稍後從 + 選單開啟。"
+
+msgid "The agent was stopped because it wasn't in use. Sending a message reconnects it"
+msgstr "由於代理未在使用中，已將其停止。傳送訊息即可重新連線"
+
+msgid "The agent's network access needs hosts added to the allowlist"
+msgstr "代理的網路存取需要將主機加入允許清單"
+
+msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
+msgstr "與 {provider} 的 API 連線已中斷。ForgeKairos 會自動重試。問題持續發生時，請檢查網路連線。"
+
+msgid "The extension's settings must be a JSON object ({{ … }})."
+msgstr "擴充功能的設定必須是 JSON 物件（{{ … }}）。"
+
+msgid "The file name for {platform} in the release information ({file_name}) is not the expected one."
+msgstr "發行資訊中 {platform} 的檔案名稱（{file_name}）與預期不符。"
+
+msgid "The hash of the downloaded Claude Code does not match the release information. Canceled because it may have been tampered with."
+msgstr "下載的 Claude Code 雜湊與發行資訊不符。由於可能已遭竄改，因此已取消。"
+
+msgid "The hosts were added to the allowlist, but the change has not taken effect yet. Wait a moment and try again."
+msgstr "主機已加入允許清單，但變更尚未生效。請稍候再試一次。"
+
+msgid "The key is saved in {store}, not in settings.json."
+msgstr "金鑰會儲存在 {store} 中，而不是 settings.json。"
+
+msgid "The location of the Claude Code used in the sandbox is not an absolute path (internal error): {claude_path}"
+msgstr "沙箱中使用的 Claude Code 位置不是絕對路徑（內部錯誤）：{claude_path}"
+
+msgid "The message is over its size limit, so {count} large attachment is reduced to an outline or a reference."
+msgid_plural "The message is over its size limit, so {count} large attachments are reduced to outlines or references."
+msgstr[0] "訊息超過大小上限，因此 {count} 個大型附件會縮減為大綱或參考。"
+
+msgid "The model"
+msgstr "模型"
+
+msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
+msgstr "模型已達到最大輸出長度而停止。可要求模型從上次中斷處繼續。"
+
+msgid "The project is not connected to the remote host."
+msgstr "專案未連線至遠端主機。"
+
+msgid "The relay cannot be started because the project folder ({root}) contains the IDE integration's rendezvous location."
+msgstr "專案資料夾（{root}）包含 IDE 整合的會合位置，因此無法啟動轉送程式。"
+
+msgid "The release information has no file for {platform}."
+msgstr "發行資訊中沒有適用於 {platform} 的檔案。"
+
+msgid "The remote Linux host uses musl, so the Linux build of Claude Code (the glibc build) cannot run."
+msgstr "遠端 Linux 主機使用 musl，因此 Claude Code 的 Linux 版本（glibc 版本）無法執行。"
+
+msgid "The remote host did not respond within {seconds} seconds ({step}). Check the state of the remote host and try again."
+msgstr "遠端主機未在 {seconds} 秒內回應（{step}）。請檢查遠端主機的狀態後再試一次。"
+
+msgid "The remote host does not have enough free space ({required} MB needed, {available} MB free). Free up space on the remote host and try again."
+msgstr "遠端主機的可用空間不足（需要 {required} MB，可用 {available} MB）。請釋放遠端主機上的空間後再試一次。"
+
+msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
+msgstr "遠端主機沒有 `sha256sum`，因此無法確認 Claude Code 未遭替換。請在遠端主機上安裝 coreutils 後再試一次。"
+
+msgid "The sandboxed Claude Code is not available because no folder is open."
+msgstr "由於未開啟任何資料夾，無法使用沙箱化的 Claude Code。"
+
+msgid "The sandboxed Claude Code is not available because the remote host is not running Linux."
+msgstr "由於遠端主機執行的不是 Linux，無法使用沙箱化的 Claude Code。"
+
+msgid "The sandboxed Claude Code is not available in a project that is being edited collaboratively."
+msgstr "在共同編輯中的專案內無法使用沙箱化的 Claude Code。"
+
+msgid "The sandboxed Claude Code is not available yet for this type of connection."
+msgstr "此類型的連線尚無法使用沙箱化的 Claude Code。"
+
+msgid "The sandboxed Claude Code is not available yet on this OS."
+msgstr "此作業系統尚無法使用沙箱化的 Claude Code。"
+
+msgid "The session's terminal was closed right after it opened."
+msgstr "工作階段的終端機在開啟後立即被關閉。"
+
+msgid "The sign-in is shared with your usual Claude Code (`~/.claude`)."
+msgstr "登入狀態會與您平常使用的 Claude Code（`~/.claude`）共用。"
+
+msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
+msgstr "下載的 Claude Code 大小與發行資訊不符。已取消。"
+
+msgid "The terminal panel is not available."
+msgstr "無法使用終端機面板。"
+
+msgid "The thread cannot be moved back because the agent panel was not found."
+msgstr "找不到代理面板，因此無法將會話移回。"
+
+msgid "The version in the release information ({manifest_version}) does not match the requested version ({version}). Canceled."
+msgstr "發行資訊中的版本（{manifest_version}）與所要求的版本（{version}）不符。已取消。"
+
+msgid "The {channel} version v{offered} is older than the installed v{installed}, so it will not be updated."
+msgstr "{channel} 的版本 v{offered} 比已安裝的 v{installed} 舊，因此不會更新。"
+
+msgid "There is no Linux build of Claude Code for the WSL architecture \"{machine}\" (only x86_64 and aarch64 are supported)."
+msgstr "沒有適用於 WSL 架構「{machine}」的 Claude Code Linux 版本（僅支援 x86_64 與 aarch64）。"
+
+msgid "There is no Linux build of Claude Code for the remote host's architecture \"{machine}\" (only x86_64 and aarch64 are supported)."
+msgstr "沒有適用於遠端主機架構「{machine}」的 Claude Code Linux 版本（僅支援 x86_64 與 aarch64）。"
+
+msgid "There is no folder to run Claude Code in."
+msgstr "沒有可執行 Claude Code 的資料夾。"
+
+msgid "Thinking"
+msgstr "思考中"
+
+msgid "Thinking Effort"
+msgstr "思考深度"
+
+msgid "Thinking: Off"
+msgstr "思考：關閉"
+
+msgid "Thinking: On"
+msgstr "思考：開啟"
+
+msgid "Thinking: {level}"
+msgstr "思考：{level}"
+
+msgid "This JSON contains values that the form cannot show. Keep editing it as JSON."
+msgstr "此 JSON 含有表單無法顯示的值。請繼續以 JSON 編輯。"
+
+msgid "This WSL distribution uses musl, so the Linux build of Claude Code (the glibc build) cannot run."
+msgstr "此 WSL 發行版使用 musl，因此 Claude Code 的 Linux 版本（glibc 版本）無法執行。"
+
+msgid "This Week"
+msgstr "本週"
+
+msgid "This Window"
+msgstr "此視窗"
+
+msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
+msgstr "此代理可以使用 ForgeKairos 的 IDE 工具：醒目提示、註記、導覽、暫留、定義、參考與符號搜尋"
+
+msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
+msgstr "此代理不支援檢視先前的訊息。不過，工作階段仍會從上次離開的位置繼續。"
+
+msgid "This agent doesn't currently support multi-root workspaces"
+msgstr "此代理目前不支援多根目錄工作區"
+
+msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
+msgstr "此代理不提供訂閱登入。若要透過訂閱使用，請啟動官方 Claude Code 並在其中登入。"
+
+msgid "This agent is installed via npx (npm)"
+msgstr "此代理是透過 npx（npm）安裝的"
+
+msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
+msgstr "此設定僅適用於這次啟動。若要一律在沙箱外啟動，請在設定的「AI」頁面中切換。"
+
+msgid "This applies to this thread only (you will not be asked again; you can revoke the consent on the AI page in Settings). To always start outside the sandbox, switch it on the AI page in Settings."
+msgstr "此設定僅適用於此會話（之後不會再詢問；您可以在設定的「AI」頁面中撤回同意）。若要一律在沙箱外啟動，請在設定的「AI」頁面中切換。"
+
+msgid "This command can write to a file on a Windows drive"
+msgstr "此命令可寫入 Windows 磁碟機上的檔案"
+
+msgid "This command ran without a sandbox, allowed by an earlier version when the sandbox could not be created. Commands now always run inside the sandbox."
+msgstr "此命令是在無法建立沙箱時，由較早的版本允許而在沒有沙箱的情況下執行的。現在命令一律會在沙箱內執行。"
+
+msgid "This command was allowed to run without a sandbox by an earlier version when the sandbox could not be created. Commands now always run inside the sandbox."
+msgstr "此命令是在無法建立沙箱時，由較早的版本允許在沒有沙箱的情況下執行的。現在命令一律會在沙箱內執行。"
+
+msgid "This conversation is too long for the model's context window. Start a new thread or remove some attached files to continue."
+msgstr "此對話對模型的上下文視窗來說太長。若要繼續，請開始新的會話或移除部分附加的檔案。"
+
+msgid "This extension has no settings to configure."
+msgstr "此擴充功能沒有可設定的項目。"
+
+msgid "This extension's settings cannot be shown as a form, so they are edited as JSON."
+msgstr "此擴充功能的設定無法以表單顯示，因此會以 JSON 編輯。"
+
+msgid "This internationalized address displays as {decoded_host}. Verify it carefully."
+msgstr "此國際化位址顯示為 {decoded_host}。請仔細核對。"
+
+msgid "This model does not support images yet"
+msgstr "此模型尚不支援影像"
+
+msgid "This model does not support tools."
+msgstr "此模型不支援工具。"
+
+msgid "This model doesn't support thinking mode"
+msgstr "此模型不支援思考模式"
+
+msgid "This model only supports turning thinking on or off (effort levels aren't supported)"
+msgstr "此模型只支援開啟或關閉思考（不支援思考深度層級）"
+
+msgid "This prompt was pre-filled by an external link. Read it carefully before you submit it to the model."
+msgstr "此提示由外部連結預先填入。送出給模型前，請仔細閱讀內容。"
+
+msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
+msgstr "此伺服器定義於專案的設定檔案（.zed/settings.json）中。在此儲存會寫入您的使用者設定，但專案的定義優先，因此不會生效。請從設定視窗的「MCP 伺服器」頁面編輯定義它的檔案。"
+
+msgid "This server is defined on the remote host (its server settings or an extension running there). Saving here writes to your user settings, but the remote host's definition takes precedence, so it has no effect. Change it on the remote host; the MCP Servers page of the Settings window shows where it is defined."
+msgstr "此伺服器定義於遠端主機上（其伺服器設定或在該處執行的擴充功能）。在此儲存會寫入您的使用者設定，但遠端主機的定義優先，因此不會生效。請在遠端主機上變更；設定視窗的「MCP 伺服器」頁面會顯示其定義位置。"
+
+msgid "This server is waiting for approval. Review it on the MCP Servers page of the Settings window."
+msgstr "此伺服器正在等待核准。請在設定視窗的「MCP 伺服器」頁面中檢閱。"
+
+msgid "This starts a new session (it does not continue this conversation)."
+msgstr "這會開始新的工作階段（不會延續此對話）。"
+
+msgid "This thread is a conversation with an agent that was started outside the sandbox. The conversation is kept in a settings folder outside the sandbox, so it can't be read from inside the sandbox. To continue, resume it outside the sandbox (you'll be asked before it starts)."
+msgstr "此會話是與在沙箱外啟動之代理的對話。對話保存在沙箱外的設定資料夾中，因此無法從沙箱內讀取。若要繼續，請在沙箱外繼續該會話（啟動前會詢問您）。"
+
+msgid "This thread was started inside the sandbox, so it was resumed inside the sandbox"
+msgstr "此會話是在沙箱內開始的，因此已在沙箱內繼續"
+
+msgid "This thread's agent doesn't have the IDE diagnostics tool"
+msgstr "此會話的代理沒有 IDE 診斷工具"
+
+msgid "This thread's agent is running outside the sandbox"
+msgstr "此會話的代理正在沙箱外執行"
+
+msgid "Thread Metadata: {}"
+msgstr "會話中繼資料：{}"
+
+msgid "Thread Started Outside the Sandbox"
+msgstr "在沙箱外啟動的會話"
+
+msgid "Thread copied to clipboard (base64 encoded)"
+msgstr "會話已複製到剪貼簿（base64 編碼）"
+
+msgid "Thread loaded from clipboard"
+msgstr "已從剪貼簿載入會話"
+
+msgid "Thread metadata store not available"
+msgstr "無法使用會話中繼資料存放區"
+
+msgid "Thread reached the token limit"
+msgstr "會話已達到 Token 上限"
+
+msgid "Thread reaching the token limit soon"
+msgstr "會話即將達到 Token 上限"
+
+msgid "Threads"
+msgstr "會話"
+
+msgid "Title generation failed. Click to retry."
+msgstr "標題產生失敗。按一下即可重試。"
+
+msgid "To continue, run /compact or start a new thread and @-mention this one"
+msgstr "若要繼續，可執行 /compact 或建立新會話並以 @ 提及此會話"
+
+msgid "To use an API key (billed per use), enter it below and save it."
+msgstr "若要使用 API 金鑰（依用量計費），請在下方輸入並儲存。"
+
+msgid "Today"
+msgstr "今天"
+
+msgid "Toggle Agent Menu"
+msgstr "切換代理選單"
+
+msgid "Toggle Thread History in Panel"
+msgstr "切換面板中的會話歷程"
+
+msgid "Toggle Threads Sidebar"
+msgstr "切換會話側邊欄"
+
+msgid "Tool Permissions"
+msgstr "工具權限"
+
+msgid "Tools Unsupported"
+msgstr "不支援工具"
+
+msgid "Track the agent's location as it reads and edits files."
+msgstr "追蹤代理讀取和編輯檔案時的位置。"
+
+msgid "Transform"
+msgstr "轉換"
+
+msgid "Try Again"
+msgstr "再試一次"
+
+msgid "Try to restart the agent"
+msgstr "嘗試重新啟動代理"
+
+msgid "Type anything to edit"
+msgstr "輸入任何內容以進行編輯"
+
+msgid "Type to Send"
+msgstr "輸入以傳送"
+
+msgid "Unavailable"
+msgstr "不可用"
+
+msgid "Unavailable Editing"
+msgstr "無法編輯"
+
+msgid "Undo"
+msgstr "復原"
+
+msgid "Unexpected shape of the IDE rendezvous path (internal error): {rendezvous}"
+msgstr "IDE 會合路徑的格式不符預期（內部錯誤）：{rendezvous}"
+
+msgid "Unexpected shape of the remote home directory (internal error): {home}"
+msgstr "遠端主目錄的格式不符預期（內部錯誤）：{home}"
+
+msgid "Unfavorite"
+msgstr "從最愛移除"
+
+msgid "Unfavorite Model"
+msgstr "將模型從最愛移除"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Update Claude Code to v{to}"
+msgstr "將 Claude Code 更新至 v{to}"
+
+msgid "Update available"
+msgstr "有可用的更新"
+
+msgid "Update available: v{installed} → v{latest}"
+msgstr "有可用的更新：v{installed} → v{latest}"
+
+msgid "Update available: v{latest}"
+msgstr "有可用的更新：v{latest}"
+
+msgid "Update to v{}"
+msgstr "更新至 v{}"
+
+msgid "Upgrade"
+msgstr "升級"
+
+msgid "Upgrade to Zed Pro"
+msgstr "升級至 Zed Pro"
+
+msgid "Upgrade {}"
+msgstr "升級 {}"
+
+msgid "Upgrade {} to work with Zed"
+msgstr "升級 {} 以與 ForgeKairos 搭配使用"
+
+msgid "Verifying the signature of the Claude Code release information…"
+msgstr "正在驗證 Claude Code 發行資訊的簽章…"
+
+msgid "View"
+msgstr "檢視"
+
+msgid "View Agent License or Terms of Service"
+msgstr "檢視代理的授權或服務條款"
+
+msgid "View Raw Input"
+msgstr "檢視原始輸入"
+
+msgid "View Sandboxing Docs"
+msgstr "檢視沙箱文件"
+
+msgid "View docs"
+msgstr "檢視文件"
+
+msgid "Visit Agent Repository"
+msgstr "造訪代理儲存庫"
+
+msgid "Visit Agent Website"
+msgstr "造訪代理網站"
+
+msgid "WSL did not respond within {seconds} seconds. Wait a moment and try again; if that does not help, restart WSL with `wsl --shutdown`."
+msgstr "WSL 未在 {seconds} 秒內回應。請稍候再試；若仍無法解決，請以 `wsl --shutdown` 重新啟動 WSL。"
+
+msgid "Wait until file edits are complete."
+msgstr "請等待檔案編輯完成。"
+
+msgid "Waiting for completion"
+msgstr "正在等待完成"
+
+msgid "Waiting for input"
+msgstr "正在等待輸入"
+
+msgid "Waiting for the allowlist change to take effect…"
+msgstr "正在等待允許清單的變更生效…"
+
+msgid "Waiting for tool confirmation"
+msgstr "正在等待工具確認"
+
+msgid "We appreciate your feedback and will use it to improve in the future."
+msgstr "感謝您的意見回饋，我們將以此改進。"
+
+msgid "What went wrong? Share your feedback so we can improve."
+msgstr "出了什麼問題？分享意見以協助我們改善。"
+
+msgid "When an API key is set, Claude Code uses it instead. To use your subscription, remove the key."
+msgstr "設定了 API 金鑰時，Claude Code 會改用該金鑰。若要使用您的訂閱，請移除金鑰。"
+
+msgid "Write Access"
+msgstr "寫入權限"
+
+msgid "Write Path"
+msgstr "寫入路徑"
+
+msgid "Writes and network access are not restricted (Zed's controls do not apply on the remote host)."
+msgstr "寫入與網路存取不受限制（ForgeKairos 的管控不適用於遠端主機）。"
+
+msgid "Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings.\nThe sign-in is shared with your usual Claude Code."
+msgstr "寫入不再受限制，網路限制只適用於會讀取 Proxy 設定的程式。\n登入狀態會與您平常使用的 Claude Code 共用。"
+
+msgid "Writes are no longer restricted. Network restrictions only apply to programs that read the proxy settings (they are not enforced)."
+msgstr "寫入不再受限制。網路限制只適用於會讀取 Proxy 設定的程式（不會強制執行）。"
+
+msgid "Yesterday"
+msgstr "昨天"
+
+msgid "You already rated this result"
+msgstr "已評分此結果"
+
+msgid "You can discard this interrupted partial edit and restore the original file content."
+msgstr "可以捨棄此中斷的部分編輯，並還原原始檔案內容。"
+
+msgid "You have sandboxing disabled in settings."
+msgstr "已在設定中停用沙箱。"
+
+msgid "You may need to reconfigure authentication for this provider"
+msgstr "可能需要重新設定此提供者的驗證"
+
+msgid "You reached your free usage limit. Upgrade to Zed Pro for more prompts."
+msgstr "您已達到免費用量上限。請升級至 Zed Pro 以使用更多提示。"
+
+msgid "You've been automatically reset to the Free plan."
+msgstr "已自動還原至免費方案。"
+
+msgid "Your Zed Pro Trial has expired"
+msgstr "Zed Pro 試用已到期"
+
+msgid "Your usual settings and sign-in are used as they are."
+msgstr "會直接使用您平常的設定與登入狀態。"
+
+msgid "a URI"
+msgstr "URI"
+
+msgid "a date"
+msgstr "日期"
+
+msgid "a date and time"
+msgstr "日期與時間"
+
+msgid "added"
+msgstr "已加入"
+
+msgid "an email address"
+msgstr "電子郵件地址"
+
+msgid "any host"
+msgstr "任何主機"
+
+msgid "checking the Claude Code on the remote host"
+msgstr "檢查遠端主機上的 Claude Code"
+
+msgid "checking the remote environment"
+msgstr "檢查遠端環境"
+
+msgid "current directory"
+msgstr "目前目錄"
+
+msgid "in the future"
+msgstr "未來"
+
+msgid "not added"
+msgstr "未加入"
+
+msgid "one folder"
+msgstr "一個資料夾"
+
+msgid "preparing the destination folder"
+msgstr "準備目的地資料夾"
+
+msgid "running a command on the remote host"
+msgstr "在遠端主機上執行命令"
+
+msgid "unrestricted except Git metadata"
+msgstr "不受限制（Git 中繼資料除外）"
+
+msgid "verifying the uploaded Claude Code"
+msgstr "驗證已上傳的 Claude Code"
+
+msgid "{action}… ({agent_panel_keybinding} ― ↓↑ for history — @ to include context)"
+msgstr "{action}…（{agent_panel_keybinding} ― ↓↑ 瀏覽歷程記錄 — @ 以加入上下文）"
+
+msgid "{count} IDE integration relays are already running, so no more can be started. Close the agent threads and terminals you are not using and try again."
+msgstr "已有 {count} 個 IDE 整合轉送程式正在執行，因此無法再啟動更多。請關閉未使用的代理會話與終端機後再試一次。"
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "{count} 個錯誤"
+
+msgid "{count} host"
+msgid_plural "{count} hosts"
+msgstr[0] "{count} 個主機"
+
+msgid "{count} path"
+msgid_plural "{count} paths"
+msgstr[0] "{count} 個路徑"
+
+msgid "{count} project rule"
+msgid_plural "{count} project rules"
+msgstr[0] "{count} 項專案規則"
+
+msgid "{count} thread"
+msgid_plural "{count} threads"
+msgstr[0] "{count} 個會話"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "{count} 個警告"
+
+msgid "{days} days ago"
+msgstr "{days} 天前"
+
+msgid "{detail} Click to learn more about sandboxing."
+msgstr "{detail} 按一下以深入了解沙箱。"
+
+msgid "{errors} & {warnings}"
+msgstr "{errors}、{warnings}"
+
+msgid "{host} (added)"
+msgstr "{host}（已加入）"
+
+msgid "{host} (not added)"
+msgstr "{host}（未加入）"
+
+msgid "{hours} hours ago"
+msgstr "{hours} 小時前"
+
+msgid "{keybinding} to chat"
+msgstr "{keybinding} 開啟聊天"
+
+msgid "{minutes} minutes ago"
+msgstr "{minutes} 分鐘前"
+
+msgid "{notice}. Starts `{program}` on this PC in the project folder."
+msgstr "{notice}。在專案資料夾中啟動這台電腦上的 `{program}`。"
+
+msgid "{profile_name} — Configure Built-in Tools"
+msgstr "{profile_name} — 設定內建工具"
+
+msgid "{profile_name} — Configure Default Model"
+msgstr "{profile_name} — 設定預設模型"
+
+msgid "{profile_name} — Configure MCP Tools"
+msgstr "{profile_name} — 設定 MCP 工具"
+
+msgid "{provider} rejected the request due to insufficient permissions."
+msgstr "{provider} 因權限不足而拒絕此要求。"
+
+msgid "{provider}'s API returned an unexpected error. If the problem persists, try switching models or restarting Zed."
+msgstr "{provider} 的 API 傳回未預期的錯誤。問題持續發生時，請嘗試切換模型或重新啟動 ForgeKairos。"
+
+msgid "{provider}'s rate limit was reached. Zed will retry automatically. You can also wait a moment and try again."
+msgstr "已達到 {provider} 的速率限制。ForgeKairos 會自動重試，也可以稍候片刻再試一次。"
+
+msgid "{provider}'s servers are temporarily unavailable. Zed will retry automatically. If the problem persists, check the provider's status page."
+msgstr "{provider} 的伺服器暫時無法使用。ForgeKairos 會自動重試。問題持續發生時，請檢視提供者的狀態頁面。"
+
+msgid "{seconds} seconds ago"
+msgstr "{seconds} 秒前"
+
+msgid "{title} does not match the requested constraints"
+msgstr "{title} 不符合要求的限制條件"
+
+msgid "{title} does not match the requested pattern"
+msgstr "{title} 不符合要求的模式"
+
+msgid "{title} has a validation pattern that is too complex"
+msgstr "{title} 的驗證模式過於複雜"
+
+msgid "{title} has an invalid validation format"
+msgstr "{title} 的驗證格式無效"
+
+msgid "{title} has an invalid validation pattern"
+msgstr "{title} 的驗證模式無效"
+
+msgid "{title} is too long"
+msgstr "{title} 太長"
+
+msgid "{title} is too long to validate safely"
+msgstr "{title} 太長，無法安全驗證"
+
+msgid "{title} is too short"
+msgstr "{title} 太短"
+
+msgid "{title} must be a finite number"
+msgstr "{title} 必須是有限數字"
+
+msgid "{title} must be a number"
+msgstr "{title} 必須是數字"
+
+msgid "{title} must be an integer"
+msgstr "{title} 必須是整數"
+
+msgid "{title} must be at least {minimum}"
+msgstr "{title} 必須至少為 {minimum}"
+
+msgid "{title} must be at most {maximum}"
+msgstr "{title} 必須至多為 {maximum}"
+
+msgid "{title} must be one of the provided options"
+msgstr "{title} 必須是提供的選項之一"
+
+msgid "{title} must be {format}"
+msgstr "{title} 必須是 {format}"
+
+msgid "{warning_count} Skills Loaded with Long Descriptions"
+msgstr "已載入 {warning_count} 個含過長描述的技能"
+
+msgid "{} Exited"
+msgstr "{} 已結束"
+
+msgid "{} Needs Hosts Added to the Allowlist"
+msgstr "{} 需要將主機加入允許清單"
+
+msgid "{} Queued Messages"
+msgstr "{} 則佇列訊息"
+
+msgid "{} Tasks"
+msgstr "{} 項工作"
+
+msgid "{} configured successfully."
+msgstr "{} 設定成功。"
+
+msgid "{} has too many selections"
+msgstr "{} 選取的項目過多"
+
+msgid "{} is required"
+msgstr "{} 為必填"
+
+msgid "{} left"
+msgstr "剩餘 {}"
+
+msgid "{} needs more selections"
+msgstr "{} 需要選取更多項目"
+
+msgid "{} refused to respond to this prompt. This can happen when a model believes the prompt violates its content policy or safety guidelines, so rephrasing it can sometimes address the issue."
+msgstr "{} 拒絕回應此提示。當模型認為提示違反其內容政策或安全準則時，可能會發生這種情況，重新措辭有時可以解決此問題。"
+
+msgid "{} refused to respond to this request"
+msgstr "{} 拒絕回應此要求"
+
+msgid "{} tokens"
+msgstr "{} 個 Token"
+
+msgid "— {count} file changed"
+msgid_plural "— {count} files changed"
+msgstr[0] "— 已變更 {count} 個檔案"
+
+msgid "— {count} step"
+msgid_plural "— {count} steps"
+msgstr[0] "— {count} 個步驟"
+
+msgid "“{value}” contains potentially surprising Unicode characters"
+msgstr "「{value}」包含可能出乎預期的 Unicode 字元"
+
+msgctxt "Claude Code release channel"
+msgid "latest"
+msgstr "最新版"
+
+msgctxt "Claude Code release channel"
+msgid "stable"
+msgstr "穩定版"
+
+msgctxt "PanelTabBar"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "PanelTabBar"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "PanelTabBar"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "agent profile"
+msgid "Ask"
+msgstr "詢問"
+
+msgctxt "agent profile"
+msgid "Edit Only"
+msgstr "僅編輯"
+
+msgctxt "agent profile"
+msgid "Minimal"
+msgstr "最低"
+
+msgctxt "agent profile"
+msgid "Write"
+msgstr "寫入"
+
+msgctxt "api key"
+msgid "Cancel"
+msgstr "取消"
+
+msgctxt "attachment mode"
+msgid "Full"
+msgstr "完整"
+
+msgctxt "attachment mode"
+msgid "Summary"
+msgstr "摘要"
+
+msgctxt "changed files"
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count} 個檔案"
+
+msgctxt "chrono date format"
+msgid "%b %-d, %Y"
+msgstr "%Y年%-m月%-d日"
+
+msgctxt "data retention"
+msgid "Accept"
+msgstr "接受"
+
+msgctxt "elicitation status"
+msgid "Waiting for input"
+msgstr "正在等待輸入"
+
+msgctxt "extension setting"
+msgid "(Not Set)"
+msgstr "（未設定）"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "mention type"
+msgid "Fetch"
+msgstr "擷取"
+
+msgctxt "model list section"
+msgid "Favorite"
+msgstr "最愛"
+
+msgctxt "permission pattern menu"
+msgid "Always for `{}` commands"
+msgstr "一律允許 `{}` 命令"
+
+msgctxt "sandbox path"
+msgid "Source"
+msgstr "來源"
+
+msgctxt "subagent title"
+msgid "Subagent Failed"
+msgstr "子代理失敗"

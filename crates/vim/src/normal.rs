@@ -1007,20 +1007,21 @@ impl Vim {
                     file.path().display(file.path_style(cx)).into_owned()
                 }
             } else {
-                "[No Name]".into()
+                i18n::t!("[No Name]").into()
             };
             let buffer = buffer.read(cx);
             let lines = buffer.max_point().row + 1;
             let current_line = point.row;
             let percentage = current_line as f32 / lines as f32;
-            let modified = if buffer.is_dirty() { " [modified]" } else { "" };
+            let modified = if buffer.is_dirty() {
+                i18n::t!(" [modified]")
+            } else {
+                ""
+            };
             vim.set_status_label(
-                format!(
-                    "{}{} {} lines --{:.0}%--",
-                    filename,
-                    modified,
-                    lines,
-                    percentage * 100.0,
+                i18n::t!(
+                    "{filename}{modified} {lines} lines --{percentage}%--",
+                    percentage = format!("{:.0}", percentage * 100.0),
                 ),
                 cx,
             );

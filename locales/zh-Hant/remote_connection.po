@@ -1,0 +1,30 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Caps lock is on."
+msgstr "大寫鎖定已開啟。"
+
+msgid "Connecting"
+msgstr "正在連線"
+
+msgid "Downloading remote server binary (version: {}, os: {}, arch: {})"
+msgstr "無法下載遠端伺服器二進位檔（版本：{}，作業系統：{}，架構：{}）"
+
+msgid "Toggle to Mask Password"
+msgstr "切換為遮罩密碼"
+
+msgid "Toggle to Unmask Password"
+msgstr "切換為顯示密碼"
+
+msgid "unknown"
+msgstr "未知"

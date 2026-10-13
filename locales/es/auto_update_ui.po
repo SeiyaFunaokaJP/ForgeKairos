@@ -1,0 +1,36 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Built on DeltaDB, so your threads and code stay in sync across machines and teammates."
+msgstr "Basado en DeltaDB, para que sus conversaciones y su código se mantengan sincronizados entre dispositivos y compañeros de equipo."
+
+msgid "Introducing Delta"
+msgstr "Presentamos Delta"
+
+msgid "Learn More"
+msgstr "Más información"
+
+msgid "Made by the Zed team, with the same quality and performance"
+msgstr "Creado por el equipo de Zed, con la misma calidad y el mismo rendimiento"
+
+msgid "Pick up your thread on the web or your phone, without committing or pushing"
+msgstr "Retome su conversación en la web o en el móvil, sin hacer commit ni push"
+
+msgid "Try Delta"
+msgstr "Probar Delta"
+
+msgid "Updated to {app_name} {}"
+msgstr "Actualizado a {app_name} {}"
+
+msgid "View Release Notes"
+msgstr "Ver notas de la versión"
+
+msgid "Work with teammates and agents in the same thread, live or later"
+msgstr "Colabore con compañeros y agentes en la misma conversación, en directo o más tarde"

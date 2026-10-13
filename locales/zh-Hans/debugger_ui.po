@@ -1,0 +1,410 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(child)"
+msgstr "（子）"
+
+msgid "1 byte"
+msgstr "1 字节"
+
+msgid "16 bytes"
+msgstr "16 字节"
+
+msgid "2 bytes"
+msgstr "2 字节"
+
+msgid "32 bytes"
+msgstr "32 字节"
+
+msgid "4 bytes"
+msgstr "4 字节"
+
+msgid "64 bytes"
+msgstr "64 字节"
+
+msgid "8 bytes"
+msgstr "8 字节"
+
+msgid "Allows inspection of memory contents"
+msgstr "允许检查内存内容"
+
+msgid "Attach"
+msgstr "附加"
+
+msgid "Attach the debugger to a running process"
+msgstr "将调试器附加到正在运行的进程"
+
+msgid "Breakpoints"
+msgstr "断点"
+
+msgid "Build failed"
+msgstr "构建失败"
+
+msgid "Change Address of Currently Viewed Memory"
+msgstr "更改当前查看的内存地址"
+
+msgid "Close Panel"
+msgstr "关闭面板"
+
+msgid "Console"
+msgstr "控制台"
+
+msgid "Continue Program"
+msgstr "继续执行程序"
+
+msgid "Continue Thread"
+msgstr "继续线程"
+
+msgid "Copy Name"
+msgstr "复制名称"
+
+msgid "Copy Value"
+msgstr "复制值"
+
+msgid "Could not find a valid locator for a build task and configure is invalid with error: {}"
+msgstr "找不到构建任务的有效定位器，且配置无效，错误：{}"
+
+msgid "Could not resolve task variables within a debug scenario"
+msgstr "无法解析调试场景中的任务变量"
+
+msgid "Current State"
+msgstr "当前状态"
+
+msgid "Debug"
+msgstr "调试"
+
+msgid "Debug Adapter `{adapter_name}` does not support writing to memory"
+msgstr "调试适配器 `{adapter_name}` 不支持写入内存"
+
+msgid "Debug Panel"
+msgstr "调试面板"
+
+msgid "Debug terminal"
+msgstr "调试终端"
+
+msgid "Debugger"
+msgstr "调试器"
+
+msgid "Debugger Docs"
+msgstr "调试器文档"
+
+msgid "Debugger Extensions"
+msgstr "调试器扩展"
+
+msgid "Debugger:"
+msgstr "调试器："
+
+msgid "Detach"
+msgstr "分离"
+
+msgid "Disable Breakpoint"
+msgstr "禁用断点"
+
+msgid "Disable Data Breakpoint"
+msgstr "禁用数据断点"
+
+msgid "Disable Exception Breakpoint"
+msgstr "禁用异常断点"
+
+msgid "Disable a breakpoint without removing it from the list"
+msgstr "禁用断点但不将其从列表中移除"
+
+msgid "Displays program output and allows manual input of debugger commands"
+msgstr "显示程序输出并允许手动输入调试器命令"
+
+msgid "Displays the call stack, letting you navigate between function calls"
+msgstr "显示调用堆栈，让你在函数调用之间导航"
+
+msgid "Edit Memory at a Selected Address"
+msgstr "在选定地址处编辑内存"
+
+msgid "Edit Value"
+msgstr "编辑值"
+
+msgid "Edit debug.json"
+msgstr "编辑 debug.json"
+
+msgid "Edit in debug.json"
+msgstr "在 debug.json 中编辑"
+
+msgid "Enable Breakpoint"
+msgstr "启用断点"
+
+msgid "Enable Data Breakpoint"
+msgstr "启用数据断点"
+
+msgid "Enable Exception Breakpoint"
+msgstr "启用异常断点"
+
+msgid "Evaluate"
+msgstr "求值"
+
+msgid "Evaluate an expression"
+msgstr "对表达式求值"
+
+msgid "Exception Breakpoints cannot be removed from the breakpoint list"
+msgstr "无法从断点列表中移除异常断点"
+
+msgid "Failed to edit debug.json"
+msgstr "编辑 debug.json 失败"
+
+msgid "Find a debug task, or debug a command"
+msgstr "查找调试任务，或调试某个命令"
+
+msgid "Frames"
+msgstr "堆栈帧"
+
+msgid "Go To Memory"
+msgstr "转到内存"
+
+msgid "Go To Selected Address"
+msgstr "转到所选地址"
+
+msgid "Go to Memory Address / Expression"
+msgstr "转到内存地址 / 表达式"
+
+msgid "Language: {name}"
+msgstr "语言：{name}"
+
+msgid "Launch"
+msgstr "启动"
+
+msgid "Launch Custom"
+msgstr "自定义启动"
+
+msgid "Launch a new process with a debugger"
+msgstr "使用调试器启动新进程"
+
+msgid "Lists all active breakpoints set in the code"
+msgstr "列出代码中设置的所有活动断点"
+
+msgid "Lists all source files currently loaded and used by the debugger"
+msgstr "列出调试器当前加载和使用的所有源文件"
+
+msgid "Memory View"
+msgstr "内存视图"
+
+msgid "Modules"
+msgstr "模块"
+
+msgid "New Session"
+msgstr "新建会话"
+
+msgid "No"
+msgstr "否"
+
+msgid "No Breakpoints Set"
+msgstr "未设置断点"
+
+msgid "No process selected with config that contains {}"
+msgstr "未为包含 {} 的配置选择进程"
+
+msgid "Open Debug Adapter Logs"
+msgstr "打开调试适配器日志"
+
+msgid "Open Documentation"
+msgstr "打开文档"
+
+msgid "Pause Program"
+msgstr "暂停程序"
+
+msgid "Program"
+msgstr "程序"
+
+msgid "Provides an interactive terminal session within the debugging environment"
+msgstr "在调试环境中提供交互式终端会话"
+
+msgid "Re-enable a breakpoint"
+msgstr "重新启用断点"
+
+msgid "Remove Breakpoint"
+msgstr "删除断点"
+
+msgid "Remove Watch"
+msgstr "移除监视"
+
+msgid "Remove breakpoint from a breakpoint list"
+msgstr "从断点列表中移除断点"
+
+msgid "Remove data breakpoint from a breakpoint list"
+msgstr "从断点列表中移除数据断点"
+
+msgid "Rerun"
+msgstr "重新运行"
+
+msgid "Rerun Session"
+msgstr "重新运行会话"
+
+msgid "Restart Stack Frame"
+msgstr "重启堆栈帧"
+
+msgid "Run"
+msgstr "运行"
+
+msgid "Run predefined task"
+msgstr "运行预定义任务"
+
+msgid "Select Debugger"
+msgstr "选择调试器"
+
+msgid "Select a Debug Session"
+msgstr "选择调试会话"
+
+msgid "Select the process you want to attach the debugger to"
+msgstr "选择要附加调试器的进程"
+
+msgid "Set Condition"
+msgstr "设置条件"
+
+msgid "Set Data Breakpoint"
+msgstr "设置数据断点"
+
+msgid "Set Hit Condition"
+msgstr "设置命中条件"
+
+msgid "Set Log Message"
+msgstr "设置日志消息"
+
+msgid "Set condition to evaluate when a breakpoint is hit. Program execution will stop only when the condition is met."
+msgstr "设置断点命中时要求值的条件。仅当满足条件时，程序才会停止执行。"
+
+msgid "Set expression that controls how many hits of the breakpoint are ignored."
+msgstr "设置一个表达式，用于控制忽略多少次断点命中。"
+
+msgid "Set log message to display (instead of stopping) when a breakpoint is hit."
+msgstr "设置断点命中时要显示的日志消息（而非停止执行）。"
+
+msgid "Show all stack frames"
+msgstr "显示所有堆栈帧"
+
+msgid "Show stack frames from your project"
+msgstr "显示项目中的堆栈帧"
+
+msgid "Show {} more{}"
+msgstr "再显示 {} 项{}"
+
+msgid "Shows all modules or libraries loaded by the program"
+msgstr "显示程序加载的所有模块或库"
+
+msgid "Shows current values of local and global variables in the current stack frame"
+msgstr "显示当前堆栈帧中局部变量和全局变量的当前值"
+
+msgid "Sources"
+msgstr "源文件"
+
+msgid "Spawn"
+msgstr "启动"
+
+msgid "Start"
+msgstr "开始"
+
+msgid "Start Debug Session"
+msgstr "启动调试会话"
+
+msgid "Start a predefined debug scenario"
+msgstr "启动预定义的调试场景"
+
+msgid "Step Back in Session History"
+msgstr "在会话历史记录中后退一步"
+
+msgid "Step In"
+msgstr "单步进入"
+
+msgid "Step Out"
+msgstr "单步跳出"
+
+msgid "Step Over"
+msgstr "单步跳过"
+
+msgid "Stop on Entry"
+msgstr "在入口处停止"
+
+msgid "Terminal"
+msgstr "终端"
+
+msgid "Terminate All Threads"
+msgstr "终止所有线程"
+
+msgid "Terminate Thread"
+msgstr "终止线程"
+
+msgid "This Debug Session is still running. Are you sure you want to terminate it?"
+msgstr "此调试会话仍在运行。确定要终止吗？"
+
+msgid "Toggle Data Breakpoint"
+msgstr "切换数据断点"
+
+msgid "Toggle {} Data Breakpoint"
+msgstr "切换 {} 数据断点"
+
+msgid "Unknown Session"
+msgstr "未知会话"
+
+msgid "Variables"
+msgstr "变量"
+
+msgid "Watch Expression"
+msgstr "监视表达式"
+
+msgid "Watch Variable"
+msgstr "监视变量"
+
+msgid "Working Directory"
+msgstr "工作目录"
+
+msgid "Worktree parent path: {parent_dir}"
+msgstr "工作树父路径：{parent_dir}"
+
+msgid "Write to Selected Memory Range"
+msgstr "写入选定的内存区域"
+
+msgid "Yes"
+msgstr "是"
+
+msgid "Zed cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+msgstr "ForgeKairos 无法确定如何运行此调试场景。未提供 `build` 字段，且调试适配器不接受所提供的配置，原因：{error}"
+
+msgid "history-{}"
+msgstr "历史记录-{}"
+
+msgid "in {d}/"
+msgstr "在 {d}/ 中"
+
+msgid "in {f}"
+msgstr "在 {f} 中"
+
+msgid "no active worktree"
+msgstr "没有活动的工作树"
+
+msgid "no scenario to save"
+msgstr "没有要保存的场景"
+
+msgid "no task contexts"
+msgstr "没有任务上下文"
+
+msgctxt "data breakpoint access"
+msgid "Read"
+msgstr "读取"
+
+msgctxt "data breakpoint access"
+msgid "Read/Write"
+msgstr "读取/写入"
+
+msgctxt "data breakpoint access"
+msgid "Write"
+msgstr "写入"
+
+msgctxt "debugger pane zoom"
+msgid "Expand"
+msgstr "展开"
+
+msgctxt "debugger pane zoom"
+msgid "Minimize"
+msgstr "最小化"

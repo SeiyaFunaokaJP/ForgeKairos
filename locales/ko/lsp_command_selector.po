@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Arguments"
+msgstr "인수"
+
+msgid "Executing command…"
+msgstr "명령 실행 중…"
+
+msgid "Failed to execute LSP command {command}: {error}"
+msgstr "LSP 명령 {command}을(를) 실행하지 못했습니다: {error}"
+
+msgid "JSON arguments (42, {{\"key\": \"value\"}}, …) or plain text for one string"
+msgstr "JSON 인수(42, {{\"key\": \"value\"}}, …) 또는 하나의 문자열로 전달할 일반 텍스트"
+
+msgid "Select a language server command…"
+msgstr "언어 서버 명령 선택…"
+
+msgid "to switch focus"
+msgstr "포커스 전환"

@@ -1,0 +1,67 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Auto-updates disabled for non-bundled app."
+msgstr "非套件版應用程式已停用自動更新。"
+
+msgid "Could not auto-update because the required rsync utility was not found."
+msgstr "找不到必要的 rsync 公用程式，因此無法自動更新。"
+
+msgid "Could not check for updates"
+msgstr "無法檢查更新"
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "無法將主機加入允許清單：{error}"
+
+msgid "Couldn't check for updates: GitHub answered with HTTP status {status}."
+msgstr "無法檢查更新：GitHub 回應了 HTTP 狀態 {status}。"
+
+msgid "Couldn't check for updates: GitHub could not be reached ({error})."
+msgstr "無法檢查更新：無法連線至 GitHub（{error}）。"
+
+msgid "Couldn't check for updates: GitHub has no release list for {repository}. The repository may be private or not published yet."
+msgstr "無法檢查更新：GitHub 上沒有 {repository} 的發行清單。該儲存庫可能是私人的，或尚未公開。"
+
+msgid "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minute."
+msgid_plural "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minutes."
+msgstr[0] "無法檢查更新：已達到 GitHub 對未登入要求的限制。請在 {count} 分鐘後再試一次。"
+
+msgid "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again later."
+msgstr "無法檢查更新：已達到 GitHub 對未登入要求的限制。請稍後再試。"
+
+msgid "Couldn't check for updates: GitHub's release list was not in the expected format."
+msgstr "無法檢查更新：GitHub 的發行清單不是預期的格式。"
+
+msgid "Downloading remote server"
+msgstr "正在下載遠端伺服器"
+
+msgid "Fetching remote server release"
+msgstr "正在擷取遠端伺服器的發行資訊"
+
+msgid "Install it with: sudo apt install rsync"
+msgstr "請使用下列命令安裝：sudo apt install rsync"
+
+msgid "Install it with: sudo dnf install rsync"
+msgstr "請使用下列命令安裝：sudo dnf install rsync"
+
+msgid "Install it with: sudo pacman -S rsync"
+msgstr "請使用下列命令安裝：sudo pacman -S rsync"
+
+msgid "Install pkgs.rsync from nixpkgs"
+msgstr "請從 nixpkgs 安裝 pkgs.rsync"
+
+msgid "Please install rsync using your package manager"
+msgstr "請使用套件管理員安裝 rsync"
+
+msgid "Zed was installed via a package manager."
+msgstr "ForgeKairos 是透過套件管理員安裝的。"
+
+msgid "rsync is required for auto-updates but is not installed. {install_hint}"
+msgstr "自動更新需要 rsync，但尚未安裝。{install_hint}"

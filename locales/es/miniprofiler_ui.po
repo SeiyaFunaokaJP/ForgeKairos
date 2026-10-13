@@ -1,0 +1,34 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "All threads"
+msgstr "Todos los subprocesos"
+
+msgid "Include profiler timings"
+msgstr "Incluir los tiempos del propio generador de perfiles"
+
+msgid "Pause"
+msgstr "Pausar"
+
+msgid "Profiler Window"
+msgstr "Ventana del generador de perfiles"
+
+msgid "Remote: All threads"
+msgstr "Remoto: todos los subprocesos"
+
+msgid "Remote: Foreground"
+msgstr "Remoto: primer plano"
+
+msgid "Resume"
+msgstr "Reanudar"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgctxt "profiler thread"
+msgid "Foreground"
+msgstr "Primer plano"

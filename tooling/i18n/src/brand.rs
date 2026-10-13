@@ -166,6 +166,10 @@ pub struct Renamer<'a> {
     pub from: &'a str,
     pub to: &'a str,
     pub phrases: Vec<&'a str>,
+    /// Whether `from` joined to a word by a hyphen is a mention. Upstream's English and the
+    /// sources write other names that way (`Zed-JP-Enhance`), while a translation may write
+    /// the application's name into a compound (German `Zed-Einstellungen`).
+    pub hyphen_compounds: bool,
 }
 
 fn is_name_character(character: char) -> bool {
@@ -173,8 +177,27 @@ fn is_name_character(character: char) -> bool {
 }
 
 impl Renamer<'_> {
-    /// Where `from` stands as a word of its own outside every protected phrase. A hyphen joins
-    /// words into one name (`Zed-Editor`), so a mention may not continue with one.
+    /// Where `from` stands as a word of its own, protected phrases included. Unless
+    /// `hyphen_compounds` is set, a hyphen joins words into one name (`Zed-Editor`), so a
+    /// mention may not continue with one.
+    fn words(&self, text: &str) -> Vec<Range<usize>> {
+        text.match_indices(self.from)
+            .map(|(start, matched)| start..start + matched.len())
+            .filter(|range| {
+                let before = text[..range.start].chars().next_back();
+                let mut after = text[range.end..].chars();
+                let next = after.next();
+                let joined_by_hyphen = !self.hyphen_compounds
+                    && next == Some('-')
+                    && after.next().is_some_and(is_name_character);
+                !before.is_some_and(is_name_character)
+                    && !next.is_some_and(is_name_character)
+                    && !joined_by_hyphen
+            })
+            .collect()
+    }
+
+    /// Where `from` stands as a word of its own outside every protected phrase.
     pub fn mentions(&self, text: &str) -> Vec<Range<usize>> {
         let protected: Vec<Range<usize>> = self
             .phrases
@@ -184,24 +207,21 @@ impl Renamer<'_> {
                     .map(|(start, matched)| start..start + matched.len())
             })
             .collect();
-        text.match_indices(self.from)
-            .map(|(start, matched)| start..start + matched.len())
-            .filter(|range| {
-                let before = text[..range.start].chars().next_back();
-                let mut after = text[range.end..].chars();
-                let next = after.next();
-                let joined_by_hyphen =
-                    next == Some('-') && after.next().is_some_and(is_name_character);
-                !before.is_some_and(is_name_character)
-                    && !next.is_some_and(is_name_character)
-                    && !joined_by_hyphen
-            })
+        self.words(text)
+            .into_iter()
             .filter(|range| {
                 !protected
                     .iter()
                     .any(|phrase| phrase.start <= range.start && range.end <= phrase.end)
             })
             .collect()
+    }
+
+    /// How many of the mentions of `from` in `text` a protected phrase keeps.
+    pub fn kept_count(&self, text: &str) -> usize {
+        self.words(text)
+            .len()
+            .saturating_sub(self.mentions(text).len())
     }
 
     pub fn rename(&self, text: &str) -> String {
@@ -225,6 +245,9 @@ pub enum BrandFinding {
     /// A translation names upstream's product where its English does not, and the keep list
     /// does not say whether that is the application.
     Unclassified { file: String, message: String },
+    /// The English keeps upstream's name in a phrase and renames it elsewhere, and the
+    /// translation's own mentions do not show which of them is which.
+    Ambiguous { file: String, message: String },
     /// A keep list entry that no message has (any more).
     UnusedKeep { line: usize, text: String },
 }
@@ -239,6 +262,10 @@ impl std::fmt::Display for BrandFinding {
             BrandFinding::Unclassified { file, message } => write!(
                 formatter,
                 "{file}: {message}: the translation names {UPSTREAM_NAME} but the English does not; add a `translation` or `message` line to {KEEP_LIST_PATH}"
+            ),
+            BrandFinding::Ambiguous { file, message } => write!(
+                formatter,
+                "{file}: {message}: the English keeps {UPSTREAM_NAME} in a phrase and renames it elsewhere; add the translation's wording of the kept phrase as a `phrase` line to {KEEP_LIST_PATH}"
             ),
             BrandFinding::UnusedKeep { line, text } => write!(
                 formatter,
@@ -331,6 +358,12 @@ pub fn plan(repository: &Path, product_name: &str) -> Result<BrandOutcome> {
         from: UPSTREAM_NAME,
         to: product_name,
         phrases: keep.phrases(),
+        hyphen_compounds: false,
+    };
+    let translation_renamer = Renamer {
+        hyphen_compounds: true,
+        phrases: keep.phrases(),
+        ..renamer
     };
     let mut documents = read_languages(repository)?;
     let mut outcome = BrandOutcome::default();
@@ -351,7 +384,7 @@ pub fn plan(repository: &Path, product_name: &str) -> Result<BrandOutcome> {
                 if entry
                     .msgstr
                     .iter()
-                    .any(|form| !renamer.mentions(form).is_empty())
+                    .any(|form| !translation_renamer.mentions(form).is_empty())
                 {
                     outcome.findings.push(BrandFinding::Unclassified {
                         file: language_document.path.clone(),
@@ -365,15 +398,22 @@ pub fn plan(repository: &Path, product_name: &str) -> Result<BrandOutcome> {
                 outcome.kept += 1;
                 continue;
             }
-            let names_the_application = !renamer.mentions(&english).is_empty()
-                || english_plural
-                    .as_deref()
-                    .is_some_and(|plural| !renamer.mentions(plural).is_empty());
+            let english_forms: Vec<&str> = std::iter::once(english.as_str())
+                .chain(english_plural.as_deref())
+                .collect();
+            let names_the_application = english_forms
+                .iter()
+                .any(|form| !renamer.mentions(form).is_empty());
+            // A phrase of the keep list is matched in the English, so that it holds for every
+            // language without each of them listing its own wording of it.
+            let keeps_upstream = english_forms
+                .iter()
+                .any(|form| renamer.kept_count(form) > 0);
             if names_the_application {
-                let msgstr = match &english_plural {
-                    Some(plural) => vec![renamer.rename(&english), renamer.rename(plural)],
-                    None => vec![renamer.rename(&english)],
-                };
+                let msgstr = english_forms
+                    .iter()
+                    .map(|form| renamer.rename(form))
+                    .collect();
                 brand_entries
                     .entry((context.clone(), msgid.clone()))
                     .or_insert_with(|| PoEntry {
@@ -384,6 +424,30 @@ pub fn plan(repository: &Path, product_name: &str) -> Result<BrandOutcome> {
                         fuzzy: false,
                         line: 0,
                     });
+                // Which of the translation's mentions are the kept ones cannot be told from the
+                // English, so the translation has to protect them with a phrase of its own,
+                // which leaves as many mentions to rename as the English renames (counting
+                // those an earlier run renamed already).
+                let lines_up = !keeps_upstream
+                    || entry.msgstr.iter().enumerate().all(|(index, form)| {
+                        let english_form = english_forms
+                            .get(index)
+                            .or(english_forms.last())
+                            .copied()
+                            .unwrap_or_default();
+                        translation_renamer.mentions(form).len()
+                            + form.matches(product_name).count()
+                            == renamer.mentions(english_form).len()
+                    });
+                if !lines_up {
+                    outcome.findings.push(BrandFinding::Ambiguous {
+                        file: language_document.path.clone(),
+                        message: describe(context.as_deref(), &msgid),
+                    });
+                    continue;
+                }
+            } else if keeps_upstream {
+                continue;
             } else if let Some(listed) =
                 keep.find(KeepKind::Translation, context.as_deref(), &msgid)
             {
@@ -392,7 +456,7 @@ pub fn plan(repository: &Path, product_name: &str) -> Result<BrandOutcome> {
                 if entry
                     .msgstr
                     .iter()
-                    .any(|form| !renamer.mentions(form).is_empty())
+                    .any(|form| !translation_renamer.mentions(form).is_empty())
                 {
                     outcome.findings.push(BrandFinding::Unclassified {
                         file: language_document.path.clone(),
@@ -402,7 +466,7 @@ pub fn plan(repository: &Path, product_name: &str) -> Result<BrandOutcome> {
                 continue;
             }
             for form in &mut entry.msgstr {
-                *form = renamer.rename(form);
+                *form = translation_renamer.rename(form);
             }
         }
     }
@@ -610,6 +674,7 @@ pub fn source_mentions(repository: &Path, crates: &[String]) -> Result<Vec<Sourc
         from: UPSTREAM_NAME,
         to: UPSTREAM_NAME,
         phrases: keep.phrases(),
+        hyphen_compounds: false,
     };
     let files = crate::sources::load_crates(repository, crates)?;
     let extraction = crate::sources::extract(&files);
@@ -732,6 +797,7 @@ mod tests {
             from: "Zed",
             to: "Forge",
             phrases: phrases.to_vec(),
+            hyphen_compounds: false,
         }
     }
 
@@ -766,6 +832,114 @@ mod tests {
             assert_eq!(renamer.rename(untouched), untouched);
         }
         assert_eq!(renamer.rename("Zed-"), "Forge-");
+
+        let in_translations = Renamer {
+            phrases: Vec::new(),
+            hyphen_compounds: true,
+            ..renamer
+        };
+        assert_eq!(
+            in_translations.rename("Zed-Einstellungen, Zed-Übersicht, Zed"),
+            "Forge-Einstellungen, Forge-Übersicht, Forge"
+        );
+        assert_eq!(in_translations.rename("ZedIndustries"), "ZedIndustries");
+    }
+
+    /// Every language is renamed the same way, and a phrase the keep list gives in English
+    /// keeps the name in every translation of the message without listing their wording.
+    #[test]
+    fn translations_in_any_language_follow_the_english_keep_list() {
+        let directory = tempfile::tempdir().expect("create a temporary directory");
+        let root = directory.path();
+        let header =
+            |language: &str| format!("msgid \"\"\nmsgstr \"\"\n\"Language: {language}\\n\"\n\n");
+        write(root, KEEP_LIST_PATH, "phrase\tservice\t-\tZed team\n");
+        for (language, restart, ask, mixed) in [
+            (
+                "de",
+                "Zed-Einstellungen neu laden",
+                "Das Zed-Team fragen",
+                "Zed neu starten oder das Zed-Team fragen",
+            ),
+            (
+                "es",
+                "Reiniciar Zed",
+                "Preguntar al equipo de Zed",
+                "Reiniciar Zed o preguntar al equipo de Zed",
+            ),
+            (
+                "ko",
+                "Zed를 다시 시작",
+                "Zed 팀에 문의",
+                "Zed를 다시 시작하거나 Zed 팀에 문의",
+            ),
+            (
+                "zh-Hans",
+                "重新启动 Zed",
+                "询问 Zed 团队",
+                "重新启动 Zed 或询问 Zed 团队",
+            ),
+        ] {
+            write(
+                root,
+                &format!("locales/{language}/a.po"),
+                &format!(
+                    "{}msgid \"Ask the Zed team\"\nmsgstr \"{ask}\"\n\nmsgid \"Reload Zed\"\nmsgstr \"{restart}\"\n\nmsgid \"Restart Zed or ask the Zed team\"\nmsgstr \"{mixed}\"\n",
+                    header(language)
+                ),
+            );
+        }
+
+        let outcome = plan(root, "Forge").expect("plan");
+        let mut ambiguous: Vec<&str> = outcome
+            .findings
+            .iter()
+            .map(|finding| match finding {
+                BrandFinding::Ambiguous { file, message } => {
+                    assert_eq!(message, "\"Restart Zed or ask the Zed team\"");
+                    file.as_str()
+                }
+                other => panic!("{other}"),
+            })
+            .collect();
+        ambiguous.sort();
+        assert_eq!(
+            ambiguous,
+            [
+                "locales/de/a.po",
+                "locales/es/a.po",
+                "locales/ko/a.po",
+                "locales/zh-Hans/a.po"
+            ],
+            "the translation has to say which mention is the kept one"
+        );
+        for (language, renamed, kept) in [
+            ("de", "Forge-Einstellungen neu laden", "Das Zed-Team fragen"),
+            ("es", "Reiniciar Forge", "Preguntar al equipo de Zed"),
+            ("ko", "Forge를 다시 시작", "Zed 팀에 문의"),
+            ("zh-Hans", "重新启动 Forge", "询问 Zed 团队"),
+        ] {
+            let text = &outcome.changes[&format!("locales/{language}/a.po")];
+            assert!(text.contains(&format!("msgstr \"{renamed}\"")), "{text}");
+            assert!(text.contains(&format!("msgstr \"{kept}\"")), "{text}");
+        }
+
+        write(
+            root,
+            KEEP_LIST_PATH,
+            "phrase\tservice\t-\tZed team\nphrase\tservice\t-\tZed-Team\nphrase\tservice\t-\tequipo de Zed\nphrase\tservice\t-\tZed 팀\nphrase\tservice\t-\tZed 团队\n",
+        );
+        let outcome = plan(root, "Forge").expect("plan");
+        assert_eq!(outcome.findings, Vec::new());
+        for (language, mixed) in [
+            ("de", "Forge neu starten oder das Zed-Team fragen"),
+            ("es", "Reiniciar Forge o preguntar al equipo de Zed"),
+            ("ko", "Forge를 다시 시작하거나 Zed 팀에 문의"),
+            ("zh-Hans", "重新启动 Forge 或询问 Zed 团队"),
+        ] {
+            let text = &outcome.changes[&format!("locales/{language}/a.po")];
+            assert!(text.contains(&format!("msgstr \"{mixed}\"")), "{text}");
+        }
     }
 
     const HEADER: &str = "msgid \"\"\nmsgstr \"\"\n\"Language: ja\\n\"\n\n";

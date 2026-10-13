@@ -1,0 +1,63 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "已存在相同名稱的檔案或資料夾。取代將會覆寫其目前內容。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot open {dir}: {error}"
+msgstr "無法開啟 {dir}：{error}"
+
+msgid "Enter: Go into Folder"
+msgstr "Enter：進入資料夾"
+
+msgid "Enter: Open"
+msgstr "Enter：開啟"
+
+msgid "No such file or directory"
+msgstr "找不到此檔案或資料夾"
+
+msgid "Open This Folder"
+msgstr "開啟此資料夾"
+
+msgid "Open {listed_directory} itself"
+msgstr "直接開啟 {listed_directory}"
+
+msgid "Replace"
+msgstr "取代"
+
+msgid "Type a path…"
+msgstr "輸入路徑…"
+
+msgid "[directory{}]filename.ext"
+msgstr "[資料夾{}]檔案名稱.副檔名"
+
+msgid "go to parent directory"
+msgstr "前往上層資料夾"
+
+msgid "go to parent directory ({parent})"
+msgstr "前往上層資料夾（{parent}）"
+
+msgid "open this directory"
+msgstr "開啟此資料夾"
+
+msgid "{confirm_hint} / Ctrl+Enter: Choose Selected Folder"
+msgstr "{confirm_hint} / Ctrl+Enter：選擇選取的資料夾"
+
+msgid "{label} (create)"
+msgstr "{label}（建立）"
+
+msgid "{label} (replace)"
+msgstr "{label}（取代）"
+
+msgid "{prompted_path} already exists. Do you want to replace it?"
+msgstr "{prompted_path} 已存在。要取代嗎？"

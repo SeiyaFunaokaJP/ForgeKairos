@@ -119,10 +119,12 @@ const SUGGESTIONS_BY_LANGUAGE: &[LanguageSuggestion] = &[LanguageSuggestion {
         "Twig",
         "Vue.js",
     ],
-    title: "Emmet is available for this file",
-    description: "Emmet expands abbreviations such as `ul>li*3` into HTML and `m10` into CSS.",
+    title: i18n::msg!("Emmet is available for this file"),
+    description: i18n::msg!(
+        "Emmet expands abbreviations such as `ul>li*3` into HTML and `m10` into CSS."
+    ),
     docs_url: "https://zed.dev/docs/languages/emmet",
-    install_message: "Install Emmet",
+    install_message: i18n::msg!("Install Emmet"),
 }];
 
 struct ExtensionSuggestionNotification;
@@ -286,7 +288,7 @@ fn suggest_for_buffer(
             show_suggestion(workspace, suggestion.extension_id, cx, |cx| {
                 let markdown = cx.new(|cx| {
                     Markdown::new(
-                        SharedString::new_static(suggestion.description),
+                        SharedString::new_static(i18n::tr(suggestion.description)),
                         None,
                         None,
                         cx,
@@ -297,11 +299,11 @@ fn suggest_for_buffer(
                         .text_size(TextSize::Default.rems(cx))
                         .into_any_element()
                 })
-                .with_title(suggestion.title)
-                .more_info_message("Learn more")
+                .with_title(i18n::tr(suggestion.title))
+                .more_info_message(i18n::t!("Learn more"))
                 .more_info_url(suggestion.docs_url)
-                .primary_message(suggestion.install_message)
-                .secondary_message("Don't show again")
+                .primary_message(i18n::tr(suggestion.install_message))
+                .secondary_message(i18n::t!("Don't show again"))
             });
         }
         None => {

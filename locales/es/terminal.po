@@ -1,0 +1,171 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid ", capture into ${{{capture}}}"
+msgstr ", capturar en ${{{capture}}}"
+
+msgid ", on a match capture into ${{{capture}}}"
+msgstr ", si coincide, capturar en ${{{capture}}}"
+
+msgid ", {count} step on timeout"
+msgid_plural ", {count} steps on timeout"
+msgstr[0] ", {count} paso al agotarse el tiempo de espera"
+msgstr[1] ", {count} pasos al agotarse el tiempo de espera"
+
+msgid "A saved password can't answer the host key confirmation of a first connection. Connect once with “Remember password” turned off and confirm the host key."
+msgstr "Una contraseña guardada no puede responder a la confirmación de la clave de host de una primera conexión. Conéctese una vez con “Recordar contraseña” desactivado y confirme la clave de host."
+
+msgid "Branch: if “{pattern}” is in {target}, run {} step(s), otherwise {} step(s)"
+msgstr "Bifurcación: si “{pattern}” está en {target}, ejecutar {} paso(s); si no, {} paso(s)"
+
+msgid "Clear screen"
+msgstr "Borrar la pantalla"
+
+msgid "Couldn't delete the password ({url})"
+msgstr "No se pudo eliminar la contraseña ({url})"
+
+msgid "Couldn't read the password ({url})"
+msgstr "No se pudo leer la contraseña ({url})"
+
+msgid "Couldn't save the password ({url})"
+msgstr "No se pudo guardar la contraseña ({url})"
+
+msgid "Couldn't write terminal_sessions.json"
+msgstr "No se pudo escribir terminal_sessions.json"
+
+msgid "Match → Then"
+msgstr "Coincide → Entonces"
+
+msgid "No match → Else"
+msgstr "No coincide → Si no"
+
+msgid "Output since last send"
+msgstr "Salida desde el último envío"
+
+msgid "Repeat: until stopped ({count} step)"
+msgid_plural "Repeat: until stopped ({count} steps)"
+msgstr[0] "Repetir: hasta detener ({count} paso)"
+msgstr[1] "Repetir: hasta detener ({count} pasos)"
+
+msgid "Repeat: ×{times} ({count} step)"
+msgid_plural "Repeat: ×{times} ({count} steps)"
+msgstr[0] "Repetir: ×{times} ({count} paso)"
+msgstr[1] "Repetir: ×{times} ({count} pasos)"
+
+msgid "Send: {text}"
+msgstr "Enviar: {text}"
+
+msgid "Sleep: {} s"
+msgstr "Esperar: {} s"
+
+msgid "Step {label} is of a kind this version can't run (“{kind}”). The macro was not run."
+msgstr "El paso {label} es de un tipo que esta versión no puede ejecutar (“{kind}”). No se ejecutó la macro."
+
+msgid "Step {label} is of a kind this version can't run. The macro was not run."
+msgstr "El paso {label} es de un tipo que esta versión no puede ejecutar. No se ejecutó la macro."
+
+msgid "Step {label}: {problem}. The macro was not run."
+msgstr "Paso {label}: {problem}. No se ejecutó la macro."
+
+msgid "Step {step_label}: the regular expression “{display_pattern}” is invalid ({error})"
+msgstr "Paso {step_label}: la expresión regular “{display_pattern}” no es válida ({error})"
+
+msgid "Step {}: the terminal exited while waiting for “{display_pattern}”"
+msgstr "Paso {}: el terminal terminó mientras esperaba “{display_pattern}”"
+
+msgid "Step {}: this version can't run this kind of step"
+msgstr "Paso {}: esta versión no puede ejecutar este tipo de paso"
+
+msgid "Step {}: “{display_pattern}” did not appear within {} s"
+msgstr "Paso {}: “{display_pattern}” no apareció en {} s"
+
+msgid "The saved password was rejected. Enter the password again in Quick Connect."
+msgstr "Se rechazó la contraseña guardada. Vuelva a escribir la contraseña en Conexión rápida."
+
+msgid "The “{field}” of this “{kind}” step has a value this version can't use"
+msgstr "El campo “{field}” de este paso “{kind}” tiene un valor que esta versión no puede usar"
+
+msgid "This terminal can't record its output (it has no PTY)"
+msgstr "Este terminal no puede registrar su salida (no tiene PTY)"
+
+msgid "This “{kind}” step has a field this version doesn't know (“{field}”)"
+msgstr "Este paso “{kind}” tiene un campo que esta versión no conoce (“{field}”)"
+
+msgid "This “{kind}” step has no “{field}”"
+msgstr "Este paso “{kind}” no tiene “{field}”"
+
+msgid "Timeout → Continue"
+msgstr "Tiempo de espera agotado → Continuar"
+
+msgid "Unknown step (this version can't run it)"
+msgstr "Paso desconocido (esta versión no puede ejecutarlo)"
+
+msgid "Unknown step “{kind}” (this version can't run it)"
+msgstr "Paso desconocido “{kind}” (esta versión no puede ejecutarlo)"
+
+msgid "Variable: ${{{name}}} = “{value}”"
+msgstr "Variable: ${{{name}}} = “{value}”"
+
+msgid "Wait for “{pattern}” (up to {} s)"
+msgstr "Esperar “{pattern}” (hasta {} s)"
+
+msgid "Whole screen"
+msgstr "Toda la pantalla"
+
+msgid "[Remote connection lost. The shell keeps running on the remote host; its output will resume after reconnecting]"
+msgstr "[Se perdió la conexión remota. El shell sigue ejecutándose en el host remoto; su salida se reanudará después de volver a conectarse]"
+
+msgid "[Remote connection lost. The shell will restart after reconnecting]"
+msgstr "[Se perdió la conexión remota. El shell se reiniciará después de volver a conectarse]"
+
+msgid "[password input omitted]"
+msgstr "[entrada de contraseña omitida]"
+
+msgid "[{working_directory} was not found, so the shell started in the home directory]"
+msgstr "[No se encontró {working_directory}, por lo que el shell se inició en el directorio principal]"
+
+msgid "the output since the last send"
+msgstr "la salida desde el último envío"
+
+msgid "the whole screen"
+msgstr "toda la pantalla"
+
+msgctxt "terminal macro"
+msgid "Variable"
+msgstr "Variable"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "Bifurcación"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "Borrar la pantalla"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "Repetir"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "Enviar"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "Establecer variable"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "Esperar segundos"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "Paso desconocido"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "Esperar texto"

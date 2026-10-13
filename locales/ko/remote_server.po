@@ -1,0 +1,30 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Another connection took over this shell"
+msgstr "다른 연결이 이 셸을 넘겨받았습니다"
+
+msgid "Could not open standard input"
+msgstr "표준 입력을 열지 못했습니다"
+
+msgid "Could not run {program} on the remote. Check that it is installed."
+msgstr "원격에서 {program}을(를) 실행하지 못했습니다. 설치되어 있는지 확인하세요."
+
+msgid "No operation was specified"
+msgstr "지정된 작업이 없습니다"
+
+msgid "Older output was omitted"
+msgstr "이전 출력은 생략되었습니다"
+
+msgid "The previous shell was no longer running. Starting a new shell"
+msgstr "이전 셸이 더 이상 실행 중이 아닙니다. 새 셸을 시작합니다"
+
+msgid "The shell exited while disconnected (exit code {code})"
+msgstr "연결이 끊긴 동안 셸이 종료되었습니다 (종료 코드 {code})"
+
+msgid "{program} cannot be run on the remote."
+msgstr "원격에서 {program}을(를) 실행할 수 없습니다."

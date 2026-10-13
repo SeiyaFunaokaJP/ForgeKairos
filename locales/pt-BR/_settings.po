@@ -1,0 +1,5885 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgctxt "ActivateOnClose"
+msgid "History"
+msgstr "Histórico"
+
+msgctxt "ActivateOnClose"
+msgid "Left Neighbour"
+msgstr "Vizinha à esquerda"
+
+msgctxt "ActivateOnClose"
+msgid "Neighbour"
+msgstr "Vizinha"
+
+msgctxt "AlternateScroll"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "AlternateScroll"
+msgid "On"
+msgstr "Ativado"
+
+msgctxt "AutoIndentMode"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "AutoIndentMode"
+msgid "Preserve Indent"
+msgstr "Preservar recuo"
+
+msgctxt "AutoIndentMode"
+msgid "Syntax Aware"
+msgstr "Sensível à sintaxe"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "After Delay"
+msgstr "Após atraso"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "On Focus Change"
+msgstr "Ao mudar o foco"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "On Window Change"
+msgstr "Ao mudar de janela"
+
+msgctxt "BaseKeymapContent"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "BottomDockLayout"
+msgid "Contained"
+msgstr "Contido"
+
+msgctxt "BottomDockLayout"
+msgid "Full"
+msgstr "Completo"
+
+msgctxt "BottomDockLayout"
+msgid "Left Aligned"
+msgstr "Alinhado à esquerda"
+
+msgctxt "BottomDockLayout"
+msgid "Right Aligned"
+msgstr "Alinhado à direita"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Comfortable"
+msgstr "Confortável"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Custom"
+msgstr "Personalizado"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Standard"
+msgstr "Padrão"
+
+msgctxt "CallGraphSources"
+msgid "All"
+msgstr "Todos"
+
+msgctxt "CallGraphSources"
+msgid "Language Server"
+msgstr "Somente servidor de linguagem"
+
+msgctxt "CallGraphSources"
+msgid "Name Match"
+msgstr "Somente correspondência de nome"
+
+msgctxt "ClangdIndexMode"
+msgid "Full"
+msgstr "Completo"
+
+msgctxt "ClangdIndexMode"
+msgid "Light"
+msgstr "Leve"
+
+msgctxt "CliDefaultOpenBehavior"
+msgid "Add to Existing Window"
+msgstr "Adicionar à janela existente"
+
+msgctxt "CliDefaultOpenBehavior"
+msgid "Open a New Window"
+msgstr "Abrir uma nova janela"
+
+msgctxt "ClosePosition"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "ClosePosition"
+msgid "Right"
+msgstr "Direita"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Close Window"
+msgstr "Fechar janela"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Keep Window Open"
+msgstr "Manter janela aberta"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Platform Default"
+msgstr "Padrão da plataforma"
+
+msgctxt "CodeLens"
+msgid "Menu"
+msgstr "Menu"
+
+msgctxt "CodeLens"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "CodeLens"
+msgid "On"
+msgstr "Ativado"
+
+msgctxt "CompletionDetailAlignment"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "CompletionDetailAlignment"
+msgid "Right"
+msgstr "Direita"
+
+msgctxt "CompletionMenuItemKind"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "CompletionMenuItemKind"
+msgid "Symbol"
+msgstr "Símbolo"
+
+msgctxt "CurrentLineHighlight"
+msgid "All"
+msgstr "Todos"
+
+msgctxt "CurrentLineHighlight"
+msgid "Gutter"
+msgstr "Medianiz"
+
+msgctxt "CurrentLineHighlight"
+msgid "Line"
+msgstr "Linha"
+
+msgctxt "CurrentLineHighlight"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "CursorShape"
+msgid "Bar"
+msgstr "Barra"
+
+msgctxt "CursorShape"
+msgid "Block"
+msgstr "Bloco"
+
+msgctxt "CursorShape"
+msgid "Hollow"
+msgstr "Vazado"
+
+msgctxt "CursorShape"
+msgid "Underline"
+msgstr "Sublinhado"
+
+msgctxt "CursorShapeContent"
+msgid "Bar"
+msgstr "Barra"
+
+msgctxt "CursorShapeContent"
+msgid "Block"
+msgstr "Bloco"
+
+msgctxt "CursorShapeContent"
+msgid "Hollow"
+msgstr "Vazado"
+
+msgctxt "CursorShapeContent"
+msgid "Underline"
+msgstr "Sublinhado"
+
+msgctxt "DefaultDockPanel"
+msgid "AI Browser Panel"
+msgstr "Painel do navegador de IA"
+
+msgctxt "DefaultDockPanel"
+msgid "Agent Panel"
+msgstr "Painel do agente"
+
+msgctxt "DefaultDockPanel"
+msgid "Browser Panel"
+msgstr "Painel do navegador"
+
+msgctxt "DefaultDockPanel"
+msgid "Debug Panel"
+msgstr "Painel de depuração"
+
+msgctxt "DefaultDockPanel"
+msgid "Don't Stack"
+msgstr "Não empilhar"
+
+msgctxt "DefaultDockPanel"
+msgid "Git Panel"
+msgstr "Painel do Git"
+
+msgctxt "DefaultDockPanel"
+msgid "Outline Panel"
+msgstr "Painel de estrutura"
+
+msgctxt "DefaultDockPanel"
+msgid "Project Panel"
+msgstr "Painel do projeto"
+
+msgctxt "DefaultDockPanel"
+msgid "Terminal Panel"
+msgstr "Painel do terminal"
+
+msgctxt "DefaultOpenBehavior"
+msgid "Add to Existing Window"
+msgstr "Adicionar à janela existente"
+
+msgctxt "DefaultOpenBehavior"
+msgid "Open a New Window"
+msgstr "Abrir uma nova janela"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "All"
+msgstr "Todos"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Error"
+msgstr "Erro"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Hint"
+msgstr "Dica"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Info"
+msgstr "Informação"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Warning"
+msgstr "Aviso"
+
+msgctxt "DiffViewStyle"
+msgid "Split"
+msgstr "Dividido"
+
+msgctxt "DiffViewStyle"
+msgid "Unified"
+msgstr "Unificado"
+
+msgctxt "DisplayIn"
+msgid "Active Editor"
+msgstr "Editor ativo"
+
+msgctxt "DisplayIn"
+msgid "All Editors"
+msgstr "Todos os editores"
+
+msgctxt "DockPosition"
+msgid "Bottom"
+msgstr "Inferior"
+
+msgctxt "DockPosition"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "DockPosition"
+msgid "Right"
+msgstr "Direita"
+
+msgctxt "DockSide"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "DockSide"
+msgid "Right"
+msgstr "Direita"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Background"
+msgstr "Plano de fundo"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Border"
+msgstr "Borda"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Inlay"
+msgstr "Embutido"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "DocumentFoldingRanges"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "DocumentFoldingRanges"
+msgid "On"
+msgstr "Ativado"
+
+msgctxt "DocumentSymbols"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "DocumentSymbols"
+msgid "On"
+msgstr "Ativado"
+
+msgctxt "DoubleClickInMultibuffer"
+msgid "Open"
+msgstr "Abrir"
+
+msgctxt "DoubleClickInMultibuffer"
+msgid "Select"
+msgstr "Selecionar"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "Default"
+msgstr "Padrão"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "No"
+msgstr "Não"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "Yes"
+msgstr "Sim"
+
+msgctxt "EditPredictionsMode"
+msgid "Eager"
+msgstr "Imediato"
+
+msgctxt "EditPredictionsMode"
+msgid "Subtle"
+msgstr "Discreto"
+
+msgctxt "EditingModeContent"
+msgid "Normal"
+msgstr "Normal"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Disabled"
+msgstr "Desabilitado"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Enabled"
+msgstr "Habilitado"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Non Utf8"
+msgstr "Não UTF-8"
+
+msgctxt "FolderIndicator"
+msgid "Both"
+msgstr "Ambos"
+
+msgctxt "FolderIndicator"
+msgid "Chevron"
+msgstr "Seta"
+
+msgctxt "FolderIndicator"
+msgid "Icon"
+msgstr "Ícone"
+
+msgctxt "FormatOnSave"
+msgid "Modifications"
+msgstr "Modificações"
+
+msgctxt "FormatOnSave"
+msgid "Modifications If Available"
+msgstr "Modificações, se possível"
+
+msgctxt "FormatOnSave"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "FormatOnSave"
+msgid "On"
+msgstr "Ativado"
+
+msgctxt "FullscreenMode"
+msgid "Native"
+msgstr "Nativo"
+
+msgctxt "FullscreenMode"
+msgid "Simple"
+msgstr "Simples"
+
+msgctxt "GitDiffBaseSetting"
+msgid "Default Branch"
+msgstr "Branch padrão"
+
+msgctxt "GitDiffBaseSetting"
+msgid "Head"
+msgstr "HEAD"
+
+msgctxt "GitGutterSetting"
+msgid "Hide"
+msgstr "Ocultar"
+
+msgctxt "GitGutterSetting"
+msgid "Tracked Files"
+msgstr "Arquivos rastreados"
+
+msgctxt "GitGutterWidthDiscriminants"
+msgid "Custom"
+msgstr "Personalizado"
+
+msgctxt "GitGutterWidthDiscriminants"
+msgid "Default"
+msgstr "Padrão"
+
+msgctxt "GitHunkStyleSetting"
+msgid "Staged Hollow"
+msgstr "Preparado vazado"
+
+msgctxt "GitHunkStyleSetting"
+msgid "Unstaged Hollow"
+msgstr "Não preparado vazado"
+
+msgctxt "GitPanelClickBehavior"
+msgid "File Diff"
+msgstr "Diff do arquivo"
+
+msgctxt "GitPanelClickBehavior"
+msgid "Project Diff"
+msgstr "Diff do projeto"
+
+msgctxt "GitPanelClickBehavior"
+msgid "View File"
+msgstr "Exibir arquivo"
+
+msgctxt "GitPanelGroupBy"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "GitPanelGroupBy"
+msgid "Staging"
+msgstr "Preparação"
+
+msgctxt "GitPanelGroupBy"
+msgid "Status"
+msgstr "Status"
+
+msgctxt "GitPanelSortBy"
+msgid "Name"
+msgstr "Nome"
+
+msgctxt "GitPanelSortBy"
+msgid "Path"
+msgstr "Caminho"
+
+msgctxt "GitPathStyle"
+msgid "File Name First"
+msgstr "Nome do arquivo primeiro"
+
+msgctxt "GitPathStyle"
+msgid "File Path First"
+msgstr "Caminho do arquivo primeiro"
+
+msgctxt "GoToDefinitionFallback"
+msgid "Find All References"
+msgstr "Localizar todas as referências"
+
+msgctxt "GoToDefinitionFallback"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Center"
+msgstr "Centro"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Minimum"
+msgstr "Mínimo"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Preserve"
+msgstr "Preservar"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Top"
+msgstr "Superior"
+
+msgctxt "HideMouseMode"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "HideMouseMode"
+msgid "On Typing"
+msgstr "Ao digitar"
+
+msgctxt "HideMouseMode"
+msgid "On Typing And Action"
+msgstr "Ao digitar e ao executar uma ação"
+
+msgctxt "IconThemeSelectionDiscriminants"
+msgid "Dynamic"
+msgstr "Dinâmico"
+
+msgctxt "IconThemeSelectionDiscriminants"
+msgid "Static"
+msgstr "Estático"
+
+msgctxt "ImageFileSizeUnit"
+msgid "Binary"
+msgstr "Binário"
+
+msgctxt "ImageFileSizeUnit"
+msgid "Decimal"
+msgstr "Decimal (KB, MB)"
+
+msgctxt "IncludeIgnoredContent"
+msgid "All"
+msgstr "Todos"
+
+msgctxt "IncludeIgnoredContent"
+msgid "Indexed"
+msgstr "Indexado"
+
+msgctxt "IncludeIgnoredContent"
+msgid "Smart"
+msgstr "Inteligente"
+
+msgctxt "IndentGuideBackgroundColoring"
+msgid "Disabled"
+msgstr "Desabilitado"
+
+msgctxt "IndentGuideBackgroundColoring"
+msgid "Indent Aware"
+msgstr "Sensível ao recuo"
+
+msgctxt "IndentGuideColoring"
+msgid "Disabled"
+msgstr "Desabilitado"
+
+msgctxt "IndentGuideColoring"
+msgid "Fixed"
+msgstr "Fixo"
+
+msgctxt "IndentGuideColoring"
+msgid "Indent Aware"
+msgstr "Sensível ao recuo"
+
+msgctxt "InlineBlameLocation"
+msgid "Inline"
+msgstr "Embutido"
+
+msgctxt "InlineBlameLocation"
+msgid "Status Bar"
+msgstr "Barra de status"
+
+msgctxt "LineEndingSetting"
+msgid "Detect"
+msgstr "Detectar"
+
+msgctxt "LineEndingSetting"
+msgid "Enforce CRLF"
+msgstr "Impor CRLF"
+
+msgctxt "LineEndingSetting"
+msgid "Enforce LF"
+msgstr "Impor LF"
+
+msgctxt "LineEndingSetting"
+msgid "Prefer CRLF"
+msgstr "Preferir CRLF"
+
+msgctxt "LineEndingSetting"
+msgid "Prefer LF"
+msgstr "Preferir LF"
+
+msgctxt "LspInsertMode"
+msgid "Insert"
+msgstr "Inserir"
+
+msgctxt "LspInsertMode"
+msgid "Replace"
+msgstr "Substituir"
+
+msgctxt "LspInsertMode"
+msgid "Replace Subsequence"
+msgstr "Substituir subsequência"
+
+msgctxt "LspInsertMode"
+msgid "Replace Suffix"
+msgstr "Substituir sufixo"
+
+msgctxt "MinimapThumb"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "MinimapThumb"
+msgid "Hover"
+msgstr "Ao passar o cursor"
+
+msgctxt "MinimapThumbBorder"
+msgid "Full"
+msgstr "Completo"
+
+msgctxt "MinimapThumbBorder"
+msgid "Left Only"
+msgstr "Somente à esquerda"
+
+msgctxt "MinimapThumbBorder"
+msgid "Left Open"
+msgstr "Aberta à esquerda"
+
+msgctxt "MinimapThumbBorder"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "MinimapThumbBorder"
+msgid "Right Open"
+msgstr "Aberta à direita"
+
+msgctxt "ModeContent"
+msgid "Insert"
+msgstr "Inserir"
+
+msgctxt "ModeContent"
+msgid "Normal"
+msgstr "Modo normal"
+
+msgctxt "MultiCursorModifier"
+msgid "Cmd Or Ctrl"
+msgstr "Cmd ou Ctrl"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "All Screens"
+msgstr "Todas as telas"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "Primary Screen"
+msgstr "Tela principal"
+
+msgctxt "OnLastWindowClosed"
+msgid "Platform Default"
+msgstr "Padrão da plataforma"
+
+msgctxt "OnLastWindowClosed"
+msgid "Quit App"
+msgstr "Encerrar aplicativo"
+
+msgctxt "OnNewWindow"
+msgid "Empty Tab"
+msgstr "Aba vazia"
+
+msgctxt "OnNewWindow"
+msgid "Launchpad"
+msgstr "Launchpad"
+
+msgctxt "OpenResultsIn"
+msgid "Multi Buffer"
+msgstr "Multibuffer"
+
+msgctxt "OpenResultsIn"
+msgid "Picker"
+msgstr "Seletor"
+
+msgctxt "PaneSplitDirectionHorizontal"
+msgid "Down"
+msgstr "Para baixo"
+
+msgctxt "PaneSplitDirectionHorizontal"
+msgid "Up"
+msgstr "Para cima"
+
+msgctxt "PaneSplitDirectionVertical"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "PaneSplitDirectionVertical"
+msgid "Right"
+msgstr "Direita"
+
+msgctxt "PanelTabBar"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "PanelTabBar"
+msgid "Auto"
+msgstr "Automático"
+
+msgctxt "PanelTabBar"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "PlaySoundWhenAgentDone"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "PlaySoundWhenAgentDone"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "PlaySoundWhenAgentDone"
+msgid "When Hidden"
+msgstr "Quando oculto"
+
+msgctxt "ProjectPanelEntrySpacing"
+msgid "Comfortable"
+msgstr "Confortável"
+
+msgctxt "ProjectPanelEntrySpacing"
+msgid "Standard"
+msgstr "Padrão"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Directories First"
+msgstr "Diretórios primeiro"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Files First"
+msgstr "Arquivos primeiro"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Mixed"
+msgstr "Misto"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Default"
+msgstr "Padrão"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Lower"
+msgstr "Minúsculas primeiro"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Unicode"
+msgstr "Ordem Unicode"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Upper"
+msgstr "Maiúsculas primeiro"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Custom"
+msgstr "Personalizado"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Default"
+msgstr "Padrão"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Disabled"
+msgstr "Desabilitado"
+
+msgctxt "ReduceMotionMode"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "ReduceMotionMode"
+msgid "On"
+msgstr "Ativado"
+
+msgctxt "RelativeLineNumbers"
+msgid "Disabled"
+msgstr "Desabilitado"
+
+msgctxt "RelativeLineNumbers"
+msgid "Enabled"
+msgstr "Habilitado"
+
+msgctxt "RelativeLineNumbers"
+msgid "Wrapped"
+msgstr "Com quebra"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Empty Tab"
+msgstr "Aba vazia"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Last Session"
+msgstr "Última sessão"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Last Workspace"
+msgstr "Último espaço de trabalho"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Launchpad"
+msgstr "Launchpad"
+
+msgctxt "RewrapBehavior"
+msgid "Anywhere"
+msgstr "Em qualquer lugar"
+
+msgctxt "RewrapBehavior"
+msgid "In Comments"
+msgstr "Em comentários"
+
+msgctxt "RewrapBehavior"
+msgid "In Selections"
+msgstr "Em seleções"
+
+msgctxt "ScanSymlinksSetting"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "ScanSymlinksSetting"
+msgid "Expanded"
+msgstr "Expandido"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "One Page"
+msgstr "Uma página"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "Vertical Scroll Margin"
+msgstr "Margem de rolagem vertical"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "All"
+msgstr "Todos"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Error"
+msgstr "Erro"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Information"
+msgstr "Informação"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Warning"
+msgstr "Aviso"
+
+msgctxt "SeedQuerySetting"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "SeedQuerySetting"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "SeedQuerySetting"
+msgid "Selection"
+msgstr "Seleção"
+
+msgctxt "SemanticTokens"
+msgid "Combined"
+msgstr "Combinado"
+
+msgctxt "SemanticTokens"
+msgid "Full"
+msgstr "Completo"
+
+msgctxt "SemanticTokens"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "ShellDiscriminants"
+msgid "Program"
+msgstr "Programa"
+
+msgctxt "ShellDiscriminants"
+msgid "System"
+msgstr "Sistema"
+
+msgctxt "ShellDiscriminants"
+msgid "With Arguments"
+msgstr "Com argumentos"
+
+msgctxt "ShowCloseButton"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "ShowCloseButton"
+msgid "Hidden"
+msgstr "Oculto"
+
+msgctxt "ShowCloseButton"
+msgid "Hover"
+msgstr "Ao passar o cursor"
+
+msgctxt "ShowDiagnostics"
+msgid "All"
+msgstr "Todos"
+
+msgctxt "ShowDiagnostics"
+msgid "Errors"
+msgstr "Erros"
+
+msgctxt "ShowDiagnostics"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "ShowIndentGuides"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "ShowIndentGuides"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "ShowMinimap"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "ShowMinimap"
+msgid "Auto"
+msgstr "Automático"
+
+msgctxt "ShowMinimap"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "ShowScrollbar"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "ShowScrollbar"
+msgid "Auto"
+msgstr "Automático"
+
+msgctxt "ShowScrollbar"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "ShowScrollbar"
+msgid "System"
+msgstr "Sistema"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "All"
+msgstr "Todos"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Boundary"
+msgstr "Limites"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Selection"
+msgstr "Seleção"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Trailing"
+msgstr "Finais"
+
+msgctxt "SidebarDockPosition"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "SidebarDockPosition"
+msgid "Right"
+msgstr "Direita"
+
+msgctxt "SnippetSortOrder"
+msgid "Bottom"
+msgstr "Inferior"
+
+msgctxt "SnippetSortOrder"
+msgid "Inline"
+msgstr "Embutido"
+
+msgctxt "SnippetSortOrder"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "SnippetSortOrder"
+msgid "Top"
+msgstr "Superior"
+
+msgctxt "SoftWrap"
+msgid "Bounded"
+msgstr "Limitado"
+
+msgctxt "SoftWrap"
+msgid "Editor Width"
+msgstr "Largura do editor"
+
+msgctxt "SoftWrap"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "SoftWrap"
+msgid "Prefer Line"
+msgstr "Preferir linha única"
+
+msgctxt "StatusStyle"
+msgid "Icon"
+msgstr "Ícone"
+
+msgctxt "StatusStyle"
+msgid "Label Color"
+msgstr "Cor do rótulo"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "All Files"
+msgstr "Todos os arquivos"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "Do Not Report"
+msgstr "Não relatar"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "Folders Only"
+msgstr "Somente pastas"
+
+msgctxt "SteppingGranularity"
+msgid "Instruction"
+msgstr "Instrução de máquina"
+
+msgctxt "SteppingGranularity"
+msgid "Line"
+msgstr "Linha"
+
+msgctxt "SteppingGranularity"
+msgid "Statement"
+msgstr "Instrução"
+
+msgctxt "SymbolIndexEnabled"
+msgid "Auto"
+msgstr "Automático"
+
+msgctxt "SymbolIndexEnabled"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "SymbolIndexEnabled"
+msgid "On"
+msgstr "Ativado"
+
+msgctxt "TerminalBell"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "TerminalBell"
+msgid "System"
+msgstr "Sistema"
+
+msgctxt "TerminalBlink"
+msgid "Off"
+msgstr "Desativado"
+
+msgctxt "TerminalBlink"
+msgid "On"
+msgstr "Ativado"
+
+msgctxt "TerminalBlink"
+msgid "Terminal Controlled"
+msgstr "Controlado pelo terminal"
+
+msgctxt "TerminalDockPosition"
+msgid "Bottom"
+msgstr "Inferior"
+
+msgctxt "TerminalDockPosition"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "TerminalDockPosition"
+msgid "Right"
+msgstr "Direita"
+
+msgctxt "TextRenderingMode"
+msgid "Grayscale"
+msgstr "Escala de cinza"
+
+msgctxt "TextRenderingMode"
+msgid "Platform Default"
+msgstr "Padrão da plataforma"
+
+msgctxt "TextRenderingMode"
+msgid "Subpixel"
+msgstr "Subpixel"
+
+msgctxt "ThemeAppearanceMode"
+msgid "Dark"
+msgstr "Escuro"
+
+msgctxt "ThemeAppearanceMode"
+msgid "Light"
+msgstr "Claro"
+
+msgctxt "ThemeAppearanceMode"
+msgid "System"
+msgstr "Sistema"
+
+msgctxt "ThemeSelectionDiscriminants"
+msgid "Dynamic"
+msgstr "Dinâmico"
+
+msgctxt "ThemeSelectionDiscriminants"
+msgid "Static"
+msgstr "Estático"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Always Collapsed"
+msgstr "Sempre recolhido"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Always Expanded"
+msgstr "Sempre expandido"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Auto"
+msgstr "Automático"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Preview"
+msgstr "Visualização"
+
+msgctxt "UseSystemClipboard"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "UseSystemClipboard"
+msgid "Never"
+msgstr "Nunca"
+
+msgctxt "UseSystemClipboard"
+msgid "On Yank"
+msgstr "Ao usar yank"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Bar"
+msgstr "Barra"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Block"
+msgstr "Bloco"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Hollow"
+msgstr "Vazado"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Inherit"
+msgstr "Herdar"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Underline"
+msgstr "Sublinhado"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Custom"
+msgstr "Personalizado"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Platform Default"
+msgstr "Padrão da plataforma"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Standard"
+msgstr "Padrão"
+
+msgctxt "WindowDecorations"
+msgid "Client"
+msgstr "Cliente"
+
+msgctxt "WindowDecorations"
+msgid "Server"
+msgstr "Servidor"
+
+msgctxt "WordsCompletionMode"
+msgid "Disabled"
+msgstr "Desabilitado"
+
+msgctxt "WordsCompletionMode"
+msgid "Enabled"
+msgstr "Habilitado"
+
+msgctxt "WordsCompletionMode"
+msgid "Fallback"
+msgstr "Alternativa"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Always"
+msgstr "Sempre"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Always Home"
+msgstr "Sempre usar o diretório inicial"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Current File Directory"
+msgstr "Diretório do arquivo atual"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Current Project Directory"
+msgstr "Diretório do projeto atual"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "First Project Directory"
+msgstr "Diretório do primeiro projeto"
+
+msgctxt "settings"
+msgid "(Linux only) choose how window control buttons are laid out in the titlebar."
+msgstr "(Somente Linux) define como os botões de controle da janela são dispostos na barra de título."
+
+msgctxt "settings"
+msgid "(Linux only) whether Zed or your compositor should draw window decorations."
+msgstr "(Somente Linux) define se o ForgeKairos ou o compositor deve desenhar as decorações da janela."
+
+msgctxt "settings"
+msgid "(macOS only) whether to allow Windows to tab together."
+msgstr "(Somente macOS) define se as janelas podem ser agrupadas em abas."
+
+msgctxt "settings"
+msgid "(macOS only) which fullscreen mode the toggle fullscreen action enters."
+msgstr "(Somente macOS) define qual modo de tela cheia a ação de alternar tela cheia ativa."
+
+msgctxt "settings"
+msgid "A feature of this fork that denies all AI-initiated outgoing connections (AI providers, agent tools, MCP servers, external agent processes) by default. Connections of the IDE's own tooling, such as language servers and extensions, are not affected. Review, add and remove the hosts that are allowed."
+msgstr "Um recurso deste fork que nega por padrão todas as conexões de saída iniciadas pela IA (provedores de IA, ferramentas do agente, servidores MCP, processos de agentes externos). As conexões das próprias ferramentas do IDE, como servidores de linguagem e extensões, não são afetadas. Revise, adicione e remova os hosts permitidos."
+
+msgctxt "settings"
+msgid "A mapping from languages to files and file extensions that should be treated as that language."
+msgstr "Um mapeamento de linguagens para arquivos e extensões de arquivo que devem ser tratados como aquela linguagem."
+
+msgctxt "settings"
+msgid "AI"
+msgstr "IA"
+
+msgctxt "settings"
+msgid "AI Browser Panel Button"
+msgstr "Botão do painel do navegador de IA"
+
+msgctxt "settings"
+msgid "AI Browser Panel Default Height"
+msgstr "Altura padrão do painel do navegador de IA"
+
+msgctxt "settings"
+msgid "AI Browser Panel Default Width"
+msgstr "Largura padrão do painel do navegador de IA"
+
+msgctxt "settings"
+msgid "AI Browser Panel Dock"
+msgstr "Posição do dock do painel do navegador de IA"
+
+msgctxt "settings"
+msgid "AI Connections"
+msgstr "Conexões de IA"
+
+msgctxt "settings"
+msgid "AI Control"
+msgstr "Controle pela IA"
+
+msgctxt "settings"
+msgid "Accessible Mode"
+msgstr "Modo acessível"
+
+msgctxt "settings"
+msgid "Accounts"
+msgstr "Contas"
+
+msgctxt "settings"
+msgid "Accounts a repository can commit and push as, picked per repository in the Git panel."
+msgstr "Contas com as quais um repositório pode fazer commit e push, escolhidas por repositório no painel do Git."
+
+msgctxt "settings"
+msgid "Activate On Close"
+msgstr "Ativar ao fechar"
+
+msgctxt "settings"
+msgid "Activates the Python virtual environment, if one is found, in the terminal's working directory."
+msgstr "Ativa o ambiente virtual Python, se encontrado, no diretório de trabalho do terminal."
+
+msgctxt "settings"
+msgid "Active Encoding Button"
+msgstr "Botão de codificação ativa"
+
+msgctxt "settings"
+msgid "Active File Name"
+msgstr "Nome do arquivo ativo"
+
+msgctxt "settings"
+msgid "Active Language Button"
+msgstr "Botão de linguagem ativa"
+
+msgctxt "settings"
+msgid "Active Line Width"
+msgstr "Largura da linha ativa"
+
+msgctxt "settings"
+msgid "Additional code actions to run when formatting."
+msgstr "Ações de código adicionais a serem executadas ao formatar."
+
+msgctxt "settings"
+msgid "Advanced Settings"
+msgstr "Configurações avançadas"
+
+msgctxt "settings"
+msgid "Agent Configuration"
+msgstr "Configuração do agente"
+
+msgctxt "settings"
+msgid "Agent Name"
+msgstr "Nome do agente"
+
+msgctxt "settings"
+msgid "Agent Panel"
+msgstr "Painel do agente"
+
+msgctxt "settings"
+msgid "Agent Panel Button"
+msgstr "Botão do painel do agente"
+
+msgctxt "settings"
+msgid "Agent Panel Default Height"
+msgstr "Altura padrão do painel do agente"
+
+msgctxt "settings"
+msgid "Agent Panel Default Width"
+msgstr "Largura padrão do painel do agente"
+
+msgctxt "settings"
+msgid "Agent Panel Dock"
+msgstr "Posição do dock do painel do agente"
+
+msgctxt "settings"
+msgid "Agent Panel Flexible Sizing"
+msgstr "Dimensionamento flexível do painel do agente"
+
+msgctxt "settings"
+msgid "Agent Panel Font"
+msgstr "Fonte do painel do agente"
+
+msgctxt "settings"
+msgid "Agent Review"
+msgstr "Revisão das alterações do agente"
+
+msgctxt "settings"
+msgid "Allow Rewrap"
+msgstr "Permitir reajuste de quebras de linha"
+
+msgctxt "settings"
+msgid "Allow sending requests to Anthropic models that cannot be offered with Zero Data Retention."
+msgstr "Permite enviar solicitações a modelos Anthropic que não podem ser oferecidos no modo Zero Data Retention."
+
+msgctxt "settings"
+msgid "Allowed"
+msgstr "Permitido"
+
+msgctxt "settings"
+msgid "Alternate Scroll"
+msgstr "Rolagem alternada"
+
+msgctxt "settings"
+msgid "Always Treat Brackets As Autoclosed"
+msgstr "Sempre tratar colchetes como fechados automaticamente"
+
+msgctxt "settings"
+msgid "Amount of indentation for nested items."
+msgstr "Quantidade de recuo para itens aninhados."
+
+msgctxt "settings"
+msgid "Amount of time to wait before changing focus."
+msgstr "Tempo de espera antes de alterar o foco."
+
+msgctxt "settings"
+msgid "An index of the project's C and C++ files by name. Without compilation information (no compile_commands.json is needed), it finds the definition to go to, the callers and callees of a function and what a type holds, by matching names, so a result can be another symbol of the same name; a language server's answers come first. Auto indexes a folder once it has C or C++ files, On always indexes it and Off never does. Default: Auto."
+msgstr "Um índice dos arquivos C e C++ do projeto por nome. Sem informações de compilação (não é necessário compile_commands.json), ele encontra a definição para onde ir, os chamadores e chamados de uma função e o que um tipo contém, por correspondência de nomes; por isso, um resultado pode ser outro símbolo com o mesmo nome. As respostas de um servidor de linguagem vêm primeiro. Auto indexa uma pasta assim que ela tiver arquivos C ou C++, On sempre a indexa e Off nunca indexa. Padrão: Auto."
+
+msgctxt "settings"
+msgid "An optional string to override the title of the terminal tab."
+msgstr "Uma string opcional para substituir o título da aba do terminal."
+
+msgctxt "settings"
+msgid "Anthropic Data Retention"
+msgstr "Retenção de dados da Anthropic"
+
+msgctxt "settings"
+msgid "Any number of settings profiles that are temporarily applied on top of your existing user settings."
+msgstr "Qualquer número de perfis de configurações aplicados temporariamente sobre as configurações de usuário existentes."
+
+msgctxt "settings"
+msgid "Appearance"
+msgstr "Aparência"
+
+msgctxt "settings"
+msgid "Apply the Allowlist to the Built-in Browser"
+msgstr "Aplicar a lista de permissões ao navegador integrado"
+
+msgctxt "settings"
+msgid "Arguments"
+msgstr "Argumentos"
+
+msgctxt "settings"
+msgid "Attach Active File Automatically"
+msgstr "Anexar o arquivo ativo automaticamente"
+
+msgctxt "settings"
+msgid "Attach the active editor automatically when sending a message: only the selected lines when there is a selection, otherwise the whole file. Nothing is attached twice when you have already @-mentioned it."
+msgstr "Anexa o editor ativo automaticamente ao enviar uma mensagem: somente as linhas selecionadas quando há uma seleção; caso contrário, o arquivo inteiro. Nada é anexado duas vezes quando você já o mencionou com @."
+
+msgctxt "settings"
+msgid "Attachment Budget per Message (Bytes)"
+msgstr "Orçamento de anexos por mensagem (bytes)"
+
+msgctxt "settings"
+msgid "Audible Bell"
+msgstr "Campainha audível"
+
+msgctxt "settings"
+msgid "Auto Compact"
+msgstr "Compactação automática"
+
+msgctxt "settings"
+msgid "Auto Compact Minimum Context Window"
+msgstr "Janela de contexto mínima para compactação automática"
+
+msgctxt "settings"
+msgid "Auto Compact Threshold"
+msgstr "Limite de compactação automática"
+
+msgctxt "settings"
+msgid "Auto Fold Directories"
+msgstr "Agrupar diretórios automaticamente"
+
+msgctxt "settings"
+msgid "Auto Indent"
+msgstr "Recuo automático"
+
+msgctxt "settings"
+msgid "Auto Indent On Paste"
+msgstr "Recuo automático ao colar"
+
+msgctxt "settings"
+msgid "Auto Open Files On Create"
+msgstr "Abrir arquivos automaticamente ao criar"
+
+msgctxt "settings"
+msgid "Auto Open Files On Drop"
+msgstr "Abrir arquivos automaticamente ao soltar"
+
+msgctxt "settings"
+msgid "Auto Open Files On Paste"
+msgstr "Abrir arquivos automaticamente ao colar"
+
+msgctxt "settings"
+msgid "Auto Reveal Entries"
+msgstr "Revelar entradas automaticamente"
+
+msgctxt "settings"
+msgid "Auto Save"
+msgstr "Salvamento automático"
+
+msgctxt "settings"
+msgid "Auto Save Mode"
+msgstr "Modo de salvamento automático"
+
+msgctxt "settings"
+msgid "Auto Signature Help"
+msgstr "Ajuda de assinatura automática"
+
+msgctxt "settings"
+msgid "Auto Update"
+msgstr "Atualização automática"
+
+msgctxt "settings"
+msgid "Autoclose"
+msgstr "Fechamento automático"
+
+msgctxt "settings"
+msgid "Automatically close files that have been deleted."
+msgstr "Fecha automaticamente os arquivos que foram excluídos."
+
+msgctxt "settings"
+msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
+msgstr "Compacta automaticamente o contexto do agente quando ele fica muito grande, resumindo as mensagens anteriores para liberar espaço na janela de contexto do modelo."
+
+msgctxt "settings"
+msgid "Automatically show a signature help pop-up."
+msgstr "Exibe automaticamente um pop-up de ajuda de assinatura."
+
+msgctxt "settings"
+msgid "Autoscroll On Clicks"
+msgstr "Rolagem automática ao clicar"
+
+msgctxt "settings"
+msgid "Background Coloring"
+msgstr "Coloração de fundo"
+
+msgctxt "settings"
+msgid "Base Keymap"
+msgstr "Mapa de teclas base"
+
+msgctxt "settings"
+msgid "Behavior Settings"
+msgstr "Configurações de comportamento"
+
+msgctxt "settings"
+msgid "Bold Folder Labels"
+msgstr "Rótulos de pasta em negrito"
+
+msgctxt "settings"
+msgid "Border Size"
+msgstr "Tamanho da borda"
+
+msgctxt "settings"
+msgid "Border style for the minimap's scrollbar thumb."
+msgstr "Estilo de borda do controle deslizante da barra de rolagem do minimapa."
+
+msgctxt "settings"
+msgid "Bottom Dock Layout"
+msgstr "Layout do dock inferior"
+
+msgctxt "settings"
+msgid "Branch Picker"
+msgstr "Seletor de branch"
+
+msgctxt "settings"
+msgid "Breadcrumbs"
+msgstr "Trilhas de navegação"
+
+msgctxt "settings"
+msgid "Browser"
+msgstr "Navegador"
+
+msgctxt "settings"
+msgid "Browser Panel"
+msgstr "Painel do navegador"
+
+msgctxt "settings"
+msgid "Browser Panel Button"
+msgstr "Botão do painel do navegador"
+
+msgctxt "settings"
+msgid "Browser Panel Default Height"
+msgstr "Altura padrão do painel do navegador"
+
+msgctxt "settings"
+msgid "Browser Panel Default Width"
+msgstr "Largura padrão do painel do navegador"
+
+msgctxt "settings"
+msgid "Browser Panel Dock"
+msgstr "Posição do dock do painel do navegador"
+
+msgctxt "settings"
+msgid "Browsing"
+msgstr "Navegação"
+
+msgctxt "settings"
+msgid "Buffer Font"
+msgstr "Fonte do buffer"
+
+msgctxt "settings"
+msgid "Buffer Font Family"
+msgstr "Família da fonte do buffer"
+
+msgctxt "settings"
+msgid "Buffer Font Size"
+msgstr "Tamanho da fonte do buffer"
+
+msgctxt "settings"
+msgid "Button Layout"
+msgstr "Layout dos botões"
+
+msgctxt "settings"
+msgid "CLI Default Open Behavior"
+msgstr "Comportamento padrão de abertura do CLI"
+
+msgctxt "settings"
+msgid "Call Graph Panel"
+msgstr "Painel do grafo de chamadas"
+
+msgctxt "settings"
+msgid "Call Graph Panel Button"
+msgstr "Botão do painel do grafo de chamadas"
+
+msgctxt "settings"
+msgid "Call Graph Panel Default Width"
+msgstr "Largura padrão do painel do grafo de chamadas"
+
+msgctxt "settings"
+msgid "Call Graph Panel Dock"
+msgstr "Posição do dock do painel do grafo de chamadas"
+
+msgctxt "settings"
+msgid "Call Graph Sources"
+msgstr "Fontes do grafo de chamadas"
+
+msgctxt "settings"
+msgid "Callees left out of a function's callees, such as logging and assertion macros. A row at the end counts them and shows them on request."
+msgstr "Chamados deixados fora da lista de chamados de uma função, como macros de log e de asserção. Uma linha no final mostra a contagem e os exibe quando solicitado."
+
+msgctxt "settings"
+msgid "Calls"
+msgstr "Chamadas"
+
+msgctxt "settings"
+msgid "Cancel Generation On Terminal Stop"
+msgstr "Cancelar geração ao parar o terminal"
+
+msgctxt "settings"
+msgid "Case Sensitive"
+msgstr "Diferenciar maiúsculas e minúsculas"
+
+msgctxt "settings"
+msgid "Center on Match"
+msgstr "Centralizar na correspondência"
+
+msgctxt "settings"
+msgid "Centered Layout Left Padding"
+msgstr "Espaçamento esquerdo do layout centralizado"
+
+msgctxt "settings"
+msgid "Centered Layout Right Padding"
+msgstr "Espaçamento direito do layout centralizado"
+
+msgctxt "settings"
+msgid "Character counts at which to show wrap guides in the editor."
+msgstr "Contagens de caracteres nas quais exibir guias de quebra de linha no editor."
+
+msgctxt "settings"
+msgid "Character counts at which to show wrap guides."
+msgstr "Contagens de caracteres nas quais exibir guias de quebra de linha."
+
+msgctxt "settings"
+msgid "Choose a static, fixed theme or dynamically select themes based on appearance and light/dark modes."
+msgstr "Escolhe um tema estático e fixo ou seleciona temas dinamicamente com base na aparência e nos modos claro/escuro."
+
+msgctxt "settings"
+msgid "Choose whether to use the selected light or dark icon theme or to follow your OS appearance configuration."
+msgstr "Escolhe se deve usar o tema de ícones claro ou escuro selecionado ou seguir a configuração de aparência do sistema operacional."
+
+msgctxt "settings"
+msgid "Choose whether to use the selected light or dark theme or to follow your OS appearance configuration."
+msgstr "Escolhe se deve usar o tema claro ou escuro selecionado ou seguir a configuração de aparência do sistema operacional."
+
+msgctxt "settings"
+msgid "Close Panel on Toggle"
+msgstr "Fechar painel ao alternar"
+
+msgctxt "settings"
+msgid "Close on File Delete"
+msgstr "Fechar ao excluir arquivo"
+
+msgctxt "settings"
+msgid "Code Actions"
+msgstr "Ações de código"
+
+msgctxt "settings"
+msgid "Code Actions On Format"
+msgstr "Ações de código ao formatar"
+
+msgctxt "settings"
+msgid "Code Font Family"
+msgstr "Família da fonte de código"
+
+msgctxt "settings"
+msgid "Code Lens"
+msgstr "CodeLens"
+
+msgctxt "settings"
+msgid "Collaboration"
+msgstr "Colaboração"
+
+msgctxt "settings"
+msgid "Collaboration Panel"
+msgstr "Painel de colaboração"
+
+msgctxt "settings"
+msgid "Collaboration Panel Button"
+msgstr "Botão do painel de colaboração"
+
+msgctxt "settings"
+msgid "Collaboration Panel Default Width"
+msgstr "Largura padrão do painel de colaboração"
+
+msgctxt "settings"
+msgid "Collaboration Panel Dock"
+msgstr "Posição do dock do painel de colaboração"
+
+msgctxt "settings"
+msgid "Collapse Untracked Diff"
+msgstr "Recolher diff não rastreado"
+
+msgctxt "settings"
+msgid "Collect timing data for foreground and background executor tasks so they can be inspected via `zed: open performance profiler`. May lead to increased memory usage."
+msgstr "Coleta dados de tempo de execução de tarefas em primeiro plano e em segundo plano para inspeção via `zed: open performance profiler`. Pode resultar em maior uso de memória."
+
+msgctxt "settings"
+msgid "Coloring"
+msgstr "Coloração"
+
+msgctxt "settings"
+msgid "Colorize Brackets"
+msgstr "Colorir colchetes"
+
+msgctxt "settings"
+msgid "Command"
+msgstr "Comando"
+
+msgctxt "settings"
+msgid "Command Palette"
+msgstr "Paleta de comandos"
+
+msgctxt "settings"
+msgid "Command to automatically run when Zed creates a Terminal Thread shell in the agent panel. Runs in your configured shell."
+msgstr "Comando a ser executado automaticamente quando o ForgeKairos cria o shell de uma conversa de terminal no painel do agente. É executado no shell configurado."
+
+msgctxt "settings"
+msgid "Commit Title Max Length"
+msgstr "Comprimento máximo do título do commit"
+
+msgctxt "settings"
+msgid "Completion Detail Alignment"
+msgstr "Alinhamento de detalhes do preenchimento automático"
+
+msgctxt "settings"
+msgid "Completion Menu Item Kind"
+msgstr "Tipo de item do menu de preenchimento automático"
+
+msgctxt "settings"
+msgid "Completion Menu Scrollbar"
+msgstr "Barra de rolagem do menu de preenchimento automático"
+
+msgctxt "settings"
+msgid "Completions"
+msgstr "Preenchimentos automáticos"
+
+msgctxt "settings"
+msgid "Configure Providers"
+msgstr "Configurar provedores"
+
+msgctxt "settings"
+msgid "Configure natively-included model providers."
+msgstr "Configura provedores de modelo incluídos nativamente."
+
+msgctxt "settings"
+msgid "Connections"
+msgstr "Conexões"
+
+msgctxt "settings"
+msgid "Consent to Launch Outside the Sandbox"
+msgstr "Consentimento para iniciar fora do sandbox"
+
+msgctxt "settings"
+msgid "Control when to show the active encoding in the status bar."
+msgstr "Controla quando exibir a codificação ativa na barra de status."
+
+msgctxt "settings"
+msgid "Control whether Git status is shown in the editor's gutter."
+msgstr "Controla se o status do Git é exibido na medianiz do editor."
+
+msgctxt "settings"
+msgid "Controls automatic indentation behavior when typing."
+msgstr "Controla o comportamento de recuo automático ao digitar."
+
+msgctxt "settings"
+msgid "Controls how LSP completions are inserted."
+msgstr "Controla como os preenchimentos automáticos do LSP são inseridos."
+
+msgctxt "settings"
+msgid "Controls how words are completed."
+msgstr "Controla como as palavras são completadas."
+
+msgctxt "settings"
+msgid "Controls line number display in the editor's gutter. \"disabled\" shows absolute line numbers, \"enabled\" shows relative line numbers for each absolute line, and \"wrapped\" shows relative line numbers for every line, absolute or wrapped."
+msgstr "Controla a exibição de números de linha na medianiz do editor. \"Desabilitado\" mostra números de linha absolutos, \"Habilitado\" mostra números de linha relativos para cada linha absoluta e \"Com quebra\" mostra números de linha relativos para cada linha, absoluta ou quebrada."
+
+msgctxt "settings"
+msgid "Controls the appearance behavior of the tab's close button."
+msgstr "Controla quando o botão de fechar da aba é exibido."
+
+msgctxt "settings"
+msgid "Controls when to use system clipboard in Vim mode."
+msgstr "Controla quando usar a área de transferência do sistema no modo Vim."
+
+msgctxt "settings"
+msgid "Controls where the `editor::rewrap` action is allowed for this language."
+msgstr "Controla onde a ação `editor::rewrap` é permitida para esta linguagem."
+
+msgctxt "settings"
+msgid "Controls whether Zed may collect training data when using Zed's Edit Predictions. Data is only collected for files in projects detected as open source. The default value uses the preference previously set via the status-bar toggle, or false if no preference has been stored."
+msgstr "Controla se o Zed pode coletar dados de treinamento ao usar as previsões de edição do Zed. Os dados são coletados apenas para arquivos em projetos detectados como código aberto. O valor padrão usa a preferência definida anteriormente pelo botão de alternância na barra de status, ou false se nenhuma preferência tiver sido armazenada."
+
+msgctxt "settings"
+msgid "Controls whether edit predictions are shown immediately or manually."
+msgstr "Controla se as previsões de edição são exibidas imediatamente ou manualmente."
+
+msgctxt "settings"
+msgid "Controls whether the closing characters are always skipped over and auto-removed no matter how they were inserted."
+msgstr "Controla se os caracteres de fechamento são sempre ignorados e removidos automaticamente, independentemente de como foram inseridos."
+
+msgctxt "settings"
+msgid "Copilot URL"
+msgstr "URL do Copilot"
+
+msgctxt "settings"
+msgid "Copy On Select"
+msgstr "Copiar ao selecionar"
+
+msgctxt "settings"
+msgid "Create Skill"
+msgstr "Criar habilidade"
+
+msgctxt "settings"
+msgid "Current Line Highlight"
+msgstr "Destaque da linha atual"
+
+msgctxt "settings"
+msgid "Cursor"
+msgstr "Cursor"
+
+msgctxt "settings"
+msgid "Cursor Animation"
+msgstr "Animação do cursor"
+
+msgctxt "settings"
+msgid "Cursor Blink"
+msgstr "Cursor piscante"
+
+msgctxt "settings"
+msgid "Cursor Blinking"
+msgstr "Piscar do cursor"
+
+msgctxt "settings"
+msgid "Cursor Position Button"
+msgstr "Botão de posição do cursor"
+
+msgctxt "settings"
+msgid "Cursor Shape"
+msgstr "Forma do cursor"
+
+msgctxt "settings"
+msgid "Cursor Shape - Insert Mode"
+msgstr "Forma do cursor - modo de inserção"
+
+msgctxt "settings"
+msgid "Cursor Shape - Normal Mode"
+msgstr "Forma do cursor - modo normal"
+
+msgctxt "settings"
+msgid "Cursor Shape - Replace Mode"
+msgstr "Forma do cursor - modo de substituição"
+
+msgctxt "settings"
+msgid "Cursor Shape - Visual Mode"
+msgstr "Forma do cursor - modo visual"
+
+msgctxt "settings"
+msgid "Cursor shape for insert mode. Inherit uses the editor's cursor shape."
+msgstr "Forma do cursor para o modo de inserção. Herdar usa a forma do cursor do editor."
+
+msgctxt "settings"
+msgid "Cursor shape for normal mode."
+msgstr "Forma do cursor para o modo normal."
+
+msgctxt "settings"
+msgid "Cursor shape for replace mode."
+msgstr "Forma do cursor para o modo de substituição."
+
+msgctxt "settings"
+msgid "Cursor shape for the editor."
+msgstr "Forma do cursor para o editor."
+
+msgctxt "settings"
+msgid "Cursor shape for visual mode."
+msgstr "Forma do cursor para o modo visual."
+
+msgctxt "settings"
+msgid "Cursors"
+msgstr "Cursores"
+
+msgctxt "settings"
+msgid "Custom Button Layout"
+msgstr "Layout de botões personalizado"
+
+msgctxt "settings"
+msgid "Custom Delay"
+msgstr "Atraso personalizado"
+
+msgctxt "settings"
+msgid "Custom Digraphs"
+msgstr "Dígrafos personalizados"
+
+msgctxt "settings"
+msgid "Custom Line Height"
+msgstr "Altura de linha personalizada"
+
+msgctxt "settings"
+msgid "Custom Width"
+msgstr "Largura personalizada"
+
+msgctxt "settings"
+msgid "Custom digraph mappings for Vim mode."
+msgstr "Mapeamentos de dígrafos personalizados para o modo Vim."
+
+msgctxt "settings"
+msgid "Custom line height value (must be at least 1.0)."
+msgstr "Valor de altura de linha personalizada (deve ser pelo menos 1.0)."
+
+msgctxt "settings"
+msgid "Customize keybindings in the keymap editor."
+msgstr "Personaliza as associações de teclas no editor de mapa de teclas."
+
+msgctxt "settings"
+msgid "Dark Icon Theme"
+msgstr "Tema de ícones escuro"
+
+msgctxt "settings"
+msgid "Dark Theme"
+msgstr "Tema escuro"
+
+msgctxt "settings"
+msgid "Data Collection"
+msgstr "Coleta de dados"
+
+msgctxt "settings"
+msgid "Debounce"
+msgstr "Debounce"
+
+msgctxt "settings"
+msgid "Debounce threshold in milliseconds after which changes are reflected in the Git gutter."
+msgstr "Limite de debounce em milissegundos após o qual as alterações são refletidas na medianiz do Git."
+
+msgctxt "settings"
+msgid "Debugger"
+msgstr "Depurador"
+
+msgctxt "settings"
+msgid "Debugger Button"
+msgstr "Botão do depurador"
+
+msgctxt "settings"
+msgid "Debugger Panel"
+msgstr "Painel do depurador"
+
+msgctxt "settings"
+msgid "Debugger Panel Dock"
+msgstr "Posição do dock do painel do depurador"
+
+msgctxt "settings"
+msgid "Debuggers"
+msgstr "Depuradores"
+
+msgctxt "settings"
+msgid "Default Height"
+msgstr "Altura padrão"
+
+msgctxt "settings"
+msgid "Default Mode"
+msgstr "Modo padrão"
+
+msgctxt "settings"
+msgid "Default Open Behavior"
+msgstr "Comportamento padrão de abertura"
+
+msgctxt "settings"
+msgid "Default Prettier options, in the format as in package.json section for Prettier."
+msgstr "Opções padrão do Prettier, no mesmo formato da seção do Prettier em package.json."
+
+msgctxt "settings"
+msgid "Default Stacked Dock"
+msgstr "Dock empilhado padrão"
+
+msgctxt "settings"
+msgid "Default Stacked Panel"
+msgstr "Painel empilhado padrão"
+
+msgctxt "settings"
+msgid "Default Stacked Secondary Panel"
+msgstr "Painel empilhado secundário padrão"
+
+msgctxt "settings"
+msgid "Default Width"
+msgstr "Largura padrão"
+
+msgctxt "settings"
+msgid "Default action when clicking a changed file in the Git panel."
+msgstr "Ação padrão ao clicar em um arquivo alterado no painel do Git."
+
+msgctxt "settings"
+msgid "Default branch name will be when init.defaultbranch is not set in Git."
+msgstr "Nome de branch padrão usado quando init.defaultbranch não está definido no Git."
+
+msgctxt "settings"
+msgid "Default cursor shape for the terminal (bar, block, underline, or hollow)."
+msgstr "Forma padrão do cursor no terminal (barra, bloco, sublinhado ou vazado)."
+
+msgctxt "settings"
+msgid "Default depth to expand outline items in the current file."
+msgstr "Profundidade padrão para expandir itens da estrutura no arquivo atual."
+
+msgctxt "settings"
+msgid "Default fixed width when the agent panel is docked to the left or right and flexible sizing is disabled."
+msgstr "Largura fixa padrão quando o painel do agente está posicionado à esquerda ou à direita e o dimensionamento flexível está desabilitado."
+
+msgctxt "settings"
+msgid "Default height of the AI browser panel in pixels when docked to the bottom."
+msgstr "Altura padrão, em pixels, do painel do navegador de IA quando posicionado na parte inferior."
+
+msgctxt "settings"
+msgid "Default height of the browser panel in pixels when docked to the bottom."
+msgstr "Altura padrão, em pixels, do painel do navegador quando posicionado na parte inferior."
+
+msgctxt "settings"
+msgid "Default height when the agent panel is docked to the bottom."
+msgstr "Altura padrão quando o painel do agente está posicionado na parte inferior."
+
+msgctxt "settings"
+msgid "Default height when the terminal is docked to the bottom (in pixels)."
+msgstr "Altura padrão quando o terminal está posicionado na parte inferior (em pixels)."
+
+msgctxt "settings"
+msgid "Default timeout in seconds for MCP server tool calls."
+msgstr "Tempo limite padrão em segundos para chamadas de ferramenta do servidor MCP."
+
+msgctxt "settings"
+msgid "Default width of the AI browser panel in pixels when docked to the left or right."
+msgstr "Largura padrão, em pixels, do painel do navegador de IA quando posicionado à esquerda ou à direita."
+
+msgctxt "settings"
+msgid "Default width of the Git panel in pixels."
+msgstr "Largura padrão do painel do Git em pixels."
+
+msgctxt "settings"
+msgid "Default width of the Threads Sidebar. Changing this setting also updates a manually resized sidebar. Double-click the divider to reset to this width."
+msgstr "Largura padrão da barra lateral de conversas. Alterar esta configuração também atualiza uma barra lateral redimensionada manualmente. Clique duas vezes no divisor para redefinir para esta largura."
+
+msgctxt "settings"
+msgid "Default width of the browser panel in pixels when docked to the left or right."
+msgstr "Largura padrão, em pixels, do painel do navegador quando posicionado à esquerda ou à direita."
+
+msgctxt "settings"
+msgid "Default width of the call graph panel in pixels."
+msgstr "Largura padrão, em pixels, do painel do grafo de chamadas."
+
+msgctxt "settings"
+msgid "Default width of the collaboration panel in pixels."
+msgstr "Largura padrão do painel de colaboração em pixels."
+
+msgctxt "settings"
+msgid "Default width of the outline panel in pixels."
+msgstr "Largura padrão do painel de estrutura em pixels."
+
+msgctxt "settings"
+msgid "Default width of the project panel in pixels."
+msgstr "Largura padrão do painel do projeto em pixels."
+
+msgctxt "settings"
+msgid "Default width when the terminal is docked to the left or right (in pixels)."
+msgstr "Largura padrão quando o terminal está posicionado à esquerda ou à direita (em pixels)."
+
+msgctxt "settings"
+msgid "Delay"
+msgstr "Atraso"
+
+msgctxt "settings"
+msgid "Delay (milliseconds)"
+msgstr "Atraso (milissegundos)"
+
+msgctxt "settings"
+msgid "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately."
+msgstr "Atraso em milissegundos antes de solicitar automaticamente uma previsão após a digitação parar. Defina como 0 para solicitar previsões imediatamente."
+
+msgctxt "settings"
+msgid "Delay in milliseconds before drag and drop selection starts."
+msgstr "Atraso em milissegundos antes de a seleção por arrastar e soltar começar."
+
+msgctxt "settings"
+msgid "Delay in milliseconds before the which-key menu appears."
+msgstr "Atraso em milissegundos antes de o menu which-key aparecer."
+
+msgctxt "settings"
+msgid "Delay in milliseconds before tooltips appear for project panel titles."
+msgstr "Atraso em milissegundos antes de as dicas de ferramenta aparecerem para os títulos do painel do projeto."
+
+msgctxt "settings"
+msgid "Delay in milliseconds of the project panel title tooltips."
+msgstr "Atraso em milissegundos das dicas de ferramenta dos títulos do painel do projeto."
+
+msgctxt "settings"
+msgid "Detached Shell Timeout"
+msgstr "Tempo limite do shell desanexado"
+
+msgctxt "settings"
+msgid "Detect Virtual Environment"
+msgstr "Detectar ambiente virtual"
+
+msgctxt "settings"
+msgid "Determines how indent guide backgrounds are colored."
+msgstr "Determina como os fundos das guias de recuo são coloridos."
+
+msgctxt "settings"
+msgid "Determines how indent guides are colored."
+msgstr "Determina como as guias de recuo são coloridas."
+
+msgctxt "settings"
+msgid "Determines how snippets are sorted relative to other completion items."
+msgstr "Determina como os snippets são ordenados em relação aos outros itens de preenchimento automático."
+
+msgctxt "settings"
+msgid "Determines the stepping granularity for debug operations."
+msgstr "Determina a granularidade de passo para operações de depuração."
+
+msgctxt "settings"
+msgid "Developer"
+msgstr "Desenvolvedor"
+
+msgctxt "settings"
+msgid "Development Tools"
+msgstr "Ferramentas de desenvolvimento"
+
+msgctxt "settings"
+msgid "Diagnostic Badges"
+msgstr "Contadores de diagnóstico"
+
+msgctxt "settings"
+msgid "Diagnostics"
+msgstr "Diagnósticos"
+
+msgctxt "settings"
+msgid "Diagnostics Attachment File Limit"
+msgstr "Limite de arquivos para anexar diagnósticos"
+
+msgctxt "settings"
+msgid "Diagnostics Button"
+msgstr "Botão de diagnósticos"
+
+msgctxt "settings"
+msgid "Diff Base"
+msgstr "Base do diff"
+
+msgctxt "settings"
+msgid "Diff Stats"
+msgstr "Estatísticas de diff"
+
+msgctxt "settings"
+msgid "Diff View Style"
+msgstr "Estilo de exibição de diff"
+
+msgctxt "settings"
+msgid "Direction to split horizontally."
+msgstr "Direção para dividir horizontalmente."
+
+msgctxt "settings"
+msgid "Direction to split vertically."
+msgstr "Direção para dividir verticalmente."
+
+msgctxt "settings"
+msgid "Directory"
+msgstr "Diretório"
+
+msgctxt "settings"
+msgid "Disable AI"
+msgstr "Desabilitar IA"
+
+msgctxt "settings"
+msgid "Disable Git Integration"
+msgstr "Desabilitar integração com o Git"
+
+msgctxt "settings"
+msgid "Disable all Git integration features in Zed."
+msgstr "Desabilita todos os recursos de integração com o Git no ForgeKairos."
+
+msgctxt "settings"
+msgid "Disable edit predictions in these language scopes, such as \"comment\" and \"string\". Use \"...\" to add scopes without repeating the inherited list."
+msgstr "Desabilita as previsões de edição nestes escopos de linguagem, como \"comment\" e \"string\". Use \"...\" para adicionar escopos sem repetir a lista herdada."
+
+msgctxt "settings"
+msgid "Disable in Language Scopes"
+msgstr "Desabilitar em escopos de linguagem"
+
+msgctxt "settings"
+msgid "Display In"
+msgstr "Exibir em"
+
+msgctxt "settings"
+msgid "Display Language"
+msgstr "Idioma de exibição"
+
+msgctxt "settings"
+msgid "Display Mode"
+msgstr "Modo de exibição"
+
+msgctxt "settings"
+msgid "Display Settings"
+msgstr "Configurações de exibição"
+
+msgctxt "settings"
+msgid "Display indent guides in the editor."
+msgstr "Exibe guias de recuo no editor."
+
+msgctxt "settings"
+msgid "Display the terminal title in breadcrumbs inside the terminal pane."
+msgstr "Exibe o título do terminal nas trilhas de navegação dentro do subpainel do terminal."
+
+msgctxt "settings"
+msgid "Display the which-key menu with matching bindings while a multi-stroke binding is pending. The pending keystrokes indicator remains visible, but its binding preview popover is disabled."
+msgstr "Exibe o menu which-key com as associações correspondentes enquanto uma associação de múltiplas teclas está pendente. O indicador de sequências de teclas pendentes permanece visível, mas o pop-up de visualização da associação é desabilitado."
+
+msgctxt "settings"
+msgid "Double Click In Multibuffer"
+msgstr "Clique duplo no multibuffer"
+
+msgctxt "settings"
+msgid "Drag And Drop Selection"
+msgstr "Seleção por arrastar e soltar"
+
+msgctxt "settings"
+msgid "Drag and Drop"
+msgstr "Arrastar e soltar"
+
+msgctxt "settings"
+msgid "Drop Size Target"
+msgstr "Tamanho da área de destino"
+
+msgctxt "settings"
+msgid "Duration in milliseconds to highlight yanked text in Vim mode."
+msgstr "Duração em milissegundos para destacar o texto copiado no modo Vim."
+
+msgctxt "settings"
+msgid "Edit Debounce Ms"
+msgstr "Debounce de edição (ms)"
+
+msgctxt "settings"
+msgid "Edit Keybindings"
+msgstr "Editar associações de teclas"
+
+msgctxt "settings"
+msgid "Edit Predictions"
+msgstr "Previsões de edição"
+
+msgctxt "settings"
+msgid "Editing Mode"
+msgstr "Modo de edição"
+
+msgctxt "settings"
+msgid "Editor"
+msgstr "Editor"
+
+msgctxt "settings"
+msgid "Egress"
+msgstr "Comunicação externa"
+
+msgctxt "settings"
+msgid "Egress Control"
+msgstr "Controle de comunicação externa"
+
+msgctxt "settings"
+msgid "Enable Agent"
+msgstr "Habilitar agente"
+
+msgctxt "settings"
+msgid "Enable Feedback"
+msgstr "Habilitar feedback"
+
+msgctxt "settings"
+msgid "Enable Git Diff"
+msgstr "Habilitar diff do Git"
+
+msgctxt "settings"
+msgid "Enable Git Status"
+msgstr "Habilitar status do Git"
+
+msgctxt "settings"
+msgid "Enable IDE Server"
+msgstr "Habilitar servidor IDE"
+
+msgctxt "settings"
+msgid "Enable Keep Preview On Code Navigation"
+msgstr "Manter aba de visualização na navegação de código"
+
+msgctxt "settings"
+msgid "Enable Language Server"
+msgstr "Habilitar servidor de linguagem"
+
+msgctxt "settings"
+msgid "Enable Preview File From Code Navigation"
+msgstr "Habilitar visualização de arquivo na navegação de código"
+
+msgctxt "settings"
+msgid "Enable Preview From File Finder"
+msgstr "Habilitar visualização pelo localizador de arquivos"
+
+msgctxt "settings"
+msgid "Enable Preview From Multibuffer"
+msgstr "Habilitar visualização pelo multibuffer"
+
+msgctxt "settings"
+msgid "Enable Preview From Project Panel"
+msgstr "Habilitar visualização pelo painel do projeto"
+
+msgctxt "settings"
+msgid "Enable Preview Multibuffer From Code Navigation"
+msgstr "Habilitar visualização de multibuffer na navegação de código"
+
+msgctxt "settings"
+msgid "Enable drag and drop selection."
+msgstr "Habilita a seleção por arrastar e soltar."
+
+msgctxt "settings"
+msgid "Enable middle-click paste on Linux."
+msgstr "Habilita a colagem com o botão do meio do mouse no Linux."
+
+msgctxt "settings"
+msgid "Enable smartcase searching in Vim mode."
+msgstr "Habilita a pesquisa com correspondência inteligente de maiúsculas no modo Vim."
+
+msgctxt "settings"
+msgid "Enable to show entries in tree view list, disable to show in flat view list."
+msgstr "Quando habilitado, exibe as entradas em uma lista em árvore; quando desabilitado, exibe-as em uma lista plana."
+
+msgctxt "settings"
+msgid "Enabled"
+msgstr "Habilitado"
+
+msgctxt "settings"
+msgid "Enables or disables formatting with Prettier for a given language."
+msgstr "Habilita ou desabilita a formatação com Prettier para uma linguagem específica."
+
+msgctxt "settings"
+msgid "End a remote shell once no terminal has been attached to it for this many hours. 0 never ends it. Applies to shells started after the change."
+msgstr "Encerra um shell remoto quando nenhum terminal estiver anexado a ele por este número de horas. 0 nunca o encerra. Aplica-se aos shells iniciados após a alteração."
+
+msgctxt "settings"
+msgid "End the connection to an external agent once none of its threads has been open for this many minutes (the agent and its sandbox stop too). Reopening a thread connects again. 0 keeps the connection until the window closes."
+msgstr "Encerra a conexão com um agente externo quando nenhuma de suas conversas estiver aberta por este número de minutos (o agente e seu sandbox também param). Reabrir uma conversa conecta novamente. 0 mantém a conexão até a janela ser fechada."
+
+msgctxt "settings"
+msgid "Ensure Final Newline On Save"
+msgstr "Garantir nova linha final ao salvar"
+
+msgctxt "settings"
+msgid "Entry Spacing"
+msgstr "Espaçamento de entradas"
+
+msgctxt "settings"
+msgid "Environment"
+msgstr "Ambiente"
+
+msgctxt "settings"
+msgid "Environment Variables"
+msgstr "Variáveis de ambiente"
+
+msgctxt "settings"
+msgid "Environment variables provided to the agent process."
+msgstr "Variáveis de ambiente fornecidas ao processo do agente."
+
+msgctxt "settings"
+msgid "Every AI you can use, by vendor (Claude, OpenAI, Google, local models…): how each signs in, what runs it, whether it is set up, and where to set it up."
+msgstr "Todas as IAs que você pode usar, por fornecedor (Claude, OpenAI, Google, modelos locais…): como cada uma faz login, o que a executa, se está configurada e onde configurá-la."
+
+msgctxt "settings"
+msgid "Excerpt Context Lines"
+msgstr "Linhas de contexto do trecho"
+
+msgctxt "settings"
+msgid "Excluded Callees"
+msgstr "Chamados excluídos"
+
+msgctxt "settings"
+msgid "Expand Edit Card"
+msgstr "Expandir cartão de edição"
+
+msgctxt "settings"
+msgid "Expand Excerpt Lines"
+msgstr "Linhas de expansão de trecho"
+
+msgctxt "settings"
+msgid "Expand Outlines With Depth"
+msgstr "Profundidade de expansão da estrutura"
+
+msgctxt "settings"
+msgid "Expand Terminal Card"
+msgstr "Expandir cartão de terminal"
+
+msgctxt "settings"
+msgid "Expose Zed itself as an IDE server on 127.0.0.1 so the Claude Code CLI in the integrated terminal and external agents can read the open files, selections and diagnostics. Diffs can be accepted or rejected in an editor tab. Makes no outgoing connections. Disabled by default."
+msgstr "Expõe o próprio ForgeKairos como um servidor IDE em 127.0.0.1 para que o Claude Code CLI no terminal integrado e agentes externos possam ler os arquivos abertos, as seleções e os diagnósticos. Os diffs podem ser aceitos ou rejeitados em uma aba do editor. Não faz conexões de saída. Desabilitado por padrão."
+
+msgctxt "settings"
+msgid "Extend Comment On Newline"
+msgstr "Estender comentário ao criar nova linha"
+
+msgctxt "settings"
+msgid "External AI Providers You Consented To"
+msgstr "Provedores de IA externos aos quais você deu consentimento"
+
+msgctxt "settings"
+msgid "External Agents"
+msgstr "Agentes externos"
+
+msgctxt "settings"
+msgid "Extra task variables to set for a particular language."
+msgstr "Variáveis de tarefa extras a serem definidas para uma linguagem específica."
+
+msgctxt "settings"
+msgid "Fallback Branch Name"
+msgstr "Nome do branch de fallback"
+
+msgctxt "settings"
+msgid "Fast Scroll Sensitivity"
+msgstr "Sensibilidade de rolagem rápida"
+
+msgctxt "settings"
+msgid "Fast scroll sensitivity multiplier for both horizontal and vertical scrolling."
+msgstr "Multiplicador de sensibilidade para rolagem rápida horizontal e vertical."
+
+msgctxt "settings"
+msgid "Feature Flags"
+msgstr "Feature flags"
+
+msgctxt "settings"
+msgid "Fetch Timeout (milliseconds)"
+msgstr "Tempo limite de busca (milissegundos)"
+
+msgctxt "settings"
+msgid "File Diff"
+msgstr "Diff do arquivo"
+
+msgctxt "settings"
+msgid "File Finder"
+msgstr "Localizador de arquivos"
+
+msgctxt "settings"
+msgid "File Icons"
+msgstr "Ícones de arquivos"
+
+msgctxt "settings"
+msgid "File Name Template"
+msgstr "Modelo do nome do arquivo"
+
+msgctxt "settings"
+msgid "File Scan"
+msgstr "Varredura de arquivos"
+
+msgctxt "settings"
+msgid "File Scan Depth"
+msgstr "Profundidade de varredura de arquivos"
+
+msgctxt "settings"
+msgid "File Scan Exclusions"
+msgstr "Exclusões de varredura de arquivos"
+
+msgctxt "settings"
+msgid "File Scan Inclusions"
+msgstr "Inclusões de varredura de arquivos"
+
+msgctxt "settings"
+msgid "File Type Associations"
+msgstr "Associações de tipos de arquivo"
+
+msgctxt "settings"
+msgid "File Types"
+msgstr "Tipos de arquivo"
+
+msgctxt "settings"
+msgid "Files larger than this are sent as an outline (a list of symbols and line numbers) instead of in full, and the agent reads only the ranges it needs. Values below 1024 are treated as 1024."
+msgstr "Arquivos maiores que isto são enviados como uma estrutura (uma lista de símbolos e números de linha) em vez de completos, e o agente lê apenas os intervalos de que precisa. Valores abaixo de 1024 são tratados como 1024."
+
+msgctxt "settings"
+msgid "Files or globs of files that will be excluded by Zed entirely. They will be skipped during file scans, file searches, and not be displayed in the project file tree. Takes precedence over \"File Scan Inclusions\""
+msgstr "Arquivos ou globs de arquivos que serão excluídos completamente pelo ForgeKairos. Serão ignorados durante varreduras e pesquisas de arquivos e não serão exibidos na árvore de arquivos do projeto. Tem precedência sobre \"Inclusões de varredura de arquivos\""
+
+msgctxt "settings"
+msgid "Files or globs of files that will be included by Zed, even when ignored by git. This is useful for files that are not tracked by git, but are still important to your project. Note that globs that are overly broad can slow down Zed's file scanning. \"File Scan Exclusions\" takes precedence over these inclusions"
+msgstr "Arquivos ou globs de arquivos que serão incluídos pelo ForgeKairos, mesmo quando ignorados pelo git. Útil para arquivos não rastreados pelo git, mas ainda importantes para o projeto. Observe que globs muito amplos podem tornar a varredura de arquivos do ForgeKairos mais lenta. \"Exclusões de varredura de arquivos\" tem precedência sobre essas inclusões"
+
+msgctxt "settings"
+msgid "Focus Follows Mouse"
+msgstr "Foco segue o mouse"
+
+msgctxt "settings"
+msgid "Focus Follows Mouse Debounce ms"
+msgstr "Atraso do foco ao seguir o mouse (ms)"
+
+msgctxt "settings"
+msgid "Folder Indicator"
+msgstr "Indicador de pasta"
+
+msgctxt "settings"
+msgid "Follow Cursor"
+msgstr "Seguir o cursor"
+
+msgctxt "settings"
+msgid "Follow the System Language"
+msgstr "Seguir o idioma do sistema"
+
+msgctxt "settings"
+msgid "Font"
+msgstr "Fonte"
+
+msgctxt "settings"
+msgid "Font Fallbacks"
+msgstr "Fontes alternativas"
+
+msgctxt "settings"
+msgid "Font Family"
+msgstr "Família da fonte"
+
+msgctxt "settings"
+msgid "Font Features"
+msgstr "Recursos da fonte"
+
+msgctxt "settings"
+msgid "Font Size"
+msgstr "Tamanho da fonte"
+
+msgctxt "settings"
+msgid "Font Weight"
+msgstr "Espessura da fonte"
+
+msgctxt "settings"
+msgid "Font fallbacks for terminal text. If not set, defaults to buffer font fallbacks."
+msgstr "Fontes alternativas para o texto do terminal. Se não forem definidas, são usadas as fontes alternativas do buffer."
+
+msgctxt "settings"
+msgid "Font family for UI elements."
+msgstr "Família da fonte para elementos da interface."
+
+msgctxt "settings"
+msgid "Font family for agent response text in the agent panel. Falls back to the regular UI font family."
+msgstr "Família da fonte para o texto de respostas do agente no painel do agente. Usa a família da fonte normal da interface como alternativa."
+
+msgctxt "settings"
+msgid "Font family for code blocks in the markdown preview. Falls back to the editor font family."
+msgstr "Família da fonte para blocos de código na visualização do Markdown. Usa a família da fonte do editor como alternativa."
+
+msgctxt "settings"
+msgid "Font family for editor text."
+msgstr "Família da fonte para o texto do editor."
+
+msgctxt "settings"
+msgid "Font family for terminal text. If not set, defaults to buffer font family."
+msgstr "Família da fonte para o texto do terminal. Se não definida, usa a família da fonte do buffer."
+
+msgctxt "settings"
+msgid "Font family for the markdown preview. Falls back to the UI font family."
+msgstr "Família da fonte para a visualização do Markdown. Usa a família da fonte da interface como alternativa."
+
+msgctxt "settings"
+msgid "Font family for user messages in the agent panel. Falls back to the regular buffer font family."
+msgstr "Família da fonte para mensagens do usuário no painel do agente. Usa a família da fonte normal do buffer como alternativa."
+
+msgctxt "settings"
+msgid "Font features for terminal text."
+msgstr "Recursos da fonte para o texto do terminal."
+
+msgctxt "settings"
+msgid "Font size for UI elements."
+msgstr "Tamanho da fonte para elementos da interface."
+
+msgctxt "settings"
+msgid "Font size for agent response text in the agent panel. Falls back to the regular UI font size."
+msgstr "Tamanho da fonte para o texto de respostas do agente no painel do agente. Usa o tamanho da fonte da interface como alternativa."
+
+msgctxt "settings"
+msgid "Font size for editor text."
+msgstr "Tamanho da fonte para o texto do editor."
+
+msgctxt "settings"
+msgid "Font size for terminal text. If not set, defaults to buffer font size."
+msgstr "Tamanho da fonte para o texto do terminal. Se não definido, usa o tamanho da fonte do buffer."
+
+msgctxt "settings"
+msgid "Font size for the markdown preview. Falls back to the editor font size."
+msgstr "Tamanho da fonte para a visualização do Markdown. Usa o tamanho da fonte do editor como alternativa."
+
+msgctxt "settings"
+msgid "Font size for user messages text in the agent panel."
+msgstr "Tamanho da fonte para o texto das mensagens do usuário no painel do agente."
+
+msgctxt "settings"
+msgid "Font weight for UI elements (100-900)."
+msgstr "Espessura da fonte para elementos da interface (100-900)."
+
+msgctxt "settings"
+msgid "Font weight for editor text (100-900)."
+msgstr "Espessura da fonte para o texto do editor (100-900)."
+
+msgctxt "settings"
+msgid "Font weight for terminal text in CSS weight units (100-900)."
+msgstr "Espessura da fonte para o texto do terminal em unidades CSS (100-900)."
+
+msgctxt "settings"
+msgid "Forces Prettier integration to use a specific parser name when formatting files with the language."
+msgstr "Força a integração com o Prettier a usar um nome de analisador específico ao formatar arquivos com a linguagem."
+
+msgctxt "settings"
+msgid "Forces Prettier integration to use specific plugins when formatting files with the language."
+msgstr "Força a integração com o Prettier a usar plugins específicos ao formatar arquivos com a linguagem."
+
+msgctxt "settings"
+msgid "Forget each thread's consent to \"Launch Outside the Sandbox\" so the next launch asks again. Running agents are not stopped, and the \"Always Launch Outside the Sandbox\" setting stays as it is."
+msgstr "Esquece o consentimento de cada conversa para \"Iniciar fora do sandbox\", para que o próximo início pergunte novamente. Os agentes em execução não são parados, e a configuração \"Sempre iniciar fora do sandbox\" permanece como está."
+
+msgctxt "settings"
+msgid "Format DAP Log Messages"
+msgstr "Formatar mensagens de log DAP"
+
+msgctxt "settings"
+msgid "Format On Save"
+msgstr "Formatar ao salvar"
+
+msgctxt "settings"
+msgid "Formatter"
+msgstr "Formatador"
+
+msgctxt "settings"
+msgid "Formatting"
+msgstr "Formatação"
+
+msgctxt "settings"
+msgid "Fullscreen Mode"
+msgstr "Modo de tela cheia"
+
+msgctxt "settings"
+msgid "GNOME-style layout string such as \"close:minimize,maximize\"."
+msgstr "String de layout no estilo GNOME, como \"close:minimize,maximize\"."
+
+msgctxt "settings"
+msgid "General"
+msgstr "Geral"
+
+msgctxt "settings"
+msgid "General Settings"
+msgstr "Configurações gerais"
+
+msgctxt "settings"
+msgid "Git Accounts"
+msgstr "Contas Git"
+
+msgctxt "settings"
+msgid "Git Blame View"
+msgstr "Exibição do Git Blame"
+
+msgctxt "settings"
+msgid "Git Diff"
+msgstr "Diff do Git"
+
+msgctxt "settings"
+msgid "Git Gutter"
+msgstr "Medianiz do Git"
+
+msgctxt "settings"
+msgid "Git Gutter Width"
+msgstr "Largura da medianiz do Git"
+
+msgctxt "settings"
+msgid "Git Hunks"
+msgstr "Blocos do Git"
+
+msgctxt "settings"
+msgid "Git Integration"
+msgstr "Integração com o Git"
+
+msgctxt "settings"
+msgid "Git Panel"
+msgstr "Painel do Git"
+
+msgctxt "settings"
+msgid "Git Panel Button"
+msgstr "Botão do painel do Git"
+
+msgctxt "settings"
+msgid "Git Panel Default Width"
+msgstr "Largura padrão do painel do Git"
+
+msgctxt "settings"
+msgid "Git Panel Dock"
+msgstr "Posição do dock do painel do Git"
+
+msgctxt "settings"
+msgid "Git Panel Status Style"
+msgstr "Estilo de status do painel do Git"
+
+msgctxt "settings"
+msgid "Git Status"
+msgstr "Status do Git"
+
+msgctxt "settings"
+msgid "Git Status Indicator"
+msgstr "Indicador de status do Git"
+
+msgctxt "settings"
+msgid "Give Agents IDE Tools"
+msgstr "Dar ferramentas do IDE aos agentes"
+
+msgctxt "settings"
+msgid "Give Claude Code tabs and external agents tools for highlights, annotations, tours, definitions, references and symbol search. Separate from \"Enable IDE Server\", and writes no lock file. Makes no outgoing connections."
+msgstr "Dá às abas do Claude Code e aos agentes externos ferramentas para destaques, anotações, tours, definições, referências e pesquisa de símbolos. Separado de \"Habilitar servidor IDE\" e não grava arquivo de bloqueio. Não faz conexões de saída."
+
+msgctxt "settings"
+msgid "Global Substitution Default"
+msgstr "Substituição global padrão"
+
+msgctxt "settings"
+msgid "Global switch to toggle hints on and off."
+msgstr "Chave global para ativar e desativar dicas."
+
+msgctxt "settings"
+msgid "Global switch to toggle inline values on and off when debugging."
+msgstr "Chave global para ativar e desativar valores embutidos durante a depuração."
+
+msgctxt "settings"
+msgid "Globs to match against file paths to determine if a file is private."
+msgstr "Globs para corresponder a caminhos de arquivo a fim de determinar se um arquivo é privado."
+
+msgctxt "settings"
+msgid "Globs to match files that will be considered \"hidden\" and can be hidden from the project panel."
+msgstr "Globs para corresponder a arquivos que serão considerados \"ocultos\" e podem ser ocultados do painel do projeto."
+
+msgctxt "settings"
+msgid "Go To Definition Fallback"
+msgstr "Fallback de ir para definição"
+
+msgctxt "settings"
+msgid "Go To Definition Scroll Strategy"
+msgstr "Estratégia de rolagem de ir para definição"
+
+msgctxt "settings"
+msgid "Group By"
+msgstr "Agrupar por"
+
+msgctxt "settings"
+msgid "Guides"
+msgstr "Guias"
+
+msgctxt "settings"
+msgid "Gutter"
+msgstr "Medianiz"
+
+msgctxt "settings"
+msgid "Hand the shells of SSH terminals to the remote Zed server. Running commands keep going when the connection drops, and reconnecting shows the output so far again so you can carry on. Closing the tab ends the shell. Not available on Windows remote hosts."
+msgstr "Entrega os shells dos terminais SSH ao servidor remoto do ForgeKairos. Os comandos em execução continuam quando a conexão cai, e ao reconectar a saída até então é mostrada novamente para que você possa continuar. Fechar a aba encerra o shell. Não disponível em hosts remotos Windows."
+
+msgctxt "settings"
+msgid "Hard Tabs"
+msgstr "Tabulações reais"
+
+msgctxt "settings"
+msgid "Hidden Files"
+msgstr "Arquivos ocultos"
+
+msgctxt "settings"
+msgid "Hide .gitignore"
+msgstr "Ocultar .gitignore"
+
+msgctxt "settings"
+msgid "Hide Hidden"
+msgstr "Ocultar ocultos"
+
+msgctxt "settings"
+msgid "Hide Mouse"
+msgstr "Ocultar cursor do mouse"
+
+msgctxt "settings"
+msgid "Hide Root"
+msgstr "Ocultar raiz"
+
+msgctxt "settings"
+msgid "Hide Symbols in Multi-Buffers"
+msgstr "Ocultar símbolos em multibuffers"
+
+msgctxt "settings"
+msgid "Hide the values of variables in private files."
+msgstr "Oculta os valores de variáveis em arquivos privados."
+
+msgctxt "settings"
+msgid "Hiding Delay"
+msgstr "Atraso para ocultar"
+
+msgctxt "settings"
+msgid "Highlight all occurrences of selected text."
+msgstr "Destaca todas as ocorrências do texto selecionado."
+
+msgctxt "settings"
+msgid "Highlight on Yank Duration"
+msgstr "Duração do destaque no yank"
+
+msgctxt "settings"
+msgid "Highlighting"
+msgstr "Destaque"
+
+msgctxt "settings"
+msgid "Home Page"
+msgstr "Página inicial"
+
+msgctxt "settings"
+msgid "Horizontal Scroll"
+msgstr "Rolagem horizontal"
+
+msgctxt "settings"
+msgid "Horizontal Scroll Margin"
+msgstr "Margem de rolagem horizontal"
+
+msgctxt "settings"
+msgid "Horizontal Scrollbar"
+msgstr "Barra de rolagem horizontal"
+
+msgctxt "settings"
+msgid "Horizontal Split Direction"
+msgstr "Direção da divisão horizontal"
+
+msgctxt "settings"
+msgid "Hover Popover"
+msgstr "Pop-up ao passar o cursor"
+
+msgctxt "settings"
+msgid "How Git hunks are displayed visually in the editor."
+msgstr "Define como os blocos do Git são exibidos visualmente no editor."
+
+msgctxt "settings"
+msgid "How `forgekairos <path>` opens directories when no flag is specified."
+msgstr "Como `forgekairos <path>` abre diretórios quando nenhuma flag é especificada."
+
+msgctxt "settings"
+msgid "How and when the scrollbar should be displayed."
+msgstr "Define como e quando a barra de rolagem deve ser exibida."
+
+msgctxt "settings"
+msgid "How entry statuses are displayed."
+msgstr "Define como os status das entradas são exibidos."
+
+msgctxt "settings"
+msgid "How line endings should be handled for new files and during format and save operations."
+msgstr "Define como as terminações de linha devem ser tratadas em novos arquivos e durante operações de formatação e salvamento."
+
+msgctxt "settings"
+msgid "How long going to a definition waits for the language server before it also offers the index's name matches, in milliseconds, from 100 to 10000. Default: 1500."
+msgstr "Quanto tempo a ida para uma definição aguarda o servidor de linguagem antes de também oferecer as correspondências de nome do índice, em milissegundos, de 100 a 10000. Padrão: 1500."
+
+msgctxt "settings"
+msgid "How many callers or callees of one function to list before a Show more row."
+msgstr "Quantos chamadores ou chamados de uma função listar antes de uma linha \"Mostrar mais\"."
+
+msgctxt "settings"
+msgid "How many characters has to be in the completions query to automatically show the words-based completions."
+msgstr "Define quantos caracteres precisam estar na consulta de preenchimentos automáticos para exibir automaticamente os preenchimentos automáticos baseados em palavras."
+
+msgctxt "settings"
+msgid "How many columns a tab should occupy."
+msgstr "Define quantas colunas uma tabulação deve ocupar."
+
+msgctxt "settings"
+msgid "How many lines of context to provide in multibuffer excerpts by default."
+msgstr "Define quantas linhas de contexto fornecer nos trechos de multibuffer por padrão."
+
+msgctxt "settings"
+msgid "How many lines to expand the multibuffer excerpts by default."
+msgstr "Define quantas linhas expandir os trechos de multibuffer por padrão."
+
+msgctxt "settings"
+msgid "How many threads clangd builds and indexes files with (`-j`). Fewer threads use less memory at once but index more slowly. 0 leaves clangd's own default. Ignored when `lsp.clangd.binary.arguments` already has `-j`. Changing it restarts clangd. This setting only takes effect in your user settings."
+msgstr "Quantas threads o clangd usa para compilar e indexar arquivos (`-j`). Menos threads usam menos memória ao mesmo tempo, mas indexam mais devagar. 0 mantém o padrão do próprio clangd. Ignorado quando `lsp.clangd.binary.arguments` já tem `-j`. Alterá-lo reinicia o clangd. Esta configuração só tem efeito nas suas configurações de usuário."
+
+msgctxt "settings"
+msgid "How much `git status` reports about untracked files. All reports every file inside untracked folders, which makes the project panel's colors exact but is the slowest on huge repositories. Normal reports only the folders, and No leaves untracked files out entirely. Over remote SSH the same value is used on the server."
+msgstr "Quanto o `git status` relata sobre arquivos não rastreados. All relata cada arquivo dentro de pastas não rastreadas, o que deixa as cores do painel do projeto exatas, mas é o mais lento em repositórios enormes. Normal relata somente as pastas, e No deixa os arquivos não rastreados totalmente de fora. Via SSH remoto, o mesmo valor é usado no servidor."
+
+msgctxt "settings"
+msgid "How much of the body of a web page attached with @fetch is sent. Values below 1024 are treated as 1024."
+msgstr "Quanto do corpo de uma página da Web anexada com @fetch é enviado. Valores abaixo de 1024 são tratados como 1024."
+
+msgctxt "settings"
+msgid "How much of the project clangd, the C and C++ language server, indexes. Full indexes the whole project in the background, as clangd does by default. Light indexes only the open files and saves the most memory: references across the project and renames then only cover the files that are open, as do the call hierarchy and going to a definition in a file that is not open. Ignored when `lsp.clangd.binary.arguments` already has `--background-index`. Changing it restarts clangd."
+msgstr "Quanto do projeto o clangd, o servidor de linguagem de C e C++, indexa. Full indexa o projeto inteiro em segundo plano, como o clangd faz por padrão. Light indexa somente os arquivos abertos e é o que mais economiza memória: as referências em todo o projeto e as renomeações passam a cobrir apenas os arquivos abertos, assim como a hierarquia de chamadas e a ida para uma definição em um arquivo que não está aberto. Ignorado quando `lsp.clangd.binary.arguments` já tem `--background-index`. Alterá-lo reinicia o clangd."
+
+msgctxt "settings"
+msgid "How much to fade out unused code (0.0 - 0.9)."
+msgstr "Define o quanto esmaecer o código não utilizado (0.0 - 0.9)."
+
+msgctxt "settings"
+msgid "How projects open from the UI by default."
+msgstr "Define como os projetos são abertos pela interface por padrão."
+
+msgctxt "settings"
+msgid "How thinking blocks should be displayed by default. 'Auto' fully expands during streaming, then auto-collapses when done. 'Preview' auto-expands with a height constraint during streaming. 'Always Expanded' shows full content. 'Always Collapsed' keeps them collapsed."
+msgstr "Define como os blocos de raciocínio devem ser exibidos por padrão. 'Automático' expande totalmente durante o streaming e recolhe automaticamente ao concluir. 'Visualização' expande automaticamente com restrição de altura durante o streaming. 'Sempre expandido' exibe o conteúdo completo. 'Sempre recolhido' mantém os blocos recolhidos."
+
+msgctxt "settings"
+msgid "How to display diffs in the editor."
+msgstr "Define como exibir diffs no editor."
+
+msgctxt "settings"
+msgid "How to display the LSP item kind (function, method, variable, etc.) of each entry in the completions menu."
+msgstr "Como exibir o tipo de item LSP (função, método, variável, etc.) de cada entrada no menu de preenchimento automático."
+
+msgctxt "settings"
+msgid "How to group entries in the git panel."
+msgstr "Define como agrupar entradas no painel do Git."
+
+msgctxt "settings"
+msgid "How to highlight the current line in the minimap."
+msgstr "Define como destacar a linha atual no minimapa."
+
+msgctxt "settings"
+msgid "How to highlight the current line."
+msgstr "Define como destacar a linha atual."
+
+msgctxt "settings"
+msgid "How to perform a buffer format."
+msgstr "Define como executar a formatação de um buffer."
+
+msgctxt "settings"
+msgid "How to render LSP color previews in the editor."
+msgstr "Define como renderizar as visualizações de cores do LSP no editor."
+
+msgctxt "settings"
+msgid "How to scroll the target into view when navigating to a definition or reference."
+msgstr "Define como rolar até o alvo ao navegar para uma definição ou referência."
+
+msgctxt "settings"
+msgid "How to soft-wrap long lines of text."
+msgstr "Define como quebrar automaticamente linhas longas de texto."
+
+msgctxt "settings"
+msgid "How to sort entries in the git panel."
+msgstr "Define como ordenar entradas no painel do Git."
+
+msgctxt "settings"
+msgid "Hunk Style"
+msgstr "Estilo de bloco"
+
+msgctxt "settings"
+msgid "Icon Theme"
+msgstr "Tema de ícones"
+
+msgctxt "settings"
+msgid "Icon Theme Name"
+msgstr "Nome do tema de ícones"
+
+msgctxt "settings"
+msgid "Idle Agent Disconnect (Minutes)"
+msgstr "Desconexão de agente ocioso (minutos)"
+
+msgctxt "settings"
+msgid "Image Viewer"
+msgstr "Visualizador de imagens"
+
+msgctxt "settings"
+msgid "In the grid, grow the row height so that cells containing line breaks are shown in full. When off, they are cut to one line."
+msgstr "Na grade, aumenta a altura da linha para que as células com quebras de linha sejam mostradas por completo. Quando desativado, elas são cortadas em uma linha."
+
+msgctxt "settings"
+msgid "Inactive Opacity"
+msgstr "Opacidade dos subpainéis inativos"
+
+msgctxt "settings"
+msgid "Include Ignored"
+msgstr "Incluir ignorados"
+
+msgctxt "settings"
+msgid "Include Ignored Files"
+msgstr "Incluir arquivos ignorados"
+
+msgctxt "settings"
+msgid "Include Ignored in Search"
+msgstr "Incluir ignorados na pesquisa"
+
+msgctxt "settings"
+msgid "Include Pre-releases"
+msgstr "Incluir pré-lançamentos"
+
+msgctxt "settings"
+msgid "Include Warnings"
+msgstr "Incluir avisos"
+
+msgctxt "settings"
+msgid "Include ignored files in search results by default."
+msgstr "Inclui arquivos ignorados nos resultados de pesquisa por padrão."
+
+msgctxt "settings"
+msgid "Indent Guides"
+msgstr "Guias de recuo"
+
+msgctxt "settings"
+msgid "Indent Size"
+msgstr "Tamanho do recuo"
+
+msgctxt "settings"
+msgid "Indentation"
+msgstr "Recuo"
+
+msgctxt "settings"
+msgid "Index Mode"
+msgstr "Modo do índice"
+
+msgctxt "settings"
+msgid "Indexing"
+msgstr "Indexação"
+
+msgctxt "settings"
+msgid "Inlay Hints"
+msgstr "Dicas embutidas"
+
+msgctxt "settings"
+msgid "Inline Attachment Limit (Bytes)"
+msgstr "Limite de anexo completo (bytes)"
+
+msgctxt "settings"
+msgid "Inline Code Actions"
+msgstr "Ações de código embutidas"
+
+msgctxt "settings"
+msgid "Inline Diagnostics"
+msgstr "Diagnósticos embutidos"
+
+msgctxt "settings"
+msgid "Inline Git Blame"
+msgstr "Git Blame embutido"
+
+msgctxt "settings"
+msgid "Input Audio Device"
+msgstr "Dispositivo de entrada de áudio"
+
+msgctxt "settings"
+msgid "Insert Mode"
+msgstr "Modo de inserção"
+
+msgctxt "settings"
+msgid "Insert a repository map (the files and the symbols declared in them) right after the list of project root folders in the system prompt. 0 turns it off. The limit is 32768 bytes; larger values are treated as 32768. It is rebuilt only when the project's contents change."
+msgstr "Insere um mapa do repositório (os arquivos e os símbolos declarados neles) logo após a lista de pastas raiz do projeto no prompt do sistema. 0 o desativa. O limite é 32768 bytes; valores maiores são tratados como 32768. Ele só é reconstruído quando o conteúdo do projeto muda."
+
+msgctxt "settings"
+msgid "Instrumentation"
+msgstr "Instrumentação"
+
+msgctxt "settings"
+msgid "JSX Tag Auto Close"
+msgstr "Fechamento automático de tags JSX"
+
+msgctxt "settings"
+msgid "Keep Selection On Copy"
+msgstr "Manter seleção ao copiar"
+
+msgctxt "settings"
+msgid "Keep Shells Running When Disconnected"
+msgstr "Manter shells em execução quando desconectado"
+
+msgctxt "settings"
+msgid "Key-value pairs to add to the terminal's environment."
+msgstr "Pares chave-valor a serem adicionados ao ambiente do terminal."
+
+msgctxt "settings"
+msgid "Keybindings"
+msgstr "Associações de teclas"
+
+msgctxt "settings"
+msgid "Keymap"
+msgstr "Mapa de teclas"
+
+msgctxt "settings"
+msgid "LLM Providers"
+msgstr "Provedores de LLM"
+
+msgctxt "settings"
+msgid "LSP"
+msgstr "LSP"
+
+msgctxt "settings"
+msgid "LSP Completions"
+msgstr "Preenchimentos automáticos do LSP"
+
+msgctxt "settings"
+msgid "LSP Document Colors"
+msgstr "Cores de documento do LSP"
+
+msgctxt "settings"
+msgid "LSP Document Symbols"
+msgstr "Símbolos de documento do LSP"
+
+msgctxt "settings"
+msgid "LSP Folding Ranges"
+msgstr "Intervalos de dobra do LSP"
+
+msgctxt "settings"
+msgid "LSP Highlights"
+msgstr "Destaques do LSP"
+
+msgctxt "settings"
+msgid "LSP Pull Diagnostics"
+msgstr "Diagnósticos por pull do LSP"
+
+msgctxt "settings"
+msgid "LSP Results Location"
+msgstr "Local dos resultados do LSP"
+
+msgctxt "settings"
+msgid "Language Detection"
+msgstr "Detecção de linguagem"
+
+msgctxt "settings"
+msgid "Language Server Timeout (ms)"
+msgstr "Tempo limite do servidor de linguagem (ms)"
+
+msgctxt "settings"
+msgid "Language Servers"
+msgstr "Servidores de linguagem"
+
+msgctxt "settings"
+msgid "Languages"
+msgstr "Linguagens"
+
+msgctxt "settings"
+msgid "Languages & Tools"
+msgstr "Linguagens e ferramentas"
+
+msgctxt "settings"
+msgid "Launch Approvals"
+msgstr "Aprovações de inicialização"
+
+msgctxt "settings"
+msgid "Layout"
+msgstr "Layout"
+
+msgctxt "settings"
+msgid "Layout Settings"
+msgstr "Configurações de layout"
+
+msgctxt "settings"
+msgid "Layout mode for the bottom dock."
+msgstr "Modo de layout do dock inferior."
+
+msgctxt "settings"
+msgid "Left padding for centered layout."
+msgstr "Espaçamento à esquerda para o layout centralizado."
+
+msgctxt "settings"
+msgid "Let AI Agents Use the Built-in Browser"
+msgstr "Permitir que agentes de IA usem o navegador integrado"
+
+msgctxt "settings"
+msgid "Let agents read the end (up to 4 KB) of the output of the last failed task (non-zero exit) through the IDE server's getLastTaskOutput tool."
+msgstr "Permite que os agentes leiam o final (até 4 KB) da saída da última tarefa com falha (código de saída diferente de zero) por meio da ferramenta getLastTaskOutput do servidor IDE."
+
+msgctxt "settings"
+msgid "Light Icon Theme"
+msgstr "Tema de ícones claro"
+
+msgctxt "settings"
+msgid "Light Theme"
+msgstr "Tema claro"
+
+msgctxt "settings"
+msgid "Limit Content Width"
+msgstr "Limitar largura do conteúdo"
+
+msgctxt "settings"
+msgid "Limit Markdown Preview Width"
+msgstr "Limitar largura da visualização do Markdown"
+
+msgctxt "settings"
+msgid "Limit the diagnostics attached with @diagnostics to this many files. Values below 1 are treated as 1."
+msgstr "Limita os diagnósticos anexados com @diagnostics a este número de arquivos. Valores abaixo de 1 são tratados como 1."
+
+msgctxt "settings"
+msgid "Line Ending"
+msgstr "Terminação de linha"
+
+msgctxt "settings"
+msgid "Line Endings Button"
+msgstr "Botão de terminações de linha"
+
+msgctxt "settings"
+msgid "Line Height"
+msgstr "Altura da linha"
+
+msgctxt "settings"
+msgid "Line Width"
+msgstr "Largura da linha"
+
+msgctxt "settings"
+msgid "Line height for editor text."
+msgstr "Define a altura da linha do texto no editor."
+
+msgctxt "settings"
+msgid "Line height for terminal text."
+msgstr "Define a altura da linha do texto no terminal."
+
+msgctxt "settings"
+msgid "Linked Edits"
+msgstr "Edições vinculadas"
+
+msgctxt "settings"
+msgid "Location"
+msgstr "Local"
+
+msgctxt "settings"
+msgid "Log DAP Communications"
+msgstr "Registrar comunicações DAP"
+
+msgctxt "settings"
+msgid "Log Directory"
+msgstr "Pasta de logs"
+
+msgctxt "settings"
+msgid "MCP Server Timeout"
+msgstr "Tempo limite do servidor MCP"
+
+msgctxt "settings"
+msgid "MCP Servers"
+msgstr "Servidores MCP"
+
+msgctxt "settings"
+msgid "Make the function under the cursor the root whenever the cursor moves."
+msgstr "Torna a função sob o cursor a raiz sempre que o cursor se move."
+
+msgctxt "settings"
+msgid "Markdown Format Bar"
+msgstr "Barra de formatação do Markdown"
+
+msgctxt "settings"
+msgid "Markdown Preview Font"
+msgstr "Fonte da visualização do Markdown"
+
+msgctxt "settings"
+msgid "Max Content Width"
+msgstr "Largura máxima do conteúdo"
+
+msgctxt "settings"
+msgid "Max Output Tokens"
+msgstr "Máximo de tokens de saída"
+
+msgctxt "settings"
+msgid "Max Scroll History Lines"
+msgstr "Máximo de linhas no histórico de rolagem"
+
+msgctxt "settings"
+msgid "Max Severity"
+msgstr "Severidade máxima"
+
+msgctxt "settings"
+msgid "Max Tokens"
+msgstr "Máximo de tokens"
+
+msgctxt "settings"
+msgid "Max Width"
+msgstr "Largura máxima"
+
+msgctxt "settings"
+msgid "Max Width Columns"
+msgstr "Largura máxima em colunas"
+
+msgctxt "settings"
+msgid "Maximum Listed Calls"
+msgstr "Máximo de chamadas listadas"
+
+msgctxt "settings"
+msgid "Maximum Tabs"
+msgstr "Número máximo de abas"
+
+msgctxt "settings"
+msgid "Maximum Workers"
+msgstr "Máximo de workers"
+
+msgctxt "settings"
+msgid "Maximum content width in pixels. Content will be centered when the pane is wider than this value."
+msgstr "Largura máxima do conteúdo em pixels. O conteúdo será centralizado quando o subpainel for mais largo que este valor."
+
+msgctxt "settings"
+msgid "Maximum content width in pixels. Content will be centered when the panel is wider than this value."
+msgstr "Largura máxima do conteúdo em pixels. O conteúdo será centralizado quando o painel for mais largo que este valor."
+
+msgctxt "settings"
+msgid "Maximum directory depth to eagerly index outside of git repositories; contents of directories at this depth or deeper are indexed on demand. Repositories rooted shallower than this depth are always indexed fully. In projects that are not rooted at a git repository, repositories directly inside a root folder activate their git features immediately; deeper ones activate on first use. 0 means no limit and activates all git repositories immediately"
+msgstr "Profundidade máxima de diretórios a indexar antecipadamente fora de repositórios Git; o conteúdo de diretórios nessa profundidade ou mais profundos é indexado sob demanda. Repositórios com raiz em uma profundidade menor que essa são sempre totalmente indexados. Em projetos que não têm raiz em um repositório Git, os repositórios diretamente dentro de uma pasta raiz ativam seus recursos do Git imediatamente; os mais profundos são ativados no primeiro uso. 0 significa sem limite e ativa todos os repositórios Git imediatamente"
+
+msgctxt "settings"
+msgid "Maximum length of the commit message title before a warning is shown. Set to 0 to disable."
+msgstr "Comprimento máximo do título da mensagem de commit antes que um aviso seja exibido. O valor 0 desabilita o aviso."
+
+msgctxt "settings"
+msgid "Maximum number of columns to display in the minimap."
+msgstr "Número máximo de colunas a exibir no minimapa."
+
+msgctxt "settings"
+msgid "Maximum number of lines to keep in scrollback history (max: 100,000; 0 disables scrolling)."
+msgstr "Número máximo de linhas a manter no histórico de rolagem (máx.: 100.000; 0 desabilita a rolagem)."
+
+msgctxt "settings"
+msgid "Maximum open tabs in a pane. Will not close an unsaved tab."
+msgstr "Máximo de abas abertas em um subpainel. Não fechará uma aba não salva."
+
+msgctxt "settings"
+msgid "Memory Limit (MB)"
+msgstr "Limite de memória (MB)"
+
+msgctxt "settings"
+msgid "Menu Delay"
+msgstr "Atraso do menu"
+
+msgctxt "settings"
+msgid "Message Editor Min Lines"
+msgstr "Linhas mínimas do editor de mensagens"
+
+msgctxt "settings"
+msgid "Middle Click Paste"
+msgstr "Colar com clique do meio"
+
+msgctxt "settings"
+msgid "Min Line Number Digits"
+msgstr "Dígitos mínimos do número de linha"
+
+msgctxt "settings"
+msgid "Minimap"
+msgstr "Minimapa"
+
+msgctxt "settings"
+msgid "Minimum Column"
+msgstr "Coluna mínima"
+
+msgctxt "settings"
+msgid "Minimum Contrast"
+msgstr "Contraste mínimo"
+
+msgctxt "settings"
+msgid "Minimum Contrast For Highlights"
+msgstr "Contraste mínimo para destaques"
+
+msgctxt "settings"
+msgid "Minimum Split Diff Width"
+msgstr "Largura mínima da exibição de diff dividida"
+
+msgctxt "settings"
+msgid "Minimum number of characters to reserve space for in the gutter."
+msgstr "Número mínimo de caracteres para reservar espaço na medianiz."
+
+msgctxt "settings"
+msgid "Minimum number of lines to display in the agent message editor."
+msgstr "Número mínimo de linhas a exibir no editor de mensagens do agente."
+
+msgctxt "settings"
+msgid "Minimum time to wait before pulling diagnostics from the language server(s)."
+msgstr "Tempo mínimo de espera antes de buscar diagnósticos dos servidores de linguagem."
+
+msgctxt "settings"
+msgid "Miscellaneous"
+msgstr "Diversos"
+
+msgctxt "settings"
+msgid "Mode"
+msgstr "Modo"
+
+msgctxt "settings"
+msgid "Model"
+msgstr "Modelo"
+
+msgctxt "settings"
+msgid "Modifier key for adding multiple cursors."
+msgstr "Tecla modificadora para adicionar vários cursores."
+
+msgctxt "settings"
+msgid "Mouse Wheel Zoom"
+msgstr "Zoom com a roda do mouse"
+
+msgctxt "settings"
+msgid "Multi Cursor Modifier"
+msgstr "Modificador de vários cursores"
+
+msgctxt "settings"
+msgid "Multibuffer"
+msgstr "Multibuffer"
+
+msgctxt "settings"
+msgid "Mute On Join"
+msgstr "Silenciar ao entrar"
+
+msgctxt "settings"
+msgid "Network"
+msgstr "Rede"
+
+msgctxt "settings"
+msgid "Network Allowlist"
+msgstr "Lista de permissões de rede"
+
+msgctxt "settings"
+msgid "Newly opened terminals start recording their output automatically."
+msgstr "Os terminais recém-abertos começam a gravar a saída automaticamente."
+
+msgctxt "settings"
+msgid "Normal, Vim, Helix, or Emacs key bindings. Vim and Helix work on top of the base keymap; Emacs is a base keymap of its own, so choosing it here also sets the base keymap."
+msgstr "Associações de teclas Normal, Vim, Helix ou Emacs. Vim e Helix funcionam sobre o mapa de teclas base; Emacs é um mapa de teclas base por si só, portanto escolhê-lo aqui também define o mapa de teclas base."
+
+msgctxt "settings"
+msgid "Notify When Agent Waiting"
+msgstr "Notificar quando o agente estiver aguardando"
+
+msgctxt "settings"
+msgid "Number of lines to search for modelines (set to 0 to disable)."
+msgstr "Número de linhas para pesquisar modelines (o valor 0 desabilita esse recurso)."
+
+msgctxt "settings"
+msgid "Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting."
+msgstr "Desativado: não solicita tokens semânticos aos servidores de linguagem.\nCombinado: usa os tokens semânticos do LSP junto com o destaque do Tree-sitter.\nCompleto: usa exclusivamente os tokens semânticos do LSP, substituindo o destaque do Tree-sitter."
+
+msgctxt "settings"
+msgid "On Last Window Closed"
+msgstr "Ao fechar a última janela"
+
+msgctxt "settings"
+msgid "On New Window"
+msgstr "Ao abrir nova janela"
+
+msgctxt "settings"
+msgid "On: format the whole buffer.\nOff: do not format.\nModifications: format only lines with unstaged changes; skips formatting when a git diff or LSP range formatting is unavailable.\nModifications If Available: same, but falls back to formatting the whole buffer."
+msgstr "Ativado: formata o buffer inteiro.\nDesativado: não formata.\nModificações: formata apenas as linhas com alterações não preparadas; ignora a formatação quando um diff do Git ou a formatação de intervalo do LSP não está disponível.\nModificações, se possível: funciona da mesma forma, mas recorre à formatação do buffer inteiro."
+
+msgctxt "settings"
+msgid "Opacity of inactive panels (0.0 - 1.0)."
+msgstr "Opacidade dos subpainéis inativos (0.0 - 1.0)."
+
+msgctxt "settings"
+msgid "Open CSV / TSV as a Grid"
+msgstr "Abrir CSV / TSV como grade"
+
+msgctxt "settings"
+msgid "Open Keymap"
+msgstr "Abrir mapa de teclas"
+
+msgctxt "settings"
+msgid "Open Links In Mouse Mode"
+msgstr "Abrir links no modo de mouse"
+
+msgctxt "settings"
+msgid "Open Macro Folders Collapsed"
+msgstr "Abrir pastas de macros recolhidas"
+
+msgctxt "settings"
+msgid "Open Markdown Files in Preview"
+msgstr "Abrir arquivos Markdown na visualização"
+
+msgctxt "settings"
+msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
+msgstr "Otimiza a interface do ForgeKairos para tecnologias assistivas, como leitores de tela. Quando habilitado, os controles que normalmente ficam recolhidos permanecem expandidos e acessíveis pelo teclado."
+
+msgctxt "settings"
+msgid "Option As Meta"
+msgstr "Option como Meta"
+
+msgctxt "settings"
+msgid "Options"
+msgstr "Opções"
+
+msgctxt "settings"
+msgid "Outline Limit (Bytes)"
+msgstr "Limite da estrutura (bytes)"
+
+msgctxt "settings"
+msgid "Outline Panel"
+msgstr "Painel de estrutura"
+
+msgctxt "settings"
+msgid "Outline Panel Button"
+msgstr "Botão do painel de estrutura"
+
+msgctxt "settings"
+msgid "Outline Panel Default Width"
+msgstr "Largura padrão do painel de estrutura"
+
+msgctxt "settings"
+msgid "Outline Panel Dock"
+msgstr "Posição do dock do painel de estrutura"
+
+msgctxt "settings"
+msgid "Output Audio Device"
+msgstr "Dispositivo de saída de áudio"
+
+msgctxt "settings"
+msgid "Padding"
+msgstr "Espaçamento"
+
+msgctxt "settings"
+msgid "Padding between the end of the source line and the start of the inline blame in columns."
+msgstr "Espaçamento, em colunas, entre o final da linha de origem e o início do blame embutido."
+
+msgctxt "settings"
+msgid "Pane Modifiers"
+msgstr "Modificadores de subpainel"
+
+msgctxt "settings"
+msgid "Pane Split Direction"
+msgstr "Direção de divisão do subpainel"
+
+msgctxt "settings"
+msgid "Panel Tab Bar"
+msgstr "Barra de abas do painel"
+
+msgctxt "settings"
+msgid "Panels"
+msgstr "Painéis"
+
+msgctxt "settings"
+msgid "Parser"
+msgstr "Analisador"
+
+msgctxt "settings"
+msgid "Path Style"
+msgstr "Estilo de caminho"
+
+msgctxt "settings"
+msgid "Pending Keystrokes Indicator"
+msgstr "Indicador de sequências de teclas pendentes"
+
+msgctxt "settings"
+msgid "Performance Profiler"
+msgstr "Perfilador de desempenho"
+
+msgctxt "settings"
+msgid "Pinned Tabs Layout"
+msgstr "Layout de abas fixadas"
+
+msgctxt "settings"
+msgid "Play Sound When Agent Done"
+msgstr "Reproduzir som quando o agente terminar"
+
+msgctxt "settings"
+msgid "Plugins"
+msgstr "Plug-ins"
+
+msgctxt "settings"
+msgid "Position of the close button in a tab."
+msgstr "Posição do botão de fechar em uma aba."
+
+msgctxt "settings"
+msgid "Prediction Debounce"
+msgstr "Debounce de previsão"
+
+msgctxt "settings"
+msgid "Prefer LSP"
+msgstr "Preferir LSP"
+
+msgctxt "settings"
+msgid "Preferred Line Length"
+msgstr "Comprimento de linha preferido"
+
+msgctxt "settings"
+msgid "Preferred debuggers for this language."
+msgstr "Depuradores preferidos para esta linguagem."
+
+msgctxt "settings"
+msgid "Prefix every line with `[YYYY-MM-DD HH:MM:SS] `. In a terminal that is recording, this can also be toggled from the recording bar."
+msgstr "Prefixa cada linha com `[YYYY-MM-DD HH:MM:SS] `. Em um terminal que está gravando, isso também pode ser alternado pela barra de gravação."
+
+msgctxt "settings"
+msgid "Prettier"
+msgstr "Prettier"
+
+msgctxt "settings"
+msgid "Prevent Idle Sleep"
+msgstr "Impedir suspensão por inatividade"
+
+msgctxt "settings"
+msgid "Preview Channel"
+msgstr "Canal Preview"
+
+msgctxt "settings"
+msgid "Preview Tabs"
+msgstr "Abas de visualização"
+
+msgctxt "settings"
+msgid "Preview Tabs Enabled"
+msgstr "Abas de visualização habilitadas"
+
+msgctxt "settings"
+msgid "Primary Click Behavior"
+msgstr "Comportamento do clique principal"
+
+msgctxt "settings"
+msgid "Privacy"
+msgstr "Privacidade"
+
+msgctxt "settings"
+msgid "Private Files"
+msgstr "Arquivos privados"
+
+msgctxt "settings"
+msgid "Program"
+msgstr "Programa"
+
+msgctxt "settings"
+msgid "Project Panel"
+msgstr "Painel do projeto"
+
+msgctxt "settings"
+msgid "Project Panel Button"
+msgstr "Botão do painel do projeto"
+
+msgctxt "settings"
+msgid "Project Panel Default Width"
+msgstr "Largura padrão do painel do projeto"
+
+msgctxt "settings"
+msgid "Project Panel Dock"
+msgstr "Posição do dock do painel do projeto"
+
+msgctxt "settings"
+msgid "Project Panel Title Tooltips Delay"
+msgstr "Atraso das dicas de ferramenta dos títulos do painel do projeto"
+
+msgctxt "settings"
+msgid "Project Search Button"
+msgstr "Botão de pesquisa no projeto"
+
+msgctxt "settings"
+msgid "Prompt Format"
+msgstr "Formato de prompt"
+
+msgctxt "settings"
+msgid "Proxy"
+msgstr "Proxy"
+
+msgctxt "settings"
+msgid "Quick Actions"
+msgstr "Ações rápidas"
+
+msgctxt "settings"
+msgid "Record Automatically"
+msgstr "Registrar automaticamente"
+
+msgctxt "settings"
+msgid "Redact Private Values"
+msgstr "Ocultar valores privados"
+
+msgctxt "settings"
+msgid "Reduce Motion"
+msgstr "Reduzir movimento"
+
+msgctxt "settings"
+msgid "Regex"
+msgstr "Regex"
+
+msgctxt "settings"
+msgid "Regex Search"
+msgstr "Pesquisa com regex"
+
+msgctxt "settings"
+msgid "Relative Line Numbers"
+msgstr "Números de linha relativos"
+
+msgctxt "settings"
+msgid "Relative size of the drop target in the editor that will open dropped file as a split pane."
+msgstr "Tamanho relativo da área de destino no editor usada para abrir o arquivo arrastado em um subpainel dividido."
+
+msgctxt "settings"
+msgid "Relay Remote Downloads Through This Machine"
+msgstr "Retransmitir downloads remotos por esta máquina"
+
+msgctxt "settings"
+msgid "Remote"
+msgstr "Remoto"
+
+msgctxt "settings"
+msgid "Remote Terminal Persistence"
+msgstr "Persistência do terminal remoto"
+
+msgctxt "settings"
+msgid "Remove ANSI / VT escape sequences and save plain text."
+msgstr "Remove as sequências de escape ANSI / VT e salva texto simples."
+
+msgctxt "settings"
+msgid "Remove Trailing Whitespace On Save"
+msgstr "Remover espaços em branco no final ao salvar"
+
+msgctxt "settings"
+msgid "Repository Map Size in System Prompt (Bytes)"
+msgstr "Tamanho do mapa do repositório no prompt do sistema (bytes)"
+
+msgctxt "settings"
+msgid "Required. A unique name used to identify this agent."
+msgstr "Obrigatório. Um nome exclusivo usado para identificar este agente."
+
+msgctxt "settings"
+msgid "Required. Path to the executable that launches the agent."
+msgstr "Obrigatório. Caminho para o executável que inicia o agente."
+
+msgctxt "settings"
+msgid "Restarts clangd when its memory, checked every 30 seconds, goes over this many megabytes. It is restarted at most once every 10 minutes; after that, only a notification appears. On a remote project, the memory is measured on the remote host. 0 never restarts. This setting only takes effect in your user settings."
+msgstr "Reinicia o clangd quando sua memória, verificada a cada 30 segundos, ultrapassa este número de megabytes. Ele é reiniciado no máximo uma vez a cada 10 minutos; depois disso, apenas uma notificação aparece. Em um projeto remoto, a memória é medida no host remoto. 0 nunca reinicia. Esta configuração só tem efeito nas suas configurações de usuário."
+
+msgctxt "settings"
+msgid "Restore File State"
+msgstr "Restaurar estado de exibição do arquivo"
+
+msgctxt "settings"
+msgid "Restore On Startup"
+msgstr "Restaurar na inicialização"
+
+msgctxt "settings"
+msgid "Restore Unsaved Buffers"
+msgstr "Restaurar buffers não salvos"
+
+msgctxt "settings"
+msgid "Restore previous file state when reopening."
+msgstr "Restaura o estado anterior de exibição do arquivo ao reabri-lo."
+
+msgctxt "settings"
+msgid "Reveal If Open"
+msgstr "Revelar se estiver aberto"
+
+msgctxt "settings"
+msgid "Review and change the elevated terminal sandbox permissions that are always allowed without prompting."
+msgstr "Permite revisar e alterar as permissões elevadas do sandbox do terminal que são sempre concedidas sem solicitar confirmação."
+
+msgctxt "settings"
+msgid "Review and revoke the decisions recorded for the MCP servers, language servers and external formatters that project settings tried to launch."
+msgstr "Revise e revogue as decisões registradas para os servidores MCP, servidores de linguagem e formatadores externos que as configurações do projeto tentaram iniciar."
+
+msgctxt "settings"
+msgid "Revoke Consents"
+msgstr "Revogar consentimentos"
+
+msgctxt "settings"
+msgid "Right padding for centered layout."
+msgstr "Espaçamento à direita para o layout centralizado."
+
+msgctxt "settings"
+msgid "Rounded Selection"
+msgstr "Seleção arredondada"
+
+msgctxt "settings"
+msgid "Sandbox"
+msgstr "Sandbox"
+
+msgctxt "settings"
+msgid "Save Breakpoints"
+msgstr "Salvar pontos de interrupção"
+
+msgctxt "settings"
+msgid "Save after inactivity period (in milliseconds)."
+msgstr "Salva após período de inatividade (em milissegundos)."
+
+msgctxt "settings"
+msgid "Scan Symbolic Links"
+msgstr "Varredura de links simbólicos"
+
+msgctxt "settings"
+msgid "Scoped Settings"
+msgstr "Configurações com escopo"
+
+msgctxt "settings"
+msgid "Scroll Bar"
+msgstr "Barra de rolagem"
+
+msgctxt "settings"
+msgid "Scroll Beyond Last Line"
+msgstr "Rolar além da última linha"
+
+msgctxt "settings"
+msgid "Scroll Debounce Ms"
+msgstr "Debounce de rolagem (ms)"
+
+msgctxt "settings"
+msgid "Scroll Multiplier"
+msgstr "Multiplicador de rolagem"
+
+msgctxt "settings"
+msgid "Scroll Sensitivity"
+msgstr "Sensibilidade de rolagem"
+
+msgctxt "settings"
+msgid "Scroll sensitivity multiplier for both horizontal and vertical scrolling."
+msgstr "Multiplicador de sensibilidade de rolagem para rolagem horizontal e vertical."
+
+msgctxt "settings"
+msgid "Scrollbar"
+msgstr "Barra de rolagem"
+
+msgctxt "settings"
+msgid "Scrolling"
+msgstr "Rolagem"
+
+msgctxt "settings"
+msgid "Search"
+msgstr "Pesquisa"
+
+msgctxt "settings"
+msgid "Search & Files"
+msgstr "Pesquisa e arquivos"
+
+msgctxt "settings"
+msgid "Search Results"
+msgstr "Resultados da pesquisa"
+
+msgctxt "settings"
+msgid "Search URL"
+msgstr "URL de pesquisa"
+
+msgctxt "settings"
+msgid "Search Wrap"
+msgstr "Pesquisa circular"
+
+msgctxt "settings"
+msgid "Search case-sensitively by default."
+msgstr "Pesquisa diferenciando maiúsculas e minúsculas por padrão."
+
+msgctxt "settings"
+msgid "Search for whole words by default."
+msgstr "Pesquisa por palavras inteiras por padrão."
+
+msgctxt "settings"
+msgid "Search on Type"
+msgstr "Pesquisar ao digitar"
+
+msgctxt "settings"
+msgid "Security"
+msgstr "Segurança"
+
+msgctxt "settings"
+msgid "Seed Search Query From Cursor"
+msgstr "Preencher consulta de pesquisa a partir do cursor"
+
+msgctxt "settings"
+msgid "Select input audio device"
+msgstr "Seleciona o dispositivo de entrada de áudio"
+
+msgctxt "settings"
+msgid "Select output audio device"
+msgstr "Seleciona o dispositivo de saída de áudio"
+
+msgctxt "settings"
+msgid "Selected Symbol"
+msgstr "Símbolo selecionado"
+
+msgctxt "settings"
+msgid "Selected Text"
+msgstr "Texto selecionado"
+
+msgctxt "settings"
+msgid "Selection Highlight"
+msgstr "Destaque de seleção"
+
+msgctxt "settings"
+msgid "Selections Menu"
+msgstr "Menu de seleções"
+
+msgctxt "settings"
+msgid "Semantic Tokens"
+msgstr "Tokens semânticos"
+
+msgctxt "settings"
+msgid "Send anonymized usage data like what languages you're using Zed with."
+msgstr "Envia dados de uso anonimizados, como quais linguagens você está usando com o ForgeKairos."
+
+msgctxt "settings"
+msgid "Send debug information like crash reports."
+msgstr "Envia informações de depuração, como relatórios de falha."
+
+msgctxt "settings"
+msgid "Server URL"
+msgstr "URL do servidor"
+
+msgctxt "settings"
+msgid "Session Log"
+msgstr "Log da sessão"
+
+msgctxt "settings"
+msgid "Set up different edit prediction providers in complement to Zed's built-in Zeta model."
+msgstr "Configura diferentes provedores de previsão de edição como complemento ao modelo Zeta integrado do Zed."
+
+msgctxt "settings"
+msgid "Set up regex patterns to auto-allow, auto-deny, or always request confirmation, for specific tool inputs."
+msgstr "Configura padrões de expressão regular para permitir automaticamente, negar automaticamente ou sempre solicitar confirmação para entradas específicas de ferramentas."
+
+msgctxt "settings"
+msgid "Sets the cursor blinking behavior in the terminal."
+msgstr "Define o comportamento de piscar do cursor no terminal."
+
+msgctxt "settings"
+msgid "Settings"
+msgstr "Configurações"
+
+msgctxt "settings"
+msgid "Settings Profiles"
+msgstr "Perfis de configurações"
+
+msgctxt "settings"
+msgid "Share Active File with Claude Code"
+msgstr "Compartilhar o arquivo ativo com o Claude Code"
+
+msgctxt "settings"
+msgid "Share Failed Task Output with Agents"
+msgstr "Compartilhar a saída de tarefas com falha com os agentes"
+
+msgctxt "settings"
+msgid "Share On Join"
+msgstr "Compartilhar ao entrar"
+
+msgctxt "settings"
+msgid "Shell"
+msgstr "Shell"
+
+msgctxt "settings"
+msgid "Should the name or path be displayed first in the git view."
+msgstr "Define se o nome ou o caminho deve ser exibido primeiro na exibição do git."
+
+msgctxt "settings"
+msgid "Show"
+msgstr "Mostrar"
+
+msgctxt "settings"
+msgid "Show Author Name"
+msgstr "Mostrar nome do autor"
+
+msgctxt "settings"
+msgid "Show Avatar"
+msgstr "Mostrar avatar"
+
+msgctxt "settings"
+msgid "Show Background"
+msgstr "Mostrar plano de fundo"
+
+msgctxt "settings"
+msgid "Show Bookmarks"
+msgstr "Mostrar marcadores"
+
+msgctxt "settings"
+msgid "Show Branch Name"
+msgstr "Mostrar nome do branch"
+
+msgctxt "settings"
+msgid "Show Branch Status Icon"
+msgstr "Mostrar ícone de status do branch"
+
+msgctxt "settings"
+msgid "Show Breakpoints"
+msgstr "Mostrar pontos de interrupção"
+
+msgctxt "settings"
+msgid "Show Buttons in Inactive Panes"
+msgstr "Mostrar botões em subpainéis inativos"
+
+msgctxt "settings"
+msgid "Show Close Button"
+msgstr "Mostrar botão de fechar"
+
+msgctxt "settings"
+msgid "Show Commit Summary"
+msgstr "Mostrar resumo do commit"
+
+msgctxt "settings"
+msgid "Show Completion Documentation"
+msgstr "Mostrar documentação de preenchimento automático"
+
+msgctxt "settings"
+msgid "Show Completions On Input"
+msgstr "Mostrar preenchimentos automáticos ao digitar"
+
+msgctxt "settings"
+msgid "Show Count Badge"
+msgstr "Mostrar contador"
+
+msgctxt "settings"
+msgid "Show Diagnostics"
+msgstr "Mostrar diagnósticos"
+
+msgctxt "settings"
+msgid "Show Edit Predictions"
+msgstr "Mostrar previsões de edição"
+
+msgctxt "settings"
+msgid "Show Edit Predictions in Normal Mode"
+msgstr "Mostrar previsões de edição no modo normal"
+
+msgctxt "settings"
+msgid "Show File Icons In Tabs"
+msgstr "Mostrar ícones de arquivo nas abas"
+
+msgctxt "settings"
+msgid "Show Folds"
+msgstr "Mostrar dobras"
+
+msgctxt "settings"
+msgid "Show Full File by Default"
+msgstr "Mostrar arquivo completo por padrão"
+
+msgctxt "settings"
+msgid "Show Git Status In Tabs"
+msgstr "Mostrar status do Git nas abas"
+
+msgctxt "settings"
+msgid "Show Git diff indicators in the scrollbar."
+msgstr "Mostra indicadores de diff do Git na barra de rolagem."
+
+msgctxt "settings"
+msgid "Show Git diff information in the editor."
+msgstr "Mostra informações de diff do Git no editor."
+
+msgctxt "settings"
+msgid "Show Git status information in the editor."
+msgstr "Mostra informações de status do Git no editor."
+
+msgctxt "settings"
+msgid "Show Indent Guides"
+msgstr "Mostrar guias de recuo"
+
+msgctxt "settings"
+msgid "Show Line Breaks as Written"
+msgstr "Mostrar quebras de linha como escritas"
+
+msgctxt "settings"
+msgid "Show Line Numbers"
+msgstr "Mostrar números de linha"
+
+msgctxt "settings"
+msgid "Show Menus"
+msgstr "Mostrar menus"
+
+msgctxt "settings"
+msgid "Show Merge Conflict Indicator"
+msgstr "Mostrar indicador de conflito de merge"
+
+msgctxt "settings"
+msgid "Show Multiline Cells in Full"
+msgstr "Mostrar células de várias linhas por completo"
+
+msgctxt "settings"
+msgid "Show Navigation History Buttons"
+msgstr "Mostrar botões do histórico de navegação"
+
+msgctxt "settings"
+msgid "Show Onboarding Banner"
+msgstr "Mostrar banner de introdução"
+
+msgctxt "settings"
+msgid "Show Other Hints"
+msgstr "Mostrar outras dicas"
+
+msgctxt "settings"
+msgid "Show Parameter Hints"
+msgstr "Mostrar dicas de parâmetro"
+
+msgctxt "settings"
+msgid "Show Project Items"
+msgstr "Mostrar itens do projeto"
+
+msgctxt "settings"
+msgid "Show Runnables"
+msgstr "Mostrar botões de execução"
+
+msgctxt "settings"
+msgid "Show Scrollbar"
+msgstr "Mostrar barra de rolagem"
+
+msgctxt "settings"
+msgid "Show Sign In"
+msgstr "Mostrar botão de entrar"
+
+msgctxt "settings"
+msgid "Show Signature Help After Edits"
+msgstr "Mostrar ajuda de assinatura após edições"
+
+msgctxt "settings"
+msgid "Show Stage/Restore Buttons"
+msgstr "Mostrar botões de preparar/restaurar"
+
+msgctxt "settings"
+msgid "Show Tab Bar"
+msgstr "Mostrar barra de abas"
+
+msgctxt "settings"
+msgid "Show Tab Bar Buttons"
+msgstr "Mostrar botões da barra de abas"
+
+msgctxt "settings"
+msgid "Show Turn Stats"
+msgstr "Mostrar estatísticas de turno"
+
+msgctxt "settings"
+msgid "Show Type Hints"
+msgstr "Mostrar dicas de tipo"
+
+msgctxt "settings"
+msgid "Show User Menu"
+msgstr "Mostrar menu do usuário"
+
+msgctxt "settings"
+msgid "Show User Picture"
+msgstr "Mostrar foto do usuário"
+
+msgctxt "settings"
+msgid "Show Value Hints"
+msgstr "Mostrar dicas de valor"
+
+msgctxt "settings"
+msgid "Show Which-key Menu"
+msgstr "Mostrar menu Which-key"
+
+msgctxt "settings"
+msgid "Show Whitespaces"
+msgstr "Mostrar espaços em branco"
+
+msgctxt "settings"
+msgid "Show Worktree Name"
+msgstr "Mostrar nome da árvore de trabalho"
+
+msgctxt "settings"
+msgid "Show Wrap Guides"
+msgstr "Mostrar guias de quebra de linha"
+
+msgctxt "settings"
+msgid "Show a background for inlay hints."
+msgstr "Mostra um plano de fundo para as dicas embutidas."
+
+msgctxt "settings"
+msgid "Show a badge on the terminal panel icon with the count of open terminals."
+msgstr "Mostra um contador no ícone do painel do terminal com o número de terminais abertos."
+
+msgctxt "settings"
+msgid "Show a git status indicator next to file names in the project panel."
+msgstr "Mostra um indicador de status do Git ao lado dos nomes de arquivo no painel do projeto."
+
+msgctxt "settings"
+msgid "Show a row of formatting buttons below the toolbar while a Markdown file is open."
+msgstr "Mostra uma linha de botões de formatação abaixo da barra de ferramentas enquanto um arquivo Markdown está aberto."
+
+msgctxt "settings"
+msgid "Show agent review buttons in the editor toolbar."
+msgstr "Mostra botões de revisão das alterações do agente na barra de ferramentas do editor."
+
+msgctxt "settings"
+msgid "Show an indicator while a multi-stroke key binding is pending. If the input has a timeout, a countdown is shown and hovering pauses it. Its binding preview popover is disabled when the which-key menu is enabled."
+msgstr "Mostra um indicador enquanto uma associação de múltiplas teclas está pendente. Se a entrada tiver um tempo limite, uma contagem regressiva é exibida e passar o cursor sobre o indicador pausa a contagem. O pop-up de visualização da associação é desabilitado quando o menu which-key está habilitado."
+
+msgctxt "settings"
+msgid "Show author name as part of the commit information in branch picker."
+msgstr "Mostra o nome do autor como parte das informações do commit no seletor de branch."
+
+msgctxt "settings"
+msgid "Show banners announcing new features in the titlebar."
+msgstr "Mostra banners anunciando novos recursos na barra de título."
+
+msgctxt "settings"
+msgid "Show bookmarks in the gutter."
+msgstr "Mostra marcadores na medianiz."
+
+msgctxt "settings"
+msgid "Show breadcrumbs."
+msgstr "Mostra as trilhas de navegação."
+
+msgctxt "settings"
+msgid "Show breakpoints in the gutter."
+msgstr "Mostra pontos de interrupção na medianiz."
+
+msgctxt "settings"
+msgid "Show buffer search result indicators in the scrollbar."
+msgstr "Mostra indicadores de resultados de pesquisa no buffer na barra de rolagem."
+
+msgctxt "settings"
+msgid "Show code action button at start of buffer line."
+msgstr "Mostra o botão de ação de código no início da linha do buffer."
+
+msgctxt "settings"
+msgid "Show code action buttons in the editor toolbar."
+msgstr "Mostra botões de ação de código na barra de ferramentas do editor."
+
+msgctxt "settings"
+msgid "Show code folding controls in the gutter."
+msgstr "Mostra controles de dobra de código na medianiz."
+
+msgctxt "settings"
+msgid "Show commit summary as part of the inline blame."
+msgstr "Mostra o resumo do commit como parte do blame embutido."
+
+msgctxt "settings"
+msgid "Show cursor positions in the scrollbar."
+msgstr "Mostra as posições do cursor na barra de rolagem."
+
+msgctxt "settings"
+msgid "Show error and warning count badges next to file names in the project panel."
+msgstr "Mostra contadores de erros e avisos ao lado dos nomes de arquivo no painel do projeto."
+
+msgctxt "settings"
+msgid "Show every folder collapsed when \"Run Macro\" opens. Typing a filter still shows every matching macro."
+msgstr "Mostra todas as pastas recolhidas quando \"Executar macro\" é aberto. Digitar um filtro ainda mostra todas as macros correspondentes."
+
+msgctxt "settings"
+msgid "Show file icons in the file finder."
+msgstr "Mostra ícones de arquivo no localizador de arquivos."
+
+msgctxt "settings"
+msgid "Show file icons in the outline panel."
+msgstr "Mostra ícones de arquivo no painel de estrutura."
+
+msgctxt "settings"
+msgid "Show file icons in the project panel."
+msgstr "Mostra ícones de arquivo no painel do projeto."
+
+msgctxt "settings"
+msgid "Show file icons next to the Git status icon."
+msgstr "Mostra ícones de arquivo ao lado do ícone de status do Git."
+
+msgctxt "settings"
+msgid "Show git status indicators on the branch icon in the titlebar."
+msgstr "Mostra indicadores de status do Git no ícone do branch na barra de título."
+
+msgctxt "settings"
+msgid "Show indent guides in the project panel."
+msgstr "Mostra guias de recuo no painel do projeto."
+
+msgctxt "settings"
+msgid "Show line numbers in the gutter."
+msgstr "Mostra números de linha na medianiz."
+
+msgctxt "settings"
+msgid "Show opened editors as preview tabs."
+msgstr "Mostra editores abertos como abas de visualização."
+
+msgctxt "settings"
+msgid "Show padding for zoomed panes."
+msgstr "Mostra espaçamento para subpainéis ampliados."
+
+msgctxt "settings"
+msgid "Show pinned tabs in a separate row above unpinned tabs."
+msgstr "Mostra abas fixadas em uma linha separada acima das abas não fixadas."
+
+msgctxt "settings"
+msgid "Show quick action buttons (e.g., search, selection, editor controls, etc.)."
+msgstr "Mostra botões de ação rápida (por ex., pesquisa, seleção, controles do editor, etc.)."
+
+msgctxt "settings"
+msgid "Show runnable buttons in the gutter."
+msgstr "Mostra botões de execução na medianiz."
+
+msgctxt "settings"
+msgid "Show selected symbol occurrences in the scrollbar."
+msgstr "Mostra ocorrências do símbolo selecionado na barra de rolagem."
+
+msgctxt "settings"
+msgid "Show selected text occurrences in the scrollbar."
+msgstr "Mostra ocorrências do texto selecionado na barra de rolagem."
+
+msgctxt "settings"
+msgid "Show the AI browser panel button in the status bar while AI agents may use the built-in browser."
+msgstr "Mostra o botão do painel do navegador de IA na barra de status enquanto os agentes de IA podem usar o navegador integrado."
+
+msgctxt "settings"
+msgid "Show the Git file status on a tab item."
+msgstr "Mostra o status do arquivo no Git em um item de aba."
+
+msgctxt "settings"
+msgid "Show the Git panel button in the status bar."
+msgstr "Mostra o botão do painel do Git na barra de status."
+
+msgctxt "settings"
+msgid "Show the Git status in the outline panel."
+msgstr "Mostra o status do Git no painel de estrutura."
+
+msgctxt "settings"
+msgid "Show the Git status in the project panel."
+msgstr "Mostra o status do Git no painel do projeto."
+
+msgctxt "settings"
+msgid "Show the active language button in the status bar."
+msgstr "Mostra o botão da linguagem ativa na barra de status."
+
+msgctxt "settings"
+msgid "Show the active line endings button in the status bar."
+msgstr "Mostra o botão de terminações de linha ativas na barra de status."
+
+msgctxt "settings"
+msgid "Show the avatar of the author of the commit."
+msgstr "Mostra o avatar do autor do commit."
+
+msgctxt "settings"
+msgid "Show the branch name button in the titlebar."
+msgstr "Mostra o botão com o nome do branch na barra de título."
+
+msgctxt "settings"
+msgid "Show the browser panel button in the status bar."
+msgstr "Mostra o botão do painel do navegador na barra de status."
+
+msgctxt "settings"
+msgid "Show the call graph panel button in the status bar."
+msgstr "Mostra o botão do painel do grafo de chamadas na barra de status."
+
+msgctxt "settings"
+msgid "Show the collaboration panel button in the status bar."
+msgstr "Mostra o botão do painel de colaboração na barra de status."
+
+msgctxt "settings"
+msgid "Show the cursor position button in the status bar."
+msgstr "Mostra o botão de posição do cursor na barra de status."
+
+msgctxt "settings"
+msgid "Show the debugger button in the status bar."
+msgstr "Mostra o botão do depurador na barra de status."
+
+msgctxt "settings"
+msgid "Show the file icon for a tab."
+msgstr "Mostra o ícone do arquivo em uma aba."
+
+msgctxt "settings"
+msgid "Show the full-height threads sidebar in the window. When off, the thread history inside the agent panel is used instead."
+msgstr "Mostra a barra lateral de conversas de altura total na janela. Quando desativado, é usado o histórico de conversas dentro do painel do agente."
+
+msgctxt "settings"
+msgid "Show the informational hover box when moving the mouse over symbols in the editor."
+msgstr "Mostra a caixa de informações ao passar o cursor sobre símbolos no editor."
+
+msgctxt "settings"
+msgid "Show the menus in the titlebar."
+msgstr "Mostra os menus na barra de título."
+
+msgctxt "settings"
+msgid "Show the name of the active file in the status bar."
+msgstr "Mostra o nome do arquivo ativo na barra de status."
+
+msgctxt "settings"
+msgid "Show the navigation history buttons in the tab bar."
+msgstr "Mostra os botões de histórico de navegação na barra de abas."
+
+msgctxt "settings"
+msgid "Show the outline panel button in the status bar."
+msgstr "Mostra o botão do painel de estrutura na barra de status."
+
+msgctxt "settings"
+msgid "Show the project diagnostics button in the status bar."
+msgstr "Mostra o botão de diagnósticos do projeto na barra de status."
+
+msgctxt "settings"
+msgid "Show the project host and name in the titlebar."
+msgstr "Mostra o host e o nome do projeto na barra de título."
+
+msgctxt "settings"
+msgid "Show the project panel button in the status bar."
+msgstr "Mostra o botão do painel do projeto na barra de status."
+
+msgctxt "settings"
+msgid "Show the project search button in the status bar."
+msgstr "Mostra o botão de pesquisa do projeto na barra de status."
+
+msgctxt "settings"
+msgid "Show the scrollbar in the project panel."
+msgstr "Mostra a barra de rolagem no painel do projeto."
+
+msgctxt "settings"
+msgid "Show the selections menu in the editor toolbar."
+msgstr "Mostra o menu de seleções na barra de ferramentas do editor."
+
+msgctxt "settings"
+msgid "Show the sign in button in the titlebar."
+msgstr "Mostra o botão de entrar na barra de título."
+
+msgctxt "settings"
+msgid "Show the signature help pop-up after completions or bracket pairs are inserted."
+msgstr "Mostra o pop-up de ajuda de assinatura após a inserção de preenchimentos automáticos ou pares de delimitadores."
+
+msgctxt "settings"
+msgid "Show the tab bar buttons (New, Split Pane, Zoom)."
+msgstr "Mostra os botões da barra de abas (Novo, Dividir subpainel, Ampliar)."
+
+msgctxt "settings"
+msgid "Show the tab bar buttons (New, Split Pane, Zoom, and so on) in panes that are not focused as well."
+msgstr "Mostra os botões da barra de abas (Novo, Dividir subpainel, Zoom etc.) também nos subpainéis que não estão em foco."
+
+msgctxt "settings"
+msgid "Show the tab bar in the editor."
+msgstr "Mostra a barra de abas no editor."
+
+msgctxt "settings"
+msgid "Show the terminal button in the status bar."
+msgstr "Mostra o botão do terminal na barra de status."
+
+msgctxt "settings"
+msgid "Show the thread history to the left of the current thread inside the agent panel. Hidden automatically when the panel is too narrow."
+msgstr "Mostra o histórico de conversas à esquerda da conversa atual dentro do painel do agente. Oculto automaticamente quando o painel é estreito demais."
+
+msgctxt "settings"
+msgid "Show the user menu button in the titlebar."
+msgstr "Mostra o botão do menu do usuário na barra de título."
+
+msgctxt "settings"
+msgid "Show the worktree name button in the titlebar."
+msgstr "Mostra o botão com o nome da árvore de trabalho na barra de título."
+
+msgctxt "settings"
+msgid "Show user picture in the titlebar."
+msgstr "Mostra a foto do usuário na barra de título."
+
+msgctxt "settings"
+msgid "Show voting thumbs up/down icon buttons for feedback on agent edits."
+msgstr "Mostra botões de polegar para cima/baixo para feedback sobre edições do agente."
+
+msgctxt "settings"
+msgid "Show wrap guides (vertical rulers)."
+msgstr "Mostra guias de quebra de linha (réguas verticais)."
+
+msgctxt "settings"
+msgid "Show wrap guides in the editor."
+msgstr "Mostra guias de quebra de linha no editor."
+
+msgctxt "settings"
+msgid "Signature Help"
+msgstr "Ajuda de assinatura"
+
+msgctxt "settings"
+msgid "Single File Review"
+msgstr "Revisão de arquivo único"
+
+msgctxt "settings"
+msgid "Size of the border surrounding the active pane."
+msgstr "Tamanho da borda ao redor do subpainel ativo."
+
+msgctxt "settings"
+msgid "Skills"
+msgstr "Habilidades"
+
+msgctxt "settings"
+msgid "Skip Focus For Active In Search"
+msgstr "Ignorar foco inicial no arquivo ativo na pesquisa"
+
+msgctxt "settings"
+msgid "Snippet Sort Order"
+msgstr "Ordem de classificação de snippets"
+
+msgctxt "settings"
+msgid "Soft Wrap"
+msgstr "Quebra automática de linha"
+
+msgctxt "settings"
+msgid "Sort By"
+msgstr "Ordenar por"
+
+msgctxt "settings"
+msgid "Sort Mode"
+msgstr "Modo de classificação"
+
+msgctxt "settings"
+msgid "Sort Order"
+msgstr "Ordem de classificação"
+
+msgctxt "settings"
+msgid "Sort order for entries in the project panel."
+msgstr "Ordem de classificação das entradas no painel do projeto."
+
+msgctxt "settings"
+msgid "Space Whitespace Indicator"
+msgstr "Indicador de espaço em branco"
+
+msgctxt "settings"
+msgid "Space-separated arguments passed to the command."
+msgstr "Argumentos separados por espaços passados ao comando."
+
+msgctxt "settings"
+msgid "Spacing between worktree entries in the project panel."
+msgstr "Define o espaçamento entre as entradas da árvore de trabalho no painel do projeto."
+
+msgctxt "settings"
+msgid "Start searching as you type in project search, without pressing Enter."
+msgstr "Inicia a pesquisa ao digitar na pesquisa do projeto, sem pressionar Enter."
+
+msgctxt "settings"
+msgid "Starts Open"
+msgstr "Aberto ao iniciar"
+
+msgctxt "settings"
+msgid "Status Bar"
+msgstr "Barra de status"
+
+msgctxt "settings"
+msgid "Stepping Granularity"
+msgstr "Granularidade de passo"
+
+msgctxt "settings"
+msgid "Sticky"
+msgstr "Fixo"
+
+msgctxt "settings"
+msgid "Sticky Scroll"
+msgstr "Rolagem fixa"
+
+msgctxt "settings"
+msgid "String substituted for `${separator}` in the window title format. Include any surrounding whitespace in the value."
+msgstr "String que substitui `${separator}` no formato do título da janela. Inclua qualquer espaço em branco ao redor no valor."
+
+msgctxt "settings"
+msgid "Strip Control Sequences"
+msgstr "Remover sequências de controle"
+
+msgctxt "settings"
+msgid "Suggest Missing Development Tools"
+msgstr "Sugerir ferramentas de desenvolvimento ausentes"
+
+msgctxt "settings"
+msgid "Symbol Index"
+msgstr "Índice de símbolos"
+
+msgctxt "settings"
+msgid "Tab Bar"
+msgstr "Barra de abas"
+
+msgctxt "settings"
+msgid "Tab Close Position"
+msgstr "Posição do botão de fechar na aba"
+
+msgctxt "settings"
+msgid "Tab Settings"
+msgstr "Configurações de abas"
+
+msgctxt "settings"
+msgid "Tab Show Diagnostics"
+msgstr "Mostrar diagnósticos nas abas"
+
+msgctxt "settings"
+msgid "Tab Size"
+msgstr "Tamanho da tabulação"
+
+msgctxt "settings"
+msgid "Tab Whitespace Indicator"
+msgstr "Indicador de espaço em branco na tabulação"
+
+msgctxt "settings"
+msgid "Tasks"
+msgstr "Tarefas"
+
+msgctxt "settings"
+msgid "Telemetry Diagnostics"
+msgstr "Diagnósticos de telemetria"
+
+msgctxt "settings"
+msgid "Telemetry Metrics"
+msgstr "Métricas de telemetria"
+
+msgctxt "settings"
+msgid "Tell the connected Claude Code which file is open even when nothing is selected (the \"In <file name>\" in its input). When off, only selected lines are sent."
+msgstr "Informa ao Claude Code conectado qual arquivo está aberto mesmo quando nada está selecionado (o \"In <file name>\" na entrada dele). Quando desativado, apenas as linhas selecionadas são enviadas."
+
+msgctxt "settings"
+msgid "Terminal"
+msgstr "Terminal"
+
+msgctxt "settings"
+msgid "Terminal Button"
+msgstr "Botão do terminal"
+
+msgctxt "settings"
+msgid "Terminal Dock"
+msgstr "Posição do dock do terminal"
+
+msgctxt "settings"
+msgid "Terminal Panel"
+msgstr "Painel do terminal"
+
+msgctxt "settings"
+msgid "Terminal Panel Flexible Sizing"
+msgstr "Dimensionamento flexível do painel do terminal"
+
+msgctxt "settings"
+msgid "Terminal Thread Init Command"
+msgstr "Comando de inicialização da conversa de terminal"
+
+msgctxt "settings"
+msgid "Test Audio"
+msgstr "Testar áudio"
+
+msgctxt "settings"
+msgid "Test your microphone and speaker setup"
+msgstr "Testa a configuração do microfone e do alto-falante"
+
+msgctxt "settings"
+msgid "Text Rendering"
+msgstr "Renderização de texto"
+
+msgctxt "settings"
+msgid "Text Rendering Mode"
+msgstr "Modo de renderização de texto"
+
+msgctxt "settings"
+msgid "The API URL to use for Codestral."
+msgstr "A URL da API a ser usada para o Codestral."
+
+msgctxt "settings"
+msgid "The Codestral model id to use."
+msgstr "O ID do modelo Codestral a ser usado."
+
+msgctxt "settings"
+msgid "The Ollama model to use for edit predictions."
+msgstr "O modelo Ollama a ser usado para previsões de edição."
+
+msgctxt "settings"
+msgid "The OpenType features to enable for rendering in UI elements."
+msgstr "Os recursos OpenType a habilitar para renderização em elementos de interface."
+
+msgctxt "settings"
+msgid "The OpenType features to enable for rendering in text buffers."
+msgstr "Os recursos OpenType a habilitar para renderização em buffers de texto."
+
+msgctxt "settings"
+msgid "The URL of the Zed server to connect to."
+msgstr "A URL do servidor Zed ao qual se conectar."
+
+msgctxt "settings"
+msgid "The URL of your OpenAI-compatible server's completions API."
+msgstr "A URL da API de completions do seu servidor compatível com OpenAI."
+
+msgctxt "settings"
+msgid "The URL opened by \"Ask Copilot\". {query} is replaced with the question; without the placeholder, the selected text is copied to the clipboard instead."
+msgstr "O URL aberto por \"Perguntar ao Copilot\". {query} é substituído pela pergunta; sem o marcador de posição, o texto selecionado é copiado para a área de transferência."
+
+msgctxt "settings"
+msgid "The URL used when the address bar input is not a URL, and by \"Search Selection on the Web\". {query} is replaced with the search terms."
+msgstr "O URL usado quando a entrada da barra de endereço não é um URL e por \"Pesquisar seleção na Web\". {query} é substituído pelos termos de pesquisa."
+
+msgctxt "settings"
+msgid "The amount of padding between the end of the source line and the start of the inline diagnostic."
+msgstr "A quantidade de espaçamento entre o fim da linha de origem e o início do diagnóstico embutido."
+
+msgctxt "settings"
+msgid "The arguments to pass to the shell program."
+msgstr "Os argumentos a serem passados ao programa do shell."
+
+msgctxt "settings"
+msgid "The base URL of your Ollama server."
+msgstr "A URL base do seu servidor Ollama."
+
+msgctxt "settings"
+msgid "The column at which to soft-wrap lines, for buffers where soft-wrap is enabled."
+msgstr "A coluna na qual as linhas serão quebradas automaticamente, para buffers onde a quebra automática está habilitada."
+
+msgctxt "settings"
+msgid "The custom set of icons Zed will associate with files and directories."
+msgstr "O conjunto personalizado de ícones que o ForgeKairos associará a arquivos e pastas."
+
+msgctxt "settings"
+msgid "The debounce delay before querying highlights from the language."
+msgstr "O atraso de debounce antes de consultar destaques do servidor de linguagem."
+
+msgctxt "settings"
+msgid "The default mode when Vim starts."
+msgstr "O modo padrão ao iniciar o Vim."
+
+msgctxt "settings"
+msgid "The delay after which the inline blame information is shown."
+msgstr "O atraso após o qual as informações de blame embutido são exibidas."
+
+msgctxt "settings"
+msgid "The delay in milliseconds to show inline diagnostics after the last diagnostic update."
+msgstr "O atraso em milissegundos para exibir diagnósticos embutidos após a última atualização de diagnóstico."
+
+msgctxt "settings"
+msgid "The directory path to use (will be shell expanded)."
+msgstr "O caminho do diretório a ser usado (será expandido pelo shell)."
+
+msgctxt "settings"
+msgid "The dock position of the debug panel."
+msgstr "A posição do dock do painel de depuração."
+
+msgctxt "settings"
+msgid "The dock that holds two panels (stacked vertically in the left and right docks, side by side in the bottom dock) when a project is opened for the first time. The dock itself is not opened (whether it opens on startup is set by each panel's \"Starts Open\"). After that, the layout saved for each project takes precedence."
+msgstr "O dock que contém dois painéis (empilhados verticalmente nos docks esquerdo e direito, lado a lado no dock inferior) quando um projeto é aberto pela primeira vez. O dock em si não é aberto (se ele abre na inicialização é definido pelo \"Aberto ao iniciar\" de cada painel). Depois disso, o layout salvo para cada projeto tem precedência."
+
+msgctxt "settings"
+msgid "The external AI providers you enabled after accepting the training risk warning. Revoking consent shows the warning again the next time that provider is used."
+msgstr "Os provedores de IA externos que você habilitou após aceitar o aviso de risco de treinamento. Revogar o consentimento mostra o aviso novamente na próxima vez que o provedor for usado."
+
+msgctxt "settings"
+msgid "The file name of new logs. `{date}` `{time}` `{title}` `{host}` `{pid}` are expanded."
+msgstr "O nome do arquivo dos novos logs. `{date}` `{time}` `{title}` `{host}` `{pid}` são expandidos."
+
+msgctxt "settings"
+msgid "The folder log files are written to (`~` is expanded). When empty, logs are saved to `terminal-sessions` in Zed's log folder."
+msgstr "A pasta onde os arquivos de log são gravados (`~` é expandido). Quando vazia, os logs são salvos em `terminal-sessions` na pasta de logs do ForgeKairos."
+
+msgctxt "settings"
+msgid "The font fallbacks to use for rendering in text buffers."
+msgstr "As fontes alternativas a serem usadas para renderização em buffers de texto."
+
+msgctxt "settings"
+msgid "The font fallbacks to use for rendering in the UI."
+msgstr "As fontes alternativas a serem usadas para renderização na interface."
+
+msgctxt "settings"
+msgid "The icon theme to use when mode is set to dark, or when mode is set to system and it is in dark mode."
+msgstr "O tema de ícones a ser usado quando o modo está definido como escuro, ou quando o modo está definido como sistema e o sistema está no modo escuro."
+
+msgctxt "settings"
+msgid "The icon theme to use when mode is set to light, or when mode is set to system and it is in light mode."
+msgstr "O tema de ícones a ser usado quando o modo está definido como claro, ou quando o modo está definido como sistema e o sistema está no modo claro."
+
+msgctxt "settings"
+msgid "The language of Zed's menus, settings and messages. Some text, such as tab titles, switches after a restart."
+msgstr "O idioma dos menus, das configurações e das mensagens do ForgeKairos. Alguns textos, como os títulos das abas, mudam após reiniciar."
+
+msgctxt "settings"
+msgid "The largest outline sent for a large attached file. When it does not fit, the most deeply nested symbols are left out first. Values below 512 are treated as 512."
+msgstr "A maior estrutura enviada para um arquivo anexado grande. Quando ela não cabe, os símbolos mais profundamente aninhados são deixados de fora primeiro. Valores abaixo de 512 são tratados como 512."
+
+msgctxt "settings"
+msgid "The list of language servers to use (or disable) for this language."
+msgstr "A lista de servidores de linguagem a serem usados (ou desabilitados) para esta linguagem."
+
+msgctxt "settings"
+msgid "The maximum number of tokens to generate."
+msgstr "O número máximo de tokens a serem gerados."
+
+msgctxt "settings"
+msgid "The minimum APCA perceptual contrast between foreground and background colors (0-106)."
+msgstr "O contraste perceptual APCA mínimo entre as cores de primeiro plano e de fundo (0-106)."
+
+msgctxt "settings"
+msgid "The minimum APCA perceptual contrast to maintain when rendering text over highlight backgrounds."
+msgstr "O contraste perceptual APCA mínimo a ser mantido ao renderizar texto sobre fundos de destaque."
+
+msgctxt "settings"
+msgid "The minimum column at which to display inline diagnostics."
+msgstr "A coluna mínima na qual exibir diagnósticos embutidos."
+
+msgctxt "settings"
+msgid "The minimum column number at which to show the inline blame information."
+msgstr "O número de coluna mínimo no qual exibir as informações de blame embutido."
+
+msgctxt "settings"
+msgid "The minimum width (in columns) at which the split diff view is used. When the editor is narrower, the diff view automatically switches to unified mode. Set to 0 to disable."
+msgstr "A largura mínima (em colunas) na qual a exibição de diff dividida é usada. Quando o editor está mais estreito, a exibição de diff muda automaticamente para o modo unificado. Defina como 0 para desabilitar."
+
+msgctxt "settings"
+msgid "The model string to pass to the OpenAI-compatible server."
+msgstr "A string do modelo a ser passada para o servidor compatível com OpenAI."
+
+msgctxt "settings"
+msgid "The multiplier for scrolling in the terminal with the mouse wheel"
+msgstr "O multiplicador de rolagem no terminal com a roda do mouse"
+
+msgctxt "settings"
+msgid "The name of a base set of key bindings to use."
+msgstr "Define o nome do conjunto base de associações de teclas a ser usado."
+
+msgctxt "settings"
+msgid "The name of your selected icon theme."
+msgstr "O nome do tema de ícones selecionado."
+
+msgctxt "settings"
+msgid "The name of your selected theme."
+msgstr "O nome do tema selecionado."
+
+msgctxt "settings"
+msgid "The number of characters to keep on either side when scrolling with the mouse."
+msgstr "O número de caracteres a manter em cada lado ao rolar com o mouse."
+
+msgctxt "settings"
+msgid "The number of lines to keep above/below the cursor when auto-scrolling."
+msgstr "O número de linhas a manter acima/abaixo do cursor ao rolar automaticamente."
+
+msgctxt "settings"
+msgid "The page shown first when a built-in browser panel or tab opens. It can also be set with the pin button on the browser toolbar."
+msgstr "A página mostrada primeiro quando um painel ou aba do navegador integrado é aberto. Também pode ser definida com o botão de fixar na barra de ferramentas do navegador."
+
+msgctxt "settings"
+msgid "The panel shown next to the first one. Choose \"Don't Stack\" to show a single panel, as upstream Zed does."
+msgstr "O painel mostrado ao lado do primeiro. Escolha \"Não empilhar\" para mostrar um único painel, como faz o Zed upstream."
+
+msgctxt "settings"
+msgid "The panel that fills that dock. Choose \"Don't Stack\" to skip building the initial layout."
+msgstr "O painel que preenche esse dock. Escolha \"Não empilhar\" para não montar o layout inicial."
+
+msgctxt "settings"
+msgid "The prompt format to use when requesting predictions. Set to Infer to have the format inferred based on the model name."
+msgstr "O formato de prompt a ser usado ao solicitar previsões. Defina como Inferir para que o formato seja inferido com base no nome do modelo."
+
+msgctxt "settings"
+msgid "The proxy to use for network requests."
+msgstr "O proxy a ser usado para solicitações de rede."
+
+msgctxt "settings"
+msgid "The shell program to run."
+msgstr "Define o programa de shell que será executado."
+
+msgctxt "settings"
+msgid "The shell program to use."
+msgstr "Define o programa de shell que será usado."
+
+msgctxt "settings"
+msgid "The smallest context window (in tokens) of a model that auto compaction runs for. Models below it are never compacted and only show the token limit warning. Lower it to get auto compaction with the small contexts of local LLMs. Values below 8000 are treated as 8000."
+msgstr "A menor janela de contexto (em tokens) de um modelo para a qual a compactação automática é executada. Modelos abaixo dela nunca são compactados e apenas mostram o aviso de limite de tokens. Diminua-a para ter compactação automática com os contextos pequenos de LLMs locais. Valores abaixo de 8000 são tratados como 8000."
+
+msgctxt "settings"
+msgid "The text rendering mode to use."
+msgstr "Define o modo de renderização de texto a ser usado."
+
+msgctxt "settings"
+msgid "The theme to use when mode is set to dark, or when mode is set to system and it is in dark mode."
+msgstr "O tema usado quando o modo está definido como escuro ou quando o modo está definido como sistema e o sistema está no modo escuro."
+
+msgctxt "settings"
+msgid "The theme to use when mode is set to light, or when mode is set to system and it is in light mode."
+msgstr "O tema usado quando o modo está definido como claro ou quando o modo está definido como sistema e o sistema está no modo claro."
+
+msgctxt "settings"
+msgid "The unit for image file sizes."
+msgstr "A unidade para tamanhos de arquivo de imagem."
+
+msgctxt "settings"
+msgid "The width of the active indent guide in pixels, between 1 and 10."
+msgstr "A largura da guia de recuo ativa em pixels, entre 1 e 10."
+
+msgctxt "settings"
+msgid "The width of the indent guides in pixels, between 1 and 10."
+msgstr "A largura das guias de recuo em pixels, entre 1 e 10."
+
+msgctxt "settings"
+msgid "Theme"
+msgstr "Tema"
+
+msgctxt "settings"
+msgid "Theme Mode"
+msgstr "Modo de tema"
+
+msgctxt "settings"
+msgid "Theme Name"
+msgstr "Nome do tema"
+
+msgctxt "settings"
+msgid "Thinking Display"
+msgstr "Exibição do raciocínio"
+
+msgctxt "settings"
+msgid "Thread History in Panel"
+msgstr "Histórico de conversas no painel"
+
+msgctxt "settings"
+msgid "Threads Sidebar"
+msgstr "Barra lateral de conversas"
+
+msgctxt "settings"
+msgid "Threads Sidebar Auto Open"
+msgstr "Abertura automática da barra lateral de conversas"
+
+msgctxt "settings"
+msgid "Threads Sidebar Default Width"
+msgstr "Largura padrão da barra lateral de conversas"
+
+msgctxt "settings"
+msgid "Threads Sidebar Position"
+msgstr "Posição da barra lateral de conversas"
+
+msgctxt "settings"
+msgid "Thumb"
+msgstr "Controle deslizante"
+
+msgctxt "settings"
+msgid "Thumb Border"
+msgstr "Borda do controle deslizante"
+
+msgctxt "settings"
+msgid "Time in milliseconds until timeout error when connecting to a TCP debug adapter."
+msgstr "Tempo em milissegundos até o erro de tempo limite ao conectar a um adaptador de depuração TCP."
+
+msgctxt "settings"
+msgid "Time to wait in milliseconds before hiding the hover popover after the mouse moves away."
+msgstr "Tempo de espera em milissegundos antes de ocultar o pop-up exibido ao passar o cursor depois que o mouse se afasta."
+
+msgctxt "settings"
+msgid "Time to wait in milliseconds before showing the informational hover box."
+msgstr "Tempo de espera em milissegundos antes de exibir a caixa de informações ao passar o cursor."
+
+msgctxt "settings"
+msgid "Timeout"
+msgstr "Tempo limite"
+
+msgctxt "settings"
+msgid "Timestamp Each Line"
+msgstr "Carimbo de data/hora em cada linha"
+
+msgctxt "settings"
+msgid "Title Bar"
+msgstr "Barra de título"
+
+msgctxt "settings"
+msgid "Title Format"
+msgstr "Formato do título"
+
+msgctxt "settings"
+msgid "Title Override"
+msgstr "Substituição do título"
+
+msgctxt "settings"
+msgid "Title Separator"
+msgstr "Separador do título"
+
+msgctxt "settings"
+msgid "Toggle On Modifiers Press"
+msgstr "Alternar ao pressionar modificadores"
+
+msgctxt "settings"
+msgid "Toggle Relative Line Numbers"
+msgstr "Alternar números de linha relativos"
+
+msgctxt "settings"
+msgid "Toggle relative line numbers in Vim mode."
+msgstr "Alterna os números de linha relativos no modo Vim."
+
+msgctxt "settings"
+msgid "Toggles inlay hints (hides or shows) when the user presses the modifiers specified."
+msgstr "Alterna as dicas embutidas (oculta ou exibe) quando o usuário pressiona os modificadores especificados."
+
+msgctxt "settings"
+msgid "Tool Permissions"
+msgstr "Permissões de ferramentas"
+
+msgctxt "settings"
+msgid "Toolbar"
+msgstr "Barra de ferramentas"
+
+msgctxt "settings"
+msgid "Tree View"
+msgstr "Exibição em árvore"
+
+msgctxt "settings"
+msgid "Trust All Projects By Default"
+msgstr "Confiar em todos os projetos por padrão"
+
+msgctxt "settings"
+msgid "Type Contents on Hover"
+msgstr "Conteúdo do tipo ao passar o cursor"
+
+msgctxt "settings"
+msgid "UI Font"
+msgstr "Fonte da interface"
+
+msgctxt "settings"
+msgid "UI Font Family"
+msgstr "Família da fonte da interface"
+
+msgctxt "settings"
+msgid "UI Font Size"
+msgstr "Tamanho da fonte da interface"
+
+msgctxt "settings"
+msgid "Unnecessary Code Fade"
+msgstr "Esmaecimento de código desnecessário"
+
+msgctxt "settings"
+msgid "Untracked Files"
+msgstr "Arquivos não rastreados"
+
+msgctxt "settings"
+msgid "Update Debounce"
+msgstr "Atraso de atualização"
+
+msgctxt "settings"
+msgid "Use Auto Surround"
+msgstr "Usar envolvimento automático"
+
+msgctxt "settings"
+msgid "Use Autoclose"
+msgstr "Usar fechamento automático"
+
+msgctxt "settings"
+msgid "Use Command History"
+msgstr "Usar histórico de comandos"
+
+msgctxt "settings"
+msgid "Use LSP tasks over Zed language extension tasks."
+msgstr "Usa as tarefas LSP em vez das tarefas da extensão de linguagem do ForgeKairos."
+
+msgctxt "settings"
+msgid "Use Modifier To Send"
+msgstr "Usar modificador para enviar"
+
+msgctxt "settings"
+msgid "Use On Type Format"
+msgstr "Usar formatação ao digitar"
+
+msgctxt "settings"
+msgid "Use Smartcase Find"
+msgstr "Usar busca inteligente"
+
+msgctxt "settings"
+msgid "Use Smartcase Search"
+msgstr "Usar pesquisa inteligente"
+
+msgctxt "settings"
+msgid "Use System Clipboard"
+msgstr "Usar área de transferência do sistema"
+
+msgctxt "settings"
+msgid "Use System Path Prompts"
+msgstr "Usar diálogos do sistema para caminhos"
+
+msgctxt "settings"
+msgid "Use System Prompts"
+msgstr "Usar diálogos do sistema"
+
+msgctxt "settings"
+msgid "Use System Window Tabs"
+msgstr "Usar abas de janela do sistema"
+
+msgctxt "settings"
+msgid "Use gitignored files when searching."
+msgstr "Usa arquivos ignorados pelo Git ao pesquisar."
+
+msgctxt "settings"
+msgid "Use native OS dialogs for 'Open' and 'Save As'."
+msgstr "Usa os diálogos nativos do sistema operacional para 'Abrir' e 'Salvar como'."
+
+msgctxt "settings"
+msgid "Use native OS dialogs for confirmations."
+msgstr "Usa os diálogos nativos do sistema operacional para confirmações."
+
+msgctxt "settings"
+msgid "Use regex search by default in Vim search."
+msgstr "Usa a pesquisa com expressão regular por padrão na pesquisa do Vim."
+
+msgctxt "settings"
+msgid "Use regex search by default."
+msgstr "Usa a pesquisa com expressão regular por padrão."
+
+msgctxt "settings"
+msgid "Variables"
+msgstr "Variáveis"
+
+msgctxt "settings"
+msgid "Version Control"
+msgstr "Controle de versão"
+
+msgctxt "settings"
+msgid "Vertical Scroll Margin"
+msgstr "Margem de rolagem vertical"
+
+msgctxt "settings"
+msgid "Vertical Scrollbar"
+msgstr "Barra de rolagem vertical"
+
+msgctxt "settings"
+msgid "Vertical Split Direction"
+msgstr "Direção de divisão vertical"
+
+msgctxt "settings"
+msgid "View and manage agent skills installed globally or in project worktrees."
+msgstr "Visualiza e gerencia as habilidades do agente instaladas globalmente ou nas árvores de trabalho do projeto."
+
+msgctxt "settings"
+msgid "View, add, and remove agents connected through the Agent Client Protocol."
+msgstr "Exibe, adiciona e remove agentes conectados por meio do Agent Client Protocol."
+
+msgctxt "settings"
+msgid "View, add, configure, and remove Model Context Protocol servers."
+msgstr "Exibe, adiciona, configura e remove servidores do Model Context Protocol."
+
+msgctxt "settings"
+msgid "Vim"
+msgstr "Vim"
+
+msgctxt "settings"
+msgid "Vim/Emacs Modeline Support"
+msgstr "Suporte a modeline Vim/Emacs"
+
+msgctxt "settings"
+msgid "Visibility"
+msgstr "Visibilidade"
+
+msgctxt "settings"
+msgid "Visible character used to render space characters when show_whitespaces is enabled (default: \"•\")"
+msgstr "Caractere visível usado para renderizar espaços quando show_whitespaces está habilitado (padrão: \"•\")"
+
+msgctxt "settings"
+msgid "Visible character used to render tab characters when show_whitespaces is enabled (default: \"→\")"
+msgstr "Caractere visível usado para renderizar tabulações quando show_whitespaces está habilitado (padrão: \"→\")"
+
+msgctxt "settings"
+msgid "Web Page Attachment Limit (Bytes)"
+msgstr "Limite de anexo de página da Web (bytes)"
+
+msgctxt "settings"
+msgid "What shell to use when opening a terminal."
+msgstr "Qual shell usar ao abrir um terminal."
+
+msgctxt "settings"
+msgid "What to do after closing the current tab."
+msgstr "O que fazer após fechar a aba atual."
+
+msgctxt "settings"
+msgid "What to do when multibuffer is double-clicked in some of its excerpts."
+msgstr "O que fazer quando o multibuffer recebe duplo clique em algum de seus trechos."
+
+msgctxt "settings"
+msgid "What to do when the last window is closed."
+msgstr "Define o comportamento ao fechar a última janela."
+
+msgctxt "settings"
+msgid "What to do when using the 'close active item' action with no tabs."
+msgstr "Define o comportamento da ação 'fechar item ativo' quando não há abas abertas."
+
+msgctxt "settings"
+msgid "What to restore from the previous session when opening Zed."
+msgstr "O que restaurar da sessão anterior ao abrir o ForgeKairos."
+
+msgctxt "settings"
+msgid "What to show for directories in the git panel."
+msgstr "O que exibir para diretórios no painel do Git."
+
+msgctxt "settings"
+msgid "What to show for directories in the outline panel."
+msgstr "O que exibir para diretórios no painel de estrutura."
+
+msgctxt "settings"
+msgid "What to show for directories in the project panel."
+msgstr "O que exibir para diretórios no painel do projeto."
+
+msgctxt "settings"
+msgid "What to show when opening a new window."
+msgstr "O que exibir ao abrir uma nova janela."
+
+msgctxt "settings"
+msgid "What working directory to use when launching the terminal."
+msgstr "Qual diretório de trabalho usar ao iniciar o terminal."
+
+msgctxt "settings"
+msgid "When Closing With No Tabs"
+msgstr "Ao fechar sem abas"
+
+msgctxt "settings"
+msgid "When auto compaction runs. A percentage string like \"90%\" is measured against the context window. A positive integer is the number of used tokens to compact after. A negative integer is the number of tokens remaining in the context window before compacting."
+msgstr "Define quando a compactação automática é executada. Uma string de porcentagem como \"90%\" é medida em relação à janela de contexto. Um inteiro positivo é a quantidade de tokens usados após a qual a compactação ocorre. Um inteiro negativo é a quantidade de tokens restantes na janela de contexto antes da compactação."
+
+msgctxt "settings"
+msgid "When enabled, agent edits will also be displayed in single-file buffers for review."
+msgstr "Quando habilitado, as edições do agente também serão exibidas em buffers de arquivo único para revisão."
+
+msgctxt "settings"
+msgid "When enabled, the :substitute command replaces all matches in a line by default. The 'g' flag then toggles this behavior."
+msgstr "Quando habilitado, o comando :substitute substitui todas as ocorrências em uma linha por padrão. O sinalizador 'g' alterna esse comportamento."
+
+msgctxt "settings"
+msgid "When enabled, use folding ranges from the language server instead of indent-based folding."
+msgstr "Quando habilitado, usa os intervalos de dobra do servidor de linguagem em vez da dobra baseada em recuo."
+
+msgctxt "settings"
+msgid "When enabled, use the language server's document symbols for outlines and breadcrumbs instead of tree-sitter."
+msgstr "Quando habilitado, usa os símbolos de documento do servidor de linguagem para a estrutura e as trilhas de navegação em vez do tree-sitter."
+
+msgctxt "settings"
+msgid "When false, forcefully disables the horizontal scrollbar."
+msgstr "Quando falso, desabilita à força a barra de rolagem horizontal."
+
+msgctxt "settings"
+msgid "When false, forcefully disables the vertical scrollbar."
+msgstr "Quando falso, desabilita à força a barra de rolagem vertical."
+
+msgctxt "settings"
+msgid "When fetching LSP completions, determines how long to wait for a response of a particular server (set to 0 to wait indefinitely)."
+msgstr "Ao buscar preenchimentos automáticos do LSP, determina por quanto tempo aguardar a resposta de um servidor específico (o valor 0 indica espera indefinida)."
+
+msgctxt "settings"
+msgid "When off, rendering follows CommonMark: only two trailing spaces, `\\` or `<br>` break a line. PDF export uses the same setting."
+msgstr "Quando desativado, a renderização segue o CommonMark: apenas dois espaços no fim da linha, `\\` ou `<br>` quebram uma linha. A exportação para PDF usa a mesma configuração."
+
+msgctxt "settings"
+msgid "When off, these files open in the text editor. Either view can open the other one beside it."
+msgstr "Quando desativado, esses arquivos abrem no editor de texto. Qualquer uma das exibições pode abrir a outra ao lado."
+
+msgctxt "settings"
+msgid "When on, AI agents can open and drive AI tabs of the built-in browser to debug web apps. AI tabs use a separate browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents."
+msgstr "Quando ativado, os agentes de IA podem abrir e controlar abas de IA do navegador integrado para depurar aplicativos web. As abas de IA usam um perfil de navegador separado, e o tráfego delas é limitado à lista de permissões de rede; localhost é sempre permitido. Suas próprias abas do navegador nunca são mostradas aos agentes de IA."
+
+msgctxt "settings"
+msgid "When on, a notification appears when the language server or formatter that an opened file's language needs cannot be found (clangd and clang-format for C, Ruff for Python), and the tool can be installed right there. Tools go only into your user data directory, need no administrator rights and do not affect other users. While connected to a remote host, the host is checked and the tool is installed there, downloaded through this machine's network so it works even when the host has no internet access. To stop suggesting particular tools, list their IDs in `dev_tools.ignored` in settings.json (the notification's \"Don't Show Again\" adds them too)."
+msgstr "Quando ativado, uma notificação aparece quando o servidor de linguagem ou o formatador de que a linguagem de um arquivo aberto precisa não é encontrado (clangd e clang-format para C, Ruff para Python), e a ferramenta pode ser instalada ali mesmo. As ferramentas vão somente para o seu diretório de dados de usuário, não precisam de direitos de administrador e não afetam outros usuários. Enquanto conectado a um host remoto, o host é verificado e a ferramenta é instalada nele, baixada pela rede desta máquina para que funcione mesmo quando o host não tem acesso à internet. Para deixar de sugerir determinadas ferramentas, liste os IDs delas em `dev_tools.ignored` no settings.json (o \"Não mostrar novamente\" da notificação também os adiciona)."
+
+msgctxt "settings"
+msgid "When on, the built-in browser's connections are restricted by the egress allowlist too. By default it is outside the allowlist, like terminals driven by a person. Changes apply the next time the built-in browser starts."
+msgstr "Quando ativado, as conexões do navegador integrado também são restringidas pela lista de permissões de comunicação externa. Por padrão, ele fica fora da lista de permissões, como os terminais operados por uma pessoa. As alterações se aplicam na próxima vez que o navegador integrado iniciar."
+
+msgctxt "settings"
+msgid "When on, this machine makes the outgoing requests of SSH and other remote hosts (language server and node downloads, extension archives, agent binaries) on their behalf, so remote hosts without internet access can still download language servers automatically. Only agent-related downloads are subject to the allowlist and consent prompts; downloads of IDE tooling such as language servers are not restricted. When off, the remote host connects out on its own. Changes apply without reconnecting."
+msgstr "Quando ativado, esta máquina faz as solicitações de saída de hosts SSH e outros hosts remotos (downloads de servidores de linguagem e do node, arquivos de extensões, binários de agentes) em nome deles, para que hosts remotos sem acesso à internet ainda possam baixar servidores de linguagem automaticamente. Apenas os downloads relacionados a agentes estão sujeitos à lista de permissões e aos diálogos de consentimento; os downloads de ferramentas do IDE, como servidores de linguagem, não são restringidos. Quando desativado, o host remoto se conecta por conta própria. As alterações se aplicam sem reconectar."
+
+msgctxt "settings"
+msgid "When opening Zed, avoid Restricted Mode by auto-trusting all projects, enabling use of all features without having to give permission to each new project."
+msgstr "Ao abrir o ForgeKairos, evita o Modo Restrito confiando automaticamente em todos os projetos, habilitando o uso de todos os recursos sem precisar conceder permissão a cada novo projeto."
+
+msgctxt "settings"
+msgid "When the attachments of one message add up to more than this, the largest are reduced to outlines or references first. Attachments set to be sent in full are never reduced. Values below 4096 are treated as 4096."
+msgstr "Quando os anexos de uma mensagem somam mais do que isto, os maiores são reduzidos primeiro a estruturas ou referências. Anexos definidos para serem enviados completos nunca são reduzidos. Valores abaixo de 4096 são tratados como 4096."
+
+msgctxt "settings"
+msgid "When to auto save buffer changes."
+msgstr "Quando salvar automaticamente as alterações do buffer."
+
+msgctxt "settings"
+msgid "When to hide the mouse cursor."
+msgstr "Quando ocultar o cursor do mouse."
+
+msgctxt "settings"
+msgid "When to play a sound when the agent has either completed its response, or needs user input."
+msgstr "Quando reproduzir um som ao agente concluir a resposta ou precisar de entrada do usuário."
+
+msgctxt "settings"
+msgid "When to populate a new search's query based on the text under the cursor."
+msgstr "Quando preencher a consulta de uma nova pesquisa com base no texto sob o cursor."
+
+msgctxt "settings"
+msgid "When to scan content of linked directories"
+msgstr "Quando varrer o conteúdo de diretórios vinculados"
+
+msgctxt "settings"
+msgid "When to show edit predictions previews in buffer. The eager mode displays them inline, while the subtle mode displays them only when holding a modifier key."
+msgstr "Define quando exibir prévias de previsões de edição no buffer. O modo imediato as exibe embutidas, enquanto o modo discreto as exibe apenas ao manter pressionada uma tecla modificadora."
+
+msgctxt "settings"
+msgid "When to show indent guides in the outline panel."
+msgstr "Quando exibir guias de recuo no painel de estrutura."
+
+msgctxt "settings"
+msgid "When to show the minimap in the editor."
+msgstr "Quando exibir o minimapa no editor."
+
+msgctxt "settings"
+msgid "When to show the minimap thumb."
+msgstr "Quando exibir o controle deslizante do minimapa."
+
+msgctxt "settings"
+msgid "When to show the row of tabs inside the agent panel. \"Auto\" hides it while the in-panel thread history is showing and the panel is not split, since the history lists the open tabs. Even with \"Never\", it is shown when the panel is too narrow for the history or its strip, because the open tabs would otherwise be out of reach."
+msgstr "Quando mostrar a linha de abas dentro do painel do agente. \"Automático\" a oculta enquanto o histórico de conversas no painel está sendo mostrado e o painel não está dividido, já que o histórico lista as abas abertas. Mesmo com \"Nunca\", ela é mostrada quando o painel é estreito demais para o histórico ou sua faixa, porque, caso contrário, as abas abertas ficariam inacessíveis."
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the completion menu."
+msgstr "Quando exibir a barra de rolagem no menu de preenchimento automático."
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the editor."
+msgstr "Quando exibir a barra de rolagem no editor."
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the terminal."
+msgstr "Quando exibir a barra de rolagem no terminal."
+
+msgctxt "settings"
+msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."
+msgstr "De onde vêm as chamadas: do servidor de linguagem, que é exato, do índice de símbolos de arquivos C e C++, que corresponde nomes, ou de ambos."
+
+msgctxt "settings"
+msgid "Where to dock the AI browser panel, where AI agents open the tabs they drive."
+msgstr "Onde posicionar o painel do navegador de IA, onde os agentes de IA abrem as abas que controlam."
+
+msgctxt "settings"
+msgid "Where to dock the Git panel."
+msgstr "Onde posicionar o painel do Git."
+
+msgctxt "settings"
+msgid "Where to dock the agent panel."
+msgstr "Onde posicionar o painel do agente."
+
+msgctxt "settings"
+msgid "Where to dock the browser panel."
+msgstr "Onde posicionar o painel do navegador."
+
+msgctxt "settings"
+msgid "Where to dock the call graph panel."
+msgstr "Onde posicionar o painel do grafo de chamadas."
+
+msgctxt "settings"
+msgid "Where to dock the collaboration panel."
+msgstr "Onde posicionar o painel de colaboração."
+
+msgctxt "settings"
+msgid "Where to dock the outline panel."
+msgstr "Onde posicionar o painel de estrutura."
+
+msgctxt "settings"
+msgid "Where to dock the project panel."
+msgstr "Onde posicionar o painel do projeto."
+
+msgctxt "settings"
+msgid "Where to dock the terminal panel."
+msgstr "Onde posicionar o painel do terminal."
+
+msgctxt "settings"
+msgid "Where to render Git blame when it is enabled."
+msgstr "Onde exibir o Git blame quando estiver habilitado."
+
+msgctxt "settings"
+msgid "Where to show LSP results that can contain multiple locations (Go to Definition, Go to Implementation, Find All References)."
+msgstr "Onde exibir os resultados do LSP que podem conter vários locais (Ir para definição, Ir para implementação, Localizar todas as referências)."
+
+msgctxt "settings"
+msgid "Where to show notifications when the agent has completed its response or needs confirmation before running a tool action."
+msgstr "Onde exibir notificações quando o agente concluir a resposta ou precisar de confirmação antes de executar uma ação de ferramenta."
+
+msgctxt "settings"
+msgid "Where to show the minimap in the editor."
+msgstr "Onde exibir o minimapa no editor."
+
+msgctxt "settings"
+msgid "Whether alternate scroll mode is active by default (converts mouse scroll to arrow keys in apps like Vim)."
+msgstr "Define se o modo de rolagem alternativo está ativo por padrão (converte a rolagem do mouse em teclas de seta em aplicativos como o Vim)."
+
+msgctxt "settings"
+msgid "Whether and how to display code lenses from language servers."
+msgstr "Define se e como exibir CodeLens dos servidores de linguagem."
+
+msgctxt "settings"
+msgid "Whether breakpoints should be reused across Zed sessions."
+msgstr "Define se os pontos de interrupção devem ser reutilizados entre as sessões do ForgeKairos."
+
+msgctxt "settings"
+msgid "Whether clicking the stop button on a running terminal tool should also cancel the agent's generation. Note that this only applies to the stop button, not to ctrl+c inside the terminal."
+msgstr "Define se o clique no botão de parar de uma ferramenta de terminal em execução também deve cancelar a geração do agente. Isso se aplica apenas ao botão de parar, não ao uso de ctrl+c dentro do terminal."
+
+msgctxt "settings"
+msgid "Whether cmd-click (ctrl-click on Linux and Windows) opens hyperlinks even when the terminal application has enabled mouse reporting. When disabled, these clicks are forwarded to the application; links can still be opened with shift-cmd-click."
+msgstr "Define se cmd-click (ctrl-click no Linux e no Windows) abre hiperlinks mesmo quando o aplicativo de terminal habilita o rastreamento do mouse. Quando desabilitado, esses cliques são encaminhados ao aplicativo; os links ainda podem ser abertos com shift-cmd-click."
+
+msgctxt "settings"
+msgid "Whether edit predictions are shown in normal mode. By default, edit predictions are only shown in insert and replace modes."
+msgstr "Define se as previsões de edição são exibidas no modo normal. Por padrão, as previsões de edição são exibidas apenas nos modos de inserção e substituição."
+
+msgctxt "settings"
+msgid "Whether git features show changes relative to HEAD (uncommitted changes) or to the default branch (all changes on the current branch)."
+msgstr "Define se os recursos do Git exibem alterações em relação ao HEAD (alterações sem commit) ou ao branch padrão (todas as alterações no branch atual)."
+
+msgctxt "settings"
+msgid "Whether hovering a name in C and C++ also shows what its type holds (its members, enumerators or a macro's definition), found by name in the index. Default: on."
+msgstr "Define se passar o cursor sobre um nome em C e C++ também mostra o que o tipo dele contém (seus membros, enumeradores ou a definição de uma macro), encontrado pelo nome no índice. Padrão: ativado."
+
+msgctxt "settings"
+msgid "Whether indentation of pasted content should be adjusted based on the context."
+msgstr "Define se o recuo do conteúdo colado deve ser ajustado com base no contexto."
+
+msgctxt "settings"
+msgid "Whether invoking a panel's ToggleFocus action while it's already focused closes the panel, instead of just moving focus back to the editor."
+msgstr "Define se invocar a ação ToggleFocus de um painel enquanto ele já estiver em foco fecha o painel, em vez de apenas mover o foco de volta para o editor."
+
+msgctxt "settings"
+msgid "Whether newly opened file diffs show the full file instead of changes only."
+msgstr "Define se os diffs de arquivo recém-abertos exibem o arquivo completo em vez de somente as alterações."
+
+msgctxt "settings"
+msgid "Whether opening a folder in an existing window automatically opens the Threads Sidebar."
+msgstr "Define se abrir uma pasta em uma janela existente abre automaticamente a barra lateral de conversas."
+
+msgctxt "settings"
+msgid "Whether or not to automatically check for updates."
+msgstr "Define se deve verificar atualizações automaticamente."
+
+msgctxt "settings"
+msgid "Whether or not to debounce inlay hints updates after buffer edits (set to 0 to disable debouncing)."
+msgstr "Define se deve aplicar debounce às atualizações de dicas embutidas após edições no buffer (o valor 0 desabilita o debounce)."
+
+msgctxt "settings"
+msgid "Whether or not to debounce inlay hints updates after buffer scrolls (set to 0 to disable debouncing)."
+msgstr "Define se deve aplicar debounce às atualizações de dicas embutidas após rolagem no buffer (o valor 0 desabilita o debounce)."
+
+msgctxt "settings"
+msgid "Whether or not to ensure there's a single newline at the end of a buffer when saving it."
+msgstr "Define se deve garantir que haja uma única nova linha no final do buffer ao salvá-lo."
+
+msgctxt "settings"
+msgid "Whether or not to remove any trailing whitespace from lines of a buffer before saving it."
+msgstr "Define se deve remover os espaços em branco à direita das linhas do buffer antes de salvá-lo."
+
+msgctxt "settings"
+msgid "Whether or not to restore unsaved buffers on restart."
+msgstr "Define se deve restaurar os buffers não salvos ao reiniciar."
+
+msgctxt "settings"
+msgid "Whether or not to show Git blame data for the currently focused line."
+msgstr "Define se os dados de Git blame devem ser exibidos para a linha atualmente em foco."
+
+msgctxt "settings"
+msgid "Whether other hints should be shown."
+msgstr "Define se outras dicas devem ser exibidas."
+
+msgctxt "settings"
+msgid "Whether parameter hints should be shown."
+msgstr "Define se as dicas de parâmetro devem ser exibidas."
+
+msgctxt "settings"
+msgid "Whether selecting text in the terminal automatically copies to the system clipboard."
+msgstr "Define se o texto selecionado no terminal é copiado automaticamente para a área de transferência do sistema."
+
+msgctxt "settings"
+msgid "Whether tasks are enabled for this language."
+msgstr "Define se as tarefas estão habilitadas para esta linguagem."
+
+msgctxt "settings"
+msgid "Whether the agent panel should open on startup."
+msgstr "Define se o painel do agente deve ser aberto na inicialização."
+
+msgctxt "settings"
+msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the left or right. When enabled, the default width does not control the panel width, and resetting the panel restores the default proportion."
+msgstr "Define se o painel do agente deve usar dimensionamento flexível (proporcional) quando posicionado à esquerda ou à direita. Quando habilitado, a largura padrão não controla a largura do painel, e redefinir o painel restaura a proporção padrão."
+
+msgctxt "settings"
+msgid "Whether the browser panel should open on startup."
+msgstr "Define se o painel do navegador deve ser aberto na inicialização."
+
+msgctxt "settings"
+msgid "Whether the cursor blinks in the editor."
+msgstr "Define se o cursor pisca no editor."
+
+msgctxt "settings"
+msgid "Whether the cursor smoothly animates when moving around the editor."
+msgstr "Define se o cursor se move com animação suave pelo editor."
+
+msgctxt "settings"
+msgid "Whether the editor search results will loop."
+msgstr "Define se os resultados de pesquisa do editor reiniciam em loop."
+
+msgctxt "settings"
+msgid "Whether the editor will scroll beyond the last line."
+msgstr "Define se o editor rolará além da última linha."
+
+msgctxt "settings"
+msgid "Whether the file finder should skip focus for the active file in search results."
+msgstr "Define se o localizador de arquivos deve ignorar o foco no arquivo ativo nos resultados da pesquisa."
+
+msgctxt "settings"
+msgid "Whether the git panel should open on startup."
+msgstr "Define se o painel do Git deve abrir na inicialização."
+
+msgctxt "settings"
+msgid "Whether the hover popover sticks when the mouse moves toward it, allowing interaction with its contents."
+msgstr "Define se o pop-up exibido ao passar o cursor permanece visível quando o mouse se move em sua direção, permitindo a interação com seu conteúdo."
+
+msgctxt "settings"
+msgid "Whether the microphone should be muted when joining a channel or a call."
+msgstr "Define se o microfone deve ser silenciado ao entrar em um canal ou uma chamada."
+
+msgctxt "settings"
+msgid "Whether the option key behaves as the meta key."
+msgstr "Define se a tecla option funciona como a tecla meta."
+
+msgctxt "settings"
+msgid "Whether the project panel should open on startup."
+msgstr "Define se o painel do projeto deve abrir na inicialização."
+
+msgctxt "settings"
+msgid "Whether the terminal panel should open on startup."
+msgstr "Define se o painel do terminal deve abrir na inicialização."
+
+msgctxt "settings"
+msgid "Whether the terminal panel should use flexible (proportional) sizing when docked to the left or right."
+msgstr "Define se o painel do terminal deve usar dimensionamento flexível (proporcional) quando posicionado à esquerda ou à direita."
+
+msgctxt "settings"
+msgid "Whether the text selection should have rounded corners."
+msgstr "Define se a seleção de texto deve ter cantos arredondados."
+
+msgctxt "settings"
+msgid "Whether to align detail text in code completions context menus left or right."
+msgstr "Define se o texto de detalhes nos menus de contexto de preenchimento automático de código deve ser alinhado à esquerda ou à direita."
+
+msgctxt "settings"
+msgid "Whether to allow horizontal scrolling in the project panel. When disabled, the view is always locked to the leftmost position and long file names are clipped."
+msgstr "Define se deve permitir rolagem horizontal no painel do projeto. Quando desabilitado, a exibição fica sempre travada na posição mais à esquerda e nomes de arquivos longos são cortados."
+
+msgctxt "settings"
+msgid "Whether to also index the files that `.gitignore` excludes. Only the ignored files the project panel has loaded are indexed: an ignored folder is read when it is expanded. Default: off."
+msgstr "Define se os arquivos que o `.gitignore` exclui também são indexados. Apenas os arquivos ignorados que o painel do projeto carregou são indexados: uma pasta ignorada é lida quando é expandida. Padrão: desativado."
+
+msgctxt "settings"
+msgid "Whether to always use cmd-enter (or ctrl-enter on Linux or Windows) to send messages."
+msgstr "Define se deve sempre usar cmd-enter (ou ctrl-enter no Linux ou Windows) para enviar mensagens."
+
+msgctxt "settings"
+msgid "Whether to automatically close JSX tags."
+msgstr "Define se as tags JSX devem ser fechadas automaticamente."
+
+msgctxt "settings"
+msgid "Whether to automatically enable case-sensitive search based on the search query."
+msgstr "Define se a pesquisa com diferenciação de maiúsculas e minúsculas deve ser habilitada automaticamente com base na consulta de pesquisa."
+
+msgctxt "settings"
+msgid "Whether to automatically open Markdown files in the preview."
+msgstr "Define se os arquivos Markdown devem ser abertos automaticamente na visualização."
+
+msgctxt "settings"
+msgid "Whether to automatically open files after pasting or duplicating them."
+msgstr "Define se os arquivos devem ser abertos automaticamente após colá-los ou duplicá-los."
+
+msgctxt "settings"
+msgid "Whether to automatically open files dropped from external sources."
+msgstr "Define se os arquivos arrastados de fontes externas devem ser abertos automaticamente."
+
+msgctxt "settings"
+msgid "Whether to automatically open newly created files in the editor."
+msgstr "Define se os arquivos recém-criados devem ser abertos automaticamente no editor."
+
+msgctxt "settings"
+msgid "Whether to automatically surround text with characters for you. For example, when you select text and type '(', Zed will automatically surround text with ()."
+msgstr "Define se o texto deve ser cercado automaticamente por caracteres. Por exemplo, ao selecionar um texto e digitar '(', o ForgeKairos o cercará automaticamente com ()."
+
+msgctxt "settings"
+msgid "Whether to automatically type closing characters for you. For example, when you type '(', Zed will automatically add a closing ')' at the correct position."
+msgstr "Define se os caracteres de fechamento devem ser inseridos automaticamente. Por exemplo, ao digitar '(', o ForgeKairos adicionará automaticamente um ')' de fechamento na posição correta."
+
+msgctxt "settings"
+msgid "Whether to center the current match in the editor"
+msgstr "Define se a correspondência atual deve ser centralizada no editor"
+
+msgctxt "settings"
+msgid "Whether to change focus to a pane when the mouse hovers over it."
+msgstr "Define se o foco deve mudar para um subpainel quando o mouse passa sobre ele."
+
+msgctxt "settings"
+msgid "Whether to collapse untracked files in the diff panel."
+msgstr "Define se os arquivos não rastreados devem ser recolhidos no painel de diff."
+
+msgctxt "settings"
+msgid "Whether to colorize brackets in the editor."
+msgstr "Define se os colchetes devem ser coloridos no editor."
+
+msgctxt "settings"
+msgid "Whether to constrain the agent panel content to a maximum width, centering it when the panel is wider, for optimal readability."
+msgstr "Define se o conteúdo do painel do agente deve ser limitado a uma largura máxima, centralizando-o quando o painel for mais largo, para leitura ideal."
+
+msgctxt "settings"
+msgid "Whether to constrain the markdown preview content to a maximum width, centering it when the pane is wider, for optimal readability."
+msgstr "Define se o conteúdo da visualização do Markdown deve ser restringido a uma largura máxima, centralizando-o quando o subpainel for mais largo, para legibilidade ideal."
+
+msgctxt "settings"
+msgid "Whether to disable all AI features in Zed."
+msgstr "Define se todos os recursos de IA no ForgeKairos devem ser desabilitados."
+
+msgctxt "settings"
+msgid "Whether to display inline and alongside documentation for items in the completions menu."
+msgstr "Define se a documentação dos itens deve ser exibida tanto de forma embutida quanto ao lado do menu de preenchimento automático."
+
+msgctxt "settings"
+msgid "Whether to enable agent features such as the agent panel, the inline assistant and commit message generation. Disabled by default."
+msgstr "Define se os recursos do agente, como o painel do agente, o assistente embutido e a geração de mensagens de commit, são habilitados. Desabilitado por padrão."
+
+msgctxt "settings"
+msgid "Whether to enable automatic language detection in unsaved buffers."
+msgstr "Define se a detecção automática de linguagem deve ser habilitada em buffers não salvos."
+
+msgctxt "settings"
+msgid "Whether to enable drag-and-drop operations in the project panel."
+msgstr "Define se as operações de arrastar e soltar devem ser habilitadas no painel do projeto."
+
+msgctxt "settings"
+msgid "Whether to enable word diff highlighting in the editor. When enabled, changed words within modified lines are highlighted to show exactly what changed."
+msgstr "Define se o destaque de diff por palavra deve ser habilitado no editor. Quando habilitado, as palavras alteradas nas linhas modificadas são destacadas para mostrar exatamente o que mudou."
+
+msgctxt "settings"
+msgid "Whether to fetch LSP completions or not."
+msgstr "Define se os preenchimentos automáticos do LSP devem ser buscados."
+
+msgctxt "settings"
+msgid "Whether to fold directories automatically and show compact folders when a directory has only one subdirectory inside."
+msgstr "Define se os diretórios devem ser agrupados automaticamente e exibidos de forma compacta quando um diretório tiver apenas um subdiretório."
+
+msgctxt "settings"
+msgid "Whether to fold directories automatically when a directory contains only one subdirectory."
+msgstr "Define se os diretórios devem ser agrupados automaticamente quando um diretório contiver apenas um subdiretório."
+
+msgctxt "settings"
+msgid "Whether to follow-up empty Go to definition responses from the language server."
+msgstr "Define se as respostas vazias de Ir para definição do servidor de linguagem devem ser tratadas com uma ação de acompanhamento."
+
+msgctxt "settings"
+msgid "Whether to format DAP messages when adding them to debug adapter logger."
+msgstr "Define se as mensagens DAP devem ser formatadas ao adicioná-las ao logger do adaptador de depuração."
+
+msgctxt "settings"
+msgid "Whether to have edit cards in the agent panel expanded, showing a Preview of the diff."
+msgstr "Define se os cartões de edição no painel do agente devem ser expandidos, exibindo uma visualização do diff."
+
+msgctxt "settings"
+msgid "Whether to have terminal cards in the agent panel expanded, showing the whole command output."
+msgstr "Define se os cartões de terminal no painel do agente devem ser expandidos, exibindo toda a saída do comando."
+
+msgctxt "settings"
+msgid "Whether to hide symbols, excerpts and search matches in the outline panel when a multi-buffer view is active."
+msgstr "Define se símbolos, trechos e correspondências de pesquisa devem ser ocultados no painel de estrutura quando uma exibição multibuffer está ativa."
+
+msgctxt "settings"
+msgid "Whether to hide the gitignore entries in the project panel."
+msgstr "Define se as entradas do gitignore devem ser ocultadas no painel do projeto."
+
+msgctxt "settings"
+msgid "Whether to hide the hidden entries in the project panel."
+msgstr "Define se as entradas ocultas devem ser ocultadas no painel do projeto."
+
+msgctxt "settings"
+msgid "Whether to hide the root entry when only one folder is open in the window."
+msgstr "Define se a entrada raiz deve ser ocultada quando apenas uma pasta estiver aberta na janela."
+
+msgctxt "settings"
+msgid "Whether to indent lines using tab characters, as opposed to multiple spaces."
+msgstr "Define se o recuo das linhas deve usar caracteres de tabulação, em vez de vários espaços."
+
+msgctxt "settings"
+msgid "Whether to keep tabs in preview mode when code navigation is used to navigate away from them. If `enable_preview_file_from_code_navigation` or `enable_preview_multibuffer_from_code_navigation` is also true, the new tab may replace the existing one."
+msgstr "Define se as abas devem permanecer no modo de visualização ao usar a navegação de código para sair delas. Se `enable_preview_file_from_code_navigation` ou `enable_preview_multibuffer_from_code_navigation` também estiver ativado, a nova aba poderá substituir a existente."
+
+msgctxt "settings"
+msgid "Whether to keep the system awake while agent threads are running."
+msgstr "Define se o sistema deve permanecer ativo enquanto as conversas do agente estiverem em execução."
+
+msgctxt "settings"
+msgid "Whether to keep the text selection after copying it to the clipboard."
+msgstr "Define se a seleção de texto deve ser mantida após copiá-la para a área de transferência."
+
+msgctxt "settings"
+msgid "Whether to log messages between active debug adapters and Zed."
+msgstr "Define se as mensagens entre os adaptadores de depuração ativos e o ForgeKairos devem ser registradas."
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when code navigation is used to open a multibuffer."
+msgstr "Define se as abas devem ser abertas no modo de visualização ao usar a navegação de código para abrir um multibuffer."
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when code navigation is used to open a single file."
+msgstr "Define se as abas devem ser abertas no modo de visualização ao usar a navegação de código para abrir um único arquivo."
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when opened from a multibuffer."
+msgstr "Define se as abas devem ser abertas no modo de visualização ao abri-las a partir de um multibuffer."
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when opened from the project panel with a single click or the Open action."
+msgstr "Define se as abas devem ser abertas no modo de visualização ao abri-las a partir do painel do projeto com um único clique ou com a ação Abrir."
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when selected from the file finder."
+msgstr "Define se as abas devem ser abertas no modo de visualização ao selecioná-las no localizador de arquivos."
+
+msgctxt "settings"
+msgid "Whether to perform linked edits of associated ranges, if the LS supports it. For example, when editing opening <html> tag, the contents of the closing </html> tag will be edited as well."
+msgstr "Define se edições vinculadas de intervalos associados devem ser realizadas, caso o LS suporte esse recurso. Por exemplo, ao editar a tag de abertura <html>, o conteúdo da tag de fechamento </html> também será editado."
+
+msgctxt "settings"
+msgid "Whether to play a sound when the BEL character (`\\a`, `0x07`) is printed"
+msgstr "Define se um som deve ser reproduzido quando o caractere BEL (`\\a`, `0x07`) é impresso"
+
+msgctxt "settings"
+msgid "Whether to pop the completions menu while typing in an editor without explicitly requesting it."
+msgstr "Define se o menu de preenchimento automático deve aparecer durante a digitação em um editor sem solicitá-lo explicitamente."
+
+msgctxt "settings"
+msgid "Whether to pull for language server-powered diagnostics or not."
+msgstr "Define se os diagnósticos fornecidos pelo servidor de linguagem devem ser obtidos por pull ou não."
+
+msgctxt "settings"
+msgid "Whether to reduce non-essential motion, such as loading spinners, by rendering them in a static state."
+msgstr "Define se o movimento não essencial deve ser reduzido, como indicadores de carregamento, renderizando-os em um estado estático."
+
+msgctxt "settings"
+msgid "Whether to reveal entries in the project panel automatically when a corresponding project entry becomes active."
+msgstr "Define se as entradas no painel do projeto devem ser reveladas automaticamente quando uma entrada de projeto correspondente se torna ativa."
+
+msgctxt "settings"
+msgid "Whether to reveal when a corresponding outline entry becomes active."
+msgstr "Define se uma entrada correspondente da estrutura deve ser revelada quando se torna ativa."
+
+msgctxt "settings"
+msgid "Whether to scroll when clicking near the edge of the visible text area."
+msgstr "Define se a rolagem deve ocorrer ao clicar próximo à borda da área de texto visível."
+
+msgctxt "settings"
+msgid "Whether to show a badge on the git panel icon with the count of uncommitted changes."
+msgstr "Define se um contador com o número de alterações sem commit deve ser exibido no ícone do painel do Git."
+
+msgctxt "settings"
+msgid "Whether to show diagnostics inline or not."
+msgstr "Define se os diagnósticos devem ser exibidos de forma embutida ou não."
+
+msgctxt "settings"
+msgid "Whether to show folder names with bold text in the project panel."
+msgstr "Define se os nomes de pasta devem ser exibidos em texto negrito no painel do projeto."
+
+msgctxt "settings"
+msgid "Whether to show tabs and spaces in the editor."
+msgstr "Define se tabulações e espaços devem ser exibidos no editor."
+
+msgctxt "settings"
+msgid "Whether to show the addition/deletion change count next to each file in the Git panel."
+msgstr "Define se a contagem de alterações de adições/exclusões deve ser exibida ao lado de cada arquivo no painel do Git."
+
+msgctxt "settings"
+msgid "Whether to show the agent panel button in the status bar."
+msgstr "Define se o botão do painel do agente deve ser exibido na barra de status."
+
+msgctxt "settings"
+msgid "Whether to show the merge conflict indicator in the status bar that offers to resolve conflicts using the agent."
+msgstr "Define se o indicador de conflito de merge deve ser exibido na barra de status com a opção de resolver conflitos usando o agente."
+
+msgctxt "settings"
+msgid "Whether to show the stage and restore buttons on diff hunks."
+msgstr "Define se os botões de preparar e restaurar devem ser exibidos nos blocos do diff."
+
+msgctxt "settings"
+msgid "Whether to show turn statistics like elapsed time during generation and final turn duration."
+msgstr "Define se as estatísticas de turno são exibidas, como o tempo decorrido durante a geração e a duração final do turno."
+
+msgctxt "settings"
+msgid "Whether to show warnings or not by default."
+msgstr "Define se avisos são exibidos por padrão."
+
+msgctxt "settings"
+msgid "Whether to sort file and folder names case-sensitively in the project panel."
+msgstr "Define se os nomes de arquivos e pastas são ordenados com distinção entre maiúsculas e minúsculas no painel do projeto."
+
+msgctxt "settings"
+msgid "Whether to start a new line with a comment when a previous line is a comment as well."
+msgstr "Define se uma nova linha inicia com um comentário quando a linha anterior também é um comentário."
+
+msgctxt "settings"
+msgid "Whether to stick parent directories at top of the project panel."
+msgstr "Define se os diretórios pai ficam fixos no topo do painel do projeto."
+
+msgctxt "settings"
+msgid "Whether to stick scopes to the top of the editor"
+msgstr "Define se os escopos ficam fixos no topo do editor"
+
+msgctxt "settings"
+msgid "Whether to use additional LSP queries to format (and amend) the code after every \"trigger\" symbol input, defined by LSP server capabilities"
+msgstr "Define se consultas LSP adicionais são usadas para formatar (e corrigir) o código após cada símbolo \"gatilho\" inserido, conforme definido pelas capacidades do servidor LSP"
+
+msgctxt "settings"
+msgid "Whether to use command history ranking for sorting in the command palette."
+msgstr "Define se a classificação por histórico de comandos é usada para a ordenação na paleta de comandos."
+
+msgctxt "settings"
+msgid "Whether to use language servers to provide code intelligence."
+msgstr "Define se servidores de linguagem são usados para fornecer inteligência de código."
+
+msgctxt "settings"
+msgid "Whether to zoom the editor font size with the mouse wheel while holding the primary modifier key."
+msgstr "Define se o tamanho da fonte do editor pode ser ajustado com a roda do mouse ao manter a tecla modificadora principal pressionada."
+
+msgctxt "settings"
+msgid "Whether type hints should be shown."
+msgstr "Define se as dicas de tipo devem ser exibidas."
+
+msgctxt "settings"
+msgid "Whether update checks also consider pre-releases. By default only releases are considered."
+msgstr "Define se as verificações de atualização também consideram pré-lançamentos. Por padrão, apenas versões estáveis são consideradas."
+
+msgctxt "settings"
+msgid "Whether your current project should be shared when joining an empty channel."
+msgstr "Define se o projeto atual é compartilhado ao entrar em um canal vazio."
+
+msgctxt "settings"
+msgid "Which diagnostic indicators to show in the scrollbar."
+msgstr "Quais indicadores de diagnóstico exibir na barra de rolagem."
+
+msgctxt "settings"
+msgid "Which files containing diagnostic errors/warnings to mark in the project panel."
+msgstr "Quais arquivos contendo erros/avisos de diagnóstico marcar no painel do projeto."
+
+msgctxt "settings"
+msgid "Which files containing diagnostic errors/warnings to mark in the tabs."
+msgstr "Quais arquivos contendo erros/avisos de diagnóstico marcar nas abas."
+
+msgctxt "settings"
+msgid "Which level to use to filter out diagnostics displayed in the editor."
+msgstr "Qual nível usar para filtrar os diagnósticos exibidos no editor."
+
+msgctxt "settings"
+msgid "Which settings should be activated only in Preview build of Zed."
+msgstr "Quais configurações devem ser ativadas somente na compilação Preview do ForgeKairos."
+
+msgctxt "settings"
+msgid "Which side of the window the Threads Sidebar appears on."
+msgstr "Em qual lado da janela a barra lateral de conversas aparece."
+
+msgctxt "settings"
+msgid "Which-key Menu"
+msgstr "Menu which-key"
+
+msgctxt "settings"
+msgid "Whitespace"
+msgstr "Espaço em branco"
+
+msgctxt "settings"
+msgid "Whole Word"
+msgstr "Palavra inteira"
+
+msgctxt "settings"
+msgid "Width in pixels of the git diff indicators."
+msgstr "Define a largura em pixels dos indicadores de diff do Git."
+
+msgctxt "settings"
+msgid "Width of the git diff indicators in the gutter. Default scales with the buffer font size."
+msgstr "Define a largura dos indicadores de diff do Git na medianiz. O padrão se ajusta ao tamanho da fonte do buffer."
+
+msgctxt "settings"
+msgid "Window"
+msgstr "Janela"
+
+msgctxt "settings"
+msgid "Window & Layout"
+msgstr "Janela e layout"
+
+msgctxt "settings"
+msgid "Window Decorations"
+msgstr "Decorações de janela"
+
+msgctxt "settings"
+msgid "Window title template. Available variables are `${projectName}`, `${fileName}`, `${filePath}`, `${relativePath}`, `${fileStem}`, `${remoteName}`, `${remoteHost}`, `${appName}`, `${branch}`, and `${separator}`. `${separator}` is omitted when adjacent variables are empty, but literal text is preserved. The collaboration indicator, when present, is appended after the rendered template. If the template renders to nothing, the default template is used instead."
+msgstr "Modelo de título da janela. As variáveis disponíveis são `${projectName}`, `${fileName}`, `${filePath}`, `${relativePath}`, `${fileStem}`, `${remoteName}`, `${remoteHost}`, `${appName}`, `${branch}`, e `${separator}`. `${separator}` é omitido quando as variáveis adjacentes estão vazias, mas o texto literal é preservado. O indicador de colaboração, quando presente, é adicionado após o modelo renderizado. Se o modelo não renderizar nada, o modelo padrão é usado em seu lugar."
+
+msgctxt "settings"
+msgid "Word Diff Enabled"
+msgstr "Diff por palavra habilitado"
+
+msgctxt "settings"
+msgid "Words"
+msgstr "Palavras"
+
+msgctxt "settings"
+msgid "Words Min Length"
+msgstr "Comprimento mínimo de palavras"
+
+msgctxt "settings"
+msgid "Working Directory"
+msgstr "Diretório de trabalho"
+
+msgctxt "settings"
+msgid "Workspace Restoration"
+msgstr "Restauração do espaço de trabalho"
+
+msgctxt "settings"
+msgid "Wrap Guides"
+msgstr "Guias de quebra de linha"
+
+msgctxt "settings"
+msgid "Wrapping"
+msgstr "Quebra de linha"
+
+msgctxt "settings"
+msgid "Zoomed Padding"
+msgstr "Espaçamento ao ampliar"
+
+msgctxt "settings"
+msgid "clangd"
+msgstr "clangd"
+
+msgctxt "settings"
+msgid "e.g. claude"
+msgstr "ex.: claude"
+
+msgctxt "settings"
+msgid "when enabled, zed will prefer already-open buffers."
+msgstr "Quando habilitado, o ForgeKairos dará preferência a buffers já abertos."

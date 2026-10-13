@@ -1,0 +1,60 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Clear Filter"
+msgstr "Filter löschen"
+
+msgid "Copy Path"
+msgstr "Pfad kopieren"
+
+msgid "Copy Relative Path"
+msgstr "Relativen Pfad kopieren"
+
+msgid "Fold Directory"
+msgstr "Verzeichnis zusammenfassen"
+
+msgid "Lines {}- {}"
+msgstr "Zeilen {}- {}"
+
+msgid "No matches for query"
+msgstr "Keine Treffer für die Abfrage"
+
+msgid "No outlines available"
+msgstr "Keine Gliederung verfügbar"
+
+msgid "Open in Terminal"
+msgstr "Im Terminal öffnen"
+
+msgid "Outline Panel"
+msgstr "Gliederungspanel"
+
+msgid "Pin Active Outline"
+msgstr "Aktive Gliederung anheften"
+
+msgid "Search buffer symbols…"
+msgstr "Puffersymbole durchsuchen…"
+
+msgid "Searching:"
+msgstr "Suche:"
+
+msgid "Toggle Panel With"
+msgstr "Panel umschalten mit"
+
+msgid "Unfold Directory"
+msgstr "Zusammenfassung aufheben"
+
+msgid "Unknown buffer"
+msgstr "Unbekannter Puffer"
+
+msgid "Unpin Outline"
+msgstr "Gliederung lösen"
+
+msgid "Untitled"
+msgstr "Unbenannt"

@@ -1,0 +1,575 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "'{path}' does not exist"
+msgstr "'{path}'이(가) 존재하지 않습니다"
+
+msgid "A language server"
+msgstr "언어 서버"
+
+msgid "Are you sure you want to restart?"
+msgstr "다시 시작하시겠습니까?"
+
+msgid "Body Text"
+msgstr "본문 텍스트"
+
+msgid "Bottom"
+msgstr "하단"
+
+msgid "Bottom dock"
+msgstr "하단 도크"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Cannot drop files on a remote project"
+msgstr "원격 프로젝트에는 파일을 드롭할 수 없습니다"
+
+msgid "Cannot drop local files on a remote SSH/Docker project"
+msgstr "원격 SSH/Docker 프로젝트에는 로컬 파일을 드롭할 수 없습니다"
+
+msgid "Click to Close"
+msgstr "클릭하여 닫기"
+
+msgid "Click to close"
+msgstr "클릭하여 닫기"
+
+msgid "Clone Repository"
+msgstr "저장소 복제"
+
+msgid "Close"
+msgstr "닫기"
+
+msgid "Close All"
+msgstr "모두 닫기"
+
+msgid "Close Clean"
+msgstr "저장된 항목 닫기"
+
+msgid "Close Left"
+msgstr "왼쪽 항목 닫기"
+
+msgid "Close Multibuffers"
+msgstr "멀티버퍼 닫기"
+
+msgid "Close Others"
+msgstr "다른 항목 닫기"
+
+msgid "Close Right"
+msgstr "오른쪽 항목 닫기"
+
+msgid "Close Tab"
+msgstr "탭 닫기"
+
+msgid "Close Without Saving"
+msgstr "저장하지 않고 닫기"
+
+msgid "Close window and hang up"
+msgstr "창 닫고 통화 종료"
+
+msgid "Close {} Dock"
+msgstr "{} 도크 닫기"
+
+msgid "Collaborate with Agents"
+msgstr "에이전트와 협업하기"
+
+msgid "Colors"
+msgstr "색"
+
+msgid "Configure"
+msgstr "구성"
+
+msgid "Copy Description"
+msgstr "설명 복사"
+
+msgid "Copy File Permalink"
+msgstr "파일 고유 링크 복사"
+
+msgid "Copy Message"
+msgstr "메시지 복사"
+
+msgid "Copy Path"
+msgstr "경로 복사"
+
+msgid "Copy Relative Path"
+msgstr "상대 경로 복사"
+
+msgid "Could not open file"
+msgstr "파일을 열지 못했습니다"
+
+msgid "Could not translate the dropped paths into WSL paths"
+msgstr "드롭한 경로를 WSL 경로로 변환하지 못했습니다"
+
+msgid "Customize Keymaps"
+msgstr "키맵 사용자 지정"
+
+msgid "Discard Edits"
+msgstr "편집 내용 버리기"
+
+msgid "Discard all"
+msgstr "모두 버리기"
+
+msgid "Dismiss"
+msgstr "닫기"
+
+msgid "Do you want to leave the current call?"
+msgstr "현재 통화에서 나가시겠습니까?"
+
+msgid "Do you want to save all changes in the following files?"
+msgstr "다음 파일들의 모든 변경 사항을 저장하시겠습니까?"
+
+msgid "Do you want to save changes to the following files?"
+msgstr "다음 파일의 변경 사항을 저장하시겠습니까?"
+
+msgid "Do you want to switch channels?"
+msgstr "채널을 전환하시겠습니까?"
+
+msgid "Dock {}"
+msgstr "{}에 도킹"
+
+msgid "Don't Save"
+msgstr "저장 안 함"
+
+msgid "Drag to move to another dock"
+msgstr "다른 도크로 이동하려면 드래그하세요"
+
+msgid "Editor"
+msgstr "편집기"
+
+msgid "Enter a folder to trust"
+msgstr "신뢰할 폴더를 입력하세요"
+
+msgid "Enter an absolute folder path"
+msgstr "절대 폴더 경로를 입력하세요"
+
+msgid "Explore Extensions"
+msgstr "확장 프로그램 둘러보기"
+
+msgid "Failed to copy file permalink: {err}"
+msgstr "파일 고유 링크를 복사하지 못했습니다: {err}"
+
+msgid "Failed to join channel"
+msgstr "채널에 참가하지 못했습니다"
+
+msgid "Failed to join project"
+msgstr "프로젝트에 참여하지 못했습니다"
+
+msgid "Failed to load the database file."
+msgstr "데이터베이스 파일을 불러오지 못했습니다."
+
+msgid "Failed to open file permalink: {err}"
+msgstr "파일 고유 링크를 열지 못했습니다: {err}"
+
+msgid "Failed to save"
+msgstr "저장하지 못했습니다"
+
+msgid "File an Issue"
+msgstr "이슈 등록"
+
+msgid "Fixed Width"
+msgstr "고정 너비"
+
+msgid "Flex Width"
+msgstr "가변 너비"
+
+msgid "Folder to trust"
+msgstr "신뢰할 폴더"
+
+msgid "Follow {} to their active project"
+msgstr "{}님의 활성 프로젝트로 따라가기"
+
+msgid "Get Started"
+msgstr "시작하기"
+
+msgid "Go Back"
+msgstr "뒤로"
+
+msgid "Go Forward"
+msgstr "앞으로"
+
+msgid "Headline 1"
+msgstr "제목 1"
+
+msgid "Headline 2"
+msgstr "제목 2"
+
+msgid "Headline 3"
+msgstr "제목 3"
+
+msgid "Headline 4"
+msgstr "제목 4"
+
+msgid "Headline 5"
+msgstr "제목 5"
+
+msgid "Headline Sizes"
+msgstr "제목 크기"
+
+msgid "Hide Button"
+msgstr "버튼 숨기기"
+
+msgid "Hide {icon_tooltip}"
+msgstr "{icon_tooltip} 숨기기"
+
+msgid "Language servers from running"
+msgstr "언어 서버 실행"
+
+msgid "Leaving this call will unshare your current project."
+msgstr "이 통화에서 나가면 현재 프로젝트의 공유가 해제됩니다."
+
+msgid "Left"
+msgstr "왼쪽"
+
+msgid "Left dock"
+msgstr "왼쪽 도크"
+
+msgid "Locked Tab"
+msgstr "잠긴 탭"
+
+msgid "MCP Server integrations from installing"
+msgstr "MCP 서버 통합 설치"
+
+msgid "Make Tab Editable"
+msgstr "탭 편집 가능으로 변경"
+
+msgid "Make Tab Read-Only"
+msgstr "탭 읽기 전용으로 변경"
+
+msgid "Move to New Window"
+msgstr "새 창으로 이동"
+
+msgid "Move to {} Dock"
+msgstr "{} 도크로 이동"
+
+msgid "Must be a parent folder of the project"
+msgstr "프로젝트의 상위 폴더여야 합니다"
+
+msgid "New Center Terminal"
+msgstr "가운데 분할 영역에 새 터미널"
+
+msgid "New File"
+msgstr "새 파일"
+
+msgid "New Terminal"
+msgstr "새 터미널"
+
+msgid "New Window"
+msgstr "새 창"
+
+msgid "New…"
+msgstr "새로 만들기…"
+
+msgid "No matching channel was found. Please check the link and try again."
+msgstr "일치하는 채널을 찾을 수 없습니다. 링크를 확인하고 다시 시도하세요."
+
+msgid "Open"
+msgstr "열기"
+
+msgid "Open Agent Panel"
+msgstr "에이전트 패널 열기"
+
+msgid "Open Command Palette"
+msgstr "명령 팔레트 열기"
+
+msgid "Open File"
+msgstr "파일 열기"
+
+msgid "Open File Permalink"
+msgstr "파일 고유 링크 열기"
+
+msgid "Open Project"
+msgstr "프로젝트 열기"
+
+msgid "Open Settings"
+msgstr "설정 열기"
+
+msgid "Open Threads Sidebar"
+msgstr "스레드 사이드바 열기"
+
+msgid "Open a link from a language server?"
+msgstr "언어 서버의 링크를 여시겠습니까?"
+
+msgid "Open in Default App"
+msgstr "기본 앱에서 열기"
+
+msgid "Open in Terminal"
+msgstr "터미널에서 열기"
+
+msgid "Open in WSL"
+msgstr "WSL에서 열기"
+
+msgid "Open threads sidebar"
+msgstr "스레드 사이드바 열기"
+
+msgid "Overview"
+msgstr "개요"
+
+msgid "Overwrite"
+msgstr "덮어쓰기"
+
+msgid "Pin Tab"
+msgstr "탭 고정"
+
+msgid "Please check your internet connection and try again."
+msgstr "인터넷 연결을 확인하고 다시 시도하세요."
+
+msgid "Please sign in to continue."
+msgstr "계속하려면 로그인하세요."
+
+msgid "Pop Out to New Window"
+msgstr "새 창으로 분리"
+
+msgid "Project settings from being applied"
+msgstr "프로젝트 설정 적용"
+
+msgid "Read-Only Tab"
+msgstr "읽기 전용 탭"
+
+msgid "Recent Projects"
+msgstr "최근 프로젝트"
+
+msgid "Rename"
+msgstr "이름 변경"
+
+msgid "Restart"
+msgstr "다시 시작"
+
+msgid "Restricted Mode prevents:"
+msgstr "제한 모드 차단 항목:"
+
+msgid "Return to Onboarding"
+msgstr "온보딩으로 돌아가기"
+
+msgid "Reveal In Project Panel"
+msgstr "프로젝트 패널에서 보기"
+
+msgid "Review .zed/settings.json for any extensions or commands configured by this project."
+msgstr "이 프로젝트에서 구성한 확장 프로그램이나 명령이 있는지 .zed/settings.json을 검토하세요."
+
+msgid "Right"
+msgstr "오른쪽"
+
+msgid "Right dock"
+msgstr "오른쪽 도크"
+
+msgid "Right-click or Shift-click to stack below"
+msgstr "아래에 나란히 표시하려면 오른쪽 클릭 또는 Shift-클릭"
+
+msgid "Right-click or Shift-click to stack side by side"
+msgstr "옆에 나란히 표시하려면 오른쪽 클릭 또는 Shift-클릭"
+
+msgid "Run multiple threads at once, mix and match any ACP-compatible agent, and keep work conflict-free with worktrees."
+msgstr "여러 스레드를 동시에 실행하고, ACP 호환 에이전트를 자유롭게 조합하며, 워크트리로 작업 충돌 없이 진행하세요."
+
+msgid "Save"
+msgstr "저장"
+
+msgid "Save all"
+msgstr "모두 저장"
+
+msgid "Search Project"
+msgstr "프로젝트 검색"
+
+msgid "Search Symbols"
+msgstr "심볼 검색"
+
+msgid "See docs"
+msgstr "문서 보기"
+
+msgid "Shift-click to Suppress"
+msgstr "Shift-클릭으로 표시 안 함"
+
+msgid "Split Down"
+msgstr "아래로 분할"
+
+msgid "Split Left"
+msgstr "왼쪽으로 분할"
+
+msgid "Split Pane"
+msgstr "분할 영역 나누기"
+
+msgid "Split Right"
+msgstr "오른쪽으로 분할"
+
+msgid "Split Up"
+msgstr "위로 분할"
+
+msgid "Stack Below"
+msgstr "아래에 나란히 표시"
+
+msgid "Stack Side by Side"
+msgstr "옆에 나란히 표시"
+
+msgid "Stack in {} Dock"
+msgstr "{} 도크에 나란히 표시"
+
+msgid "Stack {icon_tooltip} Below"
+msgstr "{icon_tooltip}을(를) 아래에 나란히 표시"
+
+msgid "Stack {icon_tooltip} Side by Side"
+msgstr "{icon_tooltip}을(를) 옆에 나란히 표시"
+
+msgid "Status bar"
+msgstr "상태 표시줄"
+
+msgid "Stay in Restricted Mode"
+msgstr "제한 모드 유지"
+
+msgid "Suppress"
+msgstr "표시 안 함"
+
+msgid "Suppress with shift-click"
+msgstr "shift-클릭으로 표시 안 함"
+
+msgid "Task spawn failed: {e}"
+msgstr "작업 실행 실패: {e}"
+
+msgid "Text"
+msgstr "텍스트"
+
+msgid "Text Colors"
+msgstr "텍스트 색"
+
+msgid "The editor for what's next"
+msgstr "차세대를 위한 편집기"
+
+msgid "The folders were not changed because the selected folders could not be opened"
+msgstr "선택한 폴더를 열지 못했으므로 폴더가 변경되지 않았습니다"
+
+msgid "Theme Preview"
+msgstr "테마 미리 보기"
+
+msgid "This buffer contains unsaved edits. Do you want to save it?"
+msgstr "이 버퍼에 저장되지 않은 편집 내용이 있습니다. 저장하시겠습니까?"
+
+msgid "This channel is private, and you do not have access. Please ask someone to add you and try again."
+msgstr "이 채널은 비공개이며 액세스 권한이 없습니다. 추가해 달라고 요청한 후 다시 시도하세요."
+
+msgid "This file has been deleted on disk since you started editing it. Do you want to recreate it?"
+msgstr "편집을 시작한 이후 이 파일이 디스크에서 삭제되었습니다. 다시 생성하시겠습니까?"
+
+msgid "This file has changed on disk since you started editing it. Do you want to overwrite it?"
+msgstr "편집을 시작한 이후 이 파일이 디스크에서 변경되었습니다. 덮어쓰시겠습니까?"
+
+msgid "This tab is read-only"
+msgstr "이 탭은 읽기 전용입니다"
+
+msgid "This will make this tab editable"
+msgstr "이 탭을 편집 가능하게 만듭니다"
+
+msgid "Title bar"
+msgstr "제목 표시줄"
+
+msgid "Trust all projects in"
+msgstr "다음 위치의 모든 프로젝트 신뢰"
+
+msgid "Trust all projects in the parent folders"
+msgstr "상위 폴더의 모든 프로젝트 신뢰"
+
+msgid "Trust all projects in the {} folder"
+msgstr "{} 폴더의 모든 프로젝트 신뢰"
+
+msgid "Trust all single files"
+msgstr "모든 단일 파일 신뢰"
+
+msgid "Trust and Continue"
+msgstr "신뢰하고 계속"
+
+msgid "Typography"
+msgstr "타이포그래피"
+
+msgid "Unable to save file: {err}"
+msgstr "파일을 저장할 수 없습니다: {err}"
+
+msgid "Unlock Tab"
+msgstr "탭 잠금 해제"
+
+msgid "Unpin Tab"
+msgstr "탭 고정 해제"
+
+msgid "Unrecognized Project"
+msgstr "인식되지 않은 프로젝트"
+
+msgid "Unrecognized Projects ({})"
+msgstr "인식되지 않은 프로젝트 ({})"
+
+msgid "Unstack"
+msgstr "나란히 표시 해제"
+
+msgid "Untitled"
+msgstr "제목 없음"
+
+msgid "Untrusted projects are opened in Restricted Mode to protect your system."
+msgstr "시스템을 보호하기 위해 신뢰할 수 없는 프로젝트는 제한 모드로 열립니다."
+
+msgid "Welcome"
+msgstr "시작"
+
+msgid "Welcome back to Zed"
+msgstr "ForgeKairos에 다시 오신 것을 환영합니다"
+
+msgid "Welcome to Zed"
+msgstr "ForgeKairos에 오신 것을 환영합니다"
+
+msgid "Wrapping Text"
+msgstr "텍스트 줄 바꿈"
+
+msgid "Yes, Join Channel"
+msgstr "예, 채널 참여"
+
+msgid "You cannot add folders to someone else's project"
+msgstr "다른 사람의 프로젝트에는 폴더를 추가할 수 없습니다"
+
+msgid "You cannot change the folders of someone else's project"
+msgstr "다른 사람의 프로젝트 폴더는 변경할 수 없습니다"
+
+msgid "Your are running an unsupported version of Zed. Please update to continue."
+msgstr "지원되지 않는 버전의 ForgeKairos를 실행 중입니다. 계속하려면 업데이트하세요."
+
+msgid "empty project"
+msgstr "빈 프로젝트"
+
+msgid "{display_path} is inside a WSL filesystem, some features may not work unless you open it with WSL remote"
+msgstr "{display_path}이(가) WSL 파일 시스템 내부에 있습니다. WSL 원격으로 열지 않으면 일부 기능이 작동하지 않을 수 있습니다"
+
+msgid "{server} asks to open this address in your browser:\n\n{url}"
+msgstr "{server}이(가) 브라우저에서 다음 주소를 열도록 요청합니다:\n\n{url}"
+
+msgid "{}\n\nPlease try again."
+msgstr "{}\n\n다시 시도하세요."
+
+msgid "{}\n.. and {} more"
+msgstr "{}\n.. 외 {}개"
+
+msgid "{} Preview"
+msgstr "{} 미리 보기"
+
+msgid "{} contains unsaved edits. Do you want to save it?"
+msgstr "{}에 저장되지 않은 편집 내용이 있습니다. 저장하시겠습니까?"
+
+msgid "{} is in an unshared pane"
+msgstr "{}님이 공유되지 않은 분할 영역에 있습니다"
+
+msgid "{} is viewing a window outside of Zed"
+msgstr "{}님이 ForgeKairos 외부의 창을 보고 있습니다"
+
+msgid "{} is viewing an unshared Zed project"
+msgstr "{}님이 공유되지 않은 ForgeKairos 프로젝트를 보고 있습니다"
+
+msgid "{}'s screen"
+msgstr "{}님의 화면"
+
+msgctxt "pane"
+msgid "Zoom In"
+msgstr "확대"
+
+msgctxt "pane"
+msgid "Zoom Out"
+msgstr "축소"

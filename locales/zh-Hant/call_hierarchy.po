@@ -1,0 +1,53 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Fetching call hierarchy…"
+msgstr "正在取得呼叫階層…"
+
+msgid "No callable symbol under the cursor"
+msgstr "游標下沒有可呼叫的符號"
+
+msgid "No incoming calls found"
+msgstr "找不到來電呼叫"
+
+msgid "No matches"
+msgstr "沒有符合項目"
+
+msgid "No outgoing calls found"
+msgstr "找不到撥出呼叫"
+
+msgid "Search calls from `{}`..."
+msgstr "搜尋來自 `{}` 的呼叫..."
+
+msgid "Search calls to `{}`..."
+msgstr "搜尋對 `{}` 的呼叫..."
+
+msgid "Search incoming calls..."
+msgstr "搜尋來電呼叫..."
+
+msgid "Search outgoing calls..."
+msgstr "搜尋撥出呼叫..."
+
+msgid "Show Callees"
+msgstr "顯示被呼叫端"
+
+msgid "Show Callers"
+msgstr "顯示呼叫端"
+
+msgid "Switch Direction"
+msgstr "切換方向"
+
+msgid "{path}:{line_number} ({count} call)"
+msgid_plural "{path}:{line_number} ({count} calls)"
+msgstr[0] "{path}:{line_number}（{count} 個呼叫）"
+
+msgctxt "call hierarchy"
+msgid "Back"
+msgstr "返回"

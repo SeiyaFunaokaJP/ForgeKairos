@@ -1,0 +1,2653 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid " (Outside Sandbox)"
+msgstr " (außerhalb der Sandbox)"
+
+msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
+msgstr "„Ausführung außerhalb der Sandbox zulassen“ ist unter Einstellungen > KI > Sandbox ausgeschaltet, daher wird nichts außerhalb der Sandbox gestartet, und die Einstellungen, die einen Agenten oder Claude Code immer außerhalb der Sandbox starten, werden ignoriert. Um dies zuzulassen, schalten Sie diese Einstellung ein."
+
+msgid "\"{title}\" is required."
+msgstr "„{title}“ ist erforderlich."
+
+msgid "\"{title}\" must be a number."
+msgstr "„{title}“ muss eine Zahl sein."
+
+msgid "\"{title}\" must be an integer."
+msgstr "„{title}“ muss eine ganze Zahl sein."
+
+msgid "(Current Plan)"
+msgstr "(Aktueller Tarif)"
+
+msgid "(added)"
+msgstr "(hinzugefügt)"
+
+msgid "(not added)"
+msgstr "(nicht hinzugefügt)"
+
+msgid "/tmp (isolated)"
+msgstr "/tmp (isoliert)"
+
+msgid "1 Queued Message"
+msgstr "1 Nachricht in der Warteschlange"
+
+msgid "1 Skill Loaded with a Long Description"
+msgstr "1 Skill mit langer Beschreibung geladen"
+
+msgid "1 global rule"
+msgstr "1 globale Regel"
+
+msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
+msgstr "Ein Host mit Platzhalter ({pattern}) kann nicht über eine Zustimmung zur Zulassungsliste hinzugefügt werden."
+
+msgid "ACP Agent"
+msgstr "ACP-Agent"
+
+msgid "ACP Registry"
+msgstr "ACP-Registry"
+
+msgid "AI Judge (Auto-Run If Safe)"
+msgstr "KI entscheidet (automatisch ausführen, wenn sicher)"
+
+msgid "AI Judge On"
+msgstr "KI entscheidet: Ein"
+
+msgid "AI judge: canceled — {}"
+msgstr "KI-Entscheidung: abgebrochen — {}"
+
+msgid "AI judge: not applicable — {}"
+msgstr "KI-Entscheidung: nicht anwendbar — {}"
+
+msgid "AI judge: safe (auto-run) — {}"
+msgstr "KI-Entscheidung: sicher (automatisch ausgeführt) — {}"
+
+msgid "AI judge: safe (auto-run, earlier verdict reused) — {}"
+msgstr "KI-Entscheidung: sicher (automatisch ausgeführt, frühere Entscheidung wiederverwendet) — {}"
+
+msgid "AI judge: unsafe — {}"
+msgstr "KI-Entscheidung: unsicher — {}"
+
+msgid "AI judging…"
+msgstr "KI entscheidet…"
+
+msgid "API Error"
+msgstr "API-Fehler"
+
+msgid "API Key"
+msgstr "API-Schlüssel"
+
+msgid "API key is saved in {store}"
+msgstr "Der API-Schlüssel ist im Anmeldedatenspeicher ({store}) gespeichert"
+
+msgid "API key is set (plain text in settings.json)"
+msgstr "Der API-Schlüssel ist festgelegt (Klartext in settings.json)"
+
+msgid "AVX2 could not be confirmed on the WSL CPU, so the Linux build of Claude Code (x64) cannot run."
+msgstr "AVX2 konnte auf der CPU von WSL nicht bestätigt werden, daher kann die Linux-Version von Claude Code (x64) nicht ausgeführt werden."
+
+msgid "AVX2 could not be confirmed on the remote host's CPU, so the Linux build of Claude Code (x64) cannot run."
+msgstr "AVX2 konnte auf der CPU des Remote-Hosts nicht bestätigt werden, daher kann die Linux-Version von Claude Code (x64) nicht ausgeführt werden."
+
+msgid "About {tokens} tokens"
+msgstr "Etwa {tokens} Token"
+
+msgid "Accept Generation"
+msgstr "Generierung annehmen"
+
+msgid "Accept Transform"
+msgstr "Transformation annehmen"
+
+msgid "Account"
+msgstr "Konto"
+
+msgid "Actions"
+msgstr "Aktionen"
+
+msgid "Add API Key…"
+msgstr "API-Schlüssel hinzufügen…"
+
+msgid "Add Context"
+msgstr "Kontext hinzufügen"
+
+msgid "Add More Agents"
+msgstr "Weitere Agenten hinzufügen"
+
+msgid "Add New Profile"
+msgstr "Neues Profil hinzufügen"
+
+msgid "Add Server…"
+msgstr "Server hinzufügen…"
+
+msgid "Add a prompt…"
+msgstr "Prompt hinzufügen…"
+
+msgid "Add to Allowlist and Check"
+msgstr "Zur Zulassungsliste hinzufügen und prüfen"
+
+msgid "Add to Allowlist and Continue"
+msgstr "Zur Zulassungsliste hinzufügen und fortfahren"
+
+msgid "Add to Allowlist and Install"
+msgstr "Zur Zulassungsliste hinzufügen und installieren"
+
+msgid "Add to Allowlist and Start"
+msgstr "Zur Zulassungsliste hinzufügen und starten"
+
+msgid "Add to Allowlist and Update"
+msgstr "Zur Zulassungsliste hinzufügen und aktualisieren"
+
+msgid "Agent"
+msgstr "Agent"
+
+msgid "Agent Changes Rejected"
+msgstr "Agent-Änderungen abgelehnt"
+
+msgid "Agent Diff"
+msgstr "Agent-Diff"
+
+msgid "Agent Panel"
+msgstr "Agent-Panel"
+
+msgid "Agent Profiles"
+msgstr "Agent-Profile"
+
+msgid "Agent Update Available"
+msgstr "Agent-Update verfügbar"
+
+msgid "Agent stopped due to an error"
+msgstr "Agent aufgrund eines Fehlers gestoppt"
+
+msgid "Agree and Install"
+msgstr "Zustimmen und installieren"
+
+msgid "Agree and Update"
+msgstr "Zustimmen und aktualisieren"
+
+msgid "All"
+msgstr "Alle"
+
+msgid "All Done"
+msgstr "Alles erledigt"
+
+msgid "All Options"
+msgstr "Alle Optionen"
+
+msgid "All Sidebar Thread Metadata"
+msgstr "Metadaten aller Threads der Seitenleiste"
+
+msgid "All domains (unrestricted)"
+msgstr "Alle Domains (uneingeschränkt)"
+
+msgid "All paths except protected Git metadata"
+msgstr "Alle Pfade außer geschützten Git-Metadaten"
+
+msgid "All tools are disabled because this project isn't trusted"
+msgstr "Alle Tools sind deaktiviert, weil diesem Projekt nicht vertraut wird"
+
+msgid "Allow"
+msgstr "Zulassen"
+
+msgid "Allowed for this thread:"
+msgstr "Für diesen Thread zugelassen:"
+
+msgid "Already rated this completion"
+msgstr "Dieses Ergebnis wurde bereits bewertet"
+
+msgid "Also possible by placing your cursor inside the terminal and using regular terminal bindings."
+msgstr "Auch möglich durch Platzieren des Cursors im Terminal und Verwenden regulärer Terminal-Tastenkombinationen."
+
+msgid "Always for selected commands"
+msgstr "Immer für ausgewählte Befehle"
+
+msgid "An API key is still written in plain text in settings.json under `agent_servers` → `{}` → `env` → `{variable}`. Save the key here to move it to {store}, or remove it."
+msgstr "Ein API-Schlüssel steht noch im Klartext in settings.json unter `agent_servers` → `{}` → `env` → `{variable}`. Speichern Sie den Schlüssel hier, um ihn in den Anmeldedatenspeicher ({store}) zu verschieben, oder entfernen Sie ihn."
+
+msgid "An Error Happened"
+msgstr "Ein Fehler ist aufgetreten"
+
+msgid "Anthropic will retain inference logs."
+msgstr "Anthropic bewahrt Inferenzprotokolle auf."
+
+msgid "Apply"
+msgstr "Anwenden"
+
+msgid "Archive Thread"
+msgstr "Thread archivieren"
+
+msgid "Associate the \"{}\" thread with..."
+msgstr "Thread „{}“ verknüpfen mit..."
+
+msgid "Attachments {tokens}"
+msgstr "Anhänge {tokens}"
+
+msgid "Authenticate"
+msgstr "Authentifizieren"
+
+msgid "Authenticate to connect this server"
+msgstr "Authentifizieren, um eine Verbindung zu diesem Server herzustellen"
+
+msgid "Authenticate to {}"
+msgstr "Bei {} authentifizieren"
+
+msgid "Authenticating to {}…"
+msgstr "Authentifizierung bei {} läuft…"
+
+msgid "Authenticating…"
+msgstr "Wird authentifiziert…"
+
+msgid "Authentication Failed"
+msgstr "Authentifizierung fehlgeschlagen"
+
+msgid "Authentication Required"
+msgstr "Authentifizierung erforderlich"
+
+msgid "Auto (Outline If Large)"
+msgstr "Automatisch (bei großen Dateien Gliederung)"
+
+msgid "Auto-Approve (In Sandbox)"
+msgstr "Automatisch genehmigen (in der Sandbox)"
+
+msgid "Auto-Approve On"
+msgstr "Automatisch genehmigen: Ein"
+
+msgid "Awaiting Confirmation"
+msgstr "Bestätigung ausstehend"
+
+msgid "Awaiting Confirmation ({pending_count})"
+msgstr "Ausstehende Bestätigungen ({pending_count})"
+
+msgid "Bad Result"
+msgstr "Schlechtes Ergebnis"
+
+msgid "Branch Diff"
+msgstr "Branch-Diff"
+
+msgid "Can write anywhere except the protected paths, which is nearly the same as running outside the sandbox"
+msgstr "Kann überall außer in den geschützten Pfaden schreiben; das ist fast dasselbe wie eine Ausführung außerhalb der Sandbox"
+
+msgid "Can't Start in the Sandbox"
+msgstr "Start in der Sandbox nicht möglich"
+
+msgid "Can't Start {} in the Sandbox"
+msgstr "{} kann nicht in der Sandbox gestartet werden"
+
+msgid "Can't rate, still generating..."
+msgstr "Bewertung nicht möglich, wird noch generiert..."
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Cancel Restore"
+msgstr "Wiederherstellung abbrechen"
+
+msgid "Cancel Without Adding"
+msgstr "Abbrechen, ohne hinzuzufügen"
+
+msgid "Canceled"
+msgstr "Abgebrochen"
+
+msgid "Canceled because the Claude Code download server did not respond for 60 seconds."
+msgstr "Abgebrochen, weil der Downloadserver von Claude Code 60 Sekunden lang nicht geantwortet hat."
+
+msgid "Canceled because the Claude Code download server tried to redirect to another location."
+msgstr "Abgebrochen, weil der Downloadserver von Claude Code an einen anderen Ort weiterleiten wollte."
+
+msgid "Canceled because {url} is larger than expected."
+msgstr "Abgebrochen, weil {url} größer als erwartet ist."
+
+msgid "Canceled checking for Claude Code updates."
+msgstr "Die Suche nach Updates für Claude Code wurde abgebrochen."
+
+msgid "Canceled downloading the Linux build of Claude Code."
+msgstr "Das Herunterladen der Linux-Version von Claude Code wurde abgebrochen."
+
+msgid "Cannot switch to the form because the JSON could not be read: {error}"
+msgstr "Wechsel zum Formular nicht möglich, weil das JSON nicht gelesen werden konnte: {error}"
+
+msgid "Change"
+msgstr "Ändern"
+
+msgid "Change Mode"
+msgstr "Modus ändern"
+
+msgid "Change Model"
+msgstr "Modell ändern"
+
+msgid "Change Profile"
+msgstr "Profil ändern"
+
+msgid "Change Thinking Effort"
+msgstr "Denkaufwand ändern"
+
+msgid "Change Tool Permissions"
+msgstr "Tool-Berechtigungen ändern"
+
+msgid "Changes will be discarded"
+msgstr "Änderungen werden verworfen"
+
+msgid "Changes won't be discarded"
+msgstr "Änderungen werden nicht verworfen"
+
+msgid "Chat about anything with no tools."
+msgstr "Über alles chatten, ohne Tools."
+
+msgid "Chat about your codebase."
+msgstr "Über Ihre Codebasis chatten."
+
+msgid "Check for Claude Code Updates"
+msgstr "Nach Updates für Claude Code suchen"
+
+msgid "Check the server docs for required arguments and environment variables."
+msgstr "Prüfen Sie die Serverdokumentation auf erforderliche Argumente und Umgebungsvariablen."
+
+msgid "Checking the Claude Code already placed…"
+msgstr "Bereits abgelegtes Claude Code wird geprüft…"
+
+msgid "Choose a different model or configure other providers to get started"
+msgstr "Wählen Sie ein anderes Modell aus oder konfigurieren Sie andere Anbieter, um zu beginnen"
+
+msgid "Choose from Local Folders"
+msgstr "Aus lokalen Ordnern wählen"
+
+msgid "Choose one of the following authentication options:"
+msgstr "Wählen Sie eine der folgenden Authentifizierungsoptionen:"
+
+msgid "Claude (Anthropic)"
+msgstr "Claude (Anthropic)"
+
+msgid "Claude Code (Sandbox)"
+msgstr "Claude Code (Sandbox)"
+
+msgid "Claude Code (sandbox) is still starting for this project. Try again once it has started."
+msgstr "Claude Code (Sandbox) wird für dieses Projekt noch gestartet. Versuchen Sie es erneut, sobald es gestartet ist."
+
+msgid "Claude Code (sandbox) needs hosts added to the allowlist to connect"
+msgstr "Claude Code (Sandbox) benötigt Hosts in der Zulassungsliste, um sich zu verbinden"
+
+msgid "Claude Code changed while it was being sent to the remote host. Please try again."
+msgstr "Claude Code hat sich geändert, während es an den Remote-Host gesendet wurde. Bitte versuchen Sie es erneut."
+
+msgid "Claude Code for the sandbox is only available on Windows (WSL)."
+msgstr "Claude Code für die Sandbox ist nur unter Windows (WSL) verfügbar."
+
+msgid "Claude Code will start, but the IDE integration (diff tabs and diagnostics) is not available: "
+msgstr "Claude Code wird gestartet, aber die IDE-Integration (Diff-Tabs und Diagnosen) ist nicht verfügbar: "
+
+msgid "Clear All"
+msgstr "Alle löschen"
+
+msgid "Clear Plan"
+msgstr "Plan löschen"
+
+msgid "Clear Search"
+msgstr "Suche löschen"
+
+msgid "Click to Collapse"
+msgstr "Zum Zuklappen klicken"
+
+msgid "Click to Preview"
+msgstr "Zur Vorschau klicken"
+
+msgid "Click to copy rating ID"
+msgstr "Klicken, um die Bewertungs-ID zu kopieren"
+
+msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
+msgstr "Klicken, um einen Thread mit diesem Agenten zu öffnen. Von hier aus wird nichts aktualisiert, und laufende Sitzungen werden nicht beendet. Neu verbundene Threads starten die neueste Version, und laufende Threads zeigen ein Update-Banner an."
+
+msgid "Clipboard does not contain text"
+msgstr "Zwischenablage enthält keinen Text"
+
+msgid "Close"
+msgstr "Schließen"
+
+msgid "Close Assistant"
+msgstr "Assistent schließen"
+
+msgid "Close Search"
+msgstr "Suche schließen"
+
+msgid "Close Tab"
+msgstr "Tab schließen"
+
+msgid "Close Thread History"
+msgstr "Thread-Verlauf schließen"
+
+msgid "Codex on Windows"
+msgstr "Codex unter Windows"
+
+msgid "Commands"
+msgstr "Befehle"
+
+msgid "Compacting Context…"
+msgstr "Kontext wird komprimiert…"
+
+msgid "Compaction Canceled"
+msgstr "Komprimierung abgebrochen"
+
+msgid "Compaction Failed"
+msgstr "Komprimierung fehlgeschlagen"
+
+msgid "Completed"
+msgstr "Abgeschlossen"
+
+msgid "Completed Plan"
+msgstr "Abgeschlossener Plan"
+
+msgid "Configure"
+msgstr "Konfigurieren"
+
+msgid "Configure Built-in Tools"
+msgstr "Integrierte Tools konfigurieren"
+
+msgid "Configure Default Model"
+msgstr "Standardmodell konfigurieren"
+
+msgid "Configure MCP Server"
+msgstr "MCP-Server konfigurieren"
+
+msgid "Configure MCP Tools"
+msgstr "MCP-Tools konfigurieren"
+
+msgid "Configure Provider"
+msgstr "Anbieter konfigurieren"
+
+msgid "Configure Server"
+msgstr "Server konfigurieren"
+
+msgid "Configure Windows-drive warning"
+msgstr "Warnung für Windows-Laufwerke konfigurieren"
+
+msgid "Configure a provider to get started"
+msgstr "Konfigurieren Sie einen Anbieter, um zu beginnen"
+
+msgid "Configure unicode confusables warning"
+msgstr "Warnung vor verwechselbaren Unicode-Zeichen konfigurieren"
+
+msgid "Configure {}"
+msgstr "{} konfigurieren"
+
+msgid "Confirm Actions"
+msgstr "Aktionen bestätigen"
+
+msgid "Connecting Server…"
+msgstr "Verbindung zum Server wird hergestellt…"
+
+msgid "Connection Interrupted"
+msgstr "Verbindung unterbrochen"
+
+msgid "Context"
+msgstr "Kontext"
+
+msgid "Context Compacted"
+msgstr "Kontext komprimiert"
+
+msgid "Context Compaction"
+msgstr "Kontextkomprimierung"
+
+msgid "Context Too Large"
+msgstr "Kontext zu groß"
+
+msgid "Continue Iterating"
+msgstr "Weiterarbeiten"
+
+msgid "Copy"
+msgstr "Kopieren"
+
+msgid "Copy Code"
+msgstr "Code kopieren"
+
+msgid "Copy Command"
+msgstr "Befehl kopieren"
+
+msgid "Copy Error Message"
+msgstr "Fehlermeldung kopieren"
+
+msgid "Copy Link"
+msgstr "Link kopieren"
+
+msgid "Copy This Agent Response"
+msgstr "Diese Agent-Antwort kopieren"
+
+msgid "Copy as Markdown"
+msgstr "Als Markdown kopieren"
+
+msgid "Cost"
+msgstr "Kosten"
+
+msgid "Cost Multiplier: {}"
+msgstr "Kostenmultiplikator: {}"
+
+msgid "Cost per Million Tokens: {}"
+msgstr "Kosten pro Million Token: {}"
+
+msgid "Cost: {}"
+msgstr "Kosten: {}"
+
+msgid "Could not authenticate with {provider}."
+msgstr "Authentifizierung bei {provider} fehlgeschlagen."
+
+msgid "Could not check the Claude Code already placed in WSL."
+msgstr "Das bereits in WSL abgelegte Claude Code konnte nicht geprüft werden."
+
+msgid "Could not check the Claude Code already placed on the remote host."
+msgstr "Das bereits auf dem Remote-Host abgelegte Claude Code konnte nicht geprüft werden."
+
+msgid "Could not check the folder `{path}` that writes are allowed to"
+msgstr "Der Ordner `{path}`, in den Schreibzugriffe erlaubt sind, konnte nicht geprüft werden"
+
+msgid "Could not create the Claude Code settings folder on the remote host."
+msgstr "Der Einstellungsordner von Claude Code konnte auf dem Remote-Host nicht erstellt werden."
+
+msgid "Could not create the download folder."
+msgstr "Der Downloadordner konnte nicht erstellt werden."
+
+msgid "Could not determine the WSL architecture (exit code {code}): {stderr}"
+msgstr "Die Architektur von WSL konnte nicht ermittelt werden (Exitcode {code}): {stderr}"
+
+msgid "Could not determine the WSL architecture."
+msgstr "Die Architektur von WSL konnte nicht ermittelt werden."
+
+msgid "Could not determine the home directory on the remote host (internal error)."
+msgstr "Das Basisverzeichnis auf dem Remote-Host konnte nicht ermittelt werden (interner Fehler)."
+
+msgid "Could not determine the home directory on the remote host."
+msgstr "Das Basisverzeichnis auf dem Remote-Host konnte nicht ermittelt werden."
+
+msgid "Could not determine the remote host's architecture."
+msgstr "Die Architektur des Remote-Hosts konnte nicht ermittelt werden."
+
+msgid "Could not extract the downloaded Claude Code."
+msgstr "Das heruntergeladene Claude Code konnte nicht entpackt werden."
+
+msgid "Could not fetch {url} (HTTP {status})."
+msgstr "{url} konnte nicht abgerufen werden (HTTP {status})."
+
+msgid "Could not fetch {url}."
+msgstr "{url} konnte nicht abgerufen werden."
+
+msgid "Could not find a repository to review."
+msgstr "Es wurde kein Repository für das Review gefunden."
+
+msgid "Could not find workspace to import from."
+msgstr "Es konnte kein Arbeitsbereich zum Importieren gefunden werden."
+
+msgid "Could not pass the connection details to the IDE integration relay"
+msgstr "Die Verbindungsdaten konnten nicht an die Weiterleitung der IDE-Integration übergeben werden"
+
+msgid "Could not place Claude Code in WSL."
+msgstr "Claude Code konnte nicht in WSL abgelegt werden."
+
+msgid "Could not place Claude Code on the remote host."
+msgstr "Claude Code konnte nicht auf dem Remote-Host abgelegt werden."
+
+msgid "Could not read the release information."
+msgstr "Die Release-Informationen konnten nicht gelesen werden."
+
+msgid "Could not read the {channel} version number ({text})."
+msgstr "Die Versionsnummer ({channel}) konnte nicht gelesen werden ({text})."
+
+msgid "Could not run a command on the remote host."
+msgstr "Auf dem Remote-Host konnte kein Befehl ausgeführt werden."
+
+msgid "Could not run the command in the terminal: {error}"
+msgstr "Der Befehl konnte nicht im Terminal ausgeführt werden: {error}"
+
+msgid "Could not save the downloaded Claude Code. Check the free space on the disk."
+msgstr "Das heruntergeladene Claude Code konnte nicht gespeichert werden. Prüfen Sie den freien Speicherplatz auf dem Datenträger."
+
+msgid "Could not start Claude Code (sandbox): "
+msgstr "Claude Code (Sandbox) konnte nicht gestartet werden: "
+
+msgid "Could not start WSL. Check that WSL is installed."
+msgstr "WSL konnte nicht gestartet werden. Prüfen Sie, ob WSL installiert ist."
+
+msgid "Could not start the IDE integration relay on the remote host"
+msgstr "Die Weiterleitung der IDE-Integration konnte auf dem Remote-Host nicht gestartet werden"
+
+msgid "Could not verify the signature of the Claude Code release information. Canceled because it may have been tampered with."
+msgstr "Die Signatur der Release-Informationen von Claude Code konnte nicht überprüft werden. Abgebrochen, da sie manipuliert worden sein könnten."
+
+msgid "Couldn't create a sandbox"
+msgstr "Sandbox konnte nicht erstellt werden"
+
+msgid "Couldn't remove the API key: {error}"
+msgstr "Der API-Schlüssel konnte nicht entfernt werden: {error}"
+
+msgid "Couldn't save the API key: {error}"
+msgstr "Der API-Schlüssel konnte nicht gespeichert werden: {error}"
+
+msgid "Credentials Missing"
+msgstr "Anmeldedaten fehlen"
+
+msgid "Current Thread"
+msgstr "Aktueller Thread"
+
+msgid "Current version: v{from}"
+msgstr "Aktuelle Version: v{from}"
+
+msgid "Current:"
+msgstr "Aktuell:"
+
+msgid "Currently using {}, which does not report a valid --version"
+msgstr "Aktuell wird {} verwendet, das keine gültige --version meldet"
+
+msgid "Currently using {}, which is only version {} (need at least {minimum_version})"
+msgstr "Aktuell wird {} verwendet, das nur Version {} hat (mindestens {minimum_version} erforderlich)"
+
+msgid "Custom Profiles"
+msgstr "Benutzerdefinierte Profile"
+
+msgid "Customize"
+msgstr "Anpassen"
+
+msgid "Cut"
+msgstr "Ausschneiden"
+
+msgid "Cycle Favorite Models"
+msgstr "Durch Lieblingsmodelle wechseln"
+
+msgid "Cycle Thinking Effort"
+msgstr "Durch Denkaufwand wechseln"
+
+msgid "Cycle Through Modes"
+msgstr "Durch Modi wechseln"
+
+msgid "Cycle Through Profiles"
+msgstr "Durch Profile wechseln"
+
+msgid "Decline"
+msgstr "Ablehnen"
+
+msgid "Declined"
+msgstr "Abgelehnt"
+
+msgid "Defined in your settings:"
+msgstr "In Ihren Einstellungen definiert:"
+
+msgid "Delete Profile"
+msgstr "Profil löschen"
+
+msgid "Delete Thread"
+msgstr "Thread löschen"
+
+msgid "Deny"
+msgstr "Ablehnen"
+
+msgid "Destination"
+msgstr "Ziel"
+
+msgid "Diagnostics"
+msgstr "Diagnosen"
+
+msgid "Did not find any workspaces to import from."
+msgstr "Es wurden keine Arbeitsbereiche zum Importieren gefunden."
+
+msgid "Disable Fast Mode"
+msgstr "Schnellmodus deaktivieren"
+
+msgid "Disable Full Screen"
+msgstr "Vollbild deaktivieren"
+
+msgid "Disable Thinking Mode"
+msgstr "Denkmodus deaktivieren"
+
+msgid "Disabled in Restricted Mode"
+msgstr "Deaktiviert im eingeschränkten Modus"
+
+msgid "Discard Interrupted Edit"
+msgstr "Unterbrochene Bearbeitung verwerfen"
+
+msgid "Dismiss"
+msgstr "Schließen"
+
+msgid "Dismiss Notice"
+msgstr "Hinweis schließen"
+
+msgid "Dismiss Warning"
+msgstr "Warnung schließen"
+
+msgid "Dismiss notice: {}"
+msgstr "Hinweis schließen: {}"
+
+msgid "Don't show this warning again"
+msgstr "Diese Warnung nicht mehr anzeigen"
+
+msgid "Download the Linux build of Claude Code v{version}"
+msgstr "Linux-Version von Claude Code v{version} herunterladen"
+
+msgid "Downloading Claude Code requires adding hosts to the allowlist"
+msgstr "Zum Herunterladen von Claude Code müssen Hosts zur Zulassungsliste hinzugefügt werden"
+
+msgid "Downloading Claude Code… ({received} / {total} MB)"
+msgstr "Claude Code wird heruntergeladen… ({received} / {total} MB)"
+
+msgid "Downloads the Claude Code that runs in the remote host's sandbox from Anthropic's download server on this PC, and sends it to the remote host after checking its signature and hash."
+msgstr "Lädt das Claude Code, das in der Sandbox des Remote-Hosts ausgeführt wird, auf diesem Computer vom Downloadserver von Anthropic herunter und sendet es nach Prüfung von Signatur und Hash an den Remote-Host."
+
+msgid "Downloads the Claude Code that runs in the sandbox (WSL) from Anthropic's download server, and places it in WSL after checking its signature and hash."
+msgstr "Lädt das Claude Code, das in der Sandbox (WSL) ausgeführt wird, vom Downloadserver von Anthropic herunter und legt es nach Prüfung von Signatur und Hash in WSL ab."
+
+msgid "Edit"
+msgstr "Bearbeiten"
+
+msgid "Edit Queued Message"
+msgstr "Nachricht in der Warteschlange bearbeiten"
+
+msgid "Edit Thread Title"
+msgstr "Thread-Titel bearbeiten"
+
+msgid "Edit in Form"
+msgstr "Im Formular bearbeiten"
+
+msgid "Edit in JSON"
+msgstr "In JSON bearbeiten"
+
+msgid "Edit message － @ to include context"
+msgstr "Nachricht bearbeiten － @ zum Hinzufügen von Kontext"
+
+msgid "Editing previous messages is not available for {} yet."
+msgstr "Das Bearbeiten früherer Nachrichten ist für {} noch nicht verfügbar."
+
+msgid "Editing will restart the thread from this point."
+msgstr "Durch das Bearbeiten wird der Thread ab diesem Punkt neu gestartet."
+
+msgid "Editing {count} file…"
+msgid_plural "Editing {count} files…"
+msgstr[0] "{count} Datei wird bearbeitet…"
+msgstr[1] "{count} Dateien werden bearbeitet…"
+
+msgid "Edits"
+msgstr "Bearbeitungen"
+
+msgid "Enable Fast Mode"
+msgstr "Schnellmodus aktivieren"
+
+msgid "Enable Full Screen"
+msgstr "Vollbild aktivieren"
+
+msgid "Enable Now"
+msgstr "Jetzt aktivieren"
+
+msgid "Enable Thinking Mode"
+msgstr "Denkmodus aktivieren"
+
+msgid "Enable and Don't Show Again"
+msgstr "Aktivieren und nicht mehr anzeigen"
+
+msgid "Ensure skill descriptions are at most {MAX_SKILL_DESCRIPTION_LEN} characters; longer ones may consume more model-context tokens."
+msgstr "Stellen Sie sicher, dass Skill-Beschreibungen höchstens {MAX_SKILL_DESCRIPTION_LEN} Zeichen lang sind; längere Beschreibungen können mehr Modellkontext-Token verbrauchen."
+
+msgid "Enter client secret (leave empty for public clients)"
+msgstr "Clientgeheimnis eingeben (für öffentliche Clients leer lassen)"
+
+msgid "Enter your OAuth client secret, or leave empty for public clients"
+msgstr "Geben Sie Ihr OAuth-Clientgeheimnis ein, oder lassen Sie das Feld für öffentliche Clients leer"
+
+msgid "Error Loading {}"
+msgstr "Fehler beim Laden von {}"
+
+msgid "Estimated tokens for the attachments (at 4 bytes per token)."
+msgstr "Geschätzte Token für die Anhänge (bei 4 Bytes pro Token)."
+
+msgid "Everything below this line was sent as output from this subagent to the main agent."
+msgstr "Alles unterhalb dieser Zeile wurde als Ausgabe von diesem Unteragenten an den Hauptagenten gesendet."
+
+msgid "Execute Generated Command"
+msgstr "Generierten Befehl ausführen"
+
+msgid "Exited with code {code}"
+msgstr "Mit Code {code} beendet"
+
+msgid "Expand Message Editor"
+msgstr "Nachrichteneditor aufklappen"
+
+msgid "Expected exactly one context server configuration"
+msgstr "Genau eine Kontextserver-Konfiguration erwartet"
+
+msgid "Expected exactly one key-value pair"
+msgstr "Genau ein Schlüssel-Wert-Paar erwartet"
+
+msgid "Expected object"
+msgstr "Objekt erwartet"
+
+msgid "External agents are not yet supported in shared projects."
+msgstr "Externe Agenten werden in freigegebenen Projekten noch nicht unterstützt."
+
+msgid "Extracting and checking the hash…"
+msgstr "Wird entpackt und Hash wird geprüft…"
+
+msgid "Failed to Install"
+msgstr "Installation fehlgeschlagen"
+
+msgid "Failed to Install {}"
+msgstr "{} konnte nicht installiert werden"
+
+msgid "Failed to Launch"
+msgstr "Start fehlgeschlagen"
+
+msgid "Failed to add the hosts to the allowlist: {error}"
+msgstr "Die Hosts konnten nicht zur Zulassungsliste hinzugefügt werden: {error}"
+
+msgid "Failed to authenticate with {} provider"
+msgstr "Authentifizierung beim Anbieter {} fehlgeschlagen"
+
+msgid "Failed to convert image"
+msgstr "Das Bild konnte nicht konvertiert werden"
+
+msgid "Failed to decode clipboard content (expected base64)"
+msgstr "Zwischenablageinhalt konnte nicht dekodiert werden (Base64 erwartet)"
+
+msgid "Failed to fetch sessions: {error}"
+msgstr "Sitzungen konnten nicht abgerufen werden: {error}"
+
+msgid "Failed to list sessions."
+msgstr "Sitzungen konnten nicht aufgelistet werden."
+
+msgid "Failed to load the agent registry. Please check your connection and try again."
+msgstr "Agent-Registry konnte nicht geladen werden. Überprüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+
+msgid "Failed to parse thread data from clipboard"
+msgstr "Thread-Daten aus der Zwischenablage konnten nicht geparst werden"
+
+msgid "Favorite"
+msgstr "Favorit"
+
+msgid "Favorite Model"
+msgstr "Modell zu Favoriten hinzufügen"
+
+msgid "Favorites"
+msgstr "Favoriten"
+
+msgid "Fetching Agent Threads…"
+msgstr "Agent-Threads werden abgerufen…"
+
+msgid "Fetching Sessions…"
+msgstr "Sitzungen werden abgerufen…"
+
+msgid "Files & Directories"
+msgstr "Dateien & Verzeichnisse"
+
+msgid "Finished running tools"
+msgstr "Toolausführung abgeschlossen"
+
+msgid "Follow the {}"
+msgstr "{} folgen"
+
+msgid "Follow {}"
+msgstr "{} folgen"
+
+msgid "For agents distributed via npx, npm picks the version at launch, so the installed version cannot be determined. Whether an update is available is not shown here."
+msgstr "Bei Agenten, die über npx verteilt werden, wählt npm die Version beim Start, daher kann die installierte Version nicht ermittelt werden. Ob ein Update verfügbar ist, wird hier nicht angezeigt."
+
+msgid "For best performance, run Codex in Windows Subsystem for Linux (WSL2)"
+msgstr "Für die beste Leistung führen Sie Codex in Windows Subsystem for Linux (WSL2) aus"
+
+msgid "Fork Profile"
+msgstr "Profil ableiten"
+
+msgid "Fork {base_profile}"
+msgstr "Profil {base_profile} ableiten"
+
+msgid "Free Usage Exceeded"
+msgstr "Kostenloses Kontingent überschritten"
+
+msgid "Generate"
+msgstr "Generieren"
+
+msgid "Generating Changes…"
+msgstr "Änderungen werden generiert…"
+
+msgid "Get help to write anything."
+msgstr "Hilfe beim Schreiben beliebiger Inhalte erhalten."
+
+msgid "Git Operations: Off"
+msgstr "Git-Vorgänge: Aus"
+
+msgid "Git Operations: On"
+msgstr "Git-Vorgänge: Ein"
+
+msgid "Go Back"
+msgstr "Zurück"
+
+msgid "Go to File"
+msgstr "Zur Datei wechseln"
+
+msgid "Good Result"
+msgstr "Gutes Ergebnis"
+
+msgid "Google"
+msgstr "Google"
+
+msgid "Helpful Response"
+msgstr "Hilfreiche Antwort"
+
+msgid "Hide Thread History in Panel"
+msgstr "Thread-Verlauf im Panel ausblenden"
+
+msgid "Hosts Need to Be Added to the Allowlist"
+msgstr "Hosts müssen zur Zulassungsliste hinzugefügt werden"
+
+msgid "Hosts that need to be allowed:"
+msgstr "Hosts, die zugelassen werden müssen:"
+
+msgid "Hosts that need to be allowed: {hosts} ({status})"
+msgstr "Hosts, die zugelassen werden müssen: {hosts} ({status})"
+
+msgid "I understand and wish to proceed"
+msgstr "Ich verstehe und möchte fortfahren"
+
+msgid "IDE Tools"
+msgstr "IDE-Tools"
+
+msgid "Image"
+msgstr "Bild"
+
+msgid "Import External Agent Threads"
+msgstr "Externe Agent-Threads importieren"
+
+msgid "Import Threads"
+msgstr "Threads importieren"
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client. Choose which agents to include, and their threads will appear in your thread history."
+msgstr "Importiert Threads von Agenten wie Claude Agent, Codex und weiteren, unabhängig davon, ob sie in ForgeKairos oder einem anderen Client gestartet wurden. Wählen Sie aus, welche Agenten einbezogen werden sollen, und ihre Threads erscheinen in Ihrem Thread-Verlauf."
+
+msgid "Imported {count} thread from other channels."
+msgid_plural "Imported {count} threads from other channels."
+msgstr[0] "{count} Thread aus anderen Kanälen importiert."
+msgstr[1] "{count} Threads aus anderen Kanälen importiert."
+
+msgid "Imported {count} thread."
+msgid_plural "Imported {count} threads."
+msgstr[0] "{count} Thread importiert."
+msgstr[1] "{count} Threads importiert."
+
+msgid "Importing threads from this agent is not possible as it doesn't support ACP's session/list capability."
+msgstr "Threads können nicht von diesem Agenten importiert werden, da er die ACP-Funktion session/list nicht unterstützt."
+
+msgid "In Queue"
+msgstr "In der Warteschlange"
+
+msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
+msgstr "Sowohl bei „Automatisch genehmigen“ als auch bei „KI entscheidet“ gelten weiterhin die integrierten Sicherheitsregeln, Ihre Ablehnungs- und Bestätigungsmuster, die Sandbox und die Bestätigung für Schreibzugriffe auf Einstellungsdateien. Terminalbefehle werden in der Sandbox ausgeführt, und Dateivorgänge außerhalb des Projekts sowie Netzwerkfreigaben werden in jedem Modus bestätigt. Terminalbefehle, die außerhalb der Sandbox ausgeführt werden, werden ebenfalls jedes Mal bestätigt. Welche Tools verfügbar sind, bestimmt das Profil, nicht der Modus. Bei „KI entscheidet“ wird das zu Beurteilende (Befehle und Pfade) an den Anbieter des entscheidenden Modells gesendet; daher wird ein lokales Modell empfohlen."
+
+msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
+msgstr "In der Sandbox verbindet sich Claude Code nur mit den folgenden Hosts von Anthropic. Sie werden zur IDE-weiten Zulassungsliste hinzugefügt und gelten auch für die Befehle des integrierten Agenten.\nHosts, die zugelassen werden müssen: {hosts}"
+
+msgid "In the sandbox, {agent} connects only to the following hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
+msgstr "In der Sandbox verbindet sich {agent} nur mit den folgenden Hosts. Sie werden zur IDE-weiten Zulassungsliste hinzugefügt und gelten auch für die Befehle des integrierten Agenten.\nHosts, die zugelassen werden müssen: {hosts}"
+
+msgid "In the sandbox, {} connects to hosts that aren't in the IDE-wide allowlist: {}"
+msgstr "In der Sandbox verbindet sich {} mit Hosts, die nicht in der IDE-weiten Zulassungsliste stehen: {}"
+
+msgid "Includes the active file, which is attached automatically."
+msgstr "Enthält die aktive Datei, die automatisch angehängt wird."
+
+msgid "Inline assistant error: {}"
+msgstr "Fehler des Inline-Assistenten: {}"
+
+msgid "Input Requested by {}"
+msgstr "Eingabe angefordert von {}"
+
+msgid "Input:"
+msgstr "Eingabe:"
+
+msgid "Install"
+msgstr "Installieren"
+
+msgid "Install New Servers…"
+msgstr "Neue Server installieren…"
+
+msgid "Install {name}"
+msgstr "{name} installieren"
+
+msgid "Installed"
+msgstr "Installiert"
+
+msgid "Installing {name}…"
+msgstr "{name} wird installiert…"
+
+msgid "Installs {name} from the ACP registry, then starts a thread with it. You sign in on the agent's own screen."
+msgstr "Installiert {name} aus der ACP-Registry und startet dann einen Thread damit. Sie melden sich auf dem eigenen Bildschirm des Agenten an."
+
+msgid "Install…"
+msgstr "Installieren…"
+
+msgid "Interrupt Generation"
+msgstr "Generierung unterbrechen"
+
+msgid "Interrupt Transform"
+msgstr "Transformation unterbrechen"
+
+msgid "Interrupt the agent at its next step to send this message. When off, queued messages wait for the agent to finish."
+msgstr "Unterbricht den Agenten bei seinem nächsten Schritt, um diese Nachricht zu senden. Ist die Funktion deaktiviert, warten Nachrichten in der Warteschlange, bis der Agent fertig ist."
+
+msgid "Interrupted Edit"
+msgstr "Unterbrochene Bearbeitung"
+
+msgid "Invalid IDE session identifier (internal error): {session_id}"
+msgstr "Ungültige IDE-Sitzungskennung (interner Fehler): {session_id}"
+
+msgid "Invalid host for Claude Code to connect to (internal error): {error}"
+msgstr "Ungültiger Host für die Verbindung von Claude Code (interner Fehler): {error}"
+
+msgid "Invalid project identifier (internal error): {project_key}"
+msgstr "Ungültige Projektkennung (interner Fehler): {project_key}"
+
+msgid "It currently only operates by default on \"{}\"."
+msgstr "Er arbeitet derzeit standardmäßig nur mit \"{}\"."
+
+msgid "Keep"
+msgstr "Beibehalten"
+
+msgid "Keep All"
+msgstr "Alle beibehalten"
+
+msgid "Latest"
+msgstr "Neueste"
+
+msgid "Launch Claude Code"
+msgstr "Claude Code starten"
+
+msgid "Launch Claude Code Outside the Sandbox…"
+msgstr "Claude Code außerhalb der Sandbox starten…"
+
+msgid "Launches the official Claude Code CLI in a tab of this panel. You sign in on the CLI's screen."
+msgstr "Startet die offizielle Claude Code CLI in einem Tab dieses Panels. Sie melden sich auf dem Bildschirm der CLI an."
+
+msgid "Learn More"
+msgstr "Mehr erfahren"
+
+msgid "Link only"
+msgstr "Nur Link"
+
+msgid "Loading Added Context…"
+msgstr "Hinzugefügter Kontext wird geladen…"
+
+msgid "Loading or resuming sessions is not supported by this agent."
+msgstr "Das Laden oder Fortsetzen von Sitzungen wird von diesem Agenten nicht unterstützt."
+
+msgid "Loading registry..."
+msgstr "Registry wird geladen..."
+
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+msgid "Local"
+msgstr "Lokal"
+
+msgid "Local Model (Ollama, LM Studio, …)"
+msgstr "Lokales Modell (Ollama, LM Studio, …)"
+
+msgid "Local Models"
+msgstr "Lokale Modelle"
+
+msgid "Log In with Claude Code (Subscription)"
+msgstr "Mit Claude Code anmelden (Abonnement)"
+
+msgid "Log Out"
+msgstr "Abmelden"
+
+msgid "MCP Server Commands"
+msgstr "Befehle des MCP-Servers"
+
+msgid "MCP Servers"
+msgstr "MCP-Server"
+
+msgid "Make Subagent Full Screen"
+msgstr "Unteragent im Vollbild anzeigen"
+
+msgid "Manage AI Connections…"
+msgstr "KI-Verbindungen verwalten…"
+
+msgid "Message the {}, @ to include context, / for commands"
+msgstr "{} anschreiben – @ für Kontext, / für Befehle"
+
+msgid "Message {} — @ to include context"
+msgstr "{} anschreiben – @ zum Einbeziehen von Kontext"
+
+msgid "Message {} — @ to include context, / for commands"
+msgstr "{} anschreiben – @ für Kontext, / für Befehle"
+
+msgid "Minimize Message Editor"
+msgstr "Nachrichteneditor minimieren"
+
+msgid "Minimize Subagent"
+msgstr "Unteragent minimieren"
+
+msgid "Missing registry entry."
+msgstr "Registry-Eintrag fehlt."
+
+msgid "Model {} was not found"
+msgstr "Modell {} wurde nicht gefunden"
+
+msgid "Move Back to Panel"
+msgstr "Zurück ins Panel verschieben"
+
+msgid "Negative Feedback"
+msgstr "Negatives Feedback"
+
+msgid "Network Access"
+msgstr "Netzwerkzugriff"
+
+msgid "Network access"
+msgstr "Netzwerkzugriff"
+
+msgid "New Agent Thread"
+msgstr "Neuer Agent-Thread"
+
+msgid "New Profile"
+msgstr "Neues Profil"
+
+msgid "New Tab"
+msgstr "Neuer Tab"
+
+msgid "New Thread"
+msgstr "Neuer Thread"
+
+msgid "New Thread…"
+msgstr "Neuer Thread…"
+
+msgid "New Version Available"
+msgstr "Neue Version verfügbar"
+
+msgid "New message"
+msgstr "Neue Nachricht"
+
+msgid "New {} Thread"
+msgstr "Neuer {}-Thread"
+
+msgid "Next Alternative"
+msgstr "Nächste Alternative"
+
+msgid "Next Hunk"
+msgstr "Nächster Hunk"
+
+msgid "Next Match"
+msgstr "Nächster Treffer"
+
+msgid "Next in Queue"
+msgstr "Als Nächstes in der Warteschlange"
+
+msgid "No Model Selected"
+msgstr "Kein Modell ausgewählt"
+
+msgid "No active native thread to copy"
+msgstr "Kein aktiver nativer Thread zum Kopieren vorhanden"
+
+msgid "No active thread"
+msgstr "Kein aktiver Thread"
+
+msgid "No agents available."
+msgstr "Keine Agenten verfügbar."
+
+msgid "No agents match your search."
+msgstr "Keine Agenten entsprechen Ihrer Suche."
+
+msgid "No changes to review"
+msgstr "Keine Änderungen zur Überprüfung"
+
+msgid "No clipboard content available"
+msgstr "Kein Inhalt in der Zwischenablage verfügbar"
+
+msgid "No configured model"
+msgstr "Kein Modell konfiguriert"
+
+msgid "No credentials are configured for {provider}."
+msgstr "Für {provider} sind keine Anmeldedaten konfiguriert."
+
+msgid "No external agents available."
+msgstr "Keine externen Agenten verfügbar."
+
+msgid "No installed agents match your search."
+msgstr "Keine installierten Agenten entsprechen Ihrer Suche."
+
+msgid "No installed agents."
+msgstr "Keine installierten Agenten."
+
+msgid "No matches"
+msgstr "Keine Treffer"
+
+msgid "No metadata found for active thread"
+msgstr "Keine Metadaten für den aktiven Thread gefunden"
+
+msgid "No model is available from this provider yet. Shows why and what to do."
+msgstr "Von diesem Anbieter ist noch kein Modell verfügbar. Zeigt den Grund und das weitere Vorgehen an."
+
+msgid "No model is configured for summarizing thread titles."
+msgstr "Kein Modell zum Zusammenfassen von Thread-Titeln konfiguriert."
+
+msgid "No model selected"
+msgstr "Kein Modell ausgewählt"
+
+msgid "No new threads found to import."
+msgstr "Keine neuen Threads zum Importieren gefunden."
+
+msgid "No output available"
+msgstr "Keine Ausgabe verfügbar"
+
+msgid "No profiles match your search."
+msgstr "Keine Profile entsprechen Ihrer Suche."
+
+msgid "No profiles."
+msgstr "Keine Profile."
+
+msgid "No recent projects found"
+msgstr "Keine zuletzt verwendeten Projekte gefunden"
+
+msgid "No threads"
+msgstr "Keine Threads"
+
+msgid "No threads found to import."
+msgstr "Keine Threads zum Importieren gefunden."
+
+msgid "No threads match your search."
+msgstr "Keine Threads entsprechen Ihrer Suche."
+
+msgid "No threads yet."
+msgstr "Noch keine Threads."
+
+msgid "No uninstalled agents match your search."
+msgstr "Keine nicht installierten Agenten entsprechen Ihrer Suche."
+
+msgid "No uninstalled agents."
+msgstr "Keine nicht installierten Agenten."
+
+msgid "None"
+msgstr "Keine"
+
+msgid "Not Helpful Response"
+msgstr "Nicht hilfreiche Antwort"
+
+msgid "Not Installed"
+msgstr "Nicht installiert"
+
+msgid "Not installed yet. Installs {name} from the ACP registry, after asking about the hosts it needs, and then starts a thread with it."
+msgstr "Noch nicht installiert. Installiert {name} aus der ACP-Registry, nachdem die benötigten Hosts abgefragt wurden, und startet dann einen Thread damit."
+
+msgid "Not set up yet. Add the key or sign in right here, and a new thread opens once it works."
+msgstr "Noch nicht eingerichtet. Fügen Sie den Schlüssel hinzu oder melden Sie sich direkt hier an; sobald es funktioniert, wird ein neuer Thread geöffnet."
+
+msgid "Not supported on this platform"
+msgstr "Auf dieser Plattform nicht unterstützt"
+
+msgid "Note: {} cannot be offered with Zero Data Retention."
+msgstr "Hinweis: {} kann nicht mit Zero Data Retention angeboten werden."
+
+msgid "Official CLI Tab"
+msgstr "Tab der offiziellen CLI"
+
+msgid "Older"
+msgstr "Älter"
+
+msgid "On 2026-06-15, Anthropic announced that use with a subscription (such as Claude Pro or Max) continues as before. You can turn it off in settings."
+msgstr "Am 2026-06-15 hat Anthropic angekündigt, dass die Nutzung mit einem Abonnement (wie Claude Pro oder Max) wie bisher weiter möglich ist. Sie können dies in den Einstellungen ausschalten."
+
+msgid "Only a link is sent, and the agent reads the contents with its tools (no estimate)"
+msgstr "Es wird nur ein Link gesendet, und der Agent liest den Inhalt mit seinen Tools (keine Schätzung)"
+
+msgid "Only reads and edits files. Does not run commands."
+msgstr "Liest und bearbeitet nur Dateien. Führt keine Befehle aus."
+
+msgid "Only this time"
+msgstr "Nur dieses Mal"
+
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Open ACP Registry"
+msgstr "ACP-Registry öffnen"
+
+msgid "Open Again"
+msgstr "Erneut öffnen"
+
+msgid "Open Docs"
+msgstr "Dokumentation öffnen"
+
+msgid "Open File"
+msgstr "Datei öffnen"
+
+msgid "Open Global Rules"
+msgstr "Globale Regeln öffnen"
+
+msgid "Open Project Rules"
+msgstr "Projektregeln öffnen"
+
+msgid "Open Repository"
+msgstr "Repository öffnen"
+
+msgid "Open Sandbox Settings"
+msgstr "Sandbox-Einstellungen öffnen"
+
+msgid "Open Skill"
+msgstr "Skill öffnen"
+
+msgid "Open Tabs"
+msgstr "Geöffnete Tabs"
+
+msgid "Open Thread List"
+msgstr "Thread-Liste öffnen"
+
+msgid "Open Thread as Markdown"
+msgstr "Thread als Markdown öffnen"
+
+msgid "Open Thread in Right Split"
+msgstr "Thread in rechter Teilung öffnen"
+
+msgid "Open Thread in Tab"
+msgstr "Thread in Tab öffnen"
+
+msgid "Open Trust Settings"
+msgstr "Vertrauenseinstellungen öffnen"
+
+msgid "Open a project to load a thread"
+msgstr "Projekt öffnen, um einen Thread zu laden"
+
+msgid "Open in Right Split"
+msgstr "In rechter Teilung öffnen"
+
+msgid "Open in Tab"
+msgstr "In Tab öffnen"
+
+msgid "Open in WSL"
+msgstr "In WSL öffnen"
+
+msgid "Open the settings to configure providers"
+msgstr "Öffnen Sie die Einstellungen, um Anbieter zu konfigurieren"
+
+msgid "Open the settings to configure the selected provider"
+msgstr "Öffnen Sie die Einstellungen, um den ausgewählten Anbieter zu konfigurieren"
+
+msgid "OpenAI"
+msgstr "OpenAI"
+
+msgid "Or type @ to include context"
+msgstr "Oder @ eingeben, um Kontext hinzuzufügen"
+
+msgid "Other"
+msgstr "Sonstiges"
+
+msgid "Output Limit Reached"
+msgstr "Ausgabelimit erreicht"
+
+msgid "Output exceeded terminal max lines and was truncated, the model received the first {}."
+msgstr "Die Ausgabe hat die maximale Zeilenanzahl des Terminals überschritten und wurde abgeschnitten. Das Modell hat die ersten {} erhalten."
+
+msgid "Output is {} long, and to avoid unexpected token usage, only {} was sent back to the agent."
+msgstr "Die Ausgabe umfasst {}. Um eine unerwartete Token-Nutzung zu vermeiden, wurden nur {} an den Agenten zurückgesendet."
+
+msgid "Output was truncated"
+msgstr "Ausgabe wurde abgeschnitten"
+
+msgid "Output:"
+msgstr "Ausgabe:"
+
+msgid "Outside the Sandbox"
+msgstr "Außerhalb der Sandbox"
+
+msgid "Outside the Sandbox (Asks First)"
+msgstr "Außerhalb der Sandbox (vorher nachfragen)"
+
+msgid "Package downloads by npm and the agent's network traffic after installation go through the child-process proxy and are subject to the allowlist. However, the extra hosts that a package's install scripts need cannot be listed in advance, and they are blocked and fail if they are not on the allowlist. Prefer Binary agents when possible."
+msgstr "Paketdownloads durch npm und der Netzwerkverkehr des Agenten nach der Installation laufen über den Proxy für untergeordnete Prozesse und unterliegen der Zulassungsliste. Die zusätzlichen Hosts, die die Installationsskripte eines Pakets benötigen, können jedoch nicht im Voraus aufgelistet werden; sie werden blockiert und schlagen fehl, wenn sie nicht in der Zulassungsliste stehen. Bevorzugen Sie nach Möglichkeit Binary-Agenten."
+
+msgid "Past Week"
+msgstr "Letzte Woche"
+
+msgid "Paste"
+msgstr "Einfügen"
+
+msgid "Paste as Plain Text"
+msgstr "Als reinen Text einfügen"
+
+msgid "Permission Denied"
+msgstr "Zugriff verweigert"
+
+msgid "Places it in WSL after checking its signature and hash."
+msgstr "Legt es nach Prüfung von Signatur und Hash in WSL ab."
+
+msgid "Placing in WSL…"
+msgstr "Wird in WSL abgelegt…"
+
+msgid "Placing on the remote host…"
+msgstr "Wird auf dem Remote-Host abgelegt…"
+
+msgid "Plan"
+msgstr "Plan"
+
+msgid "Positive Feedback"
+msgstr "Positives Feedback"
+
+msgid "Preparing Claude Code (sandbox)…"
+msgstr "Claude Code (Sandbox) wird vorbereitet…"
+
+msgid "Preparing the sandbox and IDE integration…"
+msgstr "Sandbox und IDE-Integration werden vorbereitet…"
+
+msgid "Previous Alternative"
+msgstr "Vorherige Alternative"
+
+msgid "Previous Hunk"
+msgstr "Vorheriger Hunk"
+
+msgid "Previous Match"
+msgstr "Vorheriger Treffer"
+
+msgid "Profile name"
+msgstr "Profilname"
+
+msgid "Profiles"
+msgstr "Profile"
+
+msgid "Provider Unavailable"
+msgstr "Anbieter nicht verfügbar"
+
+msgid "Provider {} was not found"
+msgstr "Anbieter {} wurde nicht gefunden"
+
+msgid "Queue and Send"
+msgstr "In die Warteschlange einreihen und senden"
+
+msgid "Ran without sandbox"
+msgstr "Ohne Sandbox ausgeführt"
+
+msgid "Rate Limit Reached"
+msgstr "Ratenlimit erreicht"
+
+msgid "Rate this response as helpful. Sends the current conversation to the Zed team."
+msgstr "Bewertet diese Antwort als hilfreich. Sendet die aktuelle Konversation an das Zed-Team."
+
+msgid "Rate this response as not helpful. Sends the current conversation to the Zed team."
+msgstr "Bewertet diese Antwort als nicht hilfreich. Sendet die aktuelle Konversation an das Zed-Team."
+
+msgid "Rating the thread sends all of your current conversation to the Zed team."
+msgstr "Beim Bewerten des Threads wird Ihre gesamte aktuelle Konversation an das Zed-Team gesendet."
+
+msgid "Raw Input:"
+msgstr "Roheingabe:"
+
+msgid "Reading and writing files and running commands are unavailable until you trust the folder."
+msgstr "Das Lesen und Schreiben von Dateien und das Ausführen von Befehlen sind nicht verfügbar, bis Sie dem Ordner vertrauen."
+
+msgid "Reads the {channel} version number from Anthropic's download server."
+msgstr "Liest die Versionsnummer ({channel}) vom Downloadserver von Anthropic."
+
+msgid "Reason"
+msgstr "Grund"
+
+msgid "Reauthenticate"
+msgstr "Erneut authentifizieren"
+
+msgid "Recent Projects"
+msgstr "Zuletzt verwendete Projekte"
+
+msgid "Recommended"
+msgstr "Empfohlen"
+
+msgid "Reconnect"
+msgstr "Erneut verbinden"
+
+msgid "Reconnect Now"
+msgstr "Jetzt erneut verbinden"
+
+msgid "Regenerate Thread Title"
+msgstr "Thread-Titel neu generieren"
+
+msgid "Reject"
+msgstr "Ablehnen"
+
+msgid "Reject All"
+msgstr "Alle ablehnen"
+
+msgid "Reload Agent"
+msgstr "Agent neu laden"
+
+msgid "Remove"
+msgstr "Entfernen"
+
+msgid "Remove Key"
+msgstr "Schlüssel entfernen"
+
+msgid "Remove Message from Queue"
+msgstr "Nachricht aus der Warteschlange entfernen"
+
+msgid "Removes the key from {store} and from settings.json"
+msgstr "Entfernt den Schlüssel aus dem Anmeldedatenspeicher ({store}) und aus settings.json"
+
+msgid "Request Failed"
+msgstr "Anfrage fehlgeschlagen"
+
+msgid "Request Refused"
+msgstr "Anfrage abgelehnt"
+
+msgid "Required"
+msgstr "Erforderlich"
+
+msgid "Restart Generation"
+msgstr "Generierung neu starten"
+
+msgid "Restart Outside the Sandbox…"
+msgstr "Außerhalb der Sandbox neu starten…"
+
+msgid "Restart Transform"
+msgstr "Transformation neu starten"
+
+msgid "Restore Checkpoint"
+msgstr "Prüfpunkt wiederherstellen"
+
+msgid "Restores all files in the project to the content they had at this point in the conversation."
+msgstr "Stellt für alle Dateien im Projekt den Inhalt wieder her, den sie zu diesem Zeitpunkt in der Konversation hatten."
+
+msgid "Restricted Mode"
+msgstr "Eingeschränkter Modus"
+
+msgid "Resume Outside the Sandbox…"
+msgstr "Außerhalb der Sandbox fortsetzen…"
+
+msgid "Resumed Session"
+msgstr "Sitzung fortgesetzt"
+
+msgid "Retry"
+msgstr "Erneut versuchen"
+
+msgid "Retry Generation"
+msgstr "Generierung erneut versuchen"
+
+msgid "Retrying with {fallback_model}"
+msgstr "Erneuter Versuch mit {fallback_model}"
+
+msgid "Retrying. Next attempt in 1 second (Attempt {} of {})."
+msgstr "Erneuter Versuch. Nächster Versuch in 1 Sekunde (Versuch {} von {})."
+
+msgid "Retrying. Next attempt in 1 second."
+msgstr "Erneuter Versuch. Nächster Versuch in 1 Sekunde."
+
+msgid "Retrying. Next attempt in {next_attempt_in_secs} seconds (Attempt {} of {})."
+msgstr "Erneuter Versuch. Nächster Versuch in {next_attempt_in_secs} Sekunden (Versuch {} von {})."
+
+msgid "Retrying. Next attempt in {next_attempt_in_secs} seconds."
+msgstr "Erneuter Versuch. Nächster Versuch in {next_attempt_in_secs} Sekunden."
+
+msgid "Review"
+msgstr "Review"
+
+msgid "Review All Files"
+msgstr "Alle Dateien überprüfen"
+
+msgid "Review Before Sending"
+msgstr "Vor dem Senden überprüfen"
+
+msgid "Review Changes"
+msgstr "Änderungen überprüfen"
+
+msgid "Review: {}"
+msgstr "Review: {}"
+
+msgid "Right-click to switch between full text and summary"
+msgstr "Rechtsklick, um zwischen Volltext und Zusammenfassung zu wechseln"
+
+msgid "Rules"
+msgstr "Regeln"
+
+msgid "Rules have been migrated to Skills."
+msgstr "Regeln wurden zu Skills migriert."
+
+msgid "Rules-to-skills migration rerun. Please double-check AGENTS.md and Skills for missing or duplicated prompts."
+msgstr "Migration von Regeln zu Skills erneut ausgeführt. Bitte prüfen Sie AGENTS.md und Skills auf fehlende oder doppelte Prompts."
+
+msgid "Run Command"
+msgstr "Befehl ausführen"
+
+msgid "Running Outside the Sandbox Is Not Allowed"
+msgstr "Ausführung außerhalb der Sandbox nicht erlaubt"
+
+msgid "Runs `{program}` on the remote host with that host user's permissions (outside the sandbox)."
+msgstr "Führt `{program}` auf dem Remote-Host mit den Berechtigungen des dortigen Benutzers aus (außerhalb der Sandbox)."
+
+msgid "Runs outside the sandbox (with Zed's own permissions)"
+msgstr "Wird außerhalb der Sandbox ausgeführt (mit den eigenen Berechtigungen von ForgeKairos)"
+
+msgid "Sandbox"
+msgstr "Sandbox"
+
+msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
+msgstr "Sandboxes mit Schreibzugriff auf einen Speicherort auf einem Windows-Laufwerk bieten möglicherweise keine vollständige Dateisystemisolation."
+
+msgid "Sandboxing"
+msgstr "Sandboxing"
+
+msgid "Save"
+msgstr "Speichern"
+
+msgid "Saving…"
+msgstr "Wird gespeichert…"
+
+msgid "Scroll"
+msgstr "Scrollen"
+
+msgid "Scroll to Bottom"
+msgstr "Nach unten scrollen"
+
+msgid "Scroll to Subagent"
+msgstr "Zum Unteragenten scrollen"
+
+msgid "Scroll to Top"
+msgstr "Nach oben scrollen"
+
+msgid "Scroll to User Message"
+msgstr "Zur Benutzernachricht scrollen"
+
+msgid "Search MCP tools…"
+msgstr "MCP-Tools durchsuchen…"
+
+msgid "Search agents..."
+msgstr "Agenten durchsuchen..."
+
+msgid "Search all threads…"
+msgstr "Alle Threads durchsuchen…"
+
+msgid "Search built-in tools…"
+msgstr "Integrierte Tools durchsuchen…"
+
+msgid "Search profiles…"
+msgstr "Profile durchsuchen…"
+
+msgid "Search this thread…"
+msgstr "Diesen Thread durchsuchen…"
+
+msgid "Search threads…"
+msgstr "Threads durchsuchen…"
+
+msgid "Select"
+msgstr "Auswählen"
+
+msgid "Select Effort"
+msgstr "Aufwand auswählen"
+
+msgid "Select Images"
+msgstr "Bilder auswählen"
+
+msgid "Select Model"
+msgstr "Modell auswählen"
+
+msgid "Select Options…"
+msgstr "Optionen auswählen…"
+
+msgid "Select a Model"
+msgstr "Modell auswählen"
+
+msgid "Select a model from the model picker below to get started."
+msgstr "Wählen Sie unten in der Modellauswahl ein Modell aus, um zu beginnen."
+
+msgid "Select a model…"
+msgstr "Modell auswählen…"
+
+msgid "Select an option…"
+msgstr "Option auswählen…"
+
+msgid "Selected Agent"
+msgstr "Ausgewählter Agent"
+
+msgid "Selection"
+msgstr "Auswahl"
+
+msgid "Send Immediately"
+msgstr "Sofort senden"
+
+msgid "Send Message"
+msgstr "Nachricht senden"
+
+msgid "Send Now"
+msgstr "Jetzt senden"
+
+msgid "Send as Summary"
+msgstr "Als Zusammenfassung senden"
+
+msgid "Send in Full"
+msgstr "Vollständig senden"
+
+msgid "Sends it to the remote host after checking its signature and hash."
+msgstr "Sendet es nach Prüfung von Signatur und Hash an den Remote-Host."
+
+msgid "Sent as an outline (or just a reference) because it is large"
+msgstr "Als Gliederung (oder nur als Verweis) gesendet, da groß"
+
+msgid "Server exited with status {status}"
+msgstr "Server wurde mit Status {status} beendet"
+
+msgid "Set Up…"
+msgstr "Einrichten…"
+
+msgid "Settings"
+msgstr "Einstellungen"
+
+msgid "Show"
+msgstr "Anzeigen"
+
+msgid "Show All Threads"
+msgstr "Alle Threads anzeigen"
+
+msgid "Show Only Archived Threads"
+msgstr "Nur archivierte Threads anzeigen"
+
+msgid "Show Thread History in Panel"
+msgstr "Thread-Verlauf im Panel anzeigen"
+
+msgid "Sign In…"
+msgstr "Anmelden…"
+
+msgid "Skill Failed to Load"
+msgstr "Skill konnte nicht geladen werden"
+
+msgid "Skill Omitted from Model Catalog"
+msgstr "Skill aus dem Modellkatalog ausgelassen"
+
+msgid "Skills"
+msgstr "Skills"
+
+msgid "Some tools are disabled because this project isn't trusted"
+msgstr "Einige Tools sind deaktiviert, weil diesem Projekt nicht vertraut wird"
+
+msgid "Some tools are disabled. Click to review trust settings."
+msgstr "Einige Tools sind deaktiviert. Klicken Sie, um die Vertrauenseinstellungen zu überprüfen."
+
+msgid "Spawning Agent…"
+msgstr "Agent wird gestartet…"
+
+msgid "Split Right"
+msgstr "Nach rechts teilen"
+
+msgid "Start (This Thread Only)"
+msgstr "Starten (nur dieser Thread)"
+
+msgid "Start (This Time Only)"
+msgstr "Starten (nur dieses Mal)"
+
+msgid "Start Claude Code outside the sandbox?"
+msgstr "Claude Code außerhalb der Sandbox starten?"
+
+msgid "Start New Agent Thread"
+msgstr "Neuen Agent-Thread starten"
+
+msgid "Start New Thread"
+msgstr "Neuen Thread starten"
+
+msgid "Start Outside the Sandbox (This Thread Only)"
+msgstr "Außerhalb der Sandbox starten (nur dieser Thread)"
+
+msgid "Start Outside the Sandbox…"
+msgstr "Außerhalb der Sandbox starten…"
+
+msgid "Start `{program}` outside the sandbox?"
+msgstr "`{program}` außerhalb der Sandbox starten?"
+
+msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
+msgstr "Außerhalb der Sandbox gestartet, läuft dieser Agent mit den eigenen Berechtigungen von ForgeKairos und kann auch die Hooks und MCP-Server des Projekts ausführen. Sie werden vor dem Start für jeden Thread gefragt."
+
+msgid "Starts a thread of {agent} on {provider}'s models. The key or sign-in is the one in Settings > AI > LLM Providers."
+msgstr "Startet einen Thread von {agent} mit den Modellen von {provider}. Verwendet wird der Schlüssel bzw. die Anmeldung unter Einstellungen > KI > LLM-Anbieter."
+
+msgid "Starts a thread with {name} through the Agent Client Protocol. You sign in with the agent's own sign-in."
+msgstr "Startet einen Thread mit {name} über das Agent Client Protocol. Sie melden sich über die eigene Anmeldung des Agenten an."
+
+msgid "Steer"
+msgstr "Nachsteuern"
+
+msgid "Stop Following the {}"
+msgstr "{} nicht mehr folgen"
+
+msgid "Stop Following {}"
+msgstr "{} nicht mehr folgen"
+
+msgid "Stop Generation"
+msgstr "Generierung beenden"
+
+msgid "Stop Subagent"
+msgstr "Unteragent beenden"
+
+msgid "Stop This Command"
+msgstr "Diesen Befehl beenden"
+
+msgid "Subagent"
+msgstr "Unteragent"
+
+msgid "Subagent Canceled"
+msgstr "Unteragent abgebrochen"
+
+msgid "Subagent Cancelled"
+msgstr "Unteragent abgebrochen"
+
+msgid "Subagent Failed"
+msgstr "Unteragent fehlgeschlagen"
+
+msgid "Subagent Output"
+msgstr "Unteragent-Ausgabe"
+
+msgid "Subagents Awaiting Permission:"
+msgstr "Unteragenten warten auf Berechtigung:"
+
+msgid "Submit"
+msgstr "Senden"
+
+msgid "Submitted"
+msgstr "Gesendet"
+
+msgid "Subscription"
+msgstr "Abonnement"
+
+msgid "Subscription or API Key"
+msgstr "Abonnement oder API-Schlüssel"
+
+msgid "Subscription or API key: you sign in on Claude Code's own screen, and Zed never handles the credentials. The subscription can be turned off in Settings."
+msgstr "Abonnement oder API-Schlüssel: Sie melden sich auf dem eigenen Bildschirm von Claude Code an, und ForgeKairos verarbeitet die Anmeldedaten nie. Das Abonnement kann in den Einstellungen ausgeschaltet werden."
+
+msgid "Subscription sign-in is turned off by `allow_subscription_sign_in` in settings. You can still use an API key."
+msgstr "Die Anmeldung per Abonnement ist durch `allow_subscription_sign_in` in den Einstellungen ausgeschaltet. Sie können weiterhin einen API-Schlüssel verwenden."
+
+msgid "Subscription sign-in is turned off in this agent's settings (`allow_subscription_sign_in`)."
+msgstr "Die Anmeldung per Abonnement ist in den Einstellungen dieses Agenten ausgeschaltet (`allow_subscription_sign_in`)."
+
+msgid "Switch to {}"
+msgstr "Zu {} wechseln"
+
+msgid "Symbols"
+msgstr "Symbole"
+
+msgid "Tab"
+msgstr "Tab"
+
+msgid "Tab Bar"
+msgstr "Tab-Leiste"
+
+msgid "Target"
+msgstr "Ziel"
+
+msgid "Terminal"
+msgstr "Terminal"
+
+msgid "Terminal inline assistant error: {}"
+msgstr "Fehler des Terminal-Inline-Assistenten: {}"
+
+msgid "Thanks for your feedback!"
+msgstr "Vielen Dank für Ihr Feedback!"
+
+msgid "The Claude Code sent to the remote host could not be found. Please try again."
+msgstr "Das an den Remote-Host gesendete Claude Code wurde nicht gefunden. Bitte versuchen Sie es erneut."
+
+msgid "The JSON is hidden because the saved settings contain values that look like secrets."
+msgstr "Das JSON ist ausgeblendet, weil die gespeicherten Einstellungen Werte enthalten, die wie Geheimnisse aussehen."
+
+msgid "The Zed server on the remote host is not ready yet (internal error)."
+msgstr "Der ForgeKairos-Server auf dem Remote-Host ist noch nicht bereit (interner Fehler)."
+
+msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
+msgstr "Der ForgeKairos-Server auf dem Remote-Host ist noch nicht bereit. Warten Sie, bis die Verbindung hergestellt ist, und versuchen Sie es erneut."
+
+msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
+msgstr "Der Agent kann das Repository lesen, aber nicht ändern. Klicken, um Git-Vorgänge für diesen Thread einzuschalten."
+
+msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
+msgstr "Der Agent kann stagen, committen, Branches wechseln usw., mit ausgeschalteten Hooks und ohne Netzwerkzugriff. Jeder Befehl folgt den Berechtigungen des Git-Tools. Klicken, um dies für diesen Thread auszuschalten."
+
+msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
+msgstr "Der Agent kann `getDiagnostics` nicht verwenden und sieht daher die Fehler und Warnungen nicht, die der Editor anzeigt. {reason}"
+
+msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
+msgstr "Der Agent wurde zu settings.json hinzugefügt, aber noch nicht geladen. Öffnen Sie ihn später über das Menü +."
+
+msgid "The agent was stopped because it wasn't in use. Sending a message reconnects it"
+msgstr "Der Agent wurde beendet, weil er nicht verwendet wurde. Durch Senden einer Nachricht wird er erneut verbunden"
+
+msgid "The agent's network access needs hosts added to the allowlist"
+msgstr "Für den Netzwerkzugriff des Agenten müssen Hosts zur Zulassungsliste hinzugefügt werden"
+
+msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
+msgstr "Die Verbindung zur API von {provider} wurde unterbrochen. ForgeKairos wiederholt den Versuch automatisch. Wenn das Problem weiterhin besteht, überprüfen Sie Ihre Netzwerkverbindung."
+
+msgid "The extension's settings must be a JSON object ({{ … }})."
+msgstr "Die Einstellungen der Erweiterung müssen ein JSON-Objekt sein ({{ … }})."
+
+msgid "The file name for {platform} in the release information ({file_name}) is not the expected one."
+msgstr "Der Dateiname für {platform} in den Release-Informationen ({file_name}) entspricht nicht dem erwarteten."
+
+msgid "The hash of the downloaded Claude Code does not match the release information. Canceled because it may have been tampered with."
+msgstr "Der Hash des heruntergeladenen Claude Code stimmt nicht mit den Release-Informationen überein. Abgebrochen, da es manipuliert worden sein könnte."
+
+msgid "The hosts were added to the allowlist, but the change has not taken effect yet. Wait a moment and try again."
+msgstr "Die Hosts wurden zur Zulassungsliste hinzugefügt, aber die Änderung ist noch nicht wirksam. Warten Sie einen Moment und versuchen Sie es erneut."
+
+msgid "The key is saved in {store}, not in settings.json."
+msgstr "Der Schlüssel wird im Anmeldedatenspeicher ({store}) gespeichert, nicht in settings.json."
+
+msgid "The location of the Claude Code used in the sandbox is not an absolute path (internal error): {claude_path}"
+msgstr "Der Speicherort des in der Sandbox verwendeten Claude Code ist kein absoluter Pfad (interner Fehler): {claude_path}"
+
+msgid "The message is over its size limit, so {count} large attachment is reduced to an outline or a reference."
+msgid_plural "The message is over its size limit, so {count} large attachments are reduced to outlines or references."
+msgstr[0] "Die Nachricht überschreitet ihre Größenbeschränkung, daher wird {count} großer Anhang auf eine Gliederung oder einen Verweis reduziert."
+msgstr[1] "Die Nachricht überschreitet ihre Größenbeschränkung, daher werden {count} große Anhänge auf Gliederungen oder Verweise reduziert."
+
+msgid "The model"
+msgstr "Das Modell"
+
+msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
+msgstr "Das Modell wurde gestoppt, weil es seine maximale Ausgabelänge erreicht hat. Sie können es bitten, dort fortzufahren, wo es aufgehört hat."
+
+msgid "The project is not connected to the remote host."
+msgstr "Das Projekt ist nicht mit dem Remote-Host verbunden."
+
+msgid "The relay cannot be started because the project folder ({root}) contains the IDE integration's rendezvous location."
+msgstr "Die Weiterleitung kann nicht gestartet werden, weil der Projektordner ({root}) den Treffpunkt der IDE-Integration enthält."
+
+msgid "The release information has no file for {platform}."
+msgstr "Die Release-Informationen enthalten keine Datei für {platform}."
+
+msgid "The remote Linux host uses musl, so the Linux build of Claude Code (the glibc build) cannot run."
+msgstr "Der Remote-Linux-Host verwendet musl, daher kann die Linux-Version von Claude Code (die glibc-Version) nicht ausgeführt werden."
+
+msgid "The remote host did not respond within {seconds} seconds ({step}). Check the state of the remote host and try again."
+msgstr "Der Remote-Host hat nicht innerhalb von {seconds} Sekunden geantwortet ({step}). Prüfen Sie den Zustand des Remote-Hosts und versuchen Sie es erneut."
+
+msgid "The remote host does not have enough free space ({required} MB needed, {available} MB free). Free up space on the remote host and try again."
+msgstr "Der Remote-Host hat nicht genügend freien Speicherplatz ({required} MB benötigt, {available} MB frei). Geben Sie auf dem Remote-Host Speicherplatz frei und versuchen Sie es erneut."
+
+msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
+msgstr "Auf dem Remote-Host gibt es kein `sha256sum`, daher kann nicht bestätigt werden, dass Claude Code nicht ersetzt wurde. Installieren Sie coreutils auf dem Remote-Host und versuchen Sie es erneut."
+
+msgid "The sandboxed Claude Code is not available because no folder is open."
+msgstr "Claude Code in der Sandbox ist nicht verfügbar, weil kein Ordner geöffnet ist."
+
+msgid "The sandboxed Claude Code is not available because the remote host is not running Linux."
+msgstr "Claude Code in der Sandbox ist nicht verfügbar, weil auf dem Remote-Host kein Linux läuft."
+
+msgid "The sandboxed Claude Code is not available in a project that is being edited collaboratively."
+msgstr "Claude Code in der Sandbox ist in einem Projekt, das gemeinsam bearbeitet wird, nicht verfügbar."
+
+msgid "The sandboxed Claude Code is not available yet for this type of connection."
+msgstr "Claude Code in der Sandbox ist für diese Art von Verbindung noch nicht verfügbar."
+
+msgid "The sandboxed Claude Code is not available yet on this OS."
+msgstr "Claude Code in der Sandbox ist auf diesem Betriebssystem noch nicht verfügbar."
+
+msgid "The session's terminal was closed right after it opened."
+msgstr "Das Terminal der Sitzung wurde direkt nach dem Öffnen geschlossen."
+
+msgid "The sign-in is shared with your usual Claude Code (`~/.claude`)."
+msgstr "Die Anmeldung wird mit Ihrem üblichen Claude Code geteilt (`~/.claude`)."
+
+msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
+msgstr "Die Größe des heruntergeladenen Claude Code stimmt nicht mit den Release-Informationen überein. Abgebrochen."
+
+msgid "The terminal panel is not available."
+msgstr "Das Terminal-Panel ist nicht verfügbar."
+
+msgid "The thread cannot be moved back because the agent panel was not found."
+msgstr "Der Thread kann nicht zurückverschoben werden, weil das Agent-Panel nicht gefunden wurde."
+
+msgid "The version in the release information ({manifest_version}) does not match the requested version ({version}). Canceled."
+msgstr "Die Version in den Release-Informationen ({manifest_version}) stimmt nicht mit der angeforderten Version ({version}) überein. Abgebrochen."
+
+msgid "The {channel} version v{offered} is older than the installed v{installed}, so it will not be updated."
+msgstr "Die Version v{offered} ({channel}) ist älter als die installierte v{installed}, daher wird nicht aktualisiert."
+
+msgid "There is no Linux build of Claude Code for the WSL architecture \"{machine}\" (only x86_64 and aarch64 are supported)."
+msgstr "Für die WSL-Architektur \"{machine}\" gibt es keine Linux-Version von Claude Code (unterstützt werden nur x86_64 und aarch64)."
+
+msgid "There is no Linux build of Claude Code for the remote host's architecture \"{machine}\" (only x86_64 and aarch64 are supported)."
+msgstr "Für die Architektur \"{machine}\" des Remote-Hosts gibt es keine Linux-Version von Claude Code (unterstützt werden nur x86_64 und aarch64)."
+
+msgid "There is no folder to run Claude Code in."
+msgstr "Es gibt keinen Ordner, in dem Claude Code ausgeführt werden kann."
+
+msgid "Thinking"
+msgstr "Denken"
+
+msgid "Thinking Effort"
+msgstr "Denkaufwand"
+
+msgid "Thinking: Off"
+msgstr "Denken: Aus"
+
+msgid "Thinking: On"
+msgstr "Denken: Ein"
+
+msgid "Thinking: {level}"
+msgstr "Denken: {level}"
+
+msgid "This JSON contains values that the form cannot show. Keep editing it as JSON."
+msgstr "Dieses JSON enthält Werte, die das Formular nicht darstellen kann. Bearbeiten Sie es weiter als JSON."
+
+msgid "This WSL distribution uses musl, so the Linux build of Claude Code (the glibc build) cannot run."
+msgstr "Diese WSL-Distribution verwendet musl, daher kann die Linux-Version von Claude Code (die glibc-Version) nicht ausgeführt werden."
+
+msgid "This Week"
+msgstr "Diese Woche"
+
+msgid "This Window"
+msgstr "Dieses Fenster"
+
+msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
+msgstr "Dieser Agent kann die IDE-Tools von ForgeKairos verwenden: Hervorhebungen, Annotationen, Touren, Hover, Definitionen, Referenzen und Symbolsuche"
+
+msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
+msgstr "Dieser Agent unterstützt das Anzeigen früherer Nachrichten nicht. Ihre Sitzung wird jedoch trotzdem an der Stelle fortgesetzt, an der Sie zuletzt aufgehört haben."
+
+msgid "This agent doesn't currently support multi-root workspaces"
+msgstr "Dieser Agent unterstützt derzeit keine Multi-Root-Arbeitsbereiche"
+
+msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
+msgstr "Dieser Agent bietet keine Anmeldung per Abonnement an. Um ihn mit einem Abonnement zu verwenden, starten Sie das offizielle Claude Code und melden Sie sich dort an."
+
+msgid "This agent is installed via npx (npm)"
+msgstr "Dieser Agent wird über npx (npm) installiert"
+
+msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
+msgstr "Dies gilt nur für diesen Start. Um immer außerhalb der Sandbox zu starten, schalten Sie es auf der Seite „KI“ in den Einstellungen um."
+
+msgid "This applies to this thread only (you will not be asked again; you can revoke the consent on the AI page in Settings). To always start outside the sandbox, switch it on the AI page in Settings."
+msgstr "Dies gilt nur für diesen Thread (Sie werden nicht erneut gefragt; Sie können die Zustimmung auf der Seite „KI“ in den Einstellungen widerrufen). Um immer außerhalb der Sandbox zu starten, schalten Sie es auf der Seite „KI“ in den Einstellungen um."
+
+msgid "This command can write to a file on a Windows drive"
+msgstr "Dieser Befehl kann in eine Datei auf einem Windows-Laufwerk schreiben"
+
+msgid "This command ran without a sandbox, allowed by an earlier version when the sandbox could not be created. Commands now always run inside the sandbox."
+msgstr "Dieser Befehl wurde ohne Sandbox ausgeführt, was eine frühere Version erlaubt hat, als die Sandbox nicht erstellt werden konnte. Befehle werden jetzt immer in der Sandbox ausgeführt."
+
+msgid "This command was allowed to run without a sandbox by an earlier version when the sandbox could not be created. Commands now always run inside the sandbox."
+msgstr "Dieser Befehl durfte von einer früheren Version ohne Sandbox ausgeführt werden, als die Sandbox nicht erstellt werden konnte. Befehle werden jetzt immer in der Sandbox ausgeführt."
+
+msgid "This conversation is too long for the model's context window. Start a new thread or remove some attached files to continue."
+msgstr "Diese Unterhaltung ist zu lang für das Kontextfenster des Modells. Starten Sie einen neuen Thread oder entfernen Sie einige angehängte Dateien, um fortzufahren."
+
+msgid "This extension has no settings to configure."
+msgstr "Diese Erweiterung hat keine Einstellungen zum Konfigurieren."
+
+msgid "This extension's settings cannot be shown as a form, so they are edited as JSON."
+msgstr "Die Einstellungen dieser Erweiterung können nicht als Formular dargestellt werden und werden daher als JSON bearbeitet."
+
+msgid "This internationalized address displays as {decoded_host}. Verify it carefully."
+msgstr "Diese internationalisierte Adresse wird als {decoded_host} angezeigt. Prüfen Sie sie sorgfältig."
+
+msgid "This model does not support images yet"
+msgstr "Dieses Modell unterstützt noch keine Bilder"
+
+msgid "This model does not support tools."
+msgstr "Dieses Modell unterstützt keine Tools."
+
+msgid "This model doesn't support thinking mode"
+msgstr "Dieses Modell unterstützt keinen Denkmodus"
+
+msgid "This model only supports turning thinking on or off (effort levels aren't supported)"
+msgstr "Dieses Modell unterstützt nur das Ein- und Ausschalten des Denkens (Aufwandsstufen werden nicht unterstützt)"
+
+msgid "This prompt was pre-filled by an external link. Read it carefully before you submit it to the model."
+msgstr "Dieser Prompt wurde durch einen externen Link vorausgefüllt. Lesen Sie ihn sorgfältig, bevor Sie ihn an das Modell senden."
+
+msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
+msgstr "Dieser Server ist in der Einstellungsdatei des Projekts (.zed/settings.json) definiert. Beim Speichern hier wird in Ihre Benutzereinstellungen geschrieben, aber die Definition des Projekts hat Vorrang, daher hat es keine Wirkung. Bearbeiten Sie die definierende Datei über die Seite „MCP-Server“ im Einstellungsfenster."
+
+msgid "This server is defined on the remote host (its server settings or an extension running there). Saving here writes to your user settings, but the remote host's definition takes precedence, so it has no effect. Change it on the remote host; the MCP Servers page of the Settings window shows where it is defined."
+msgstr "Dieser Server ist auf dem Remote-Host definiert (in dessen Servereinstellungen oder durch eine dort laufende Erweiterung). Beim Speichern hier wird in Ihre Benutzereinstellungen geschrieben, aber die Definition des Remote-Hosts hat Vorrang, daher hat es keine Wirkung. Ändern Sie ihn auf dem Remote-Host; die Seite „MCP-Server“ im Einstellungsfenster zeigt, wo er definiert ist."
+
+msgid "This server is waiting for approval. Review it on the MCP Servers page of the Settings window."
+msgstr "Dieser Server wartet auf Genehmigung. Prüfen Sie ihn auf der Seite „MCP-Server“ im Einstellungsfenster."
+
+msgid "This starts a new session (it does not continue this conversation)."
+msgstr "Dadurch wird eine neue Sitzung gestartet (diese Unterhaltung wird nicht fortgesetzt)."
+
+msgid "This thread is a conversation with an agent that was started outside the sandbox. The conversation is kept in a settings folder outside the sandbox, so it can't be read from inside the sandbox. To continue, resume it outside the sandbox (you'll be asked before it starts)."
+msgstr "Dieser Thread ist eine Unterhaltung mit einem Agenten, der außerhalb der Sandbox gestartet wurde. Die Unterhaltung liegt in einem Einstellungsordner außerhalb der Sandbox und kann daher nicht aus der Sandbox gelesen werden. Um fortzufahren, setzen Sie sie außerhalb der Sandbox fort (Sie werden vor dem Start gefragt)."
+
+msgid "This thread was started inside the sandbox, so it was resumed inside the sandbox"
+msgstr "Dieser Thread wurde in der Sandbox gestartet und daher in der Sandbox fortgesetzt"
+
+msgid "This thread's agent doesn't have the IDE diagnostics tool"
+msgstr "Der Agent dieses Threads hat das IDE-Diagnosetool nicht"
+
+msgid "This thread's agent is running outside the sandbox"
+msgstr "Der Agent dieses Threads läuft außerhalb der Sandbox"
+
+msgid "Thread Metadata: {}"
+msgstr "Thread-Metadaten: {}"
+
+msgid "Thread Started Outside the Sandbox"
+msgstr "Thread außerhalb der Sandbox gestartet"
+
+msgid "Thread copied to clipboard (base64 encoded)"
+msgstr "Thread in Zwischenablage kopiert (Base64-kodiert)"
+
+msgid "Thread loaded from clipboard"
+msgstr "Thread aus Zwischenablage geladen"
+
+msgid "Thread metadata store not available"
+msgstr "Der Speicher für Thread-Metadaten ist nicht verfügbar"
+
+msgid "Thread reached the token limit"
+msgstr "Thread hat das Token-Limit erreicht"
+
+msgid "Thread reaching the token limit soon"
+msgstr "Thread erreicht bald das Token-Limit"
+
+msgid "Threads"
+msgstr "Threads"
+
+msgid "Title generation failed. Click to retry."
+msgstr "Titel konnte nicht generiert werden. Klicken, um es erneut zu versuchen."
+
+msgid "To continue, run /compact or start a new thread and @-mention this one"
+msgstr "Um fortzufahren, führen Sie /compact aus oder starten Sie einen neuen Thread und erwähnen Sie diesen Thread mit @"
+
+msgid "To use an API key (billed per use), enter it below and save it."
+msgstr "Um einen API-Schlüssel zu verwenden (nutzungsbasiert abgerechnet), geben Sie ihn unten ein und speichern Sie ihn."
+
+msgid "Today"
+msgstr "Heute"
+
+msgid "Toggle Agent Menu"
+msgstr "Agent-Menü umschalten"
+
+msgid "Toggle Thread History in Panel"
+msgstr "Thread-Verlauf im Panel ein-/ausblenden"
+
+msgid "Toggle Threads Sidebar"
+msgstr "Thread-Seitenleiste ein-/ausblenden"
+
+msgid "Tool Permissions"
+msgstr "Tool-Berechtigungen"
+
+msgid "Tools Unsupported"
+msgstr "Tools nicht unterstützt"
+
+msgid "Track the agent's location as it reads and edits files."
+msgstr "Verfolgt die Position des Agenten beim Lesen und Bearbeiten von Dateien."
+
+msgid "Transform"
+msgstr "Transformieren"
+
+msgid "Try Again"
+msgstr "Erneut versuchen"
+
+msgid "Try to restart the agent"
+msgstr "Versuchen, den Agenten neu zu starten"
+
+msgid "Type anything to edit"
+msgstr "Zum Bearbeiten tippen"
+
+msgid "Type to Send"
+msgstr "Tippen zum Senden"
+
+msgid "Unavailable"
+msgstr "Nicht verfügbar"
+
+msgid "Unavailable Editing"
+msgstr "Bearbeitung nicht verfügbar"
+
+msgid "Undo"
+msgstr "Rückgängig"
+
+msgid "Unexpected shape of the IDE rendezvous path (internal error): {rendezvous}"
+msgstr "Unerwartete Form des IDE-Treffpunktpfads (interner Fehler): {rendezvous}"
+
+msgid "Unexpected shape of the remote home directory (internal error): {home}"
+msgstr "Unerwartete Form des Remote-Basisverzeichnisses (interner Fehler): {home}"
+
+msgid "Unfavorite"
+msgstr "Aus Favoriten entfernen"
+
+msgid "Unfavorite Model"
+msgstr "Modell aus Favoriten entfernen"
+
+msgid "Unknown"
+msgstr "Unbekannt"
+
+msgid "Update Claude Code to v{to}"
+msgstr "Claude Code auf v{to} aktualisieren"
+
+msgid "Update available"
+msgstr "Update verfügbar"
+
+msgid "Update available: v{installed} → v{latest}"
+msgstr "Update verfügbar: v{installed} → v{latest}"
+
+msgid "Update available: v{latest}"
+msgstr "Update verfügbar: v{latest}"
+
+msgid "Update to v{}"
+msgstr "Auf v{} aktualisieren"
+
+msgid "Upgrade"
+msgstr "Upgrade"
+
+msgid "Upgrade to Zed Pro"
+msgstr "Upgrade auf Zed Pro"
+
+msgid "Upgrade {}"
+msgstr "{} aktualisieren"
+
+msgid "Upgrade {} to work with Zed"
+msgstr "{} aktualisieren, um mit ForgeKairos zu arbeiten"
+
+msgid "Verifying the signature of the Claude Code release information…"
+msgstr "Signatur der Release-Informationen von Claude Code wird überprüft…"
+
+msgid "View"
+msgstr "Ansicht"
+
+msgid "View Agent License or Terms of Service"
+msgstr "Agent-Lizenz oder Nutzungsbedingungen anzeigen"
+
+msgid "View Raw Input"
+msgstr "Roheingabe anzeigen"
+
+msgid "View Sandboxing Docs"
+msgstr "Sandboxing-Dokumentation anzeigen"
+
+msgid "View docs"
+msgstr "Dokumentation anzeigen"
+
+msgid "Visit Agent Repository"
+msgstr "Agent-Repository besuchen"
+
+msgid "Visit Agent Website"
+msgstr "Agent-Website besuchen"
+
+msgid "WSL did not respond within {seconds} seconds. Wait a moment and try again; if that does not help, restart WSL with `wsl --shutdown`."
+msgstr "WSL hat nicht innerhalb von {seconds} Sekunden geantwortet. Warten Sie einen Moment und versuchen Sie es erneut; wenn das nicht hilft, starten Sie WSL mit `wsl --shutdown` neu."
+
+msgid "Wait until file edits are complete."
+msgstr "Warten Sie, bis die Dateibearbeitungen abgeschlossen sind."
+
+msgid "Waiting for completion"
+msgstr "Warten auf Abschluss"
+
+msgid "Waiting for input"
+msgstr "Warten auf Eingabe"
+
+msgid "Waiting for the allowlist change to take effect…"
+msgstr "Warten, bis die Änderung der Zulassungsliste wirksam wird…"
+
+msgid "Waiting for tool confirmation"
+msgstr "Warten auf Toolbestätigung"
+
+msgid "We appreciate your feedback and will use it to improve in the future."
+msgstr "Wir schätzen Ihr Feedback und werden es nutzen, um uns in Zukunft zu verbessern."
+
+msgid "What went wrong? Share your feedback so we can improve."
+msgstr "Was ist schiefgelaufen? Teilen Sie Ihr Feedback, damit wir uns verbessern können."
+
+msgid "When an API key is set, Claude Code uses it instead. To use your subscription, remove the key."
+msgstr "Wenn ein API-Schlüssel festgelegt ist, verwendet Claude Code stattdessen diesen. Um Ihr Abonnement zu verwenden, entfernen Sie den Schlüssel."
+
+msgid "Write Access"
+msgstr "Schreibzugriff"
+
+msgid "Write Path"
+msgstr "Schreibpfad"
+
+msgid "Writes and network access are not restricted (Zed's controls do not apply on the remote host)."
+msgstr "Schreibzugriffe und Netzwerkzugriff sind nicht eingeschränkt (die Kontrollen von ForgeKairos gelten auf dem Remote-Host nicht)."
+
+msgid "Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings.\nThe sign-in is shared with your usual Claude Code."
+msgstr "Schreibzugriffe sind nicht mehr eingeschränkt, und Netzwerkeinschränkungen gelten nur für Programme, die die Proxy-Einstellungen lesen.\nDie Anmeldung wird mit Ihrem üblichen Claude Code geteilt."
+
+msgid "Writes are no longer restricted. Network restrictions only apply to programs that read the proxy settings (they are not enforced)."
+msgstr "Schreibzugriffe sind nicht mehr eingeschränkt. Netzwerkeinschränkungen gelten nur für Programme, die die Proxy-Einstellungen lesen (sie werden nicht erzwungen)."
+
+msgid "Yesterday"
+msgstr "Gestern"
+
+msgid "You already rated this result"
+msgstr "Sie haben dieses Ergebnis bereits bewertet"
+
+msgid "You can discard this interrupted partial edit and restore the original file content."
+msgstr "Diese unterbrochene Teilbearbeitung kann verworfen und der ursprüngliche Dateiinhalt wiederhergestellt werden."
+
+msgid "You have sandboxing disabled in settings."
+msgstr "Sandboxing ist in den Einstellungen deaktiviert."
+
+msgid "You may need to reconfigure authentication for this provider"
+msgstr "Möglicherweise müssen Sie die Authentifizierung für diesen Anbieter neu konfigurieren"
+
+msgid "You reached your free usage limit. Upgrade to Zed Pro for more prompts."
+msgstr "Sie haben Ihr kostenloses Nutzungslimit erreicht. Führen Sie ein Upgrade auf Zed Pro durch, um mehr Prompts zu erhalten."
+
+msgid "You've been automatically reset to the Free plan."
+msgstr "Sie wurden automatisch auf den kostenlosen Tarif zurückgesetzt."
+
+msgid "Your Zed Pro Trial has expired"
+msgstr "Ihre Zed-Pro-Testversion ist abgelaufen"
+
+msgid "Your usual settings and sign-in are used as they are."
+msgstr "Ihre üblichen Einstellungen und Ihre Anmeldung werden unverändert verwendet."
+
+msgid "a URI"
+msgstr "eine URI"
+
+msgid "a date"
+msgstr "ein Datum"
+
+msgid "a date and time"
+msgstr "ein Datum mit Uhrzeit"
+
+msgid "added"
+msgstr "hinzugefügt"
+
+msgid "an email address"
+msgstr "eine E-Mail-Adresse"
+
+msgid "any host"
+msgstr "beliebiger Host"
+
+msgid "checking the Claude Code on the remote host"
+msgstr "Prüfen des Claude Code auf dem Remote-Host"
+
+msgid "checking the remote environment"
+msgstr "Prüfen der Remote-Umgebung"
+
+msgid "current directory"
+msgstr "aktuelles Verzeichnis"
+
+msgid "in the future"
+msgstr "in der Zukunft"
+
+msgid "not added"
+msgstr "nicht hinzugefügt"
+
+msgid "one folder"
+msgstr "ein Ordner"
+
+msgid "preparing the destination folder"
+msgstr "Vorbereiten des Zielordners"
+
+msgid "running a command on the remote host"
+msgstr "Ausführen eines Befehls auf dem Remote-Host"
+
+msgid "unrestricted except Git metadata"
+msgstr "uneingeschränkt außer Git-Metadaten"
+
+msgid "verifying the uploaded Claude Code"
+msgstr "Überprüfen des hochgeladenen Claude Code"
+
+msgid "{action}… ({agent_panel_keybinding} ― ↓↑ for history — @ to include context)"
+msgstr "{action}… ({agent_panel_keybinding} ― ↓↑ für Verlauf — @ zum Hinzufügen von Kontext)"
+
+msgid "{count} IDE integration relays are already running, so no more can be started. Close the agent threads and terminals you are not using and try again."
+msgstr "Es laufen bereits {count} Weiterleitungen der IDE-Integration, daher können keine weiteren gestartet werden. Schließen Sie nicht verwendete Agent-Threads und Terminals und versuchen Sie es erneut."
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "{count} Fehler"
+msgstr[1] "{count} Fehler"
+
+msgid "{count} host"
+msgid_plural "{count} hosts"
+msgstr[0] "{count} Host"
+msgstr[1] "{count} Hosts"
+
+msgid "{count} path"
+msgid_plural "{count} paths"
+msgstr[0] "{count} Pfad"
+msgstr[1] "{count} Pfade"
+
+msgid "{count} project rule"
+msgid_plural "{count} project rules"
+msgstr[0] "{count} Projektregel"
+msgstr[1] "{count} Projektregeln"
+
+msgid "{count} thread"
+msgid_plural "{count} threads"
+msgstr[0] "{count} Thread"
+msgstr[1] "{count} Threads"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "{count} Warnung"
+msgstr[1] "{count} Warnungen"
+
+msgid "{days} days ago"
+msgstr "vor {days} Tagen"
+
+msgid "{detail} Click to learn more about sandboxing."
+msgstr "{detail} Klicken, um mehr über die Sandbox zu erfahren."
+
+msgid "{errors} & {warnings}"
+msgstr "{errors} und {warnings}"
+
+msgid "{host} (added)"
+msgstr "{host} (hinzugefügt)"
+
+msgid "{host} (not added)"
+msgstr "{host} (nicht hinzugefügt)"
+
+msgid "{hours} hours ago"
+msgstr "vor {hours} Stunden"
+
+msgid "{keybinding} to chat"
+msgstr "{keybinding} zum Chatten"
+
+msgid "{minutes} minutes ago"
+msgstr "vor {minutes} Minuten"
+
+msgid "{notice}. Starts `{program}` on this PC in the project folder."
+msgstr "{notice}. Startet `{program}` auf diesem Computer im Projektordner."
+
+msgid "{profile_name} — Configure Built-in Tools"
+msgstr "{profile_name} — Integrierte Tools konfigurieren"
+
+msgid "{profile_name} — Configure Default Model"
+msgstr "{profile_name} — Standardmodell konfigurieren"
+
+msgid "{profile_name} — Configure MCP Tools"
+msgstr "{profile_name} — MCP-Tools konfigurieren"
+
+msgid "{provider} rejected the request due to insufficient permissions."
+msgstr "{provider} hat die Anfrage aufgrund unzureichender Berechtigungen abgelehnt."
+
+msgid "{provider}'s API returned an unexpected error. If the problem persists, try switching models or restarting Zed."
+msgstr "Die API von {provider} hat einen unerwarteten Fehler zurückgegeben. Wenn das Problem weiterhin besteht, versuchen Sie, das Modell zu wechseln oder ForgeKairos neu zu starten."
+
+msgid "{provider}'s rate limit was reached. Zed will retry automatically. You can also wait a moment and try again."
+msgstr "Das Ratenlimit von {provider} wurde erreicht. ForgeKairos versucht es automatisch erneut. Sie können auch einen Moment warten und es erneut versuchen."
+
+msgid "{provider}'s servers are temporarily unavailable. Zed will retry automatically. If the problem persists, check the provider's status page."
+msgstr "Die Server von {provider} sind vorübergehend nicht verfügbar. ForgeKairos versucht es automatisch erneut. Wenn das Problem weiterhin besteht, prüfen Sie die Statusseite des Anbieters."
+
+msgid "{seconds} seconds ago"
+msgstr "vor {seconds} Sekunden"
+
+msgid "{title} does not match the requested constraints"
+msgstr "{title} entspricht nicht den angeforderten Einschränkungen"
+
+msgid "{title} does not match the requested pattern"
+msgstr "{title} entspricht nicht dem angeforderten Muster"
+
+msgid "{title} has a validation pattern that is too complex"
+msgstr "{title} hat ein zu komplexes Validierungsmuster"
+
+msgid "{title} has an invalid validation format"
+msgstr "{title} hat ein ungültiges Validierungsformat"
+
+msgid "{title} has an invalid validation pattern"
+msgstr "{title} hat ein ungültiges Validierungsmuster"
+
+msgid "{title} is too long"
+msgstr "{title} ist zu lang"
+
+msgid "{title} is too long to validate safely"
+msgstr "{title} ist zu lang, um sicher validiert zu werden"
+
+msgid "{title} is too short"
+msgstr "{title} ist zu kurz"
+
+msgid "{title} must be a finite number"
+msgstr "{title} muss eine endliche Zahl sein"
+
+msgid "{title} must be a number"
+msgstr "{title} muss eine Zahl sein"
+
+msgid "{title} must be an integer"
+msgstr "{title} muss eine Ganzzahl sein"
+
+msgid "{title} must be at least {minimum}"
+msgstr "{title} muss mindestens {minimum} betragen"
+
+msgid "{title} must be at most {maximum}"
+msgstr "{title} darf höchstens {maximum} betragen"
+
+msgid "{title} must be one of the provided options"
+msgstr "{title} muss eine der bereitgestellten Optionen sein"
+
+msgid "{title} must be {format}"
+msgstr "{title} muss {format} sein"
+
+msgid "{warning_count} Skills Loaded with Long Descriptions"
+msgstr "{warning_count} Skills mit langen Beschreibungen geladen"
+
+msgid "{} Exited"
+msgstr "{} beendet"
+
+msgid "{} Needs Hosts Added to the Allowlist"
+msgstr "{} benötigt Hosts in der Zulassungsliste"
+
+msgid "{} Queued Messages"
+msgstr "{} Nachrichten in der Warteschlange"
+
+msgid "{} Tasks"
+msgstr "{} Aufgaben"
+
+msgid "{} configured successfully."
+msgstr "{} erfolgreich konfiguriert."
+
+msgid "{} has too many selections"
+msgstr "Für {} wurden zu viele Optionen ausgewählt"
+
+msgid "{} is required"
+msgstr "{} ist erforderlich"
+
+msgid "{} left"
+msgstr "{} verbleibend"
+
+msgid "{} needs more selections"
+msgstr "Für {} sind weitere Auswahlen erforderlich"
+
+msgid "{} refused to respond to this prompt. This can happen when a model believes the prompt violates its content policy or safety guidelines, so rephrasing it can sometimes address the issue."
+msgstr "{} hat die Antwort auf diesen Prompt verweigert. Dies kann passieren, wenn ein Modell annimmt, dass der Prompt gegen seine Inhaltsrichtlinie oder Sicherheitsrichtlinien verstößt. Eine Umformulierung kann das Problem daher manchmal beheben."
+
+msgid "{} refused to respond to this request"
+msgstr "{} hat die Antwort auf diese Anfrage verweigert"
+
+msgid "{} tokens"
+msgstr "{} Token"
+
+msgid "— {count} file changed"
+msgid_plural "— {count} files changed"
+msgstr[0] "— {count} Datei geändert"
+msgstr[1] "— {count} Dateien geändert"
+
+msgid "— {count} step"
+msgid_plural "— {count} steps"
+msgstr[0] "— {count} Schritt"
+msgstr[1] "— {count} Schritte"
+
+msgid "“{value}” contains potentially surprising Unicode characters"
+msgstr "„{value}“ enthält möglicherweise unerwartete Unicode-Zeichen"
+
+msgctxt "Claude Code release channel"
+msgid "latest"
+msgstr "neueste"
+
+msgctxt "Claude Code release channel"
+msgid "stable"
+msgstr "stabil"
+
+msgctxt "PanelTabBar"
+msgid "Always"
+msgstr "Immer"
+
+msgctxt "PanelTabBar"
+msgid "Auto"
+msgstr "Automatisch"
+
+msgctxt "PanelTabBar"
+msgid "Never"
+msgstr "Nie"
+
+msgctxt "agent profile"
+msgid "Ask"
+msgstr "Fragen"
+
+msgctxt "agent profile"
+msgid "Edit Only"
+msgstr "Nur bearbeiten"
+
+msgctxt "agent profile"
+msgid "Minimal"
+msgstr "Minimal"
+
+msgctxt "agent profile"
+msgid "Write"
+msgstr "Schreiben"
+
+msgctxt "api key"
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgctxt "attachment mode"
+msgid "Full"
+msgstr "Vollständig"
+
+msgctxt "attachment mode"
+msgid "Summary"
+msgstr "Zusammenfassung"
+
+msgctxt "changed files"
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count} Datei"
+msgstr[1] "{count} Dateien"
+
+msgctxt "chrono date format"
+msgid "%b %-d, %Y"
+msgstr "%-d.%-m.%Y"
+
+msgctxt "data retention"
+msgid "Accept"
+msgstr "Annehmen"
+
+msgctxt "elicitation status"
+msgid "Waiting for input"
+msgstr "Warten auf Eingabe"
+
+msgctxt "extension setting"
+msgid "(Not Set)"
+msgstr "(Nicht festgelegt)"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "mention type"
+msgid "Fetch"
+msgstr "URL abrufen"
+
+msgctxt "model list section"
+msgid "Favorite"
+msgstr "Favorit"
+
+msgctxt "permission pattern menu"
+msgid "Always for `{}` commands"
+msgstr "Immer für `{}`-Befehle"
+
+msgctxt "sandbox path"
+msgid "Source"
+msgstr "Quelle"
+
+msgctxt "subagent title"
+msgid "Subagent Failed"
+msgstr "Unteragent fehlgeschlagen"

@@ -1,0 +1,48 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Channel Notes"
+msgstr "Notes du canal"
+
+msgid "Create File: {}"
+msgstr "Créer le fichier : {}"
+
+msgid "Create file "
+msgstr "Créer le fichier "
+
+msgid "Down"
+msgstr "Bas"
+
+msgid "Exclude Ignored Files"
+msgstr "Exclure les fichiers ignorés"
+
+msgid "Include Ignored Files"
+msgstr "Inclure les fichiers ignorés"
+
+msgid "Left"
+msgstr "Gauche"
+
+msgid "Open File"
+msgstr "Ouvrir le fichier"
+
+msgid "Open multiple"
+msgstr "Ouvrir plusieurs"
+
+msgid "Right"
+msgstr "Droite"
+
+msgid "Search project files..."
+msgstr "Rechercher des fichiers du projet..."
+
+msgid "Split…"
+msgstr "Fractionner…"
+
+msgid "Up"
+msgstr "Haut"

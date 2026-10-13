@@ -1,0 +1,117 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Agent Setup"
+msgstr "에이전트 설정"
+
+msgid "Automatically mark all new projects as trusted to unlock all Zed's features"
+msgstr "모든 새 프로젝트를 신뢰할 수 있는 것으로 자동 표시하여 ForgeKairos의 모든 기능을 활성화합니다"
+
+msgid "Automatically pull your settings from other editors"
+msgstr "다른 편집기에서 설정을 자동으로 가져옵니다"
+
+msgid "Base Keymap"
+msgstr "기본 키맵"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Could not find or load a {source} settings file"
+msgstr "{source} 설정 파일을 찾거나 불러오지 못했습니다"
+
+msgid "Dark"
+msgstr "다크"
+
+msgid "Dismiss Hint"
+msgstr "힌트 닫기"
+
+msgid "Edit and save files directly in the results multibuffer!"
+msgstr "결과 멀티버퍼에서 파일을 직접 편집하고 저장하세요!"
+
+msgid "Editing Mode"
+msgstr "편집 모드"
+
+msgid "Failed to import settings. See log for details"
+msgstr "설정을 가져오지 못했습니다. 자세한 내용은 로그를 확인하세요"
+
+msgid "Finish Setup"
+msgstr "설정 완료"
+
+msgid "Help fix Zed by sending crash reports so we can fix critical issues fast"
+msgstr "크래시 보고서를 전송하여 Zed의 중요한 문제를 빠르게 해결할 수 있도록 도와주세요"
+
+msgid "Help improve Zed by sending anonymous usage data"
+msgstr "익명 사용 데이터를 전송하여 Zed 개선에 도움을 주세요"
+
+msgid "Import"
+msgstr "가져오기"
+
+msgid "Import Settings"
+msgstr "설정 가져오기"
+
+msgid "Importing {} settings may overwrite your existing settings. Will import settings from {}"
+msgstr "{} 설정을 가져오면 기존 설정을 덮어쓸 수 있습니다. {}에서 설정을 가져옵니다"
+
+msgid "Install"
+msgstr "설치"
+
+msgid "Install your favorite agents and start your first thread."
+msgstr "원하는 에이전트를 설치하고 첫 스레드를 시작하세요."
+
+msgid "Learn More"
+msgstr "자세히 알아보기"
+
+msgid "Light"
+msgstr "라이트"
+
+msgid "Normal"
+msgstr "일반"
+
+msgid "Onboarding"
+msgstr "온보딩"
+
+msgid "Open Log"
+msgstr "로그 열기"
+
+msgid "Select a base keymap..."
+msgstr "기본 키맵 선택..."
+
+msgid "Sign In"
+msgstr "로그인"
+
+msgid "Signing In…"
+msgstr "로그인 중…"
+
+msgid "Start Free Trial"
+msgstr "무료 체험 시작"
+
+msgid "System"
+msgstr "시스템"
+
+msgid "The editor for what's next"
+msgstr "차세대를 위한 편집기"
+
+msgid "Theme"
+msgstr "테마"
+
+msgid "Trust All Projects By Default"
+msgstr "기본적으로 모든 프로젝트 신뢰"
+
+msgid "Vim and Helix work on top of the base keymap. Emacs is a base keymap of its own, so choosing it also selects it above."
+msgstr "Vim과 Helix는 기본 키맵 위에서 동작합니다. Emacs는 그 자체가 기본 키맵이므로 선택하면 위의 기본 키맵도 Emacs로 선택됩니다."
+
+msgid "Welcome to Zed"
+msgstr "ForgeKairos에 오신 것을 환영합니다"
+
+msgid "Your {} settings were successfully imported."
+msgstr "{} 설정을 성공적으로 가져왔습니다."
+
+msgid "Zed can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted."
+msgstr "ForgeKairos는 새 프로젝트를 신뢰할 수 있는 것으로 표시한 뒤에야 언어 서버, 프로젝트 설정, MCP 서버 같은 서비스를 실행할 수 있습니다."

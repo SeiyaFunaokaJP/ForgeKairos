@@ -1,0 +1,135 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "An Error Happened"
+msgstr "发生了错误"
+
+msgid "Authenticate To Use"
+msgstr "登录后可用"
+
+msgid "Authorized"
+msgstr "已授权"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Connect to GitHub"
+msgstr "连接到 GitHub"
+
+msgid "Copied!"
+msgstr "已复制！"
+
+msgid "Copilot Chat Enabled!"
+msgstr "Copilot Chat 已启用！"
+
+msgid "Copilot Chat had an issue signing in. Please try again."
+msgstr "Copilot Chat 登录时遇到问题。请重试。"
+
+msgid "Copilot Chat requires an active GitHub Copilot subscription. Please ensure Copilot Chat is configured and try again, or use a different LLM provider."
+msgstr "Copilot Chat 需要有效的 GitHub Copilot 订阅。请确保已配置 Copilot Chat 后重试，或使用其他 LLM 提供商。"
+
+msgid "Copilot Edit Predictions Enabled!"
+msgstr "Copilot Edit Predictions 已启用！"
+
+msgid "Copilot Edit Predictions had issues starting. You can try reinstalling it and signing in again."
+msgstr "Copilot Edit Predictions 启动时遇到问题。你可以尝试重新安装并重新登录。"
+
+msgid "Copilot Edit Predictions has started."
+msgstr "Copilot Edit Predictions 已启动。"
+
+msgid "Copilot Edit Predictions is reinstalling…"
+msgstr "Copilot Edit Predictions 正在重新安装…"
+
+msgid "Copilot Edit Predictions is starting…"
+msgstr "Copilot Edit Predictions 正在启动…"
+
+msgid "Copilot Edit Predictions requires an active GitHub Copilot subscription. Please ensure Copilot Edit Predictions is configured and try again, or use a different edit predictions provider."
+msgstr "Copilot Edit Predictions 需要有效的 GitHub Copilot 订阅。请确保已配置 Copilot Edit Predictions 后重试，或使用其他编辑预测提供商。"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Done"
+msgstr "完成"
+
+msgid "Enable Copilot edit predictions by connecting your existing license once you have subscribed or renewed your subscription."
+msgstr "订阅或续订后，通过关联现有许可证来启用 Copilot 编辑预测。"
+
+msgid "Error: {err}"
+msgstr "错误：{err}"
+
+msgid "Paste this code into GitHub after clicking the button below."
+msgstr "点击下方按钮后，将此代码粘贴到 GitHub。"
+
+msgid "Reinstall Copilot Edit Predictions and Sign In"
+msgstr "重新安装 Copilot Edit Predictions 并登录"
+
+msgid "Reinstall Copilot and Sign in"
+msgstr "重新安装 Copilot 并登录"
+
+msgid "Reinstall and Sign in"
+msgstr "重新安装并登录"
+
+msgid "Sign In"
+msgstr "登录"
+
+msgid "Sign Out"
+msgstr "注销"
+
+msgid "Sign in to GitHub"
+msgstr "登录 GitHub"
+
+msgid "Signed out of Copilot Edit Predictions"
+msgstr "已从 Copilot Edit Predictions 注销"
+
+msgid "Signing into {product}…"
+msgstr "正在登录 {product}…"
+
+msgid "Signing out of Copilot Edit Predictions…"
+msgstr "正在从 Copilot Edit Predictions 注销…"
+
+msgid "Starting {product}…"
+msgstr "正在启动 {product}…"
+
+msgid "Subscribe on GitHub"
+msgstr "在 GitHub 上订阅"
+
+msgid "To use Copilot for edit predictions, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot subscription."
+msgstr "要使用 Copilot 进行编辑预测，需要登录 GitHub。请注意，你的 GitHub 账户必须拥有有效的 Copilot 订阅。"
+
+msgid "To use Zed's agent with GitHub Copilot Chat, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot Chat subscription."
+msgstr "要将 ForgeKairos 的智能体与 GitHub Copilot Chat 配合使用，需要登录 GitHub。请注意，你的 GitHub 账户必须拥有有效的 Copilot Chat 订阅。"
+
+msgid "Use GitHub Copilot Chat in Zed"
+msgstr "在 ForgeKairos 中使用 GitHub Copilot Chat"
+
+msgid "Use GitHub Copilot Edit Predictions in Zed"
+msgstr "在 ForgeKairos 中使用 GitHub Copilot Edit Predictions"
+
+msgid "Use GitHub Copilot in Zed"
+msgstr "在 ForgeKairos 中使用 GitHub Copilot"
+
+msgid "Using Copilot Chat requires an active subscription on GitHub."
+msgstr "使用 Copilot Chat 需要在 GitHub 上拥有有效订阅。"
+
+msgid "Using Copilot edit predictions requires an active subscription on GitHub."
+msgstr "使用 Copilot 编辑预测需要在 GitHub 上拥有有效订阅。"
+
+msgid "Waiting for connection…"
+msgstr "正在等待连接…"
+
+msgid "You must have an active GitHub Copilot subscription."
+msgstr "你必须拥有有效的 GitHub Copilot 订阅。"
+
+msgid "You're all set to use Copilot Chat."
+msgstr "你已可以使用 Copilot Chat。"
+
+msgid "You're all set to use Copilot edit predictions."
+msgstr "你已可以使用 Copilot 编辑预测。"

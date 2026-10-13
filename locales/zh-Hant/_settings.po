@@ -1,0 +1,5885 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "ActivateOnClose"
+msgid "History"
+msgstr "歷程記錄"
+
+msgctxt "ActivateOnClose"
+msgid "Left Neighbour"
+msgstr "左側相鄰分頁"
+
+msgctxt "ActivateOnClose"
+msgid "Neighbour"
+msgstr "相鄰分頁"
+
+msgctxt "AlternateScroll"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "AlternateScroll"
+msgid "On"
+msgstr "開啟"
+
+msgctxt "AutoIndentMode"
+msgid "None"
+msgstr "無"
+
+msgctxt "AutoIndentMode"
+msgid "Preserve Indent"
+msgstr "保留縮排"
+
+msgctxt "AutoIndentMode"
+msgid "Syntax Aware"
+msgstr "語法感知"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "After Delay"
+msgstr "延遲後"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "On Focus Change"
+msgstr "焦點變更時"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "On Window Change"
+msgstr "視窗變更時"
+
+msgctxt "BaseKeymapContent"
+msgid "None"
+msgstr "無"
+
+msgctxt "BottomDockLayout"
+msgid "Contained"
+msgstr "位於左右停駐區之間"
+
+msgctxt "BottomDockLayout"
+msgid "Full"
+msgstr "完整"
+
+msgctxt "BottomDockLayout"
+msgid "Left Aligned"
+msgstr "靠左對齊"
+
+msgctxt "BottomDockLayout"
+msgid "Right Aligned"
+msgstr "靠右對齊"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Comfortable"
+msgstr "舒適"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Custom"
+msgstr "自訂"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Standard"
+msgstr "標準"
+
+msgctxt "CallGraphSources"
+msgid "All"
+msgstr "全部"
+
+msgctxt "CallGraphSources"
+msgid "Language Server"
+msgstr "僅語言伺服器"
+
+msgctxt "CallGraphSources"
+msgid "Name Match"
+msgstr "僅名稱比對"
+
+msgctxt "ClangdIndexMode"
+msgid "Full"
+msgstr "完整"
+
+msgctxt "ClangdIndexMode"
+msgid "Light"
+msgstr "輕量"
+
+msgctxt "CliDefaultOpenBehavior"
+msgid "Add to Existing Window"
+msgstr "加入現有視窗"
+
+msgctxt "CliDefaultOpenBehavior"
+msgid "Open a New Window"
+msgstr "開啟新視窗"
+
+msgctxt "ClosePosition"
+msgid "Left"
+msgstr "左"
+
+msgctxt "ClosePosition"
+msgid "Right"
+msgstr "右"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Close Window"
+msgstr "關閉視窗"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Keep Window Open"
+msgstr "保持視窗開啟"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Platform Default"
+msgstr "平台預設"
+
+msgctxt "CodeLens"
+msgid "Menu"
+msgstr "選單"
+
+msgctxt "CodeLens"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "CodeLens"
+msgid "On"
+msgstr "開啟"
+
+msgctxt "CompletionDetailAlignment"
+msgid "Left"
+msgstr "左"
+
+msgctxt "CompletionDetailAlignment"
+msgid "Right"
+msgstr "右"
+
+msgctxt "CompletionMenuItemKind"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "CompletionMenuItemKind"
+msgid "Symbol"
+msgstr "符號"
+
+msgctxt "CurrentLineHighlight"
+msgid "All"
+msgstr "全部"
+
+msgctxt "CurrentLineHighlight"
+msgid "Gutter"
+msgstr "裝訂邊"
+
+msgctxt "CurrentLineHighlight"
+msgid "Line"
+msgstr "行"
+
+msgctxt "CurrentLineHighlight"
+msgid "None"
+msgstr "無"
+
+msgctxt "CursorShape"
+msgid "Bar"
+msgstr "垂直線"
+
+msgctxt "CursorShape"
+msgid "Block"
+msgstr "方塊"
+
+msgctxt "CursorShape"
+msgid "Hollow"
+msgstr "空心"
+
+msgctxt "CursorShape"
+msgid "Underline"
+msgstr "底線"
+
+msgctxt "CursorShapeContent"
+msgid "Bar"
+msgstr "垂直線"
+
+msgctxt "CursorShapeContent"
+msgid "Block"
+msgstr "方塊"
+
+msgctxt "CursorShapeContent"
+msgid "Hollow"
+msgstr "空心"
+
+msgctxt "CursorShapeContent"
+msgid "Underline"
+msgstr "底線"
+
+msgctxt "DefaultDockPanel"
+msgid "AI Browser Panel"
+msgstr "AI 瀏覽器面板"
+
+msgctxt "DefaultDockPanel"
+msgid "Agent Panel"
+msgstr "代理面板"
+
+msgctxt "DefaultDockPanel"
+msgid "Browser Panel"
+msgstr "瀏覽器面板"
+
+msgctxt "DefaultDockPanel"
+msgid "Debug Panel"
+msgstr "偵錯面板"
+
+msgctxt "DefaultDockPanel"
+msgid "Don't Stack"
+msgstr "不並列"
+
+msgctxt "DefaultDockPanel"
+msgid "Git Panel"
+msgstr "Git 面板"
+
+msgctxt "DefaultDockPanel"
+msgid "Outline Panel"
+msgstr "大綱面板"
+
+msgctxt "DefaultDockPanel"
+msgid "Project Panel"
+msgstr "專案面板"
+
+msgctxt "DefaultDockPanel"
+msgid "Terminal Panel"
+msgstr "終端機面板"
+
+msgctxt "DefaultOpenBehavior"
+msgid "Add to Existing Window"
+msgstr "加入現有視窗"
+
+msgctxt "DefaultOpenBehavior"
+msgid "Open a New Window"
+msgstr "開啟新視窗"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "All"
+msgstr "全部"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Error"
+msgstr "錯誤"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Hint"
+msgstr "提示"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Info"
+msgstr "資訊"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Warning"
+msgstr "警告"
+
+msgctxt "DiffViewStyle"
+msgid "Split"
+msgstr "並排顯示"
+
+msgctxt "DiffViewStyle"
+msgid "Unified"
+msgstr "內嵌顯示"
+
+msgctxt "DisplayIn"
+msgid "Active Editor"
+msgstr "使用中的編輯器"
+
+msgctxt "DisplayIn"
+msgid "All Editors"
+msgstr "所有編輯器"
+
+msgctxt "DockPosition"
+msgid "Bottom"
+msgstr "下方"
+
+msgctxt "DockPosition"
+msgid "Left"
+msgstr "左"
+
+msgctxt "DockPosition"
+msgid "Right"
+msgstr "右"
+
+msgctxt "DockSide"
+msgid "Left"
+msgstr "左"
+
+msgctxt "DockSide"
+msgid "Right"
+msgstr "右"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Background"
+msgstr "背景"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Border"
+msgstr "框線"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Inlay"
+msgstr "內嵌提示"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "None"
+msgstr "無"
+
+msgctxt "DocumentFoldingRanges"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "DocumentFoldingRanges"
+msgid "On"
+msgstr "開啟"
+
+msgctxt "DocumentSymbols"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "DocumentSymbols"
+msgid "On"
+msgstr "開啟"
+
+msgctxt "DoubleClickInMultibuffer"
+msgid "Open"
+msgstr "開啟"
+
+msgctxt "DoubleClickInMultibuffer"
+msgid "Select"
+msgstr "選取"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "Default"
+msgstr "預設"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "No"
+msgstr "否"
+
+msgctxt "EditPredictionDataCollectionChoice"
+msgid "Yes"
+msgstr "是"
+
+msgctxt "EditPredictionsMode"
+msgid "Eager"
+msgstr "積極"
+
+msgctxt "EditPredictionsMode"
+msgid "Subtle"
+msgstr "細微"
+
+msgctxt "EditingModeContent"
+msgid "Normal"
+msgstr "一般"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Disabled"
+msgstr "已停用"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Enabled"
+msgstr "已啟用"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Non Utf8"
+msgstr "非 UTF-8"
+
+msgctxt "FolderIndicator"
+msgid "Both"
+msgstr "兩者"
+
+msgctxt "FolderIndicator"
+msgid "Chevron"
+msgstr "展開箭頭"
+
+msgctxt "FolderIndicator"
+msgid "Icon"
+msgstr "圖示"
+
+msgctxt "FormatOnSave"
+msgid "Modifications"
+msgstr "修改內容"
+
+msgctxt "FormatOnSave"
+msgid "Modifications If Available"
+msgstr "修改內容（若可用）"
+
+msgctxt "FormatOnSave"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "FormatOnSave"
+msgid "On"
+msgstr "開啟"
+
+msgctxt "FullscreenMode"
+msgid "Native"
+msgstr "原生"
+
+msgctxt "FullscreenMode"
+msgid "Simple"
+msgstr "簡易"
+
+msgctxt "GitDiffBaseSetting"
+msgid "Default Branch"
+msgstr "預設分支"
+
+msgctxt "GitDiffBaseSetting"
+msgid "Head"
+msgstr "HEAD"
+
+msgctxt "GitGutterSetting"
+msgid "Hide"
+msgstr "隱藏"
+
+msgctxt "GitGutterSetting"
+msgid "Tracked Files"
+msgstr "已追蹤的檔案"
+
+msgctxt "GitGutterWidthDiscriminants"
+msgid "Custom"
+msgstr "自訂"
+
+msgctxt "GitGutterWidthDiscriminants"
+msgid "Default"
+msgstr "預設"
+
+msgctxt "GitHunkStyleSetting"
+msgid "Staged Hollow"
+msgstr "已暫存空心"
+
+msgctxt "GitHunkStyleSetting"
+msgid "Unstaged Hollow"
+msgstr "未暫存空心"
+
+msgctxt "GitPanelClickBehavior"
+msgid "File Diff"
+msgstr "檔案差異"
+
+msgctxt "GitPanelClickBehavior"
+msgid "Project Diff"
+msgstr "專案差異"
+
+msgctxt "GitPanelClickBehavior"
+msgid "View File"
+msgstr "檢視檔案"
+
+msgctxt "GitPanelGroupBy"
+msgid "None"
+msgstr "無"
+
+msgctxt "GitPanelGroupBy"
+msgid "Staging"
+msgstr "暫存狀態"
+
+msgctxt "GitPanelGroupBy"
+msgid "Status"
+msgstr "狀態"
+
+msgctxt "GitPanelSortBy"
+msgid "Name"
+msgstr "名稱"
+
+msgctxt "GitPanelSortBy"
+msgid "Path"
+msgstr "路徑"
+
+msgctxt "GitPathStyle"
+msgid "File Name First"
+msgstr "檔名優先"
+
+msgctxt "GitPathStyle"
+msgid "File Path First"
+msgstr "檔案路徑優先"
+
+msgctxt "GoToDefinitionFallback"
+msgid "Find All References"
+msgstr "尋找所有參考"
+
+msgctxt "GoToDefinitionFallback"
+msgid "None"
+msgstr "無"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Center"
+msgstr "置中"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Minimum"
+msgstr "最小捲動"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Preserve"
+msgstr "保留"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Top"
+msgstr "頂端"
+
+msgctxt "HideMouseMode"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "HideMouseMode"
+msgid "On Typing"
+msgstr "輸入時"
+
+msgctxt "HideMouseMode"
+msgid "On Typing And Action"
+msgstr "輸入和動作時"
+
+msgctxt "IconThemeSelectionDiscriminants"
+msgid "Dynamic"
+msgstr "動態"
+
+msgctxt "IconThemeSelectionDiscriminants"
+msgid "Static"
+msgstr "靜態"
+
+msgctxt "ImageFileSizeUnit"
+msgid "Binary"
+msgstr "二進位"
+
+msgctxt "ImageFileSizeUnit"
+msgid "Decimal"
+msgstr "十進位"
+
+msgctxt "IncludeIgnoredContent"
+msgid "All"
+msgstr "全部"
+
+msgctxt "IncludeIgnoredContent"
+msgid "Indexed"
+msgstr "已索引"
+
+msgctxt "IncludeIgnoredContent"
+msgid "Smart"
+msgstr "智慧型"
+
+msgctxt "IndentGuideBackgroundColoring"
+msgid "Disabled"
+msgstr "已停用"
+
+msgctxt "IndentGuideBackgroundColoring"
+msgid "Indent Aware"
+msgstr "縮排感知"
+
+msgctxt "IndentGuideColoring"
+msgid "Disabled"
+msgstr "已停用"
+
+msgctxt "IndentGuideColoring"
+msgid "Fixed"
+msgstr "固定"
+
+msgctxt "IndentGuideColoring"
+msgid "Indent Aware"
+msgstr "縮排感知"
+
+msgctxt "InlineBlameLocation"
+msgid "Inline"
+msgstr "內嵌"
+
+msgctxt "InlineBlameLocation"
+msgid "Status Bar"
+msgstr "狀態列"
+
+msgctxt "LineEndingSetting"
+msgid "Detect"
+msgstr "偵測"
+
+msgctxt "LineEndingSetting"
+msgid "Enforce CRLF"
+msgstr "強制 CRLF"
+
+msgctxt "LineEndingSetting"
+msgid "Enforce LF"
+msgstr "強制 LF"
+
+msgctxt "LineEndingSetting"
+msgid "Prefer CRLF"
+msgstr "偏好 CRLF"
+
+msgctxt "LineEndingSetting"
+msgid "Prefer LF"
+msgstr "偏好 LF"
+
+msgctxt "LspInsertMode"
+msgid "Insert"
+msgstr "插入"
+
+msgctxt "LspInsertMode"
+msgid "Replace"
+msgstr "取代"
+
+msgctxt "LspInsertMode"
+msgid "Replace Subsequence"
+msgstr "取代子序列"
+
+msgctxt "LspInsertMode"
+msgid "Replace Suffix"
+msgstr "取代後綴"
+
+msgctxt "MinimapThumb"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "MinimapThumb"
+msgid "Hover"
+msgstr "暫留"
+
+msgctxt "MinimapThumbBorder"
+msgid "Full"
+msgstr "完整"
+
+msgctxt "MinimapThumbBorder"
+msgid "Left Only"
+msgstr "僅左側"
+
+msgctxt "MinimapThumbBorder"
+msgid "Left Open"
+msgstr "左側開放"
+
+msgctxt "MinimapThumbBorder"
+msgid "None"
+msgstr "無"
+
+msgctxt "MinimapThumbBorder"
+msgid "Right Open"
+msgstr "右側開放"
+
+msgctxt "ModeContent"
+msgid "Insert"
+msgstr "插入"
+
+msgctxt "ModeContent"
+msgid "Normal"
+msgstr "一般"
+
+msgctxt "MultiCursorModifier"
+msgid "Cmd Or Ctrl"
+msgstr "Cmd 或 Ctrl"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "All Screens"
+msgstr "所有螢幕"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "Primary Screen"
+msgstr "主要螢幕"
+
+msgctxt "OnLastWindowClosed"
+msgid "Platform Default"
+msgstr "平台預設"
+
+msgctxt "OnLastWindowClosed"
+msgid "Quit App"
+msgstr "結束應用程式"
+
+msgctxt "OnNewWindow"
+msgid "Empty Tab"
+msgstr "空白分頁"
+
+msgctxt "OnNewWindow"
+msgid "Launchpad"
+msgstr "啟動台"
+
+msgctxt "OpenResultsIn"
+msgid "Multi Buffer"
+msgstr "多重緩衝區"
+
+msgctxt "OpenResultsIn"
+msgid "Picker"
+msgstr "選擇器"
+
+msgctxt "PaneSplitDirectionHorizontal"
+msgid "Down"
+msgstr "向下"
+
+msgctxt "PaneSplitDirectionHorizontal"
+msgid "Up"
+msgstr "向上"
+
+msgctxt "PaneSplitDirectionVertical"
+msgid "Left"
+msgstr "左"
+
+msgctxt "PaneSplitDirectionVertical"
+msgid "Right"
+msgstr "右"
+
+msgctxt "PanelTabBar"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "PanelTabBar"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "PanelTabBar"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "PlaySoundWhenAgentDone"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "PlaySoundWhenAgentDone"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "PlaySoundWhenAgentDone"
+msgid "When Hidden"
+msgstr "隱藏時"
+
+msgctxt "ProjectPanelEntrySpacing"
+msgid "Comfortable"
+msgstr "舒適"
+
+msgctxt "ProjectPanelEntrySpacing"
+msgid "Standard"
+msgstr "標準"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Directories First"
+msgstr "資料夾優先"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Files First"
+msgstr "檔案優先"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Mixed"
+msgstr "混合"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Default"
+msgstr "預設"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Lower"
+msgstr "小寫優先"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Unicode"
+msgstr "Unicode 順序"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Upper"
+msgstr "大寫優先"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Custom"
+msgstr "自訂"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Default"
+msgstr "預設"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Disabled"
+msgstr "已停用"
+
+msgctxt "ReduceMotionMode"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "ReduceMotionMode"
+msgid "On"
+msgstr "開啟"
+
+msgctxt "RelativeLineNumbers"
+msgid "Disabled"
+msgstr "已停用"
+
+msgctxt "RelativeLineNumbers"
+msgid "Enabled"
+msgstr "已啟用"
+
+msgctxt "RelativeLineNumbers"
+msgid "Wrapped"
+msgstr "折行"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Empty Tab"
+msgstr "空白分頁"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Last Session"
+msgstr "上次工作階段"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Last Workspace"
+msgstr "上次工作區"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Launchpad"
+msgstr "啟動台"
+
+msgctxt "RewrapBehavior"
+msgid "Anywhere"
+msgstr "任何位置"
+
+msgctxt "RewrapBehavior"
+msgid "In Comments"
+msgstr "在註解中"
+
+msgctxt "RewrapBehavior"
+msgid "In Selections"
+msgstr "在選取範圍內"
+
+msgctxt "ScanSymlinksSetting"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "ScanSymlinksSetting"
+msgid "Expanded"
+msgstr "已展開"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "One Page"
+msgstr "一頁"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "Vertical Scroll Margin"
+msgstr "垂直捲動邊距"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "All"
+msgstr "全部"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Error"
+msgstr "錯誤"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Information"
+msgstr "資訊"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "None"
+msgstr "無"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Warning"
+msgstr "警告"
+
+msgctxt "SeedQuerySetting"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "SeedQuerySetting"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "SeedQuerySetting"
+msgid "Selection"
+msgstr "選取"
+
+msgctxt "SemanticTokens"
+msgid "Combined"
+msgstr "合併"
+
+msgctxt "SemanticTokens"
+msgid "Full"
+msgstr "完整"
+
+msgctxt "SemanticTokens"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "ShellDiscriminants"
+msgid "Program"
+msgstr "程式"
+
+msgctxt "ShellDiscriminants"
+msgid "System"
+msgstr "系統"
+
+msgctxt "ShellDiscriminants"
+msgid "With Arguments"
+msgstr "含引數"
+
+msgctxt "ShowCloseButton"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "ShowCloseButton"
+msgid "Hidden"
+msgstr "隱藏"
+
+msgctxt "ShowCloseButton"
+msgid "Hover"
+msgstr "暫留"
+
+msgctxt "ShowDiagnostics"
+msgid "All"
+msgstr "全部"
+
+msgctxt "ShowDiagnostics"
+msgid "Errors"
+msgstr "錯誤"
+
+msgctxt "ShowDiagnostics"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "ShowIndentGuides"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "ShowIndentGuides"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "ShowMinimap"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "ShowMinimap"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "ShowMinimap"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "ShowScrollbar"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "ShowScrollbar"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "ShowScrollbar"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "ShowScrollbar"
+msgid "System"
+msgstr "系統"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "All"
+msgstr "全部"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Boundary"
+msgstr "邊界"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "None"
+msgstr "無"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Selection"
+msgstr "選取"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Trailing"
+msgstr "後置"
+
+msgctxt "SidebarDockPosition"
+msgid "Left"
+msgstr "左"
+
+msgctxt "SidebarDockPosition"
+msgid "Right"
+msgstr "右"
+
+msgctxt "SnippetSortOrder"
+msgid "Bottom"
+msgstr "下方"
+
+msgctxt "SnippetSortOrder"
+msgid "Inline"
+msgstr "內嵌"
+
+msgctxt "SnippetSortOrder"
+msgid "None"
+msgstr "無"
+
+msgctxt "SnippetSortOrder"
+msgid "Top"
+msgstr "頂端"
+
+msgctxt "SoftWrap"
+msgid "Bounded"
+msgstr "受限"
+
+msgctxt "SoftWrap"
+msgid "Editor Width"
+msgstr "編輯器寬度"
+
+msgctxt "SoftWrap"
+msgid "None"
+msgstr "無"
+
+msgctxt "SoftWrap"
+msgid "Prefer Line"
+msgstr "偏好單行"
+
+msgctxt "StatusStyle"
+msgid "Icon"
+msgstr "圖示"
+
+msgctxt "StatusStyle"
+msgid "Label Color"
+msgstr "標籤色彩"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "All Files"
+msgstr "所有檔案"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "Do Not Report"
+msgstr "不回報"
+
+msgctxt "StatusUntrackedFilesSetting"
+msgid "Folders Only"
+msgstr "僅資料夾"
+
+msgctxt "SteppingGranularity"
+msgid "Instruction"
+msgstr "指令"
+
+msgctxt "SteppingGranularity"
+msgid "Line"
+msgstr "行"
+
+msgctxt "SteppingGranularity"
+msgid "Statement"
+msgstr "陳述式"
+
+msgctxt "SymbolIndexEnabled"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "SymbolIndexEnabled"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "SymbolIndexEnabled"
+msgid "On"
+msgstr "開啟"
+
+msgctxt "TerminalBell"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "TerminalBell"
+msgid "System"
+msgstr "系統"
+
+msgctxt "TerminalBlink"
+msgid "Off"
+msgstr "關閉"
+
+msgctxt "TerminalBlink"
+msgid "On"
+msgstr "開啟"
+
+msgctxt "TerminalBlink"
+msgid "Terminal Controlled"
+msgstr "由終端機控制"
+
+msgctxt "TerminalDockPosition"
+msgid "Bottom"
+msgstr "下方"
+
+msgctxt "TerminalDockPosition"
+msgid "Left"
+msgstr "左"
+
+msgctxt "TerminalDockPosition"
+msgid "Right"
+msgstr "右"
+
+msgctxt "TextRenderingMode"
+msgid "Grayscale"
+msgstr "灰階"
+
+msgctxt "TextRenderingMode"
+msgid "Platform Default"
+msgstr "平台預設"
+
+msgctxt "TextRenderingMode"
+msgid "Subpixel"
+msgstr "次像素"
+
+msgctxt "ThemeAppearanceMode"
+msgid "Dark"
+msgstr "深色"
+
+msgctxt "ThemeAppearanceMode"
+msgid "Light"
+msgstr "淺色"
+
+msgctxt "ThemeAppearanceMode"
+msgid "System"
+msgstr "系統"
+
+msgctxt "ThemeSelectionDiscriminants"
+msgid "Dynamic"
+msgstr "動態"
+
+msgctxt "ThemeSelectionDiscriminants"
+msgid "Static"
+msgstr "靜態"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Always Collapsed"
+msgstr "一律摺疊"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Always Expanded"
+msgstr "一律展開"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Preview"
+msgstr "預覽"
+
+msgctxt "UseSystemClipboard"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "UseSystemClipboard"
+msgid "Never"
+msgstr "永不"
+
+msgctxt "UseSystemClipboard"
+msgid "On Yank"
+msgstr "複製時"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Bar"
+msgstr "垂直線"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Block"
+msgstr "方塊"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Hollow"
+msgstr "空心"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Inherit"
+msgstr "繼承"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Underline"
+msgstr "底線"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Custom"
+msgstr "自訂"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Platform Default"
+msgstr "平台預設"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Standard"
+msgstr "標準"
+
+msgctxt "WindowDecorations"
+msgid "Client"
+msgstr "用戶端"
+
+msgctxt "WindowDecorations"
+msgid "Server"
+msgstr "伺服器端"
+
+msgctxt "WordsCompletionMode"
+msgid "Disabled"
+msgstr "已停用"
+
+msgctxt "WordsCompletionMode"
+msgid "Enabled"
+msgstr "已啟用"
+
+msgctxt "WordsCompletionMode"
+msgid "Fallback"
+msgstr "備援"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Always Home"
+msgstr "一律使用主目錄"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Current File Directory"
+msgstr "目前檔案目錄"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Current Project Directory"
+msgstr "目前專案目錄"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "First Project Directory"
+msgstr "第一個專案目錄"
+
+msgctxt "settings"
+msgid "(Linux only) choose how window control buttons are laid out in the titlebar."
+msgstr "（僅限 Linux）選擇視窗控制按鈕在標題列中的排列方式。"
+
+msgctxt "settings"
+msgid "(Linux only) whether Zed or your compositor should draw window decorations."
+msgstr "（僅限 Linux）選擇由 ForgeKairos 或合成器繪製視窗裝飾。"
+
+msgctxt "settings"
+msgid "(macOS only) whether to allow Windows to tab together."
+msgstr "（僅限 macOS）是否允許視窗合併為分頁。"
+
+msgctxt "settings"
+msgid "(macOS only) which fullscreen mode the toggle fullscreen action enters."
+msgstr "（僅限 macOS）切換全螢幕動作所進入的全螢幕模式。"
+
+msgctxt "settings"
+msgid "A feature of this fork that denies all AI-initiated outgoing connections (AI providers, agent tools, MCP servers, external agent processes) by default. Connections of the IDE's own tooling, such as language servers and extensions, are not affected. Review, add and remove the hosts that are allowed."
+msgstr "此分支版本獨有的功能，預設會拒絕所有由 AI 發起的對外連線（AI 提供者、代理工具、MCP 伺服器、外部代理處理序）。IDE 本身工具（例如語言伺服器與擴充功能）的連線不受影響。在此檢閱、新增及移除允許的主機。"
+
+msgctxt "settings"
+msgid "A mapping from languages to files and file extensions that should be treated as that language."
+msgstr "語言與應被視為該語言的檔案及副檔名的對應表。"
+
+msgctxt "settings"
+msgid "AI"
+msgstr "AI"
+
+msgctxt "settings"
+msgid "AI Browser Panel Button"
+msgstr "AI 瀏覽器面板按鈕"
+
+msgctxt "settings"
+msgid "AI Browser Panel Default Height"
+msgstr "AI 瀏覽器面板預設高度"
+
+msgctxt "settings"
+msgid "AI Browser Panel Default Width"
+msgstr "AI 瀏覽器面板預設寬度"
+
+msgctxt "settings"
+msgid "AI Browser Panel Dock"
+msgstr "AI 瀏覽器面板停駐位置"
+
+msgctxt "settings"
+msgid "AI Connections"
+msgstr "AI 連線"
+
+msgctxt "settings"
+msgid "AI Control"
+msgstr "AI 控制"
+
+msgctxt "settings"
+msgid "Accessible Mode"
+msgstr "無障礙模式"
+
+msgctxt "settings"
+msgid "Accounts"
+msgstr "帳戶"
+
+msgctxt "settings"
+msgid "Accounts a repository can commit and push as, picked per repository in the Git panel."
+msgstr "儲存庫可用於提交和推送的帳戶，可在 Git 面板中為每個儲存庫個別選擇。"
+
+msgctxt "settings"
+msgid "Activate On Close"
+msgstr "關閉時啟用的分頁"
+
+msgctxt "settings"
+msgid "Activates the Python virtual environment, if one is found, in the terminal's working directory."
+msgstr "如果在終端機的工作目錄中找到 Python 虛擬環境，就將其啟用。"
+
+msgctxt "settings"
+msgid "Active Encoding Button"
+msgstr "目前編碼按鈕"
+
+msgctxt "settings"
+msgid "Active File Name"
+msgstr "目前檔案名稱"
+
+msgctxt "settings"
+msgid "Active Language Button"
+msgstr "目前語言按鈕"
+
+msgctxt "settings"
+msgid "Active Line Width"
+msgstr "作用中線條寬度"
+
+msgctxt "settings"
+msgid "Additional code actions to run when formatting."
+msgstr "格式化時執行的額外程式碼動作。"
+
+msgctxt "settings"
+msgid "Advanced Settings"
+msgstr "進階設定"
+
+msgctxt "settings"
+msgid "Agent Configuration"
+msgstr "代理設定"
+
+msgctxt "settings"
+msgid "Agent Name"
+msgstr "代理名稱"
+
+msgctxt "settings"
+msgid "Agent Panel"
+msgstr "代理面板"
+
+msgctxt "settings"
+msgid "Agent Panel Button"
+msgstr "代理面板按鈕"
+
+msgctxt "settings"
+msgid "Agent Panel Default Height"
+msgstr "代理面板預設高度"
+
+msgctxt "settings"
+msgid "Agent Panel Default Width"
+msgstr "代理面板預設寬度"
+
+msgctxt "settings"
+msgid "Agent Panel Dock"
+msgstr "代理面板停駐位置"
+
+msgctxt "settings"
+msgid "Agent Panel Flexible Sizing"
+msgstr "代理面板彈性大小"
+
+msgctxt "settings"
+msgid "Agent Panel Font"
+msgstr "代理面板字型"
+
+msgctxt "settings"
+msgid "Agent Review"
+msgstr "代理檢閱"
+
+msgctxt "settings"
+msgid "Allow Rewrap"
+msgstr "允許重新換行"
+
+msgctxt "settings"
+msgid "Allow sending requests to Anthropic models that cannot be offered with Zero Data Retention."
+msgstr "允許向無法以 Zero Data Retention 模式提供的 Anthropic 模型傳送要求。"
+
+msgctxt "settings"
+msgid "Allowed"
+msgstr "允許"
+
+msgctxt "settings"
+msgid "Alternate Scroll"
+msgstr "替代捲動"
+
+msgctxt "settings"
+msgid "Always Treat Brackets As Autoclosed"
+msgstr "一律將括號視為自動關閉"
+
+msgctxt "settings"
+msgid "Amount of indentation for nested items."
+msgstr "巢狀項目的縮排量。"
+
+msgctxt "settings"
+msgid "Amount of time to wait before changing focus."
+msgstr "變更焦點前等待的時間。"
+
+msgctxt "settings"
+msgid "An index of the project's C and C++ files by name. Without compilation information (no compile_commands.json is needed), it finds the definition to go to, the callers and callees of a function and what a type holds, by matching names, so a result can be another symbol of the same name; a language server's answers come first. Auto indexes a folder once it has C or C++ files, On always indexes it and Off never does. Default: Auto."
+msgstr "依名稱建立的專案 C 與 C++ 檔案索引。不需要編譯資訊（不需要 compile_commands.json），即可透過名稱比對找出要前往的定義、函式的呼叫端與被呼叫端，以及型別包含的內容，因此結果中可能混入同名的其他符號；語言伺服器的答案優先。Auto 會在資料夾含有 C 或 C++ 檔案時建立索引，On 一律建立，Off 一律不建立。預設值：Auto。"
+
+msgctxt "settings"
+msgid "An optional string to override the title of the terminal tab."
+msgstr "用於覆寫終端機分頁標題的選用字串。"
+
+msgctxt "settings"
+msgid "Anthropic Data Retention"
+msgstr "Anthropic 資料保留"
+
+msgctxt "settings"
+msgid "Any number of settings profiles that are temporarily applied on top of your existing user settings."
+msgstr "任意數量的設定檔，可暫時套用在現有的使用者設定之上。"
+
+msgctxt "settings"
+msgid "Appearance"
+msgstr "外觀"
+
+msgctxt "settings"
+msgid "Apply the Allowlist to the Built-in Browser"
+msgstr "將允許清單套用至內建瀏覽器"
+
+msgctxt "settings"
+msgid "Arguments"
+msgstr "引數"
+
+msgctxt "settings"
+msgid "Attach Active File Automatically"
+msgstr "自動附加使用中的檔案"
+
+msgctxt "settings"
+msgid "Attach the active editor automatically when sending a message: only the selected lines when there is a selection, otherwise the whole file. Nothing is attached twice when you have already @-mentioned it."
+msgstr "傳送訊息時自動附加使用中的編輯器：有選取範圍時僅附加選取的行，否則附加整個檔案。若已用 @ 提及，則不會重複附加。"
+
+msgctxt "settings"
+msgid "Attachment Budget per Message (Bytes)"
+msgstr "每則訊息的附件 budget（位元組）"
+
+msgctxt "settings"
+msgid "Audible Bell"
+msgstr "音效提示鈴"
+
+msgctxt "settings"
+msgid "Auto Compact"
+msgstr "自動壓縮"
+
+msgctxt "settings"
+msgid "Auto Compact Minimum Context Window"
+msgstr "自動壓縮的最小上下文視窗"
+
+msgctxt "settings"
+msgid "Auto Compact Threshold"
+msgstr "自動壓縮閾值"
+
+msgctxt "settings"
+msgid "Auto Fold Directories"
+msgstr "自動摺疊資料夾"
+
+msgctxt "settings"
+msgid "Auto Indent"
+msgstr "自動縮排"
+
+msgctxt "settings"
+msgid "Auto Indent On Paste"
+msgstr "貼上時自動縮排"
+
+msgctxt "settings"
+msgid "Auto Open Files On Create"
+msgstr "建立時自動開啟檔案"
+
+msgctxt "settings"
+msgid "Auto Open Files On Drop"
+msgstr "拖放時自動開啟檔案"
+
+msgctxt "settings"
+msgid "Auto Open Files On Paste"
+msgstr "貼上時自動開啟檔案"
+
+msgctxt "settings"
+msgid "Auto Reveal Entries"
+msgstr "自動顯示項目"
+
+msgctxt "settings"
+msgid "Auto Save"
+msgstr "自動儲存"
+
+msgctxt "settings"
+msgid "Auto Save Mode"
+msgstr "自動儲存模式"
+
+msgctxt "settings"
+msgid "Auto Signature Help"
+msgstr "自動顯示簽章說明"
+
+msgctxt "settings"
+msgid "Auto Update"
+msgstr "自動更新"
+
+msgctxt "settings"
+msgid "Autoclose"
+msgstr "自動關閉"
+
+msgctxt "settings"
+msgid "Automatically close files that have been deleted."
+msgstr "自動關閉已刪除的檔案。"
+
+msgctxt "settings"
+msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
+msgstr "代理的上下文過大時自動壓縮，摘要較早的訊息以釋放模型上下文視窗空間。"
+
+msgctxt "settings"
+msgid "Automatically show a signature help pop-up."
+msgstr "自動顯示簽章說明快顯視窗。"
+
+msgctxt "settings"
+msgid "Autoscroll On Clicks"
+msgstr "按一下時自動捲動"
+
+msgctxt "settings"
+msgid "Background Coloring"
+msgstr "背景上色"
+
+msgctxt "settings"
+msgid "Base Keymap"
+msgstr "基礎按鍵對應"
+
+msgctxt "settings"
+msgid "Behavior Settings"
+msgstr "行為設定"
+
+msgctxt "settings"
+msgid "Bold Folder Labels"
+msgstr "粗體資料夾標籤"
+
+msgctxt "settings"
+msgid "Border Size"
+msgstr "邊框大小"
+
+msgctxt "settings"
+msgid "Border style for the minimap's scrollbar thumb."
+msgstr "縮圖捲軸滑桿的邊框樣式。"
+
+msgctxt "settings"
+msgid "Bottom Dock Layout"
+msgstr "底部停駐區版面配置"
+
+msgctxt "settings"
+msgid "Branch Picker"
+msgstr "分支選擇器"
+
+msgctxt "settings"
+msgid "Breadcrumbs"
+msgstr "階層連結"
+
+msgctxt "settings"
+msgid "Browser"
+msgstr "瀏覽器"
+
+msgctxt "settings"
+msgid "Browser Panel"
+msgstr "瀏覽器面板"
+
+msgctxt "settings"
+msgid "Browser Panel Button"
+msgstr "瀏覽器面板按鈕"
+
+msgctxt "settings"
+msgid "Browser Panel Default Height"
+msgstr "瀏覽器面板預設高度"
+
+msgctxt "settings"
+msgid "Browser Panel Default Width"
+msgstr "瀏覽器面板預設寬度"
+
+msgctxt "settings"
+msgid "Browser Panel Dock"
+msgstr "瀏覽器面板停駐位置"
+
+msgctxt "settings"
+msgid "Browsing"
+msgstr "瀏覽"
+
+msgctxt "settings"
+msgid "Buffer Font"
+msgstr "緩衝區字型"
+
+msgctxt "settings"
+msgid "Buffer Font Family"
+msgstr "緩衝區字型家族"
+
+msgctxt "settings"
+msgid "Buffer Font Size"
+msgstr "緩衝區字型大小"
+
+msgctxt "settings"
+msgid "Button Layout"
+msgstr "按鈕版面配置"
+
+msgctxt "settings"
+msgid "CLI Default Open Behavior"
+msgstr "CLI 預設開啟行為"
+
+msgctxt "settings"
+msgid "Call Graph Panel"
+msgstr "呼叫圖面板"
+
+msgctxt "settings"
+msgid "Call Graph Panel Button"
+msgstr "呼叫圖面板按鈕"
+
+msgctxt "settings"
+msgid "Call Graph Panel Default Width"
+msgstr "呼叫圖面板預設寬度"
+
+msgctxt "settings"
+msgid "Call Graph Panel Dock"
+msgstr "呼叫圖面板停駐位置"
+
+msgctxt "settings"
+msgid "Call Graph Sources"
+msgstr "呼叫圖來源"
+
+msgctxt "settings"
+msgid "Callees left out of a function's callees, such as logging and assertion macros. A row at the end counts them and shows them on request."
+msgstr "要從函式的被呼叫端清單中排除的被呼叫端，例如記錄與判斷提示巨集。最後一列會顯示其數量，並可依要求顯示。"
+
+msgctxt "settings"
+msgid "Calls"
+msgstr "通話"
+
+msgctxt "settings"
+msgid "Cancel Generation On Terminal Stop"
+msgstr "在終端機停止時取消產生"
+
+msgctxt "settings"
+msgid "Case Sensitive"
+msgstr "區分大小寫"
+
+msgctxt "settings"
+msgid "Center on Match"
+msgstr "置中顯示符合項目"
+
+msgctxt "settings"
+msgid "Centered Layout Left Padding"
+msgstr "置中版面配置左側邊框間距"
+
+msgctxt "settings"
+msgid "Centered Layout Right Padding"
+msgstr "置中版面配置右側邊框間距"
+
+msgctxt "settings"
+msgid "Character counts at which to show wrap guides in the editor."
+msgstr "在編輯器中顯示自動換行輔助線的字元數。"
+
+msgctxt "settings"
+msgid "Character counts at which to show wrap guides."
+msgstr "顯示自動換行輔助線的字元數。"
+
+msgctxt "settings"
+msgid "Choose a static, fixed theme or dynamically select themes based on appearance and light/dark modes."
+msgstr "選擇靜態固定佈景主題，或根據外觀與淺色/深色模式動態選取佈景主題。"
+
+msgctxt "settings"
+msgid "Choose whether to use the selected light or dark icon theme or to follow your OS appearance configuration."
+msgstr "選擇要使用已選取的淺色或深色圖示佈景主題，或跟隨 OS 外觀設定。"
+
+msgctxt "settings"
+msgid "Choose whether to use the selected light or dark theme or to follow your OS appearance configuration."
+msgstr "選擇要使用已選取的淺色或深色佈景主題，或跟隨 OS 外觀設定。"
+
+msgctxt "settings"
+msgid "Close Panel on Toggle"
+msgstr "切換時關閉面板"
+
+msgctxt "settings"
+msgid "Close on File Delete"
+msgstr "刪除檔案時自動關閉"
+
+msgctxt "settings"
+msgid "Code Actions"
+msgstr "程式碼動作"
+
+msgctxt "settings"
+msgid "Code Actions On Format"
+msgstr "格式化時執行程式碼動作"
+
+msgctxt "settings"
+msgid "Code Font Family"
+msgstr "程式碼字型家族"
+
+msgctxt "settings"
+msgid "Code Lens"
+msgstr "CodeLens"
+
+msgctxt "settings"
+msgid "Collaboration"
+msgstr "共同作業"
+
+msgctxt "settings"
+msgid "Collaboration Panel"
+msgstr "協作面板"
+
+msgctxt "settings"
+msgid "Collaboration Panel Button"
+msgstr "協作面板按鈕"
+
+msgctxt "settings"
+msgid "Collaboration Panel Default Width"
+msgstr "協作面板預設寬度"
+
+msgctxt "settings"
+msgid "Collaboration Panel Dock"
+msgstr "協作面板停駐位置"
+
+msgctxt "settings"
+msgid "Collapse Untracked Diff"
+msgstr "摺疊未追蹤的差異"
+
+msgctxt "settings"
+msgid "Collect timing data for foreground and background executor tasks so they can be inspected via `zed: open performance profiler`. May lead to increased memory usage."
+msgstr "收集前景與背景執行器工作的計時資料，以便透過 `zed: open performance profiler` 檢查。可能會增加記憶體使用量。"
+
+msgctxt "settings"
+msgid "Coloring"
+msgstr "著色"
+
+msgctxt "settings"
+msgid "Colorize Brackets"
+msgstr "括號著色"
+
+msgctxt "settings"
+msgid "Command"
+msgstr "命令"
+
+msgctxt "settings"
+msgid "Command Palette"
+msgstr "命令選擇區"
+
+msgctxt "settings"
+msgid "Command to automatically run when Zed creates a Terminal Thread shell in the agent panel. Runs in your configured shell."
+msgstr "ForgeKairos 在代理面板中建立終端機會話 shell 時自動執行的命令。會在您設定的 shell 中執行。"
+
+msgctxt "settings"
+msgid "Commit Title Max Length"
+msgstr "提交標題最大長度"
+
+msgctxt "settings"
+msgid "Completion Detail Alignment"
+msgstr "自動完成詳細資訊對齊"
+
+msgctxt "settings"
+msgid "Completion Menu Item Kind"
+msgstr "自動完成選單項目類型"
+
+msgctxt "settings"
+msgid "Completion Menu Scrollbar"
+msgstr "自動完成選單捲軸"
+
+msgctxt "settings"
+msgid "Completions"
+msgstr "自動完成"
+
+msgctxt "settings"
+msgid "Configure Providers"
+msgstr "設定提供者"
+
+msgctxt "settings"
+msgid "Configure natively-included model providers."
+msgstr "設定原生內建的模型提供者。"
+
+msgctxt "settings"
+msgid "Connections"
+msgstr "連線"
+
+msgctxt "settings"
+msgid "Consent to Launch Outside the Sandbox"
+msgstr "同意在沙箱外啟動"
+
+msgctxt "settings"
+msgid "Control when to show the active encoding in the status bar."
+msgstr "控制何時在狀態列顯示目前的編碼。"
+
+msgctxt "settings"
+msgid "Control whether Git status is shown in the editor's gutter."
+msgstr "控制是否在編輯器的裝訂邊顯示 Git 狀態。"
+
+msgctxt "settings"
+msgid "Controls automatic indentation behavior when typing."
+msgstr "控制輸入時的自動縮排行為。"
+
+msgctxt "settings"
+msgid "Controls how LSP completions are inserted."
+msgstr "控制 LSP 完成項目的插入方式。"
+
+msgctxt "settings"
+msgid "Controls how words are completed."
+msgstr "控制單字自動完成的方式。"
+
+msgctxt "settings"
+msgid "Controls line number display in the editor's gutter. \"disabled\" shows absolute line numbers, \"enabled\" shows relative line numbers for each absolute line, and \"wrapped\" shows relative line numbers for every line, absolute or wrapped."
+msgstr "控制編輯器裝訂邊的行號顯示方式。\"disabled\" 顯示絕對行號，\"enabled\" 為每個絕對行顯示相對行號，\"wrapped\" 為所有行（含折行）顯示相對行號。"
+
+msgctxt "settings"
+msgid "Controls the appearance behavior of the tab's close button."
+msgstr "控制分頁關閉按鈕的顯示時機。"
+
+msgctxt "settings"
+msgid "Controls when to use system clipboard in Vim mode."
+msgstr "控制在 Vim 模式下何時使用系統剪貼簿。"
+
+msgctxt "settings"
+msgid "Controls where the `editor::rewrap` action is allowed for this language."
+msgstr "控制此語言允許 `editor::rewrap` 動作的位置。"
+
+msgctxt "settings"
+msgid "Controls whether Zed may collect training data when using Zed's Edit Predictions. Data is only collected for files in projects detected as open source. The default value uses the preference previously set via the status-bar toggle, or false if no preference has been stored."
+msgstr "控制 Zed 是否可在使用編輯預測功能時收集訓練資料。資料僅針對偵測為開放原始碼的專案中的檔案收集。預設值使用先前透過狀態列切換設定的偏好，若未儲存偏好則為 false。"
+
+msgctxt "settings"
+msgid "Controls whether edit predictions are shown immediately or manually."
+msgstr "控制編輯預測是立即顯示還是手動觸發。"
+
+msgctxt "settings"
+msgid "Controls whether the closing characters are always skipped over and auto-removed no matter how they were inserted."
+msgstr "控制是否一律略過並自動移除閉合字元，無論它們是如何插入的。"
+
+msgctxt "settings"
+msgid "Copilot URL"
+msgstr "Copilot URL"
+
+msgctxt "settings"
+msgid "Copy On Select"
+msgstr "選取時複製"
+
+msgctxt "settings"
+msgid "Create Skill"
+msgstr "建立技能"
+
+msgctxt "settings"
+msgid "Current Line Highlight"
+msgstr "目前行醒目提示"
+
+msgctxt "settings"
+msgid "Cursor"
+msgstr "游標"
+
+msgctxt "settings"
+msgid "Cursor Animation"
+msgstr "游標動畫"
+
+msgctxt "settings"
+msgid "Cursor Blink"
+msgstr "游標閃爍"
+
+msgctxt "settings"
+msgid "Cursor Blinking"
+msgstr "游標閃爍"
+
+msgctxt "settings"
+msgid "Cursor Position Button"
+msgstr "游標位置按鈕"
+
+msgctxt "settings"
+msgid "Cursor Shape"
+msgstr "游標形狀"
+
+msgctxt "settings"
+msgid "Cursor Shape - Insert Mode"
+msgstr "游標形狀 - 插入模式"
+
+msgctxt "settings"
+msgid "Cursor Shape - Normal Mode"
+msgstr "游標形狀 - 一般模式"
+
+msgctxt "settings"
+msgid "Cursor Shape - Replace Mode"
+msgstr "游標形狀 - 取代模式"
+
+msgctxt "settings"
+msgid "Cursor Shape - Visual Mode"
+msgstr "游標形狀 - 視覺模式"
+
+msgctxt "settings"
+msgid "Cursor shape for insert mode. Inherit uses the editor's cursor shape."
+msgstr "插入模式的游標形狀。「繼承」使用編輯器的游標形狀。"
+
+msgctxt "settings"
+msgid "Cursor shape for normal mode."
+msgstr "一般模式的游標形狀。"
+
+msgctxt "settings"
+msgid "Cursor shape for replace mode."
+msgstr "取代模式的游標形狀。"
+
+msgctxt "settings"
+msgid "Cursor shape for the editor."
+msgstr "編輯器的游標形狀。"
+
+msgctxt "settings"
+msgid "Cursor shape for visual mode."
+msgstr "視覺模式的游標形狀。"
+
+msgctxt "settings"
+msgid "Cursors"
+msgstr "游標"
+
+msgctxt "settings"
+msgid "Custom Button Layout"
+msgstr "自訂按鈕版面配置"
+
+msgctxt "settings"
+msgid "Custom Delay"
+msgstr "自訂延遲"
+
+msgctxt "settings"
+msgid "Custom Digraphs"
+msgstr "自訂雙字元組合"
+
+msgctxt "settings"
+msgid "Custom Line Height"
+msgstr "自訂行高"
+
+msgctxt "settings"
+msgid "Custom Width"
+msgstr "自訂寬度"
+
+msgctxt "settings"
+msgid "Custom digraph mappings for Vim mode."
+msgstr "Vim 模式的自訂雙字元組合對應。"
+
+msgctxt "settings"
+msgid "Custom line height value (must be at least 1.0)."
+msgstr "自訂行高值（必須至少為 1.0）。"
+
+msgctxt "settings"
+msgid "Customize keybindings in the keymap editor."
+msgstr "在按鍵對應編輯器中自訂按鍵繫結。"
+
+msgctxt "settings"
+msgid "Dark Icon Theme"
+msgstr "深色圖示佈景主題"
+
+msgctxt "settings"
+msgid "Dark Theme"
+msgstr "深色佈景主題"
+
+msgctxt "settings"
+msgid "Data Collection"
+msgstr "資料收集"
+
+msgctxt "settings"
+msgid "Debounce"
+msgstr "防彈跳延遲"
+
+msgctxt "settings"
+msgid "Debounce threshold in milliseconds after which changes are reflected in the Git gutter."
+msgstr "變更反映至 Git 裝訂邊的防彈跳閾值（毫秒）。"
+
+msgctxt "settings"
+msgid "Debugger"
+msgstr "偵錯工具"
+
+msgctxt "settings"
+msgid "Debugger Button"
+msgstr "偵錯工具按鈕"
+
+msgctxt "settings"
+msgid "Debugger Panel"
+msgstr "偵錯工具面板"
+
+msgctxt "settings"
+msgid "Debugger Panel Dock"
+msgstr "偵錯工具面板停駐位置"
+
+msgctxt "settings"
+msgid "Debuggers"
+msgstr "偵錯工具"
+
+msgctxt "settings"
+msgid "Default Height"
+msgstr "預設高度"
+
+msgctxt "settings"
+msgid "Default Mode"
+msgstr "預設模式"
+
+msgctxt "settings"
+msgid "Default Open Behavior"
+msgstr "預設開啟行為"
+
+msgctxt "settings"
+msgid "Default Prettier options, in the format as in package.json section for Prettier."
+msgstr "預設 Prettier 選項，格式同 package.json 中 Prettier 區段的格式。"
+
+msgctxt "settings"
+msgid "Default Stacked Dock"
+msgstr "預設並列的停駐區"
+
+msgctxt "settings"
+msgid "Default Stacked Panel"
+msgstr "預設並列的面板"
+
+msgctxt "settings"
+msgid "Default Stacked Secondary Panel"
+msgstr "預設並列的第二個面板"
+
+msgctxt "settings"
+msgid "Default Width"
+msgstr "預設寬度"
+
+msgctxt "settings"
+msgid "Default action when clicking a changed file in the Git panel."
+msgstr "按一下 Git 面板中已變更檔案時的預設動作。"
+
+msgctxt "settings"
+msgid "Default branch name will be when init.defaultbranch is not set in Git."
+msgstr "當 Git 未設定 init.defaultbranch 時所使用的預設分支名稱。"
+
+msgctxt "settings"
+msgid "Default cursor shape for the terminal (bar, block, underline, or hollow)."
+msgstr "終端機的預設游標形狀（垂直線、方塊、底線或空心）。"
+
+msgctxt "settings"
+msgid "Default depth to expand outline items in the current file."
+msgstr "目前檔案中大綱項目的預設展開深度。"
+
+msgctxt "settings"
+msgid "Default fixed width when the agent panel is docked to the left or right and flexible sizing is disabled."
+msgstr "代理面板停駐於左側或右側且停用彈性大小調整時的預設固定寬度。"
+
+msgctxt "settings"
+msgid "Default height of the AI browser panel in pixels when docked to the bottom."
+msgstr "AI 瀏覽器面板停駐於底部時的預設高度（像素）。"
+
+msgctxt "settings"
+msgid "Default height of the browser panel in pixels when docked to the bottom."
+msgstr "瀏覽器面板停駐於底部時的預設高度（像素）。"
+
+msgctxt "settings"
+msgid "Default height when the agent panel is docked to the bottom."
+msgstr "代理面板停駐於底部時的預設高度。"
+
+msgctxt "settings"
+msgid "Default height when the terminal is docked to the bottom (in pixels)."
+msgstr "終端機停駐於底部時的預設高度（像素）。"
+
+msgctxt "settings"
+msgid "Default timeout in seconds for MCP server tool calls."
+msgstr "MCP 伺服器工具呼叫的預設逾時秒數。"
+
+msgctxt "settings"
+msgid "Default width of the AI browser panel in pixels when docked to the left or right."
+msgstr "AI 瀏覽器面板停駐於左側或右側時的預設寬度（像素）。"
+
+msgctxt "settings"
+msgid "Default width of the Git panel in pixels."
+msgstr "Git 面板的預設寬度（像素）。"
+
+msgctxt "settings"
+msgid "Default width of the Threads Sidebar. Changing this setting also updates a manually resized sidebar. Double-click the divider to reset to this width."
+msgstr "會話側邊欄的預設寬度。變更此設定也會更新手動調整過大小的側邊欄。按兩下分隔線可重設為此寬度。"
+
+msgctxt "settings"
+msgid "Default width of the browser panel in pixels when docked to the left or right."
+msgstr "瀏覽器面板停駐於左側或右側時的預設寬度（像素）。"
+
+msgctxt "settings"
+msgid "Default width of the call graph panel in pixels."
+msgstr "呼叫圖面板的預設寬度（像素）。"
+
+msgctxt "settings"
+msgid "Default width of the collaboration panel in pixels."
+msgstr "協作面板的預設寬度（像素）。"
+
+msgctxt "settings"
+msgid "Default width of the outline panel in pixels."
+msgstr "大綱面板的預設寬度（像素）。"
+
+msgctxt "settings"
+msgid "Default width of the project panel in pixels."
+msgstr "專案面板的預設寬度（像素）。"
+
+msgctxt "settings"
+msgid "Default width when the terminal is docked to the left or right (in pixels)."
+msgstr "終端機停駐於左側或右側時的預設寬度（像素）。"
+
+msgctxt "settings"
+msgid "Delay"
+msgstr "延遲"
+
+msgctxt "settings"
+msgid "Delay (milliseconds)"
+msgstr "延遲（毫秒）"
+
+msgctxt "settings"
+msgid "Delay in milliseconds before automatically requesting a prediction after typing stops. Set to 0 to request predictions immediately."
+msgstr "在停止輸入後，自動要求預測前的延遲（毫秒）。設為 0 可立即要求預測。"
+
+msgctxt "settings"
+msgid "Delay in milliseconds before drag and drop selection starts."
+msgstr "拖放選取開始前的延遲時間（毫秒）。"
+
+msgctxt "settings"
+msgid "Delay in milliseconds before the which-key menu appears."
+msgstr "which-key 選單出現前的延遲時間（毫秒）。"
+
+msgctxt "settings"
+msgid "Delay in milliseconds before tooltips appear for project panel titles."
+msgstr "專案面板標題工具提示出現前的延遲時間（毫秒）。"
+
+msgctxt "settings"
+msgid "Delay in milliseconds of the project panel title tooltips."
+msgstr "專案面板標題工具提示的延遲時間（毫秒）。"
+
+msgctxt "settings"
+msgid "Detached Shell Timeout"
+msgstr "已分離 Shell 的逾時"
+
+msgctxt "settings"
+msgid "Detect Virtual Environment"
+msgstr "偵測虛擬環境"
+
+msgctxt "settings"
+msgid "Determines how indent guide backgrounds are colored."
+msgstr "決定縮排輔助線的背景上色方式。"
+
+msgctxt "settings"
+msgid "Determines how indent guides are colored."
+msgstr "決定縮排輔助線的上色方式。"
+
+msgctxt "settings"
+msgid "Determines how snippets are sorted relative to other completion items."
+msgstr "決定程式碼片段相對於其他自動完成項目的排序方式。"
+
+msgctxt "settings"
+msgid "Determines the stepping granularity for debug operations."
+msgstr "決定偵錯操作的步進粒度。"
+
+msgctxt "settings"
+msgid "Developer"
+msgstr "開發人員"
+
+msgctxt "settings"
+msgid "Development Tools"
+msgstr "開發工具"
+
+msgctxt "settings"
+msgid "Diagnostic Badges"
+msgstr "診斷徽章"
+
+msgctxt "settings"
+msgid "Diagnostics"
+msgstr "診斷"
+
+msgctxt "settings"
+msgid "Diagnostics Attachment File Limit"
+msgstr "附加診斷的檔案數上限"
+
+msgctxt "settings"
+msgid "Diagnostics Button"
+msgstr "診斷按鈕"
+
+msgctxt "settings"
+msgid "Diff Base"
+msgstr "差異基準"
+
+msgctxt "settings"
+msgid "Diff Stats"
+msgstr "差異統計"
+
+msgctxt "settings"
+msgid "Diff View Style"
+msgstr "差異檢視樣式"
+
+msgctxt "settings"
+msgid "Direction to split horizontally."
+msgstr "指定水平分割方向。"
+
+msgctxt "settings"
+msgid "Direction to split vertically."
+msgstr "指定垂直分割方向。"
+
+msgctxt "settings"
+msgid "Directory"
+msgstr "資料夾"
+
+msgctxt "settings"
+msgid "Disable AI"
+msgstr "停用 AI"
+
+msgctxt "settings"
+msgid "Disable Git Integration"
+msgstr "停用 Git 整合"
+
+msgctxt "settings"
+msgid "Disable all Git integration features in Zed."
+msgstr "停用 ForgeKairos 中所有 Git 整合功能。"
+
+msgctxt "settings"
+msgid "Disable edit predictions in these language scopes, such as \"comment\" and \"string\". Use \"...\" to add scopes without repeating the inherited list."
+msgstr "在這些語言範圍中停用編輯預測，例如 \"comment\" 與 \"string\"。使用 \"...\" 可在不重複繼承清單的情況下新增範圍。"
+
+msgctxt "settings"
+msgid "Disable in Language Scopes"
+msgstr "在語言範圍中停用"
+
+msgctxt "settings"
+msgid "Display In"
+msgstr "顯示於"
+
+msgctxt "settings"
+msgid "Display Language"
+msgstr "顯示語言"
+
+msgctxt "settings"
+msgid "Display Mode"
+msgstr "顯示模式"
+
+msgctxt "settings"
+msgid "Display Settings"
+msgstr "顯示設定"
+
+msgctxt "settings"
+msgid "Display indent guides in the editor."
+msgstr "在編輯器中顯示縮排輔助線。"
+
+msgctxt "settings"
+msgid "Display the terminal title in breadcrumbs inside the terminal pane."
+msgstr "在終端機窗格內的階層連結中顯示終端機標題。"
+
+msgctxt "settings"
+msgid "Display the which-key menu with matching bindings while a multi-stroke binding is pending. The pending keystrokes indicator remains visible, but its binding preview popover is disabled."
+msgstr "在多鍵組合按鍵等待期間，顯示含有相符按鍵繫結的 which-key 選單。等待按鍵指示器仍會顯示，但其按鍵繫結預覽快顯視窗會停用。"
+
+msgctxt "settings"
+msgid "Double Click In Multibuffer"
+msgstr "在多重緩衝區中按兩下"
+
+msgctxt "settings"
+msgid "Drag And Drop Selection"
+msgstr "拖放選取"
+
+msgctxt "settings"
+msgid "Drag and Drop"
+msgstr "拖放"
+
+msgctxt "settings"
+msgid "Drop Size Target"
+msgstr "拖放目標大小"
+
+msgctxt "settings"
+msgid "Duration in milliseconds to highlight yanked text in Vim mode."
+msgstr "在 Vim 模式下，醒目提示已複製文字的持續時間（毫秒）。"
+
+msgctxt "settings"
+msgid "Edit Debounce Ms"
+msgstr "編輯防彈跳毫秒數"
+
+msgctxt "settings"
+msgid "Edit Keybindings"
+msgstr "編輯按鍵繫結"
+
+msgctxt "settings"
+msgid "Edit Predictions"
+msgstr "編輯預測"
+
+msgctxt "settings"
+msgid "Editing Mode"
+msgstr "編輯模式"
+
+msgctxt "settings"
+msgid "Editor"
+msgstr "編輯器"
+
+msgctxt "settings"
+msgid "Egress"
+msgstr "對外連線"
+
+msgctxt "settings"
+msgid "Egress Control"
+msgstr "對外連線管控"
+
+msgctxt "settings"
+msgid "Enable Agent"
+msgstr "啟用代理"
+
+msgctxt "settings"
+msgid "Enable Feedback"
+msgstr "啟用意見回饋"
+
+msgctxt "settings"
+msgid "Enable Git Diff"
+msgstr "啟用 Git 差異"
+
+msgctxt "settings"
+msgid "Enable Git Status"
+msgstr "啟用 Git 狀態"
+
+msgctxt "settings"
+msgid "Enable IDE Server"
+msgstr "啟用 IDE 伺服器"
+
+msgctxt "settings"
+msgid "Enable Keep Preview On Code Navigation"
+msgstr "啟用程式碼導覽時保留預覽"
+
+msgctxt "settings"
+msgid "Enable Language Server"
+msgstr "啟用語言伺服器"
+
+msgctxt "settings"
+msgid "Enable Preview File From Code Navigation"
+msgstr "啟用從程式碼導覽開啟預覽檔案"
+
+msgctxt "settings"
+msgid "Enable Preview From File Finder"
+msgstr "啟用從檔案搜尋器開啟預覽"
+
+msgctxt "settings"
+msgid "Enable Preview From Multibuffer"
+msgstr "啟用從多重緩衝區開啟預覽"
+
+msgctxt "settings"
+msgid "Enable Preview From Project Panel"
+msgstr "啟用從專案面板開啟預覽"
+
+msgctxt "settings"
+msgid "Enable Preview Multibuffer From Code Navigation"
+msgstr "啟用從程式碼導覽開啟預覽多重緩衝區"
+
+msgctxt "settings"
+msgid "Enable drag and drop selection."
+msgstr "啟用拖放選取。"
+
+msgctxt "settings"
+msgid "Enable middle-click paste on Linux."
+msgstr "在 Linux 上啟用中鍵貼上。"
+
+msgctxt "settings"
+msgid "Enable smartcase searching in Vim mode."
+msgstr "在 Vim 模式中啟用智慧大小寫搜尋。"
+
+msgctxt "settings"
+msgid "Enable to show entries in tree view list, disable to show in flat view list."
+msgstr "啟用以樹狀檢視顯示項目，停用則以平面清單顯示。"
+
+msgctxt "settings"
+msgid "Enabled"
+msgstr "已啟用"
+
+msgctxt "settings"
+msgid "Enables or disables formatting with Prettier for a given language."
+msgstr "啟用或停用特定語言的 Prettier 格式化。"
+
+msgctxt "settings"
+msgid "End a remote shell once no terminal has been attached to it for this many hours. 0 never ends it. Applies to shells started after the change."
+msgstr "當遠端 Shell 連續這麼多小時沒有任何終端機連接時，將其結束。0 表示永不結束。套用於變更後啟動的 Shell。"
+
+msgctxt "settings"
+msgid "End the connection to an external agent once none of its threads has been open for this many minutes (the agent and its sandbox stop too). Reopening a thread connects again. 0 keeps the connection until the window closes."
+msgstr "當外部代理的會話連續這麼多分鐘都沒有開啟時，結束與該代理的連線（代理及其沙箱也會停止）。重新開啟會話時會再次連線。0 表示保持連線直到視窗關閉。"
+
+msgctxt "settings"
+msgid "Ensure Final Newline On Save"
+msgstr "儲存時確保結尾換行"
+
+msgctxt "settings"
+msgid "Entry Spacing"
+msgstr "項目間距"
+
+msgctxt "settings"
+msgid "Environment"
+msgstr "環境"
+
+msgctxt "settings"
+msgid "Environment Variables"
+msgstr "環境變數"
+
+msgctxt "settings"
+msgid "Environment variables provided to the agent process."
+msgstr "提供給代理處理序的環境變數。"
+
+msgctxt "settings"
+msgid "Every AI you can use, by vendor (Claude, OpenAI, Google, local models…): how each signs in, what runs it, whether it is set up, and where to set it up."
+msgstr "依廠商列出所有可用的 AI（Claude、OpenAI、Google、本機模型…）：各自的登入方式、執行方式、是否已設定，以及設定位置。"
+
+msgctxt "settings"
+msgid "Excerpt Context Lines"
+msgstr "摘錄上下文行數"
+
+msgctxt "settings"
+msgid "Excluded Callees"
+msgstr "排除的被呼叫端"
+
+msgctxt "settings"
+msgid "Expand Edit Card"
+msgstr "展開編輯卡片"
+
+msgctxt "settings"
+msgid "Expand Excerpt Lines"
+msgstr "展開摘錄行數"
+
+msgctxt "settings"
+msgid "Expand Outlines With Depth"
+msgstr "依深度展開大綱"
+
+msgctxt "settings"
+msgid "Expand Terminal Card"
+msgstr "展開終端機卡片"
+
+msgctxt "settings"
+msgid "Expose Zed itself as an IDE server on 127.0.0.1 so the Claude Code CLI in the integrated terminal and external agents can read the open files, selections and diagnostics. Diffs can be accepted or rejected in an editor tab. Makes no outgoing connections. Disabled by default."
+msgstr "將 ForgeKairos 本身作為 127.0.0.1 上的 IDE 伺服器公開，讓整合式終端機中的 Claude Code CLI 及外部代理可以讀取已開啟的檔案、選取範圍與診斷。可在編輯器分頁中接受或拒絕差異。不會建立任何對外連線。預設為停用。"
+
+msgctxt "settings"
+msgid "Extend Comment On Newline"
+msgstr "換行時延伸註解"
+
+msgctxt "settings"
+msgid "External AI Providers You Consented To"
+msgstr "已同意的外部 AI 提供者"
+
+msgctxt "settings"
+msgid "External Agents"
+msgstr "外部代理"
+
+msgctxt "settings"
+msgid "Extra task variables to set for a particular language."
+msgstr "為特定語言設定額外的工作變數。"
+
+msgctxt "settings"
+msgid "Fallback Branch Name"
+msgstr "備用分支名稱"
+
+msgctxt "settings"
+msgid "Fast Scroll Sensitivity"
+msgstr "快速捲動靈敏度"
+
+msgctxt "settings"
+msgid "Fast scroll sensitivity multiplier for both horizontal and vertical scrolling."
+msgstr "水平與垂直捲動的快速捲動靈敏度倍率。"
+
+msgctxt "settings"
+msgid "Feature Flags"
+msgstr "功能旗標"
+
+msgctxt "settings"
+msgid "Fetch Timeout (milliseconds)"
+msgstr "取得逾時（毫秒）"
+
+msgctxt "settings"
+msgid "File Diff"
+msgstr "檔案差異"
+
+msgctxt "settings"
+msgid "File Finder"
+msgstr "檔案搜尋器"
+
+msgctxt "settings"
+msgid "File Icons"
+msgstr "檔案圖示"
+
+msgctxt "settings"
+msgid "File Name Template"
+msgstr "檔案名稱範本"
+
+msgctxt "settings"
+msgid "File Scan"
+msgstr "檔案掃描"
+
+msgctxt "settings"
+msgid "File Scan Depth"
+msgstr "檔案掃描深度"
+
+msgctxt "settings"
+msgid "File Scan Exclusions"
+msgstr "檔案掃描排除項目"
+
+msgctxt "settings"
+msgid "File Scan Inclusions"
+msgstr "檔案掃描包含項目"
+
+msgctxt "settings"
+msgid "File Type Associations"
+msgstr "檔案類型關聯"
+
+msgctxt "settings"
+msgid "File Types"
+msgstr "檔案類型"
+
+msgctxt "settings"
+msgid "Files larger than this are sent as an outline (a list of symbols and line numbers) instead of in full, and the agent reads only the ranges it needs. Values below 1024 are treated as 1024."
+msgstr "大於此大小的檔案會以大綱（符號與行號的清單）傳送，而非完整內容，代理只會讀取需要的範圍。小於 1024 的值會視為 1024。"
+
+msgctxt "settings"
+msgid "Files or globs of files that will be excluded by Zed entirely. They will be skipped during file scans, file searches, and not be displayed in the project file tree. Takes precedence over \"File Scan Inclusions\""
+msgstr "將被 ForgeKairos 完全排除的檔案或 glob 模式。這些檔案在檔案掃描、檔案搜尋期間會被略過，且不會顯示在專案檔案樹中。優先於「檔案掃描包含項目」"
+
+msgctxt "settings"
+msgid "Files or globs of files that will be included by Zed, even when ignored by git. This is useful for files that are not tracked by git, but are still important to your project. Note that globs that are overly broad can slow down Zed's file scanning. \"File Scan Exclusions\" takes precedence over these inclusions"
+msgstr "將被 ForgeKairos 納入的檔案或 glob 模式，即使被 git 忽略也會納入。這對於未被 git 追蹤但對專案仍重要的檔案很有用。請注意，過於廣泛的 glob 可能會拖慢 ForgeKairos 的檔案掃描速度。「檔案掃描排除項目」優先於這些包含項目"
+
+msgctxt "settings"
+msgid "Focus Follows Mouse"
+msgstr "焦點跟隨滑鼠"
+
+msgctxt "settings"
+msgid "Focus Follows Mouse Debounce ms"
+msgstr "焦點跟隨滑鼠防彈跳毫秒數"
+
+msgctxt "settings"
+msgid "Folder Indicator"
+msgstr "資料夾指示器"
+
+msgctxt "settings"
+msgid "Follow Cursor"
+msgstr "跟隨游標"
+
+msgctxt "settings"
+msgid "Follow the System Language"
+msgstr "跟隨系統語言"
+
+msgctxt "settings"
+msgid "Font"
+msgstr "字型"
+
+msgctxt "settings"
+msgid "Font Fallbacks"
+msgstr "後援字型"
+
+msgctxt "settings"
+msgid "Font Family"
+msgstr "字型家族"
+
+msgctxt "settings"
+msgid "Font Features"
+msgstr "字型功能"
+
+msgctxt "settings"
+msgid "Font Size"
+msgstr "字型大小"
+
+msgctxt "settings"
+msgid "Font Weight"
+msgstr "字型粗細"
+
+msgctxt "settings"
+msgid "Font fallbacks for terminal text. If not set, defaults to buffer font fallbacks."
+msgstr "終端機文字使用的後援字型。若未設定，預設為緩衝區的後援字型。"
+
+msgctxt "settings"
+msgid "Font family for UI elements."
+msgstr "UI 元素的字型家族。"
+
+msgctxt "settings"
+msgid "Font family for agent response text in the agent panel. Falls back to the regular UI font family."
+msgstr "代理面板中代理回應文字的字型家族。未設定時會退回使用一般 UI 字型家族。"
+
+msgctxt "settings"
+msgid "Font family for code blocks in the markdown preview. Falls back to the editor font family."
+msgstr "Markdown 預覽中程式碼區塊的字型家族。未設定時會退回使用編輯器字型家族。"
+
+msgctxt "settings"
+msgid "Font family for editor text."
+msgstr "編輯器文字的字型家族。"
+
+msgctxt "settings"
+msgid "Font family for terminal text. If not set, defaults to buffer font family."
+msgstr "終端機文字的字型家族。若未設定，預設為緩衝區字型家族。"
+
+msgctxt "settings"
+msgid "Font family for the markdown preview. Falls back to the UI font family."
+msgstr "Markdown 預覽的字型家族。未設定時會退回使用 UI 字型家族。"
+
+msgctxt "settings"
+msgid "Font family for user messages in the agent panel. Falls back to the regular buffer font family."
+msgstr "代理面板中使用者訊息的字型家族。未設定時會退回使用一般緩衝區字型家族。"
+
+msgctxt "settings"
+msgid "Font features for terminal text."
+msgstr "終端機文字的字型功能。"
+
+msgctxt "settings"
+msgid "Font size for UI elements."
+msgstr "UI 元素的字型大小。"
+
+msgctxt "settings"
+msgid "Font size for agent response text in the agent panel. Falls back to the regular UI font size."
+msgstr "代理面板中代理回應文字的字型大小。會退回一般 UI 字型大小。"
+
+msgctxt "settings"
+msgid "Font size for editor text."
+msgstr "編輯器文字的字型大小。"
+
+msgctxt "settings"
+msgid "Font size for terminal text. If not set, defaults to buffer font size."
+msgstr "終端機文字的字型大小。若未設定，預設為緩衝區字型大小。"
+
+msgctxt "settings"
+msgid "Font size for the markdown preview. Falls back to the editor font size."
+msgstr "Markdown 預覽的字型大小。未設定時會退回使用編輯器字型大小。"
+
+msgctxt "settings"
+msgid "Font size for user messages text in the agent panel."
+msgstr "代理面板中使用者訊息文字的字型大小。"
+
+msgctxt "settings"
+msgid "Font weight for UI elements (100-900)."
+msgstr "UI 元素的字型粗細（100-900）。"
+
+msgctxt "settings"
+msgid "Font weight for editor text (100-900)."
+msgstr "編輯器文字的字型粗細（100-900）。"
+
+msgctxt "settings"
+msgid "Font weight for terminal text in CSS weight units (100-900)."
+msgstr "終端機文字的字型粗細，以 CSS 粗細單位表示（100-900）。"
+
+msgctxt "settings"
+msgid "Forces Prettier integration to use a specific parser name when formatting files with the language."
+msgstr "強制 Prettier 整合在使用該語言格式化檔案時使用特定的解析器名稱。"
+
+msgctxt "settings"
+msgid "Forces Prettier integration to use specific plugins when formatting files with the language."
+msgstr "強制 Prettier 整合在使用該語言格式化檔案時使用特定外掛程式。"
+
+msgctxt "settings"
+msgid "Forget each thread's consent to \"Launch Outside the Sandbox\" so the next launch asks again. Running agents are not stopped, and the \"Always Launch Outside the Sandbox\" setting stays as it is."
+msgstr "清除每個會話對「在沙箱外啟動」的同意，讓下次啟動時再次詢問。執行中的代理不會停止，「一律在沙箱外啟動」設定也維持不變。"
+
+msgctxt "settings"
+msgid "Format DAP Log Messages"
+msgstr "格式化 DAP 記錄訊息"
+
+msgctxt "settings"
+msgid "Format On Save"
+msgstr "儲存時格式化"
+
+msgctxt "settings"
+msgid "Formatter"
+msgstr "格式器"
+
+msgctxt "settings"
+msgid "Formatting"
+msgstr "格式化"
+
+msgctxt "settings"
+msgid "Fullscreen Mode"
+msgstr "全螢幕模式"
+
+msgctxt "settings"
+msgid "GNOME-style layout string such as \"close:minimize,maximize\"."
+msgstr "GNOME 樣式的版面配置字串，例如 \"close:minimize,maximize\"。"
+
+msgctxt "settings"
+msgid "General"
+msgstr "一般"
+
+msgctxt "settings"
+msgid "General Settings"
+msgstr "一般設定"
+
+msgctxt "settings"
+msgid "Git Accounts"
+msgstr "Git 帳戶"
+
+msgctxt "settings"
+msgid "Git Blame View"
+msgstr "Git Blame 檢視"
+
+msgctxt "settings"
+msgid "Git Diff"
+msgstr "Git 差異"
+
+msgctxt "settings"
+msgid "Git Gutter"
+msgstr "Git 裝訂邊"
+
+msgctxt "settings"
+msgid "Git Gutter Width"
+msgstr "Git 裝訂邊寬度"
+
+msgctxt "settings"
+msgid "Git Hunks"
+msgstr "Git 區塊"
+
+msgctxt "settings"
+msgid "Git Integration"
+msgstr "Git 整合"
+
+msgctxt "settings"
+msgid "Git Panel"
+msgstr "Git 面板"
+
+msgctxt "settings"
+msgid "Git Panel Button"
+msgstr "Git 面板按鈕"
+
+msgctxt "settings"
+msgid "Git Panel Default Width"
+msgstr "Git 面板預設寬度"
+
+msgctxt "settings"
+msgid "Git Panel Dock"
+msgstr "Git 面板停駐位置"
+
+msgctxt "settings"
+msgid "Git Panel Status Style"
+msgstr "Git 面板狀態樣式"
+
+msgctxt "settings"
+msgid "Git Status"
+msgstr "Git 狀態"
+
+msgctxt "settings"
+msgid "Git Status Indicator"
+msgstr "Git 狀態指示器"
+
+msgctxt "settings"
+msgid "Give Agents IDE Tools"
+msgstr "提供 IDE 工具給代理"
+
+msgctxt "settings"
+msgid "Give Claude Code tabs and external agents tools for highlights, annotations, tours, definitions, references and symbol search. Separate from \"Enable IDE Server\", and writes no lock file. Makes no outgoing connections."
+msgstr "提供 Claude Code 分頁與外部代理用於醒目提示、註記、導覽、定義、參考與符號搜尋的工具。與「啟用 IDE 伺服器」分開設定，且不會寫入鎖定檔。不會建立任何對外連線。"
+
+msgctxt "settings"
+msgid "Global Substitution Default"
+msgstr "全域替換預設值"
+
+msgctxt "settings"
+msgid "Global switch to toggle hints on and off."
+msgstr "用於開啟或關閉提示的全域開關。"
+
+msgctxt "settings"
+msgid "Global switch to toggle inline values on and off when debugging."
+msgstr "用於在偵錯時開啟或關閉內嵌值的全域開關。"
+
+msgctxt "settings"
+msgid "Globs to match against file paths to determine if a file is private."
+msgstr "用於比對檔案路徑以判斷檔案是否為私密檔案的 Glob 模式。"
+
+msgctxt "settings"
+msgid "Globs to match files that will be considered \"hidden\" and can be hidden from the project panel."
+msgstr "用於比對將被視為「隱藏」且可在專案面板中隱藏之檔案的 Glob 模式。"
+
+msgctxt "settings"
+msgid "Go To Definition Fallback"
+msgstr "前往定義的備用行為"
+
+msgctxt "settings"
+msgid "Go To Definition Scroll Strategy"
+msgstr "前往定義的捲動策略"
+
+msgctxt "settings"
+msgid "Group By"
+msgstr "分組方式"
+
+msgctxt "settings"
+msgid "Guides"
+msgstr "輔助線"
+
+msgctxt "settings"
+msgid "Gutter"
+msgstr "裝訂邊"
+
+msgctxt "settings"
+msgid "Hand the shells of SSH terminals to the remote Zed server. Running commands keep going when the connection drops, and reconnecting shows the output so far again so you can carry on. Closing the tab ends the shell. Not available on Windows remote hosts."
+msgstr "將 SSH 終端機的 Shell 交給遠端的 ForgeKairos 伺服器。連線中斷時，執行中的命令會繼續執行，重新連線後會再次顯示至今的輸出，讓您接續操作。關閉分頁會結束 Shell。不適用於 Windows 遠端主機。"
+
+msgctxt "settings"
+msgid "Hard Tabs"
+msgstr "使用定位字元"
+
+msgctxt "settings"
+msgid "Hidden Files"
+msgstr "隱藏的檔案"
+
+msgctxt "settings"
+msgid "Hide .gitignore"
+msgstr "隱藏 .gitignore"
+
+msgctxt "settings"
+msgid "Hide Hidden"
+msgstr "隱藏隱藏項目"
+
+msgctxt "settings"
+msgid "Hide Mouse"
+msgstr "隱藏滑鼠游標"
+
+msgctxt "settings"
+msgid "Hide Root"
+msgstr "隱藏根目錄"
+
+msgctxt "settings"
+msgid "Hide Symbols in Multi-Buffers"
+msgstr "在多重緩衝區中隱藏符號"
+
+msgctxt "settings"
+msgid "Hide the values of variables in private files."
+msgstr "隱藏私密檔案中變數的值。"
+
+msgctxt "settings"
+msgid "Hiding Delay"
+msgstr "隱藏延遲"
+
+msgctxt "settings"
+msgid "Highlight all occurrences of selected text."
+msgstr "醒目提示所有已選取文字的出現位置。"
+
+msgctxt "settings"
+msgid "Highlight on Yank Duration"
+msgstr "Yank 醒目提示持續時間"
+
+msgctxt "settings"
+msgid "Highlighting"
+msgstr "醒目提示"
+
+msgctxt "settings"
+msgid "Home Page"
+msgstr "啟動時開啟的頁面"
+
+msgctxt "settings"
+msgid "Horizontal Scroll"
+msgstr "水平捲動"
+
+msgctxt "settings"
+msgid "Horizontal Scroll Margin"
+msgstr "水平捲動邊距"
+
+msgctxt "settings"
+msgid "Horizontal Scrollbar"
+msgstr "水平捲軸"
+
+msgctxt "settings"
+msgid "Horizontal Split Direction"
+msgstr "水平分割方向"
+
+msgctxt "settings"
+msgid "Hover Popover"
+msgstr "暫留快顯視窗"
+
+msgctxt "settings"
+msgid "How Git hunks are displayed visually in the editor."
+msgstr "Git 區塊在編輯器中的視覺呈現方式。"
+
+msgctxt "settings"
+msgid "How `forgekairos <path>` opens directories when no flag is specified."
+msgstr "未指定旗標時，`forgekairos <path>` 開啟資料夾的方式。"
+
+msgctxt "settings"
+msgid "How and when the scrollbar should be displayed."
+msgstr "捲軸的顯示方式與時機。"
+
+msgctxt "settings"
+msgid "How entry statuses are displayed."
+msgstr "項目狀態的顯示方式。"
+
+msgctxt "settings"
+msgid "How line endings should be handled for new files and during format and save operations."
+msgstr "新檔案及格式化和儲存操作時行尾序列的處理方式。"
+
+msgctxt "settings"
+msgid "How long going to a definition waits for the language server before it also offers the index's name matches, in milliseconds, from 100 to 10000. Default: 1500."
+msgstr "前往定義時，等待語言伺服器多久後也提供索引的名稱比對結果，以毫秒為單位，範圍 100 到 10000。預設值：1500。"
+
+msgctxt "settings"
+msgid "How many callers or callees of one function to list before a Show more row."
+msgstr "在「顯示更多」列之前，要列出單一函式的多少個呼叫端或被呼叫端。"
+
+msgctxt "settings"
+msgid "How many characters has to be in the completions query to automatically show the words-based completions."
+msgstr "自動顯示字詞自動完成所需的最少查詢字元數。"
+
+msgctxt "settings"
+msgid "How many columns a tab should occupy."
+msgstr "Tab 應佔用的欄數。"
+
+msgctxt "settings"
+msgid "How many lines of context to provide in multibuffer excerpts by default."
+msgstr "多重緩衝區摘錄中預設提供的上下文行數。"
+
+msgctxt "settings"
+msgid "How many lines to expand the multibuffer excerpts by default."
+msgstr "多重緩衝區摘錄預設展開的行數。"
+
+msgctxt "settings"
+msgid "How many threads clangd builds and indexes files with (`-j`). Fewer threads use less memory at once but index more slowly. 0 leaves clangd's own default. Ignored when `lsp.clangd.binary.arguments` already has `-j`. Changing it restarts clangd. This setting only takes effect in your user settings."
+msgstr "clangd 建置與索引檔案時使用的執行緒數（`-j`）。執行緒越少，同時使用的記憶體越少，但索引速度越慢。0 表示使用 clangd 本身的預設值。若 `lsp.clangd.binary.arguments` 已包含 `-j`，則會忽略此設定。變更後會重新啟動 clangd。此設定僅在使用者設定中有效。"
+
+msgctxt "settings"
+msgid "How much `git status` reports about untracked files. All reports every file inside untracked folders, which makes the project panel's colors exact but is the slowest on huge repositories. Normal reports only the folders, and No leaves untracked files out entirely. Over remote SSH the same value is used on the server."
+msgstr "`git status` 回報未追蹤檔案的程度。All 會回報未追蹤資料夾中的每個檔案，使專案面板的顏色精確，但在大型儲存庫中最慢。Normal 只回報資料夾，No 則完全排除未追蹤的檔案。透過遠端 SSH 時，伺服器上會使用相同的值。"
+
+msgctxt "settings"
+msgid "How much of the body of a web page attached with @fetch is sent. Values below 1024 are treated as 1024."
+msgstr "以 @fetch 附加之網頁本文的傳送量上限。小於 1024 的值會視為 1024。"
+
+msgctxt "settings"
+msgid "How much of the project clangd, the C and C++ language server, indexes. Full indexes the whole project in the background, as clangd does by default. Light indexes only the open files and saves the most memory: references across the project and renames then only cover the files that are open, as do the call hierarchy and going to a definition in a file that is not open. Ignored when `lsp.clangd.binary.arguments` already has `--background-index`. Changing it restarts clangd."
+msgstr "C 與 C++ 語言伺服器 clangd 對專案建立索引的範圍。Full 會如 clangd 預設般在背景為整個專案建立索引。Light 只為已開啟的檔案建立索引，最節省記憶體：此時專案範圍的參考與重新命名只涵蓋已開啟的檔案，呼叫階層以及前往未開啟檔案中的定義亦同。若 `lsp.clangd.binary.arguments` 已包含 `--background-index`，則會忽略此設定。變更後會重新啟動 clangd。"
+
+msgctxt "settings"
+msgid "How much to fade out unused code (0.0 - 0.9)."
+msgstr "未使用程式碼的淡出程度（0.0 - 0.9）。"
+
+msgctxt "settings"
+msgid "How projects open from the UI by default."
+msgstr "專案從 UI 開啟時的預設方式。"
+
+msgctxt "settings"
+msgid "How thinking blocks should be displayed by default. 'Auto' fully expands during streaming, then auto-collapses when done. 'Preview' auto-expands with a height constraint during streaming. 'Always Expanded' shows full content. 'Always Collapsed' keeps them collapsed."
+msgstr "思考區塊的預設顯示方式。「自動」會在串流期間完全展開，完成後自動摺疊。「預覽」會在串流期間自動展開，但高度受限。「一律展開」會顯示完整內容。「一律摺疊」會保持摺疊。"
+
+msgctxt "settings"
+msgid "How to display diffs in the editor."
+msgstr "差異在編輯器中的顯示方式。"
+
+msgctxt "settings"
+msgid "How to display the LSP item kind (function, method, variable, etc.) of each entry in the completions menu."
+msgstr "自動完成選單中每個項目的 LSP 項目類型（函式、方法、變數等）的顯示方式。"
+
+msgctxt "settings"
+msgid "How to group entries in the git panel."
+msgstr "設定 Git 面板中項目的分組方式。"
+
+msgctxt "settings"
+msgid "How to highlight the current line in the minimap."
+msgstr "在縮圖中醒目提示目前行的方式。"
+
+msgctxt "settings"
+msgid "How to highlight the current line."
+msgstr "醒目提示目前行的方式。"
+
+msgctxt "settings"
+msgid "How to perform a buffer format."
+msgstr "執行緩衝區格式化的方式。"
+
+msgctxt "settings"
+msgid "How to render LSP color previews in the editor."
+msgstr "在編輯器中呈現 LSP 顏色預覽的方式。"
+
+msgctxt "settings"
+msgid "How to scroll the target into view when navigating to a definition or reference."
+msgstr "導覽至定義或參考時將目標捲動至可見範圍的方式。"
+
+msgctxt "settings"
+msgid "How to soft-wrap long lines of text."
+msgstr "長行文字的自動換行方式。"
+
+msgctxt "settings"
+msgid "How to sort entries in the git panel."
+msgstr "設定 Git 面板中項目的排序方式。"
+
+msgctxt "settings"
+msgid "Hunk Style"
+msgstr "區塊樣式"
+
+msgctxt "settings"
+msgid "Icon Theme"
+msgstr "圖示佈景主題"
+
+msgctxt "settings"
+msgid "Icon Theme Name"
+msgstr "圖示佈景主題名稱"
+
+msgctxt "settings"
+msgid "Idle Agent Disconnect (Minutes)"
+msgstr "閒置代理中斷連線（分鐘）"
+
+msgctxt "settings"
+msgid "Image Viewer"
+msgstr "影像檢視器"
+
+msgctxt "settings"
+msgid "In the grid, grow the row height so that cells containing line breaks are shown in full. When off, they are cut to one line."
+msgstr "在格狀檢視中增加列高，以完整顯示含有換行的儲存格。關閉時，這些儲存格會被截斷為一行。"
+
+msgctxt "settings"
+msgid "Inactive Opacity"
+msgstr "非作用中窗格不透明度"
+
+msgctxt "settings"
+msgid "Include Ignored"
+msgstr "包含已忽略"
+
+msgctxt "settings"
+msgid "Include Ignored Files"
+msgstr "包含已忽略的檔案"
+
+msgctxt "settings"
+msgid "Include Ignored in Search"
+msgstr "搜尋時包含已忽略"
+
+msgctxt "settings"
+msgid "Include Pre-releases"
+msgstr "包含發行前版本"
+
+msgctxt "settings"
+msgid "Include Warnings"
+msgstr "包含警告"
+
+msgctxt "settings"
+msgid "Include ignored files in search results by default."
+msgstr "預設在搜尋結果中包含已忽略的檔案。"
+
+msgctxt "settings"
+msgid "Indent Guides"
+msgstr "縮排輔助線"
+
+msgctxt "settings"
+msgid "Indent Size"
+msgstr "縮排大小"
+
+msgctxt "settings"
+msgid "Indentation"
+msgstr "縮排"
+
+msgctxt "settings"
+msgid "Index Mode"
+msgstr "索引模式"
+
+msgctxt "settings"
+msgid "Indexing"
+msgstr "建立索引"
+
+msgctxt "settings"
+msgid "Inlay Hints"
+msgstr "內嵌提示"
+
+msgctxt "settings"
+msgid "Inline Attachment Limit (Bytes)"
+msgstr "內嵌附件上限（位元組）"
+
+msgctxt "settings"
+msgid "Inline Code Actions"
+msgstr "內嵌程式碼動作"
+
+msgctxt "settings"
+msgid "Inline Diagnostics"
+msgstr "內嵌診斷"
+
+msgctxt "settings"
+msgid "Inline Git Blame"
+msgstr "內嵌 Git Blame"
+
+msgctxt "settings"
+msgid "Input Audio Device"
+msgstr "輸入音訊裝置"
+
+msgctxt "settings"
+msgid "Insert Mode"
+msgstr "插入模式"
+
+msgctxt "settings"
+msgid "Insert a repository map (the files and the symbols declared in them) right after the list of project root folders in the system prompt. 0 turns it off. The limit is 32768 bytes; larger values are treated as 32768. It is rebuilt only when the project's contents change."
+msgstr "在系統提示中，緊接在專案根資料夾清單之後插入儲存庫地圖（檔案及其中宣告的符號）。0 表示關閉。上限為 32768 位元組；更大的值會視為 32768。只有在專案內容變更時才會重新建立。"
+
+msgctxt "settings"
+msgid "Instrumentation"
+msgstr "監測"
+
+msgctxt "settings"
+msgid "JSX Tag Auto Close"
+msgstr "JSX 標籤自動關閉"
+
+msgctxt "settings"
+msgid "Keep Selection On Copy"
+msgstr "複製後保留選取範圍"
+
+msgctxt "settings"
+msgid "Keep Shells Running When Disconnected"
+msgstr "中斷連線時保持 Shell 執行"
+
+msgctxt "settings"
+msgid "Key-value pairs to add to the terminal's environment."
+msgstr "新增至終端機環境的鍵值對。"
+
+msgctxt "settings"
+msgid "Keybindings"
+msgstr "按鍵繫結"
+
+msgctxt "settings"
+msgid "Keymap"
+msgstr "按鍵對應"
+
+msgctxt "settings"
+msgid "LLM Providers"
+msgstr "LLM 提供者"
+
+msgctxt "settings"
+msgid "LSP"
+msgstr "LSP"
+
+msgctxt "settings"
+msgid "LSP Completions"
+msgstr "LSP 完成項目"
+
+msgctxt "settings"
+msgid "LSP Document Colors"
+msgstr "LSP 文件色彩"
+
+msgctxt "settings"
+msgid "LSP Document Symbols"
+msgstr "LSP 文件符號"
+
+msgctxt "settings"
+msgid "LSP Folding Ranges"
+msgstr "LSP 摺疊範圍"
+
+msgctxt "settings"
+msgid "LSP Highlights"
+msgstr "LSP 醒目提示"
+
+msgctxt "settings"
+msgid "LSP Pull Diagnostics"
+msgstr "LSP 拉取診斷"
+
+msgctxt "settings"
+msgid "LSP Results Location"
+msgstr "LSP 結果顯示位置"
+
+msgctxt "settings"
+msgid "Language Detection"
+msgstr "語言偵測"
+
+msgctxt "settings"
+msgid "Language Server Timeout (ms)"
+msgstr "語言伺服器逾時（毫秒）"
+
+msgctxt "settings"
+msgid "Language Servers"
+msgstr "語言伺服器"
+
+msgctxt "settings"
+msgid "Languages"
+msgstr "語言"
+
+msgctxt "settings"
+msgid "Languages & Tools"
+msgstr "語言與工具"
+
+msgctxt "settings"
+msgid "Launch Approvals"
+msgstr "啟動核准"
+
+msgctxt "settings"
+msgid "Layout"
+msgstr "版面配置"
+
+msgctxt "settings"
+msgid "Layout Settings"
+msgstr "版面配置設定"
+
+msgctxt "settings"
+msgid "Layout mode for the bottom dock."
+msgstr "底部停駐區的版面配置模式。"
+
+msgctxt "settings"
+msgid "Left padding for centered layout."
+msgstr "置中版面配置的左側邊框間距。"
+
+msgctxt "settings"
+msgid "Let AI Agents Use the Built-in Browser"
+msgstr "允許 AI 代理使用內建瀏覽器"
+
+msgctxt "settings"
+msgid "Let agents read the end (up to 4 KB) of the output of the last failed task (non-zero exit) through the IDE server's getLastTaskOutput tool."
+msgstr "讓代理透過 IDE 伺服器的 getLastTaskOutput 工具，讀取最後一個失敗工作（非零結束代碼）輸出的結尾（最多 4 KB）。"
+
+msgctxt "settings"
+msgid "Light Icon Theme"
+msgstr "淺色圖示佈景主題"
+
+msgctxt "settings"
+msgid "Light Theme"
+msgstr "淺色佈景主題"
+
+msgctxt "settings"
+msgid "Limit Content Width"
+msgstr "限制內容寬度"
+
+msgctxt "settings"
+msgid "Limit Markdown Preview Width"
+msgstr "限制 Markdown 預覽寬度"
+
+msgctxt "settings"
+msgid "Limit the diagnostics attached with @diagnostics to this many files. Values below 1 are treated as 1."
+msgstr "將以 @diagnostics 附加的診斷限制在這麼多個檔案。小於 1 的值會視為 1。"
+
+msgctxt "settings"
+msgid "Line Ending"
+msgstr "行尾序列"
+
+msgctxt "settings"
+msgid "Line Endings Button"
+msgstr "行尾序列按鈕"
+
+msgctxt "settings"
+msgid "Line Height"
+msgstr "行高"
+
+msgctxt "settings"
+msgid "Line Width"
+msgstr "線條寬度"
+
+msgctxt "settings"
+msgid "Line height for editor text."
+msgstr "編輯器文字的行高。"
+
+msgctxt "settings"
+msgid "Line height for terminal text."
+msgstr "終端機文字的行高。"
+
+msgctxt "settings"
+msgid "Linked Edits"
+msgstr "連動編輯"
+
+msgctxt "settings"
+msgid "Location"
+msgstr "位置"
+
+msgctxt "settings"
+msgid "Log DAP Communications"
+msgstr "記錄 DAP 通訊"
+
+msgctxt "settings"
+msgid "Log Directory"
+msgstr "記錄資料夾"
+
+msgctxt "settings"
+msgid "MCP Server Timeout"
+msgstr "MCP 伺服器逾時"
+
+msgctxt "settings"
+msgid "MCP Servers"
+msgstr "MCP 伺服器"
+
+msgctxt "settings"
+msgid "Make the function under the cursor the root whenever the cursor moves."
+msgstr "每當游標移動時，將游標所在的函式設為根節點。"
+
+msgctxt "settings"
+msgid "Markdown Format Bar"
+msgstr "Markdown 格式列"
+
+msgctxt "settings"
+msgid "Markdown Preview Font"
+msgstr "Markdown 預覽字型"
+
+msgctxt "settings"
+msgid "Max Content Width"
+msgstr "最大內容寬度"
+
+msgctxt "settings"
+msgid "Max Output Tokens"
+msgstr "輸出 Token 上限"
+
+msgctxt "settings"
+msgid "Max Scroll History Lines"
+msgstr "捲動緩衝區最大行數"
+
+msgctxt "settings"
+msgid "Max Severity"
+msgstr "最大嚴重性"
+
+msgctxt "settings"
+msgid "Max Tokens"
+msgstr "最大 Token 數"
+
+msgctxt "settings"
+msgid "Max Width"
+msgstr "最大寬度"
+
+msgctxt "settings"
+msgid "Max Width Columns"
+msgstr "最大寬度欄數"
+
+msgctxt "settings"
+msgid "Maximum Listed Calls"
+msgstr "列出的呼叫數上限"
+
+msgctxt "settings"
+msgid "Maximum Tabs"
+msgstr "最大分頁數"
+
+msgctxt "settings"
+msgid "Maximum Workers"
+msgstr "工作者數上限"
+
+msgctxt "settings"
+msgid "Maximum content width in pixels. Content will be centered when the pane is wider than this value."
+msgstr "內容最大寬度（像素）。當窗格寬於此值時，內容會置中。"
+
+msgctxt "settings"
+msgid "Maximum content width in pixels. Content will be centered when the panel is wider than this value."
+msgstr "最大內容寬度（像素）。當面板寬度超過此值時，內容將置中顯示。"
+
+msgctxt "settings"
+msgid "Maximum directory depth to eagerly index outside of git repositories; contents of directories at this depth or deeper are indexed on demand. Repositories rooted shallower than this depth are always indexed fully. In projects that are not rooted at a git repository, repositories directly inside a root folder activate their git features immediately; deeper ones activate on first use. 0 means no limit and activates all git repositories immediately"
+msgstr "Git 儲存庫之外預先建立索引的最大目錄深度；此深度或更深目錄的內容會視需求建立索引。根目錄深度小於此值的儲存庫一律會完整建立索引。若專案根目錄不是 Git 儲存庫，直接位於根資料夾內的儲存庫會立即啟用 Git 功能；更深層的儲存庫則會在首次使用時啟用。0 表示不設限，並立即啟用所有 Git 儲存庫"
+
+msgctxt "settings"
+msgid "Maximum length of the commit message title before a warning is shown. Set to 0 to disable."
+msgstr "顯示警告前，提交訊息標題的最大長度。設為 0 可停用。"
+
+msgctxt "settings"
+msgid "Maximum number of columns to display in the minimap."
+msgstr "縮圖顯示的最大欄數。"
+
+msgctxt "settings"
+msgid "Maximum number of lines to keep in scrollback history (max: 100,000; 0 disables scrolling)."
+msgstr "捲動緩衝區保留的最大行數（上限：100,000；0 可停用捲動）。"
+
+msgctxt "settings"
+msgid "Maximum open tabs in a pane. Will not close an unsaved tab."
+msgstr "窗格中的最大開啟分頁數。不會關閉未儲存的分頁。"
+
+msgctxt "settings"
+msgid "Memory Limit (MB)"
+msgstr "記憶體上限 (MB)"
+
+msgctxt "settings"
+msgid "Menu Delay"
+msgstr "選單延遲"
+
+msgctxt "settings"
+msgid "Message Editor Min Lines"
+msgstr "訊息編輯器最少行數"
+
+msgctxt "settings"
+msgid "Middle Click Paste"
+msgstr "中鍵貼上"
+
+msgctxt "settings"
+msgid "Min Line Number Digits"
+msgstr "最少行號位數"
+
+msgctxt "settings"
+msgid "Minimap"
+msgstr "縮圖"
+
+msgctxt "settings"
+msgid "Minimum Column"
+msgstr "最小欄號"
+
+msgctxt "settings"
+msgid "Minimum Contrast"
+msgstr "最小對比度"
+
+msgctxt "settings"
+msgid "Minimum Contrast For Highlights"
+msgstr "醒目提示的最小對比度"
+
+msgctxt "settings"
+msgid "Minimum Split Diff Width"
+msgstr "分割差異最小寬度"
+
+msgctxt "settings"
+msgid "Minimum number of characters to reserve space for in the gutter."
+msgstr "在裝訂邊中保留空間的最少字元數。"
+
+msgctxt "settings"
+msgid "Minimum number of lines to display in the agent message editor."
+msgstr "代理訊息編輯器顯示的最少行數。"
+
+msgctxt "settings"
+msgid "Minimum time to wait before pulling diagnostics from the language server(s)."
+msgstr "從語言伺服器拉取診斷資訊前的最短等待時間。"
+
+msgctxt "settings"
+msgid "Miscellaneous"
+msgstr "其他"
+
+msgctxt "settings"
+msgid "Mode"
+msgstr "模式"
+
+msgctxt "settings"
+msgid "Model"
+msgstr "模型"
+
+msgctxt "settings"
+msgid "Modifier key for adding multiple cursors."
+msgstr "新增多個游標的修飾鍵。"
+
+msgctxt "settings"
+msgid "Mouse Wheel Zoom"
+msgstr "滑鼠滾輪縮放"
+
+msgctxt "settings"
+msgid "Multi Cursor Modifier"
+msgstr "多重游標修飾鍵"
+
+msgctxt "settings"
+msgid "Multibuffer"
+msgstr "多重緩衝區"
+
+msgctxt "settings"
+msgid "Mute On Join"
+msgstr "加入時靜音"
+
+msgctxt "settings"
+msgid "Network"
+msgstr "網路"
+
+msgctxt "settings"
+msgid "Network Allowlist"
+msgstr "網路允許清單"
+
+msgctxt "settings"
+msgid "Newly opened terminals start recording their output automatically."
+msgstr "新開啟的終端機會自動開始記錄輸出。"
+
+msgctxt "settings"
+msgid "Normal, Vim, Helix, or Emacs key bindings. Vim and Helix work on top of the base keymap; Emacs is a base keymap of its own, so choosing it here also sets the base keymap."
+msgstr "一般、Vim、Helix 或 Emacs 按鍵繫結。Vim 與 Helix 疊加在基礎按鍵對應之上；Emacs 本身就是一種基礎按鍵對應，因此在此選擇它也會設定基礎按鍵對應。"
+
+msgctxt "settings"
+msgid "Notify When Agent Waiting"
+msgstr "代理等待時通知"
+
+msgctxt "settings"
+msgid "Number of lines to search for modelines (set to 0 to disable)."
+msgstr "搜尋 modeline 的行數（設為 0 可停用）。"
+
+msgctxt "settings"
+msgid "Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting."
+msgstr "關閉：不向語言伺服器要求語意標記。\n合併：將 LSP 語意標記與 tree-sitter 醒目提示一起使用。\n完整：僅使用 LSP 語意標記，取代 tree-sitter 醒目提示。"
+
+msgctxt "settings"
+msgid "On Last Window Closed"
+msgstr "最後一個視窗關閉時"
+
+msgctxt "settings"
+msgid "On New Window"
+msgstr "開啟新視窗時"
+
+msgctxt "settings"
+msgid "On: format the whole buffer.\nOff: do not format.\nModifications: format only lines with unstaged changes; skips formatting when a git diff or LSP range formatting is unavailable.\nModifications If Available: same, but falls back to formatting the whole buffer."
+msgstr "開啟：格式化整個緩衝區。\n關閉：不進行格式化。\n修改內容：僅格式化含未暫存變更的行；若沒有可用的 git diff 或 LSP 不支援範圍格式化，則會略過格式化。\n修改內容（若可用）：作法相同，但無法使用時會回退為格式化整個緩衝區。"
+
+msgctxt "settings"
+msgid "Opacity of inactive panels (0.0 - 1.0)."
+msgstr "非作用中窗格的不透明度（0.0 - 1.0）。"
+
+msgctxt "settings"
+msgid "Open CSV / TSV as a Grid"
+msgstr "以格狀檢視開啟 CSV / TSV"
+
+msgctxt "settings"
+msgid "Open Keymap"
+msgstr "開啟按鍵對應"
+
+msgctxt "settings"
+msgid "Open Links In Mouse Mode"
+msgstr "在滑鼠模式下開啟連結"
+
+msgctxt "settings"
+msgid "Open Macro Folders Collapsed"
+msgstr "開啟時摺疊巨集資料夾"
+
+msgctxt "settings"
+msgid "Open Markdown Files in Preview"
+msgstr "在預覽中開啟 Markdown 檔案"
+
+msgctxt "settings"
+msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
+msgstr "針對螢幕閱讀器等輔助技術最佳化 ForgeKairos 介面。啟用後，原本會摺疊的控制項將保持展開，並可使用鍵盤操作。"
+
+msgctxt "settings"
+msgid "Option As Meta"
+msgstr "Option 鍵作為 Meta 鍵"
+
+msgctxt "settings"
+msgid "Options"
+msgstr "選項"
+
+msgctxt "settings"
+msgid "Outline Limit (Bytes)"
+msgstr "大綱上限（位元組）"
+
+msgctxt "settings"
+msgid "Outline Panel"
+msgstr "大綱面板"
+
+msgctxt "settings"
+msgid "Outline Panel Button"
+msgstr "大綱面板按鈕"
+
+msgctxt "settings"
+msgid "Outline Panel Default Width"
+msgstr "大綱面板預設寬度"
+
+msgctxt "settings"
+msgid "Outline Panel Dock"
+msgstr "大綱面板停駐位置"
+
+msgctxt "settings"
+msgid "Output Audio Device"
+msgstr "輸出音訊裝置"
+
+msgctxt "settings"
+msgid "Padding"
+msgstr "邊框間距"
+
+msgctxt "settings"
+msgid "Padding between the end of the source line and the start of the inline blame in columns."
+msgstr "來源行尾與內嵌 blame 起始之間的邊框間距（以欄為單位）。"
+
+msgctxt "settings"
+msgid "Pane Modifiers"
+msgstr "窗格調整"
+
+msgctxt "settings"
+msgid "Pane Split Direction"
+msgstr "窗格分割方向"
+
+msgctxt "settings"
+msgid "Panel Tab Bar"
+msgstr "面板分頁列"
+
+msgctxt "settings"
+msgid "Panels"
+msgstr "面板"
+
+msgctxt "settings"
+msgid "Parser"
+msgstr "解析器"
+
+msgctxt "settings"
+msgid "Path Style"
+msgstr "路徑樣式"
+
+msgctxt "settings"
+msgid "Pending Keystrokes Indicator"
+msgstr "等待按鍵指示器"
+
+msgctxt "settings"
+msgid "Performance Profiler"
+msgstr "效能分析工具"
+
+msgctxt "settings"
+msgid "Pinned Tabs Layout"
+msgstr "釘選分頁版面配置"
+
+msgctxt "settings"
+msgid "Play Sound When Agent Done"
+msgstr "代理完成時播放音效"
+
+msgctxt "settings"
+msgid "Plugins"
+msgstr "外掛程式"
+
+msgctxt "settings"
+msgid "Position of the close button in a tab."
+msgstr "分頁中關閉按鈕的位置。"
+
+msgctxt "settings"
+msgid "Prediction Debounce"
+msgstr "預測防彈跳延遲"
+
+msgctxt "settings"
+msgid "Prefer LSP"
+msgstr "優先使用 LSP"
+
+msgctxt "settings"
+msgid "Preferred Line Length"
+msgstr "偏好行長度"
+
+msgctxt "settings"
+msgid "Preferred debuggers for this language."
+msgstr "此語言偏好使用的偵錯工具。"
+
+msgctxt "settings"
+msgid "Prefix every line with `[YYYY-MM-DD HH:MM:SS] `. In a terminal that is recording, this can also be toggled from the recording bar."
+msgstr "在每一行前面加上 `[YYYY-MM-DD HH:MM:SS] `。在記錄中的終端機，也可以從記錄列切換此選項。"
+
+msgctxt "settings"
+msgid "Prettier"
+msgstr "Prettier"
+
+msgctxt "settings"
+msgid "Prevent Idle Sleep"
+msgstr "防止閒置睡眠"
+
+msgctxt "settings"
+msgid "Preview Channel"
+msgstr "Preview 頻道"
+
+msgctxt "settings"
+msgid "Preview Tabs"
+msgstr "預覽分頁"
+
+msgctxt "settings"
+msgid "Preview Tabs Enabled"
+msgstr "啟用預覽分頁"
+
+msgctxt "settings"
+msgid "Primary Click Behavior"
+msgstr "主要點擊行為"
+
+msgctxt "settings"
+msgid "Privacy"
+msgstr "隱私權"
+
+msgctxt "settings"
+msgid "Private Files"
+msgstr "私密檔案"
+
+msgctxt "settings"
+msgid "Program"
+msgstr "程式"
+
+msgctxt "settings"
+msgid "Project Panel"
+msgstr "專案面板"
+
+msgctxt "settings"
+msgid "Project Panel Button"
+msgstr "專案面板按鈕"
+
+msgctxt "settings"
+msgid "Project Panel Default Width"
+msgstr "專案面板預設寬度"
+
+msgctxt "settings"
+msgid "Project Panel Dock"
+msgstr "專案面板停駐位置"
+
+msgctxt "settings"
+msgid "Project Panel Title Tooltips Delay"
+msgstr "專案面板標題工具提示延遲"
+
+msgctxt "settings"
+msgid "Project Search Button"
+msgstr "專案搜尋按鈕"
+
+msgctxt "settings"
+msgid "Prompt Format"
+msgstr "提示格式"
+
+msgctxt "settings"
+msgid "Proxy"
+msgstr "Proxy"
+
+msgctxt "settings"
+msgid "Quick Actions"
+msgstr "快速動作"
+
+msgctxt "settings"
+msgid "Record Automatically"
+msgstr "自動記錄"
+
+msgctxt "settings"
+msgid "Redact Private Values"
+msgstr "隱藏私密值"
+
+msgctxt "settings"
+msgid "Reduce Motion"
+msgstr "減少動態效果"
+
+msgctxt "settings"
+msgid "Regex"
+msgstr "規則運算式"
+
+msgctxt "settings"
+msgid "Regex Search"
+msgstr "規則運算式搜尋"
+
+msgctxt "settings"
+msgid "Relative Line Numbers"
+msgstr "相對行號"
+
+msgctxt "settings"
+msgid "Relative size of the drop target in the editor that will open dropped file as a split pane."
+msgstr "編輯器中拖放目標的相對大小，拖放的檔案將以分割窗格開啟。"
+
+msgctxt "settings"
+msgid "Relay Remote Downloads Through This Machine"
+msgstr "透過這台電腦轉送遠端的下載"
+
+msgctxt "settings"
+msgid "Remote"
+msgstr "遠端"
+
+msgctxt "settings"
+msgid "Remote Terminal Persistence"
+msgstr "遠端終端機持續性"
+
+msgctxt "settings"
+msgid "Remove ANSI / VT escape sequences and save plain text."
+msgstr "移除 ANSI / VT 逸出序列，並儲存為純文字。"
+
+msgctxt "settings"
+msgid "Remove Trailing Whitespace On Save"
+msgstr "儲存時移除行尾空白字元"
+
+msgctxt "settings"
+msgid "Repository Map Size in System Prompt (Bytes)"
+msgstr "系統提示中的儲存庫地圖大小（位元組）"
+
+msgctxt "settings"
+msgid "Required. A unique name used to identify this agent."
+msgstr "必填。用來識別此代理的唯一名稱。"
+
+msgctxt "settings"
+msgid "Required. Path to the executable that launches the agent."
+msgstr "必填。用來啟動此代理的可執行檔路徑。"
+
+msgctxt "settings"
+msgid "Restarts clangd when its memory, checked every 30 seconds, goes over this many megabytes. It is restarted at most once every 10 minutes; after that, only a notification appears. On a remote project, the memory is measured on the remote host. 0 never restarts. This setting only takes effect in your user settings."
+msgstr "當 clangd 的記憶體（每 30 秒檢查一次）超過這麼多 MB 時，重新啟動 clangd。最多每 10 分鐘重新啟動一次；之後只會顯示通知。在遠端專案中，記憶體是在遠端主機上測量。0 表示永不重新啟動。此設定僅在使用者設定中有效。"
+
+msgctxt "settings"
+msgid "Restore File State"
+msgstr "還原檔案狀態"
+
+msgctxt "settings"
+msgid "Restore On Startup"
+msgstr "啟動時還原"
+
+msgctxt "settings"
+msgid "Restore Unsaved Buffers"
+msgstr "還原未儲存的緩衝區"
+
+msgctxt "settings"
+msgid "Restore previous file state when reopening."
+msgstr "重新開啟時還原先前的檔案狀態。"
+
+msgctxt "settings"
+msgid "Reveal If Open"
+msgstr "已開啟時顯示"
+
+msgctxt "settings"
+msgid "Review and change the elevated terminal sandbox permissions that are always allowed without prompting."
+msgstr "檢閱並變更無需提示即一律允許的提升終端機沙箱權限。"
+
+msgctxt "settings"
+msgid "Review and revoke the decisions recorded for the MCP servers, language servers and external formatters that project settings tried to launch."
+msgstr "檢閱並撤回專案設定嘗試啟動的 MCP 伺服器、語言伺服器與外部格式器所記錄的決定。"
+
+msgctxt "settings"
+msgid "Revoke Consents"
+msgstr "撤回同意"
+
+msgctxt "settings"
+msgid "Right padding for centered layout."
+msgstr "置中版面配置的右側邊框間距。"
+
+msgctxt "settings"
+msgid "Rounded Selection"
+msgstr "圓角選取範圍"
+
+msgctxt "settings"
+msgid "Sandbox"
+msgstr "沙箱"
+
+msgctxt "settings"
+msgid "Save Breakpoints"
+msgstr "儲存中斷點"
+
+msgctxt "settings"
+msgid "Save after inactivity period (in milliseconds)."
+msgstr "閒置指定毫秒數後自動儲存。"
+
+msgctxt "settings"
+msgid "Scan Symbolic Links"
+msgstr "掃描符號連結"
+
+msgctxt "settings"
+msgid "Scoped Settings"
+msgstr "限定範圍的設定"
+
+msgctxt "settings"
+msgid "Scroll Bar"
+msgstr "捲軸"
+
+msgctxt "settings"
+msgid "Scroll Beyond Last Line"
+msgstr "捲動超過最後一行"
+
+msgctxt "settings"
+msgid "Scroll Debounce Ms"
+msgstr "捲動防彈跳毫秒數"
+
+msgctxt "settings"
+msgid "Scroll Multiplier"
+msgstr "捲動倍數"
+
+msgctxt "settings"
+msgid "Scroll Sensitivity"
+msgstr "捲動靈敏度"
+
+msgctxt "settings"
+msgid "Scroll sensitivity multiplier for both horizontal and vertical scrolling."
+msgstr "水平與垂直捲動的靈敏度倍率。"
+
+msgctxt "settings"
+msgid "Scrollbar"
+msgstr "捲軸"
+
+msgctxt "settings"
+msgid "Scrolling"
+msgstr "捲動"
+
+msgctxt "settings"
+msgid "Search"
+msgstr "搜尋"
+
+msgctxt "settings"
+msgid "Search & Files"
+msgstr "搜尋與檔案"
+
+msgctxt "settings"
+msgid "Search Results"
+msgstr "搜尋結果"
+
+msgctxt "settings"
+msgid "Search URL"
+msgstr "搜尋 URL"
+
+msgctxt "settings"
+msgid "Search Wrap"
+msgstr "循環搜尋"
+
+msgctxt "settings"
+msgid "Search case-sensitively by default."
+msgstr "預設區分大小寫進行搜尋。"
+
+msgctxt "settings"
+msgid "Search for whole words by default."
+msgstr "預設搜尋整個單字。"
+
+msgctxt "settings"
+msgid "Search on Type"
+msgstr "輸入時搜尋"
+
+msgctxt "settings"
+msgid "Security"
+msgstr "安全性"
+
+msgctxt "settings"
+msgid "Seed Search Query From Cursor"
+msgstr "使用游標處文字填入搜尋查詢"
+
+msgctxt "settings"
+msgid "Select input audio device"
+msgstr "選取輸入音訊裝置"
+
+msgctxt "settings"
+msgid "Select output audio device"
+msgstr "選取輸出音訊裝置"
+
+msgctxt "settings"
+msgid "Selected Symbol"
+msgstr "已選取的符號"
+
+msgctxt "settings"
+msgid "Selected Text"
+msgstr "已選取的文字"
+
+msgctxt "settings"
+msgid "Selection Highlight"
+msgstr "選取範圍醒目提示"
+
+msgctxt "settings"
+msgid "Selections Menu"
+msgstr "選取範圍選單"
+
+msgctxt "settings"
+msgid "Semantic Tokens"
+msgstr "語意標記"
+
+msgctxt "settings"
+msgid "Send anonymized usage data like what languages you're using Zed with."
+msgstr "傳送匿名使用資料，例如在 ForgeKairos 中使用的語言。"
+
+msgctxt "settings"
+msgid "Send debug information like crash reports."
+msgstr "傳送偵錯資訊，例如當機報告。"
+
+msgctxt "settings"
+msgid "Server URL"
+msgstr "伺服器 URL"
+
+msgctxt "settings"
+msgid "Session Log"
+msgstr "工作階段記錄"
+
+msgctxt "settings"
+msgid "Set up different edit prediction providers in complement to Zed's built-in Zeta model."
+msgstr "設定不同的編輯預測提供者，作為 Zed 內建 Zeta 模型的補充。"
+
+msgctxt "settings"
+msgid "Set up regex patterns to auto-allow, auto-deny, or always request confirmation, for specific tool inputs."
+msgstr "設定規則運算式模式，對特定工具輸入自動允許、自動拒絕，或一律要求確認。"
+
+msgctxt "settings"
+msgid "Sets the cursor blinking behavior in the terminal."
+msgstr "設定終端機中游標的閃爍行為。"
+
+msgctxt "settings"
+msgid "Settings"
+msgstr "設定"
+
+msgctxt "settings"
+msgid "Settings Profiles"
+msgstr "設定檔"
+
+msgctxt "settings"
+msgid "Share Active File with Claude Code"
+msgstr "與 Claude Code 分享使用中的檔案"
+
+msgctxt "settings"
+msgid "Share Failed Task Output with Agents"
+msgstr "與代理分享失敗工作的輸出"
+
+msgctxt "settings"
+msgid "Share On Join"
+msgstr "加入時分享"
+
+msgctxt "settings"
+msgid "Shell"
+msgstr "Shell"
+
+msgctxt "settings"
+msgid "Should the name or path be displayed first in the git view."
+msgstr "在 Git 檢視中應先顯示名稱還是路徑。"
+
+msgctxt "settings"
+msgid "Show"
+msgstr "顯示"
+
+msgctxt "settings"
+msgid "Show Author Name"
+msgstr "顯示作者名稱"
+
+msgctxt "settings"
+msgid "Show Avatar"
+msgstr "顯示頭像"
+
+msgctxt "settings"
+msgid "Show Background"
+msgstr "顯示背景"
+
+msgctxt "settings"
+msgid "Show Bookmarks"
+msgstr "顯示書籤"
+
+msgctxt "settings"
+msgid "Show Branch Name"
+msgstr "顯示分支名稱"
+
+msgctxt "settings"
+msgid "Show Branch Status Icon"
+msgstr "顯示分支狀態圖示"
+
+msgctxt "settings"
+msgid "Show Breakpoints"
+msgstr "顯示中斷點"
+
+msgctxt "settings"
+msgid "Show Buttons in Inactive Panes"
+msgstr "在非使用中的窗格顯示按鈕"
+
+msgctxt "settings"
+msgid "Show Close Button"
+msgstr "顯示關閉按鈕"
+
+msgctxt "settings"
+msgid "Show Commit Summary"
+msgstr "顯示提交摘要"
+
+msgctxt "settings"
+msgid "Show Completion Documentation"
+msgstr "顯示完成項目說明文件"
+
+msgctxt "settings"
+msgid "Show Completions On Input"
+msgstr "輸入時顯示自動完成"
+
+msgctxt "settings"
+msgid "Show Count Badge"
+msgstr "顯示計數徽章"
+
+msgctxt "settings"
+msgid "Show Diagnostics"
+msgstr "顯示診斷"
+
+msgctxt "settings"
+msgid "Show Edit Predictions"
+msgstr "顯示編輯預測"
+
+msgctxt "settings"
+msgid "Show Edit Predictions in Normal Mode"
+msgstr "在一般模式中顯示編輯預測"
+
+msgctxt "settings"
+msgid "Show File Icons In Tabs"
+msgstr "在分頁中顯示檔案圖示"
+
+msgctxt "settings"
+msgid "Show Folds"
+msgstr "顯示摺疊"
+
+msgctxt "settings"
+msgid "Show Full File by Default"
+msgstr "預設顯示完整檔案"
+
+msgctxt "settings"
+msgid "Show Git Status In Tabs"
+msgstr "在分頁中顯示 Git 狀態"
+
+msgctxt "settings"
+msgid "Show Git diff indicators in the scrollbar."
+msgstr "在捲軸中顯示 Git 差異指示器。"
+
+msgctxt "settings"
+msgid "Show Git diff information in the editor."
+msgstr "在編輯器中顯示 Git 差異資訊。"
+
+msgctxt "settings"
+msgid "Show Git status information in the editor."
+msgstr "在編輯器中顯示 Git 狀態資訊。"
+
+msgctxt "settings"
+msgid "Show Indent Guides"
+msgstr "顯示縮排輔助線"
+
+msgctxt "settings"
+msgid "Show Line Breaks as Written"
+msgstr "依原文顯示換行"
+
+msgctxt "settings"
+msgid "Show Line Numbers"
+msgstr "顯示行號"
+
+msgctxt "settings"
+msgid "Show Menus"
+msgstr "顯示選單"
+
+msgctxt "settings"
+msgid "Show Merge Conflict Indicator"
+msgstr "顯示合併衝突指示器"
+
+msgctxt "settings"
+msgid "Show Multiline Cells in Full"
+msgstr "完整顯示多行儲存格"
+
+msgctxt "settings"
+msgid "Show Navigation History Buttons"
+msgstr "顯示導覽歷程按鈕"
+
+msgctxt "settings"
+msgid "Show Onboarding Banner"
+msgstr "顯示新手導覽橫幅"
+
+msgctxt "settings"
+msgid "Show Other Hints"
+msgstr "顯示其他提示"
+
+msgctxt "settings"
+msgid "Show Parameter Hints"
+msgstr "顯示參數提示"
+
+msgctxt "settings"
+msgid "Show Project Items"
+msgstr "顯示專案項目"
+
+msgctxt "settings"
+msgid "Show Runnables"
+msgstr "顯示可執行項目"
+
+msgctxt "settings"
+msgid "Show Scrollbar"
+msgstr "顯示捲軸"
+
+msgctxt "settings"
+msgid "Show Sign In"
+msgstr "顯示登入"
+
+msgctxt "settings"
+msgid "Show Signature Help After Edits"
+msgstr "編輯後顯示簽章說明"
+
+msgctxt "settings"
+msgid "Show Stage/Restore Buttons"
+msgstr "顯示暫存/還原按鈕"
+
+msgctxt "settings"
+msgid "Show Tab Bar"
+msgstr "顯示分頁列"
+
+msgctxt "settings"
+msgid "Show Tab Bar Buttons"
+msgstr "顯示分頁列按鈕"
+
+msgctxt "settings"
+msgid "Show Turn Stats"
+msgstr "顯示回合統計"
+
+msgctxt "settings"
+msgid "Show Type Hints"
+msgstr "顯示型別提示"
+
+msgctxt "settings"
+msgid "Show User Menu"
+msgstr "顯示使用者選單"
+
+msgctxt "settings"
+msgid "Show User Picture"
+msgstr "顯示使用者圖片"
+
+msgctxt "settings"
+msgid "Show Value Hints"
+msgstr "顯示值提示"
+
+msgctxt "settings"
+msgid "Show Which-key Menu"
+msgstr "顯示 Which-key 選單"
+
+msgctxt "settings"
+msgid "Show Whitespaces"
+msgstr "顯示空白字元"
+
+msgctxt "settings"
+msgid "Show Worktree Name"
+msgstr "顯示工作樹名稱"
+
+msgctxt "settings"
+msgid "Show Wrap Guides"
+msgstr "顯示換行輔助線"
+
+msgctxt "settings"
+msgid "Show a background for inlay hints."
+msgstr "為內嵌提示顯示背景。"
+
+msgctxt "settings"
+msgid "Show a badge on the terminal panel icon with the count of open terminals."
+msgstr "在終端機面板圖示上顯示已開啟終端機數量的徽章。"
+
+msgctxt "settings"
+msgid "Show a git status indicator next to file names in the project panel."
+msgstr "在專案面板的檔案名稱旁顯示 Git 狀態指示器。"
+
+msgctxt "settings"
+msgid "Show a row of formatting buttons below the toolbar while a Markdown file is open."
+msgstr "開啟 Markdown 檔案時，在工具列下方顯示一列格式化按鈕。"
+
+msgctxt "settings"
+msgid "Show agent review buttons in the editor toolbar."
+msgstr "在編輯器工具列中顯示代理檢閱按鈕。"
+
+msgctxt "settings"
+msgid "Show an indicator while a multi-stroke key binding is pending. If the input has a timeout, a countdown is shown and hovering pauses it. Its binding preview popover is disabled when the which-key menu is enabled."
+msgstr "在多鍵組合按鍵等待期間顯示指示器。若輸入設有逾時，會顯示倒數計時，且暫留時會暫停計時。當 which-key 選單啟用時，其按鍵繫結預覽快顯視窗會停用。"
+
+msgctxt "settings"
+msgid "Show author name as part of the commit information in branch picker."
+msgstr "在分支選擇器的提交資訊中顯示作者名稱。"
+
+msgctxt "settings"
+msgid "Show banners announcing new features in the titlebar."
+msgstr "在標題列顯示新功能公告橫幅。"
+
+msgctxt "settings"
+msgid "Show bookmarks in the gutter."
+msgstr "在裝訂邊中顯示書籤。"
+
+msgctxt "settings"
+msgid "Show breadcrumbs."
+msgstr "顯示階層連結。"
+
+msgctxt "settings"
+msgid "Show breakpoints in the gutter."
+msgstr "在裝訂邊中顯示中斷點。"
+
+msgctxt "settings"
+msgid "Show buffer search result indicators in the scrollbar."
+msgstr "在捲軸中顯示緩衝區搜尋結果指示器。"
+
+msgctxt "settings"
+msgid "Show code action button at start of buffer line."
+msgstr "在緩衝區行首顯示程式碼動作按鈕。"
+
+msgctxt "settings"
+msgid "Show code action buttons in the editor toolbar."
+msgstr "在編輯器工具列中顯示程式碼動作按鈕。"
+
+msgctxt "settings"
+msgid "Show code folding controls in the gutter."
+msgstr "在裝訂邊中顯示程式碼摺疊控制項。"
+
+msgctxt "settings"
+msgid "Show commit summary as part of the inline blame."
+msgstr "在內嵌 Git Blame 中顯示提交摘要。"
+
+msgctxt "settings"
+msgid "Show cursor positions in the scrollbar."
+msgstr "在捲軸中顯示游標位置。"
+
+msgctxt "settings"
+msgid "Show error and warning count badges next to file names in the project panel."
+msgstr "在專案面板的檔案名稱旁顯示錯誤和警告數量徽章。"
+
+msgctxt "settings"
+msgid "Show every folder collapsed when \"Run Macro\" opens. Typing a filter still shows every matching macro."
+msgstr "開啟「執行巨集」時，將所有資料夾顯示為摺疊狀態。輸入篩選文字時仍會顯示所有符合的巨集。"
+
+msgctxt "settings"
+msgid "Show file icons in the file finder."
+msgstr "在檔案搜尋器中顯示檔案圖示。"
+
+msgctxt "settings"
+msgid "Show file icons in the outline panel."
+msgstr "在大綱面板中顯示檔案圖示。"
+
+msgctxt "settings"
+msgid "Show file icons in the project panel."
+msgstr "在專案面板中顯示檔案圖示。"
+
+msgctxt "settings"
+msgid "Show file icons next to the Git status icon."
+msgstr "在 Git 狀態圖示旁顯示檔案圖示。"
+
+msgctxt "settings"
+msgid "Show git status indicators on the branch icon in the titlebar."
+msgstr "在標題列的分支圖示上顯示 Git 狀態指示器。"
+
+msgctxt "settings"
+msgid "Show indent guides in the project panel."
+msgstr "在專案面板中顯示縮排輔助線。"
+
+msgctxt "settings"
+msgid "Show line numbers in the gutter."
+msgstr "在裝訂邊中顯示行號。"
+
+msgctxt "settings"
+msgid "Show opened editors as preview tabs."
+msgstr "將已開啟的編輯器顯示為預覽分頁。"
+
+msgctxt "settings"
+msgid "Show padding for zoomed panes."
+msgstr "為縮放的窗格顯示邊框間距。"
+
+msgctxt "settings"
+msgid "Show pinned tabs in a separate row above unpinned tabs."
+msgstr "將釘選的分頁顯示在未釘選分頁上方的獨立列。"
+
+msgctxt "settings"
+msgid "Show quick action buttons (e.g., search, selection, editor controls, etc.)."
+msgstr "顯示快速動作按鈕（例如搜尋、選取、編輯器控制項等）。"
+
+msgctxt "settings"
+msgid "Show runnable buttons in the gutter."
+msgstr "在裝訂邊中顯示執行按鈕。"
+
+msgctxt "settings"
+msgid "Show selected symbol occurrences in the scrollbar."
+msgstr "在捲軸中顯示已選取符號的出現位置。"
+
+msgctxt "settings"
+msgid "Show selected text occurrences in the scrollbar."
+msgstr "在捲軸中顯示已選取文字的出現位置。"
+
+msgctxt "settings"
+msgid "Show the AI browser panel button in the status bar while AI agents may use the built-in browser."
+msgstr "在 AI 代理可使用內建瀏覽器期間，於狀態列顯示 AI 瀏覽器面板按鈕。"
+
+msgctxt "settings"
+msgid "Show the Git file status on a tab item."
+msgstr "在分頁項目上顯示 Git 檔案狀態。"
+
+msgctxt "settings"
+msgid "Show the Git panel button in the status bar."
+msgstr "在狀態列中顯示 Git 面板按鈕。"
+
+msgctxt "settings"
+msgid "Show the Git status in the outline panel."
+msgstr "在大綱面板中顯示 Git 狀態。"
+
+msgctxt "settings"
+msgid "Show the Git status in the project panel."
+msgstr "在專案面板中顯示 Git 狀態。"
+
+msgctxt "settings"
+msgid "Show the active language button in the status bar."
+msgstr "在狀態列中顯示目前語言按鈕。"
+
+msgctxt "settings"
+msgid "Show the active line endings button in the status bar."
+msgstr "在狀態列中顯示目前的行尾序列按鈕。"
+
+msgctxt "settings"
+msgid "Show the avatar of the author of the commit."
+msgstr "顯示提交作者的頭像。"
+
+msgctxt "settings"
+msgid "Show the branch name button in the titlebar."
+msgstr "在標題列中顯示分支名稱按鈕。"
+
+msgctxt "settings"
+msgid "Show the browser panel button in the status bar."
+msgstr "在狀態列顯示瀏覽器面板按鈕。"
+
+msgctxt "settings"
+msgid "Show the call graph panel button in the status bar."
+msgstr "在狀態列顯示呼叫圖面板按鈕。"
+
+msgctxt "settings"
+msgid "Show the collaboration panel button in the status bar."
+msgstr "在狀態列中顯示協作面板按鈕。"
+
+msgctxt "settings"
+msgid "Show the cursor position button in the status bar."
+msgstr "在狀態列中顯示游標位置按鈕。"
+
+msgctxt "settings"
+msgid "Show the debugger button in the status bar."
+msgstr "在狀態列中顯示偵錯工具按鈕。"
+
+msgctxt "settings"
+msgid "Show the file icon for a tab."
+msgstr "顯示分頁的檔案圖示。"
+
+msgctxt "settings"
+msgid "Show the full-height threads sidebar in the window. When off, the thread history inside the agent panel is used instead."
+msgstr "在視窗中顯示全高的會話側邊欄。關閉時，改用代理面板中的會話歷程。"
+
+msgctxt "settings"
+msgid "Show the informational hover box when moving the mouse over symbols in the editor."
+msgstr "將滑鼠移至編輯器中的符號時顯示資訊暫留快顯視窗。"
+
+msgctxt "settings"
+msgid "Show the menus in the titlebar."
+msgstr "在標題列中顯示選單。"
+
+msgctxt "settings"
+msgid "Show the name of the active file in the status bar."
+msgstr "在狀態列中顯示目前檔案的名稱。"
+
+msgctxt "settings"
+msgid "Show the navigation history buttons in the tab bar."
+msgstr "在分頁列中顯示導覽歷程按鈕。"
+
+msgctxt "settings"
+msgid "Show the outline panel button in the status bar."
+msgstr "在狀態列中顯示大綱面板按鈕。"
+
+msgctxt "settings"
+msgid "Show the project diagnostics button in the status bar."
+msgstr "在狀態列中顯示專案診斷按鈕。"
+
+msgctxt "settings"
+msgid "Show the project host and name in the titlebar."
+msgstr "在標題列中顯示專案主機和名稱。"
+
+msgctxt "settings"
+msgid "Show the project panel button in the status bar."
+msgstr "在狀態列中顯示專案面板按鈕。"
+
+msgctxt "settings"
+msgid "Show the project search button in the status bar."
+msgstr "在狀態列中顯示專案搜尋按鈕。"
+
+msgctxt "settings"
+msgid "Show the scrollbar in the project panel."
+msgstr "在專案面板中顯示捲軸。"
+
+msgctxt "settings"
+msgid "Show the selections menu in the editor toolbar."
+msgstr "在編輯器工具列中顯示選取範圍選單。"
+
+msgctxt "settings"
+msgid "Show the sign in button in the titlebar."
+msgstr "在標題列中顯示登入按鈕。"
+
+msgctxt "settings"
+msgid "Show the signature help pop-up after completions or bracket pairs are inserted."
+msgstr "在插入完成項目或括號配對後顯示簽章說明快顯視窗。"
+
+msgctxt "settings"
+msgid "Show the tab bar buttons (New, Split Pane, Zoom)."
+msgstr "顯示分頁列按鈕（新增、分割窗格、縮放）。"
+
+msgctxt "settings"
+msgid "Show the tab bar buttons (New, Split Pane, Zoom, and so on) in panes that are not focused as well."
+msgstr "在未取得焦點的窗格中也顯示分頁列按鈕（新增、分割窗格、縮放等）。"
+
+msgctxt "settings"
+msgid "Show the tab bar in the editor."
+msgstr "在編輯器中顯示分頁列。"
+
+msgctxt "settings"
+msgid "Show the terminal button in the status bar."
+msgstr "在狀態列中顯示終端機按鈕。"
+
+msgctxt "settings"
+msgid "Show the thread history to the left of the current thread inside the agent panel. Hidden automatically when the panel is too narrow."
+msgstr "在代理面板中，於目前會話的左側顯示會話歷程。面板太窄時會自動隱藏。"
+
+msgctxt "settings"
+msgid "Show the user menu button in the titlebar."
+msgstr "在標題列中顯示使用者選單按鈕。"
+
+msgctxt "settings"
+msgid "Show the worktree name button in the titlebar."
+msgstr "在標題列中顯示工作樹名稱按鈕。"
+
+msgctxt "settings"
+msgid "Show user picture in the titlebar."
+msgstr "在標題列中顯示使用者圖片。"
+
+msgctxt "settings"
+msgid "Show voting thumbs up/down icon buttons for feedback on agent edits."
+msgstr "顯示投票讚/倒讚圖示按鈕，以對代理編輯提供意見回饋。"
+
+msgctxt "settings"
+msgid "Show wrap guides (vertical rulers)."
+msgstr "顯示換行輔助線（垂直尺規）。"
+
+msgctxt "settings"
+msgid "Show wrap guides in the editor."
+msgstr "在編輯器中顯示換行輔助線。"
+
+msgctxt "settings"
+msgid "Signature Help"
+msgstr "簽章說明"
+
+msgctxt "settings"
+msgid "Single File Review"
+msgstr "單一檔案檢閱"
+
+msgctxt "settings"
+msgid "Size of the border surrounding the active pane."
+msgstr "作用中窗格的邊框大小。"
+
+msgctxt "settings"
+msgid "Skills"
+msgstr "技能"
+
+msgctxt "settings"
+msgid "Skip Focus For Active In Search"
+msgstr "搜尋時不將初始焦點置於作用中檔案"
+
+msgctxt "settings"
+msgid "Snippet Sort Order"
+msgstr "程式碼片段排序順序"
+
+msgctxt "settings"
+msgid "Soft Wrap"
+msgstr "自動換行"
+
+msgctxt "settings"
+msgid "Sort By"
+msgstr "排序方式"
+
+msgctxt "settings"
+msgid "Sort Mode"
+msgstr "排序模式"
+
+msgctxt "settings"
+msgid "Sort Order"
+msgstr "排列順序"
+
+msgctxt "settings"
+msgid "Sort order for entries in the project panel."
+msgstr "專案面板中項目的排列順序。"
+
+msgctxt "settings"
+msgid "Space Whitespace Indicator"
+msgstr "空格字元顯示符號"
+
+msgctxt "settings"
+msgid "Space-separated arguments passed to the command."
+msgstr "傳遞給命令的引數，以空格分隔。"
+
+msgctxt "settings"
+msgid "Spacing between worktree entries in the project panel."
+msgstr "專案面板中工作樹項目之間的間距。"
+
+msgctxt "settings"
+msgid "Start searching as you type in project search, without pressing Enter."
+msgstr "在專案搜尋中，輸入時立即開始搜尋，不需按 Enter。"
+
+msgctxt "settings"
+msgid "Starts Open"
+msgstr "啟動時開啟"
+
+msgctxt "settings"
+msgid "Status Bar"
+msgstr "狀態列"
+
+msgctxt "settings"
+msgid "Stepping Granularity"
+msgstr "步進粒度"
+
+msgctxt "settings"
+msgid "Sticky"
+msgstr "固定"
+
+msgctxt "settings"
+msgid "Sticky Scroll"
+msgstr "固定捲動"
+
+msgctxt "settings"
+msgid "String substituted for `${separator}` in the window title format. Include any surrounding whitespace in the value."
+msgstr "在視窗標題格式中用來取代 `${separator}` 的字串。在值中包含前後的任何空白字元。"
+
+msgctxt "settings"
+msgid "Strip Control Sequences"
+msgstr "移除控制序列"
+
+msgctxt "settings"
+msgid "Suggest Missing Development Tools"
+msgstr "建議安裝缺少的開發工具"
+
+msgctxt "settings"
+msgid "Symbol Index"
+msgstr "符號索引"
+
+msgctxt "settings"
+msgid "Tab Bar"
+msgstr "分頁列"
+
+msgctxt "settings"
+msgid "Tab Close Position"
+msgstr "分頁關閉按鈕位置"
+
+msgctxt "settings"
+msgid "Tab Settings"
+msgstr "分頁設定"
+
+msgctxt "settings"
+msgid "Tab Show Diagnostics"
+msgstr "分頁顯示診斷"
+
+msgctxt "settings"
+msgid "Tab Size"
+msgstr "定位點大小"
+
+msgctxt "settings"
+msgid "Tab Whitespace Indicator"
+msgstr "Tab 字元顯示符號"
+
+msgctxt "settings"
+msgid "Tasks"
+msgstr "工作"
+
+msgctxt "settings"
+msgid "Telemetry Diagnostics"
+msgstr "遙測診斷"
+
+msgctxt "settings"
+msgid "Telemetry Metrics"
+msgstr "遙測指標"
+
+msgctxt "settings"
+msgid "Tell the connected Claude Code which file is open even when nothing is selected (the \"In <file name>\" in its input). When off, only selected lines are sent."
+msgstr "即使未選取任何內容，也告知已連線的 Claude Code 目前開啟的檔案（其輸入欄中的「In <檔案名稱>」）。關閉時，只會傳送選取的行。"
+
+msgctxt "settings"
+msgid "Terminal"
+msgstr "終端機"
+
+msgctxt "settings"
+msgid "Terminal Button"
+msgstr "終端機按鈕"
+
+msgctxt "settings"
+msgid "Terminal Dock"
+msgstr "終端機停駐位置"
+
+msgctxt "settings"
+msgid "Terminal Panel"
+msgstr "終端機面板"
+
+msgctxt "settings"
+msgid "Terminal Panel Flexible Sizing"
+msgstr "終端機面板彈性大小"
+
+msgctxt "settings"
+msgid "Terminal Thread Init Command"
+msgstr "終端機會話初始化命令"
+
+msgctxt "settings"
+msgid "Test Audio"
+msgstr "測試音訊"
+
+msgctxt "settings"
+msgid "Test your microphone and speaker setup"
+msgstr "測試麥克風與喇叭設定"
+
+msgctxt "settings"
+msgid "Text Rendering"
+msgstr "文字轉譯"
+
+msgctxt "settings"
+msgid "Text Rendering Mode"
+msgstr "文字轉譯模式"
+
+msgctxt "settings"
+msgid "The API URL to use for Codestral."
+msgstr "用於 Codestral 的 API URL。"
+
+msgctxt "settings"
+msgid "The Codestral model id to use."
+msgstr "要使用的 Codestral 模型 ID。"
+
+msgctxt "settings"
+msgid "The Ollama model to use for edit predictions."
+msgstr "用於編輯預測的 Ollama 模型。"
+
+msgctxt "settings"
+msgid "The OpenType features to enable for rendering in UI elements."
+msgstr "在 UI 元素中轉譯時要啟用的 OpenType 功能。"
+
+msgctxt "settings"
+msgid "The OpenType features to enable for rendering in text buffers."
+msgstr "在文字緩衝區中轉譯時要啟用的 OpenType 功能。"
+
+msgctxt "settings"
+msgid "The URL of the Zed server to connect to."
+msgstr "要連線的 Zed 伺服器 URL。"
+
+msgctxt "settings"
+msgid "The URL of your OpenAI-compatible server's completions API."
+msgstr "OpenAI 相容伺服器的 Completions API URL。"
+
+msgctxt "settings"
+msgid "The URL opened by \"Ask Copilot\". {query} is replaced with the question; without the placeholder, the selected text is copied to the clipboard instead."
+msgstr "「Ask Copilot」開啟的 URL。{query} 會被取代為問題；若沒有此預留位置，則改為將選取的文字複製到剪貼簿。"
+
+msgctxt "settings"
+msgid "The URL used when the address bar input is not a URL, and by \"Search Selection on the Web\". {query} is replaced with the search terms."
+msgstr "當網址列的輸入不是 URL 時，以及「在網路上搜尋選取的文字」所使用的 URL。{query} 會被取代為搜尋字詞。"
+
+msgctxt "settings"
+msgid "The amount of padding between the end of the source line and the start of the inline diagnostic."
+msgstr "來源行末尾與內嵌診斷開頭之間的邊框間距大小。"
+
+msgctxt "settings"
+msgid "The arguments to pass to the shell program."
+msgstr "要傳遞給 Shell 程式的引數。"
+
+msgctxt "settings"
+msgid "The base URL of your Ollama server."
+msgstr "Ollama 伺服器的基礎 URL。"
+
+msgctxt "settings"
+msgid "The column at which to soft-wrap lines, for buffers where soft-wrap is enabled."
+msgstr "在啟用自動換行的緩衝區中，指定行在哪一欄自動換行。"
+
+msgctxt "settings"
+msgid "The custom set of icons Zed will associate with files and directories."
+msgstr "ForgeKairos 與檔案及資料夾關聯的自訂圖示集合。"
+
+msgctxt "settings"
+msgid "The debounce delay before querying highlights from the language."
+msgstr "向語言伺服器查詢醒目提示之前的防彈跳延遲。"
+
+msgctxt "settings"
+msgid "The default mode when Vim starts."
+msgstr "Vim 啟動時的預設模式。"
+
+msgctxt "settings"
+msgid "The delay after which the inline blame information is shown."
+msgstr "顯示內嵌 blame 資訊的延遲時間。"
+
+msgctxt "settings"
+msgid "The delay in milliseconds to show inline diagnostics after the last diagnostic update."
+msgstr "最後一次診斷更新後顯示內嵌診斷的延遲毫秒數。"
+
+msgctxt "settings"
+msgid "The directory path to use (will be shell expanded)."
+msgstr "要使用的目錄路徑（將由 shell 展開）。"
+
+msgctxt "settings"
+msgid "The dock position of the debug panel."
+msgstr "偵錯面板的停駐位置。"
+
+msgctxt "settings"
+msgid "The dock that holds two panels (stacked vertically in the left and right docks, side by side in the bottom dock) when a project is opened for the first time. The dock itself is not opened (whether it opens on startup is set by each panel's \"Starts Open\"). After that, the layout saved for each project takes precedence."
+msgstr "第一次開啟專案時容納兩個面板的停駐區（在左側與右側停駐區中垂直並列，在底部停駐區中左右並列）。停駐區本身不會開啟（啟動時是否開啟，由各面板的「啟動時開啟」設定）。之後，以各專案儲存的版面配置為優先。"
+
+msgctxt "settings"
+msgid "The external AI providers you enabled after accepting the training risk warning. Revoking consent shows the warning again the next time that provider is used."
+msgstr "在接受模型訓練風險警告後啟用的外部 AI 提供者。撤回同意後，下次使用該提供者時會再次顯示警告。"
+
+msgctxt "settings"
+msgid "The file name of new logs. `{date}` `{time}` `{title}` `{host}` `{pid}` are expanded."
+msgstr "新記錄的檔案名稱。會展開 `{date}` `{time}` `{title}` `{host}` `{pid}`。"
+
+msgctxt "settings"
+msgid "The folder log files are written to (`~` is expanded). When empty, logs are saved to `terminal-sessions` in Zed's log folder."
+msgstr "寫入記錄檔的資料夾（會展開 `~`）。留空時，記錄會儲存到 ForgeKairos 記錄資料夾中的 `terminal-sessions`。"
+
+msgctxt "settings"
+msgid "The font fallbacks to use for rendering in text buffers."
+msgstr "在文字緩衝區中轉譯時使用的後援字型。"
+
+msgctxt "settings"
+msgid "The font fallbacks to use for rendering in the UI."
+msgstr "在 UI 中轉譯時使用的後援字型。"
+
+msgctxt "settings"
+msgid "The icon theme to use when mode is set to dark, or when mode is set to system and it is in dark mode."
+msgstr "當模式設定為深色，或模式設定為系統且系統處於深色模式時使用的圖示佈景主題。"
+
+msgctxt "settings"
+msgid "The icon theme to use when mode is set to light, or when mode is set to system and it is in light mode."
+msgstr "當模式設定為淺色，或模式設定為系統且系統處於淺色模式時使用的圖示佈景主題。"
+
+msgctxt "settings"
+msgid "The language of Zed's menus, settings and messages. Some text, such as tab titles, switches after a restart."
+msgstr "ForgeKairos 的選單、設定與訊息所使用的語言。部分文字（例如分頁標題）會在重新啟動後切換。"
+
+msgctxt "settings"
+msgid "The largest outline sent for a large attached file. When it does not fit, the most deeply nested symbols are left out first. Values below 512 are treated as 512."
+msgstr "附加大型檔案時傳送之大綱的大小上限。放不下時，會先省略巢狀最深的符號。小於 512 的值會視為 512。"
+
+msgctxt "settings"
+msgid "The list of language servers to use (or disable) for this language."
+msgstr "此語言要使用（或停用）的語言伺服器清單。"
+
+msgctxt "settings"
+msgid "The maximum number of tokens to generate."
+msgstr "要產生的最大 Token 數。"
+
+msgctxt "settings"
+msgid "The minimum APCA perceptual contrast between foreground and background colors (0-106)."
+msgstr "前景與背景顏色之間的最小 APCA 感知對比度（0-106）。"
+
+msgctxt "settings"
+msgid "The minimum APCA perceptual contrast to maintain when rendering text over highlight backgrounds."
+msgstr "在醒目提示背景上顯示文字時維持的最小 APCA 感知對比度。"
+
+msgctxt "settings"
+msgid "The minimum column at which to display inline diagnostics."
+msgstr "顯示內嵌診斷的最小欄號。"
+
+msgctxt "settings"
+msgid "The minimum column number at which to show the inline blame information."
+msgstr "顯示內嵌 blame 資訊的最小欄號。"
+
+msgctxt "settings"
+msgid "The minimum width (in columns) at which the split diff view is used. When the editor is narrower, the diff view automatically switches to unified mode. Set to 0 to disable."
+msgstr "使用並排差異檢視的最小寬度（以欄為單位）。當編輯器較窄時，差異檢視會自動切換為內嵌顯示模式。設為 0 可停用。"
+
+msgctxt "settings"
+msgid "The model string to pass to the OpenAI-compatible server."
+msgstr "傳遞給 OpenAI 相容伺服器的模型字串。"
+
+msgctxt "settings"
+msgid "The multiplier for scrolling in the terminal with the mouse wheel"
+msgstr "在終端機中使用滑鼠滾輪捲動的倍數"
+
+msgctxt "settings"
+msgid "The name of a base set of key bindings to use."
+msgstr "要使用的基本按鍵繫結集合名稱。"
+
+msgctxt "settings"
+msgid "The name of your selected icon theme."
+msgstr "已選取圖示佈景主題的名稱。"
+
+msgctxt "settings"
+msgid "The name of your selected theme."
+msgstr "已選取佈景主題的名稱。"
+
+msgctxt "settings"
+msgid "The number of characters to keep on either side when scrolling with the mouse."
+msgstr "使用滑鼠捲動時，兩側保留的字元數。"
+
+msgctxt "settings"
+msgid "The number of lines to keep above/below the cursor when auto-scrolling."
+msgstr "自動捲動時，游標上方/下方保留的行數。"
+
+msgctxt "settings"
+msgid "The page shown first when a built-in browser panel or tab opens. It can also be set with the pin button on the browser toolbar."
+msgstr "開啟內建瀏覽器面板或分頁時最先顯示的頁面。也可以使用瀏覽器工具列上的釘選按鈕設定。"
+
+msgctxt "settings"
+msgid "The panel shown next to the first one. Choose \"Don't Stack\" to show a single panel, as upstream Zed does."
+msgstr "顯示在第一個面板旁邊的面板。選擇「不並列」可如上游 Zed 一樣只顯示單一面板。"
+
+msgctxt "settings"
+msgid "The panel that fills that dock. Choose \"Don't Stack\" to skip building the initial layout."
+msgstr "填滿該停駐區的面板。選擇「不並列」可略過建立初始版面配置。"
+
+msgctxt "settings"
+msgid "The prompt format to use when requesting predictions. Set to Infer to have the format inferred based on the model name."
+msgstr "要求預測時使用的提示格式。設定為「推斷」可根據模型名稱自動推斷格式。"
+
+msgctxt "settings"
+msgid "The proxy to use for network requests."
+msgstr "網路要求所使用的 Proxy。"
+
+msgctxt "settings"
+msgid "The shell program to run."
+msgstr "要執行的 Shell 程式。"
+
+msgctxt "settings"
+msgid "The shell program to use."
+msgstr "要使用的 Shell 程式。"
+
+msgctxt "settings"
+msgid "The smallest context window (in tokens) of a model that auto compaction runs for. Models below it are never compacted and only show the token limit warning. Lower it to get auto compaction with the small contexts of local LLMs. Values below 8000 are treated as 8000."
+msgstr "執行自動壓縮之模型的最小上下文視窗（Token 數）。低於此值的模型永遠不會壓縮，只會顯示 Token 上限警告。若要在本機 LLM 的小型上下文中使用自動壓縮，請調低此值。小於 8000 的值會視為 8000。"
+
+msgctxt "settings"
+msgid "The text rendering mode to use."
+msgstr "要使用的文字轉譯模式。"
+
+msgctxt "settings"
+msgid "The theme to use when mode is set to dark, or when mode is set to system and it is in dark mode."
+msgstr "模式設為深色時，或模式設為系統且系統為深色模式時使用的佈景主題。"
+
+msgctxt "settings"
+msgid "The theme to use when mode is set to light, or when mode is set to system and it is in light mode."
+msgstr "模式設為淺色時，或模式設為系統且系統為淺色模式時使用的佈景主題。"
+
+msgctxt "settings"
+msgid "The unit for image file sizes."
+msgstr "影像檔案大小的單位。"
+
+msgctxt "settings"
+msgid "The width of the active indent guide in pixels, between 1 and 10."
+msgstr "作用中縮排輔助線的寬度（像素），範圍為 1 到 10。"
+
+msgctxt "settings"
+msgid "The width of the indent guides in pixels, between 1 and 10."
+msgstr "縮排輔助線的寬度（像素），範圍為 1 到 10。"
+
+msgctxt "settings"
+msgid "Theme"
+msgstr "佈景主題"
+
+msgctxt "settings"
+msgid "Theme Mode"
+msgstr "佈景主題模式"
+
+msgctxt "settings"
+msgid "Theme Name"
+msgstr "佈景主題名稱"
+
+msgctxt "settings"
+msgid "Thinking Display"
+msgstr "思考區塊顯示方式"
+
+msgctxt "settings"
+msgid "Thread History in Panel"
+msgstr "面板中的會話歷程"
+
+msgctxt "settings"
+msgid "Threads Sidebar"
+msgstr "會話側邊欄"
+
+msgctxt "settings"
+msgid "Threads Sidebar Auto Open"
+msgstr "會話側邊欄自動開啟"
+
+msgctxt "settings"
+msgid "Threads Sidebar Default Width"
+msgstr "會話側邊欄預設寬度"
+
+msgctxt "settings"
+msgid "Threads Sidebar Position"
+msgstr "會話側邊欄位置"
+
+msgctxt "settings"
+msgid "Thumb"
+msgstr "捲軸滑桿"
+
+msgctxt "settings"
+msgid "Thumb Border"
+msgstr "捲軸滑桿邊框"
+
+msgctxt "settings"
+msgid "Time in milliseconds until timeout error when connecting to a TCP debug adapter."
+msgstr "連線至 TCP 偵錯介面卡時，逾時錯誤的等待時間（毫秒）。"
+
+msgctxt "settings"
+msgid "Time to wait in milliseconds before hiding the hover popover after the mouse moves away."
+msgstr "滑鼠移開後隱藏暫留快顯視窗前的等待時間（毫秒）。"
+
+msgctxt "settings"
+msgid "Time to wait in milliseconds before showing the informational hover box."
+msgstr "顯示資訊暫留快顯視窗前的等待時間（毫秒）。"
+
+msgctxt "settings"
+msgid "Timeout"
+msgstr "逾時"
+
+msgctxt "settings"
+msgid "Timestamp Each Line"
+msgstr "為每一行加上時間戳記"
+
+msgctxt "settings"
+msgid "Title Bar"
+msgstr "標題列"
+
+msgctxt "settings"
+msgid "Title Format"
+msgstr "標題格式"
+
+msgctxt "settings"
+msgid "Title Override"
+msgstr "標題覆寫"
+
+msgctxt "settings"
+msgid "Title Separator"
+msgstr "標題分隔符號"
+
+msgctxt "settings"
+msgid "Toggle On Modifiers Press"
+msgstr "按下修飾鍵時切換"
+
+msgctxt "settings"
+msgid "Toggle Relative Line Numbers"
+msgstr "切換相對行號"
+
+msgctxt "settings"
+msgid "Toggle relative line numbers in Vim mode."
+msgstr "在 Vim 模式中切換相對行號。"
+
+msgctxt "settings"
+msgid "Toggles inlay hints (hides or shows) when the user presses the modifiers specified."
+msgstr "當使用者按下指定的修飾鍵時，切換內嵌提示的顯示（隱藏或顯示）。"
+
+msgctxt "settings"
+msgid "Tool Permissions"
+msgstr "工具權限"
+
+msgctxt "settings"
+msgid "Toolbar"
+msgstr "工具列"
+
+msgctxt "settings"
+msgid "Tree View"
+msgstr "樹狀檢視"
+
+msgctxt "settings"
+msgid "Trust All Projects By Default"
+msgstr "預設信任所有專案"
+
+msgctxt "settings"
+msgid "Type Contents on Hover"
+msgstr "暫留時顯示型別內容"
+
+msgctxt "settings"
+msgid "UI Font"
+msgstr "UI 字型"
+
+msgctxt "settings"
+msgid "UI Font Family"
+msgstr "UI 字型家族"
+
+msgctxt "settings"
+msgid "UI Font Size"
+msgstr "UI 字型大小"
+
+msgctxt "settings"
+msgid "Unnecessary Code Fade"
+msgstr "不必要程式碼淡化"
+
+msgctxt "settings"
+msgid "Untracked Files"
+msgstr "未追蹤的檔案"
+
+msgctxt "settings"
+msgid "Update Debounce"
+msgstr "更新防彈跳延遲"
+
+msgctxt "settings"
+msgid "Use Auto Surround"
+msgstr "使用自動括住"
+
+msgctxt "settings"
+msgid "Use Autoclose"
+msgstr "使用自動關閉"
+
+msgctxt "settings"
+msgid "Use Command History"
+msgstr "使用命令歷程記錄"
+
+msgctxt "settings"
+msgid "Use LSP tasks over Zed language extension tasks."
+msgstr "優先使用 LSP 工作，而非 ForgeKairos 語言擴充功能工作。"
+
+msgctxt "settings"
+msgid "Use Modifier To Send"
+msgstr "使用修飾鍵傳送"
+
+msgctxt "settings"
+msgid "Use On Type Format"
+msgstr "輸入時格式化"
+
+msgctxt "settings"
+msgid "Use Smartcase Find"
+msgstr "智慧大小寫尋找"
+
+msgctxt "settings"
+msgid "Use Smartcase Search"
+msgstr "智慧大小寫搜尋"
+
+msgctxt "settings"
+msgid "Use System Clipboard"
+msgstr "使用系統剪貼簿"
+
+msgctxt "settings"
+msgid "Use System Path Prompts"
+msgstr "使用系統路徑對話方塊"
+
+msgctxt "settings"
+msgid "Use System Prompts"
+msgstr "使用系統對話方塊"
+
+msgctxt "settings"
+msgid "Use System Window Tabs"
+msgstr "使用系統視窗分頁"
+
+msgctxt "settings"
+msgid "Use gitignored files when searching."
+msgstr "搜尋時包含被 Git 忽略的檔案。"
+
+msgctxt "settings"
+msgid "Use native OS dialogs for 'Open' and 'Save As'."
+msgstr "使用作業系統原生對話方塊進行「開啟」與「另存新檔」。"
+
+msgctxt "settings"
+msgid "Use native OS dialogs for confirmations."
+msgstr "使用作業系統原生對話方塊進行確認。"
+
+msgctxt "settings"
+msgid "Use regex search by default in Vim search."
+msgstr "在 Vim 搜尋中預設使用規則運算式搜尋。"
+
+msgctxt "settings"
+msgid "Use regex search by default."
+msgstr "預設使用規則運算式搜尋。"
+
+msgctxt "settings"
+msgid "Variables"
+msgstr "變數"
+
+msgctxt "settings"
+msgid "Version Control"
+msgstr "版本控制"
+
+msgctxt "settings"
+msgid "Vertical Scroll Margin"
+msgstr "垂直捲動邊距"
+
+msgctxt "settings"
+msgid "Vertical Scrollbar"
+msgstr "垂直捲軸"
+
+msgctxt "settings"
+msgid "Vertical Split Direction"
+msgstr "垂直分割方向"
+
+msgctxt "settings"
+msgid "View and manage agent skills installed globally or in project worktrees."
+msgstr "檢視並管理全域或專案工作樹中安裝的代理技能。"
+
+msgctxt "settings"
+msgid "View, add, and remove agents connected through the Agent Client Protocol."
+msgstr "檢視、新增及移除透過 Agent Client Protocol 連線的代理。"
+
+msgctxt "settings"
+msgid "View, add, configure, and remove Model Context Protocol servers."
+msgstr "檢視、新增、設定及移除 Model Context Protocol 伺服器。"
+
+msgctxt "settings"
+msgid "Vim"
+msgstr "Vim"
+
+msgctxt "settings"
+msgid "Vim/Emacs Modeline Support"
+msgstr "Vim/Emacs Modeline 支援"
+
+msgctxt "settings"
+msgid "Visibility"
+msgstr "可見度"
+
+msgctxt "settings"
+msgid "Visible character used to render space characters when show_whitespaces is enabled (default: \"•\")"
+msgstr "啟用 show_whitespaces 時用於顯示空格字元的可見字元（預設：\"•\"）"
+
+msgctxt "settings"
+msgid "Visible character used to render tab characters when show_whitespaces is enabled (default: \"→\")"
+msgstr "啟用 show_whitespaces 時用於顯示 Tab 字元的可見字元（預設：\"→\"）"
+
+msgctxt "settings"
+msgid "Web Page Attachment Limit (Bytes)"
+msgstr "網頁附件上限（位元組）"
+
+msgctxt "settings"
+msgid "What shell to use when opening a terminal."
+msgstr "開啟終端機時要使用的 Shell。"
+
+msgctxt "settings"
+msgid "What to do after closing the current tab."
+msgstr "關閉目前分頁後要執行的動作。"
+
+msgctxt "settings"
+msgid "What to do when multibuffer is double-clicked in some of its excerpts."
+msgstr "按兩下多重緩衝區中的某個摘錄時要執行的操作。"
+
+msgctxt "settings"
+msgid "What to do when the last window is closed."
+msgstr "關閉最後一個視窗時的處理方式。"
+
+msgctxt "settings"
+msgid "What to do when using the 'close active item' action with no tabs."
+msgstr "沒有分頁時使用「關閉使用中的項目」動作的處理方式。"
+
+msgctxt "settings"
+msgid "What to restore from the previous session when opening Zed."
+msgstr "開啟 ForgeKairos 時要從上一個工作階段還原的內容。"
+
+msgctxt "settings"
+msgid "What to show for directories in the git panel."
+msgstr "在 Git 面板中顯示資料夾的方式。"
+
+msgctxt "settings"
+msgid "What to show for directories in the outline panel."
+msgstr "在大綱面板中顯示資料夾的方式。"
+
+msgctxt "settings"
+msgid "What to show for directories in the project panel."
+msgstr "在專案面板中顯示資料夾的方式。"
+
+msgctxt "settings"
+msgid "What to show when opening a new window."
+msgstr "開啟新視窗時要顯示的內容。"
+
+msgctxt "settings"
+msgid "What working directory to use when launching the terminal."
+msgstr "啟動終端機時使用的工作目錄。"
+
+msgctxt "settings"
+msgid "When Closing With No Tabs"
+msgstr "無分頁時關閉"
+
+msgctxt "settings"
+msgid "When auto compaction runs. A percentage string like \"90%\" is measured against the context window. A positive integer is the number of used tokens to compact after. A negative integer is the number of tokens remaining in the context window before compacting."
+msgstr "自動壓縮的觸發時機。像 \"90%\" 這樣的百分比字串會相對於上下文視窗計算。正整數代表已使用多少 Token 後進行壓縮。負整數代表上下文視窗中剩餘多少 Token 時進行壓縮。"
+
+msgctxt "settings"
+msgid "When enabled, agent edits will also be displayed in single-file buffers for review."
+msgstr "啟用時，代理的編輯也會顯示在單一檔案緩衝區中供檢閱。"
+
+msgctxt "settings"
+msgid "When enabled, the :substitute command replaces all matches in a line by default. The 'g' flag then toggles this behavior."
+msgstr "啟用時，:substitute 命令預設會取代一行中的所有相符項目。'g' 旗標則會切換此行為。"
+
+msgctxt "settings"
+msgid "When enabled, use folding ranges from the language server instead of indent-based folding."
+msgstr "啟用時，使用語言伺服器的摺疊範圍，而非縮排式摺疊。"
+
+msgctxt "settings"
+msgid "When enabled, use the language server's document symbols for outlines and breadcrumbs instead of tree-sitter."
+msgstr "啟用時，使用語言伺服器的文件符號來建立大綱和階層連結，而非 tree-sitter。"
+
+msgctxt "settings"
+msgid "When false, forcefully disables the horizontal scrollbar."
+msgstr "為 false 時，強制停用水平捲軸。"
+
+msgctxt "settings"
+msgid "When false, forcefully disables the vertical scrollbar."
+msgstr "為 false 時，強制停用垂直捲軸。"
+
+msgctxt "settings"
+msgid "When fetching LSP completions, determines how long to wait for a response of a particular server (set to 0 to wait indefinitely)."
+msgstr "取得 LSP 完成項目時，決定等待特定伺服器回應的時間（設為 0 表示無限等待）。"
+
+msgctxt "settings"
+msgid "When off, rendering follows CommonMark: only two trailing spaces, `\\` or `<br>` break a line. PDF export uses the same setting."
+msgstr "關閉時，轉譯會遵循 CommonMark：只有行尾兩個空格、`\\` 或 `<br>` 會換行。匯出 PDF 也使用相同的設定。"
+
+msgctxt "settings"
+msgid "When off, these files open in the text editor. Either view can open the other one beside it."
+msgstr "關閉時，這些檔案會在文字編輯器中開啟。任一種檢視都可以在旁邊開啟另一種。"
+
+msgctxt "settings"
+msgid "When on, AI agents can open and drive AI tabs of the built-in browser to debug web apps. AI tabs use a separate browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents."
+msgstr "開啟時，AI 代理可以開啟並操控內建瀏覽器的 AI 分頁來偵錯 Web 應用程式。AI 分頁使用獨立的瀏覽器設定檔，其流量受限於網路允許清單；localhost 一律允許。您自己的瀏覽器分頁永遠不會顯示給 AI 代理。"
+
+msgctxt "settings"
+msgid "When on, a notification appears when the language server or formatter that an opened file's language needs cannot be found (clangd and clang-format for C, Ruff for Python), and the tool can be installed right there. Tools go only into your user data directory, need no administrator rights and do not affect other users. While connected to a remote host, the host is checked and the tool is installed there, downloaded through this machine's network so it works even when the host has no internet access. To stop suggesting particular tools, list their IDs in `dev_tools.ignored` in settings.json (the notification's \"Don't Show Again\" adds them too)."
+msgstr "開啟時，若找不到已開啟檔案之語言所需的語言伺服器或格式器（C 為 clangd 與 clang-format，Python 為 Ruff），會顯示通知，並可直接在此安裝該工具。工具只會安裝到您的使用者資料目錄中，不需要系統管理員權限，也不會影響其他使用者。連線至遠端主機時，會檢查該主機並在其上安裝工具，下載則透過這台電腦的網路進行，因此即使主機無法連上網際網路也能安裝。若不要再建議特定工具，請在 settings.json 的 `dev_tools.ignored` 中列出其 ID（通知的「不要再顯示」也會將其加入）。"
+
+msgctxt "settings"
+msgid "When on, the built-in browser's connections are restricted by the egress allowlist too. By default it is outside the allowlist, like terminals driven by a person. Changes apply the next time the built-in browser starts."
+msgstr "開啟時，內建瀏覽器的連線也會受到對外連線允許清單的限制。預設情況下，它與由人操作的終端機一樣不在允許清單的範圍內。變更會在下次啟動內建瀏覽器時套用。"
+
+msgctxt "settings"
+msgid "When on, this machine makes the outgoing requests of SSH and other remote hosts (language server and node downloads, extension archives, agent binaries) on their behalf, so remote hosts without internet access can still download language servers automatically. Only agent-related downloads are subject to the allowlist and consent prompts; downloads of IDE tooling such as language servers are not restricted. When off, the remote host connects out on its own. Changes apply without reconnecting."
+msgstr "開啟時，這台電腦會代替 SSH 及其他遠端主機發出對外要求（語言伺服器與 node 的下載、擴充功能封存檔、代理二進位檔），讓無法連上網際網路的遠端主機仍可自動下載語言伺服器。只有與代理相關的下載才受允許清單與同意提示的約束；語言伺服器等 IDE 工具的下載不受限制。關閉時，遠端主機會自行對外連線。變更不需重新連線即可套用。"
+
+msgctxt "settings"
+msgid "When opening Zed, avoid Restricted Mode by auto-trusting all projects, enabling use of all features without having to give permission to each new project."
+msgstr "開啟 ForgeKairos 時，透過自動信任所有專案來避免受限模式，無需對每個新專案個別授權即可使用所有功能。"
+
+msgctxt "settings"
+msgid "When the attachments of one message add up to more than this, the largest are reduced to outlines or references first. Attachments set to be sent in full are never reduced. Values below 4096 are treated as 4096."
+msgstr "當單一訊息的附件總量超過此值時，會先將最大的附件縮減為大綱或參考。設為完整傳送的附件永遠不會被縮減。小於 4096 的值會視為 4096。"
+
+msgctxt "settings"
+msgid "When to auto save buffer changes."
+msgstr "自動儲存緩衝區變更的時機。"
+
+msgctxt "settings"
+msgid "When to hide the mouse cursor."
+msgstr "隱藏滑鼠游標的時機。"
+
+msgctxt "settings"
+msgid "When to play a sound when the agent has either completed its response, or needs user input."
+msgstr "當代理完成回應或需要使用者輸入時播放音效的時機。"
+
+msgctxt "settings"
+msgid "When to populate a new search's query based on the text under the cursor."
+msgstr "根據游標下的文字填入新搜尋查詢的時機。"
+
+msgctxt "settings"
+msgid "When to scan content of linked directories"
+msgstr "何時掃描連結資料夾的內容"
+
+msgctxt "settings"
+msgid "When to show edit predictions previews in buffer. The eager mode displays them inline, while the subtle mode displays them only when holding a modifier key."
+msgstr "何時在緩衝區中顯示編輯預測預覽。積極模式會內嵌顯示，細微模式則只會在按住修飾鍵時顯示。"
+
+msgctxt "settings"
+msgid "When to show indent guides in the outline panel."
+msgstr "在大綱面板中顯示縮排輔助線的時機。"
+
+msgctxt "settings"
+msgid "When to show the minimap in the editor."
+msgstr "在編輯器中顯示縮圖的時機。"
+
+msgctxt "settings"
+msgid "When to show the minimap thumb."
+msgstr "顯示縮圖捲軸滑桿的時機。"
+
+msgctxt "settings"
+msgid "When to show the row of tabs inside the agent panel. \"Auto\" hides it while the in-panel thread history is showing and the panel is not split, since the history lists the open tabs. Even with \"Never\", it is shown when the panel is too narrow for the history or its strip, because the open tabs would otherwise be out of reach."
+msgstr "何時在代理面板中顯示分頁列。「自動」會在面板內的會話歷程顯示中且面板未分割時隱藏分頁列，因為歷程中已列出開啟的分頁。即使設為「永不」，當面板太窄而無法顯示歷程或其窄條時仍會顯示，否則將無法存取開啟的分頁。"
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the completion menu."
+msgstr "在自動完成選單中顯示捲軸的時機。"
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the editor."
+msgstr "在編輯器中顯示捲軸的時機。"
+
+msgctxt "settings"
+msgid "When to show the scrollbar in the terminal."
+msgstr "在終端機中顯示捲軸的時機。"
+
+msgctxt "settings"
+msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."
+msgstr "呼叫的來源：精確的語言伺服器、以名稱比對的 C 與 C++ 檔案符號索引，或兩者皆用。"
+
+msgctxt "settings"
+msgid "Where to dock the AI browser panel, where AI agents open the tabs they drive."
+msgstr "AI 瀏覽器面板（AI 代理開啟其操控之分頁的位置）的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to dock the Git panel."
+msgstr "Git 面板的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to dock the agent panel."
+msgstr "代理面板的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to dock the browser panel."
+msgstr "瀏覽器面板的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to dock the call graph panel."
+msgstr "呼叫圖面板的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to dock the collaboration panel."
+msgstr "協作面板的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to dock the outline panel."
+msgstr "大綱面板的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to dock the project panel."
+msgstr "專案面板的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to dock the terminal panel."
+msgstr "終端機面板的停駐位置。"
+
+msgctxt "settings"
+msgid "Where to render Git blame when it is enabled."
+msgstr "啟用時 Git Blame 的顯示位置。"
+
+msgctxt "settings"
+msgid "Where to show LSP results that can contain multiple locations (Go to Definition, Go to Implementation, Find All References)."
+msgstr "可能包含多個位置的 LSP 結果顯示位置（前往定義、前往實作、尋找所有參考）。"
+
+msgctxt "settings"
+msgid "Where to show notifications when the agent has completed its response or needs confirmation before running a tool action."
+msgstr "當代理完成回應或在執行工具動作前需要確認時顯示通知的位置。"
+
+msgctxt "settings"
+msgid "Where to show the minimap in the editor."
+msgstr "在編輯器中顯示縮圖的位置。"
+
+msgctxt "settings"
+msgid "Whether alternate scroll mode is active by default (converts mouse scroll to arrow keys in apps like Vim)."
+msgstr "是否預設啟用替代捲動模式（在 Vim 等應用程式中將滑鼠捲動轉換為方向鍵）。"
+
+msgctxt "settings"
+msgid "Whether and how to display code lenses from language servers."
+msgstr "是否顯示語言伺服器的 CodeLens 及其顯示方式。"
+
+msgctxt "settings"
+msgid "Whether breakpoints should be reused across Zed sessions."
+msgstr "是否在 ForgeKairos 工作階段之間重複使用中斷點。"
+
+msgctxt "settings"
+msgid "Whether clicking the stop button on a running terminal tool should also cancel the agent's generation. Note that this only applies to the stop button, not to ctrl+c inside the terminal."
+msgstr "按一下執行中終端機工具的停止按鈕時，是否也要取消代理的產生。請注意，這只適用於停止按鈕，不適用於終端機內的 ctrl+c。"
+
+msgctxt "settings"
+msgid "Whether cmd-click (ctrl-click on Linux and Windows) opens hyperlinks even when the terminal application has enabled mouse reporting. When disabled, these clicks are forwarded to the application; links can still be opened with shift-cmd-click."
+msgstr "cmd-click（Linux 與 Windows 上為 ctrl-click）是否在終端機應用程式已啟用滑鼠回報功能時仍會開啟超連結。停用時，這些點擊會轉送給應用程式；仍可使用 shift-cmd-click 開啟連結。"
+
+msgctxt "settings"
+msgid "Whether edit predictions are shown in normal mode. By default, edit predictions are only shown in insert and replace modes."
+msgstr "是否在一般模式下顯示編輯預測。預設情況下，編輯預測僅在插入和取代模式下顯示。"
+
+msgctxt "settings"
+msgid "Whether git features show changes relative to HEAD (uncommitted changes) or to the default branch (all changes on the current branch)."
+msgstr "Git 功能顯示的變更是相對於 HEAD（未提交的變更）還是相對於預設分支（目前分支上的所有變更）。"
+
+msgctxt "settings"
+msgid "Whether hovering a name in C and C++ also shows what its type holds (its members, enumerators or a macro's definition), found by name in the index. Default: on."
+msgstr "在 C 與 C++ 中暫留於名稱上時，是否也顯示其型別包含的內容（成員、列舉值或巨集的定義），這些內容是從索引中依名稱找出的。預設值：開啟。"
+
+msgctxt "settings"
+msgid "Whether indentation of pasted content should be adjusted based on the context."
+msgstr "是否根據上下文調整貼上內容的縮排。"
+
+msgctxt "settings"
+msgid "Whether invoking a panel's ToggleFocus action while it's already focused closes the panel, instead of just moving focus back to the editor."
+msgstr "在面板已取得焦點時叫用其 ToggleFocus 動作，是否會關閉該面板，而不是僅將焦點移回編輯器。"
+
+msgctxt "settings"
+msgid "Whether newly opened file diffs show the full file instead of changes only."
+msgstr "新開啟的檔案差異是否顯示完整檔案，而非僅顯示變更。"
+
+msgctxt "settings"
+msgid "Whether opening a folder in an existing window automatically opens the Threads Sidebar."
+msgstr "是否在現有視窗中開啟資料夾時，自動開啟會話側邊欄。"
+
+msgctxt "settings"
+msgid "Whether or not to automatically check for updates."
+msgstr "是否自動檢查更新。"
+
+msgctxt "settings"
+msgid "Whether or not to debounce inlay hints updates after buffer edits (set to 0 to disable debouncing)."
+msgstr "緩衝區編輯後是否對內嵌提示更新進行防彈跳處理（設為 0 可停用防彈跳）。"
+
+msgctxt "settings"
+msgid "Whether or not to debounce inlay hints updates after buffer scrolls (set to 0 to disable debouncing)."
+msgstr "緩衝區捲動後是否對內嵌提示更新進行防彈跳處理（設為 0 可停用防彈跳）。"
+
+msgctxt "settings"
+msgid "Whether or not to ensure there's a single newline at the end of a buffer when saving it."
+msgstr "儲存時是否確保緩衝區結尾有且僅有一個換行符號。"
+
+msgctxt "settings"
+msgid "Whether or not to remove any trailing whitespace from lines of a buffer before saving it."
+msgstr "儲存前是否移除緩衝區各行末尾的空白字元。"
+
+msgctxt "settings"
+msgid "Whether or not to restore unsaved buffers on restart."
+msgstr "重新啟動時是否還原未儲存的緩衝區。"
+
+msgctxt "settings"
+msgid "Whether or not to show Git blame data for the currently focused line."
+msgstr "是否在目前焦點行顯示 Git Blame 資料。"
+
+msgctxt "settings"
+msgid "Whether other hints should be shown."
+msgstr "是否顯示其他提示。"
+
+msgctxt "settings"
+msgid "Whether parameter hints should be shown."
+msgstr "是否顯示參數提示。"
+
+msgctxt "settings"
+msgid "Whether selecting text in the terminal automatically copies to the system clipboard."
+msgstr "在終端機中選取文字時是否自動複製到系統剪貼簿。"
+
+msgctxt "settings"
+msgid "Whether tasks are enabled for this language."
+msgstr "是否為此語言啟用工作。"
+
+msgctxt "settings"
+msgid "Whether the agent panel should open on startup."
+msgstr "是否在啟動時開啟代理面板。"
+
+msgctxt "settings"
+msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the left or right. When enabled, the default width does not control the panel width, and resetting the panel restores the default proportion."
+msgstr "代理面板停駐於左側或右側時是否使用彈性（比例）大小調整。啟用時，預設寬度不會控制面板寬度，且重設面板會還原預設比例。"
+
+msgctxt "settings"
+msgid "Whether the browser panel should open on startup."
+msgstr "是否在啟動時開啟瀏覽器面板。"
+
+msgctxt "settings"
+msgid "Whether the cursor blinks in the editor."
+msgstr "編輯器中的游標是否閃爍。"
+
+msgctxt "settings"
+msgid "Whether the cursor smoothly animates when moving around the editor."
+msgstr "游標在編輯器中移動時是否顯示平滑動畫。"
+
+msgctxt "settings"
+msgid "Whether the editor search results will loop."
+msgstr "編輯器搜尋結果是否循環。"
+
+msgctxt "settings"
+msgid "Whether the editor will scroll beyond the last line."
+msgstr "編輯器是否可捲動至最後一行之後。"
+
+msgctxt "settings"
+msgid "Whether the file finder should skip focus for the active file in search results."
+msgstr "檔案搜尋器是否在搜尋結果中略過將初始焦點置於作用中檔案。"
+
+msgctxt "settings"
+msgid "Whether the git panel should open on startup."
+msgstr "Git 面板是否在啟動時開啟。"
+
+msgctxt "settings"
+msgid "Whether the hover popover sticks when the mouse moves toward it, allowing interaction with its contents."
+msgstr "滑鼠移近時暫留快顯視窗是否固定顯示，允許與其內容互動。"
+
+msgctxt "settings"
+msgid "Whether the microphone should be muted when joining a channel or a call."
+msgstr "加入頻道或通話時是否靜音麥克風。"
+
+msgctxt "settings"
+msgid "Whether the option key behaves as the meta key."
+msgstr "Option 鍵是否作為 Meta 鍵使用。"
+
+msgctxt "settings"
+msgid "Whether the project panel should open on startup."
+msgstr "專案面板是否在啟動時開啟。"
+
+msgctxt "settings"
+msgid "Whether the terminal panel should open on startup."
+msgstr "終端機面板是否在啟動時開啟。"
+
+msgctxt "settings"
+msgid "Whether the terminal panel should use flexible (proportional) sizing when docked to the left or right."
+msgstr "終端機面板停駐於左側或右側時是否使用彈性（比例）大小調整。"
+
+msgctxt "settings"
+msgid "Whether the text selection should have rounded corners."
+msgstr "文字選取範圍是否顯示圓角。"
+
+msgctxt "settings"
+msgid "Whether to align detail text in code completions context menus left or right."
+msgstr "程式碼完成項目內容功能表中的詳細資料文字是否靠左或靠右對齊。"
+
+msgctxt "settings"
+msgid "Whether to allow horizontal scrolling in the project panel. When disabled, the view is always locked to the leftmost position and long file names are clipped."
+msgstr "是否允許在專案面板中水平捲動。停用時，檢視一律鎖定在最左側位置，過長的檔名會被截斷。"
+
+msgctxt "settings"
+msgid "Whether to also index the files that `.gitignore` excludes. Only the ignored files the project panel has loaded are indexed: an ignored folder is read when it is expanded. Default: off."
+msgstr "是否也為 `.gitignore` 排除的檔案建立索引。只會為專案面板已載入的忽略檔案建立索引：已忽略的資料夾會在展開時讀取。預設值：關閉。"
+
+msgctxt "settings"
+msgid "Whether to always use cmd-enter (or ctrl-enter on Linux or Windows) to send messages."
+msgstr "是否一律使用 cmd-enter（Linux 或 Windows 上為 ctrl-enter）傳送訊息。"
+
+msgctxt "settings"
+msgid "Whether to automatically close JSX tags."
+msgstr "是否自動關閉 JSX 標籤。"
+
+msgctxt "settings"
+msgid "Whether to automatically enable case-sensitive search based on the search query."
+msgstr "是否根據搜尋查詢自動啟用區分大小寫搜尋。"
+
+msgctxt "settings"
+msgid "Whether to automatically open Markdown files in the preview."
+msgstr "是否自動在預覽中開啟 Markdown 檔案。"
+
+msgctxt "settings"
+msgid "Whether to automatically open files after pasting or duplicating them."
+msgstr "是否在貼上或複製檔案後自動開啟。"
+
+msgctxt "settings"
+msgid "Whether to automatically open files dropped from external sources."
+msgstr "是否自動開啟從外部來源拖放的檔案。"
+
+msgctxt "settings"
+msgid "Whether to automatically open newly created files in the editor."
+msgstr "是否在編輯器中自動開啟新建立的檔案。"
+
+msgctxt "settings"
+msgid "Whether to automatically surround text with characters for you. For example, when you select text and type '(', Zed will automatically surround text with ()."
+msgstr "是否自動使用字元包圍所選文字。例如，選取文字後輸入 '(' 時，ForgeKairos 會自動以 () 包圍文字。"
+
+msgctxt "settings"
+msgid "Whether to automatically type closing characters for you. For example, when you type '(', Zed will automatically add a closing ')' at the correct position."
+msgstr "是否自動輸入配對的閉合字元。例如，輸入 '(' 時，ForgeKairos 會自動在正確位置補上 ')'。"
+
+msgctxt "settings"
+msgid "Whether to center the current match in the editor"
+msgstr "是否在編輯器中將目前的比對結果置中顯示"
+
+msgctxt "settings"
+msgid "Whether to change focus to a pane when the mouse hovers over it."
+msgstr "是否在滑鼠暫留時將焦點切換至該窗格。"
+
+msgctxt "settings"
+msgid "Whether to collapse untracked files in the diff panel."
+msgstr "是否在差異面板中摺疊未追蹤的檔案。"
+
+msgctxt "settings"
+msgid "Whether to colorize brackets in the editor."
+msgstr "是否在編輯器中為括號著色。"
+
+msgctxt "settings"
+msgid "Whether to constrain the agent panel content to a maximum width, centering it when the panel is wider, for optimal readability."
+msgstr "是否將代理面板的內容限制在最大寬度，當面板較寬時置中顯示，以獲得最佳可讀性。"
+
+msgctxt "settings"
+msgid "Whether to constrain the markdown preview content to a maximum width, centering it when the pane is wider, for optimal readability."
+msgstr "是否將 Markdown 預覽內容限制在最大寬度內，當窗格較寬時置中顯示，以獲得最佳可讀性。"
+
+msgctxt "settings"
+msgid "Whether to disable all AI features in Zed."
+msgstr "是否停用 ForgeKairos 的所有 AI 功能。"
+
+msgctxt "settings"
+msgid "Whether to display inline and alongside documentation for items in the completions menu."
+msgstr "是否為自動完成選單中的項目顯示內嵌說明文件和選單側邊說明文件。"
+
+msgctxt "settings"
+msgid "Whether to enable agent features such as the agent panel, the inline assistant and commit message generation. Disabled by default."
+msgstr "是否啟用代理功能，例如代理面板、內嵌輔助以及提交訊息產生。預設為停用。"
+
+msgctxt "settings"
+msgid "Whether to enable automatic language detection in unsaved buffers."
+msgstr "是否在未儲存的緩衝區中啟用自動語言偵測。"
+
+msgctxt "settings"
+msgid "Whether to enable drag-and-drop operations in the project panel."
+msgstr "是否在專案面板中啟用拖放操作。"
+
+msgctxt "settings"
+msgid "Whether to enable word diff highlighting in the editor. When enabled, changed words within modified lines are highlighted to show exactly what changed."
+msgstr "是否在編輯器中啟用單字差異醒目提示。啟用後，已修改行中的變更單字會醒目提示，以精確顯示變更內容。"
+
+msgctxt "settings"
+msgid "Whether to fetch LSP completions or not."
+msgstr "是否取得 LSP 完成項目。"
+
+msgctxt "settings"
+msgid "Whether to fold directories automatically and show compact folders when a directory has only one subdirectory inside."
+msgstr "是否自動摺疊資料夾，並在資料夾中只有一個子資料夾時顯示精簡資料夾。"
+
+msgctxt "settings"
+msgid "Whether to fold directories automatically when a directory contains only one subdirectory."
+msgstr "是否在資料夾中只有一個子資料夾時自動摺疊資料夾。"
+
+msgctxt "settings"
+msgid "Whether to follow-up empty Go to definition responses from the language server."
+msgstr "是否對語言伺服器空白的「前往定義」回應進行後續處理。"
+
+msgctxt "settings"
+msgid "Whether to format DAP messages when adding them to debug adapter logger."
+msgstr "是否在將 DAP 訊息加入偵錯介面卡記錄器時進行格式化。"
+
+msgctxt "settings"
+msgid "Whether to have edit cards in the agent panel expanded, showing a Preview of the diff."
+msgstr "是否展開代理面板中的編輯卡片，顯示差異的預覽。"
+
+msgctxt "settings"
+msgid "Whether to have terminal cards in the agent panel expanded, showing the whole command output."
+msgstr "是否展開代理面板中的終端機卡片，顯示完整的命令輸出。"
+
+msgctxt "settings"
+msgid "Whether to hide symbols, excerpts and search matches in the outline panel when a multi-buffer view is active."
+msgstr "當多重緩衝區檢視作用中時，是否在大綱面板中隱藏符號、摘錄及搜尋符合項目。"
+
+msgctxt "settings"
+msgid "Whether to hide the gitignore entries in the project panel."
+msgstr "是否在專案面板中隱藏被 Git 忽略的項目。"
+
+msgctxt "settings"
+msgid "Whether to hide the hidden entries in the project panel."
+msgstr "是否在專案面板中隱藏隱藏項目。"
+
+msgctxt "settings"
+msgid "Whether to hide the root entry when only one folder is open in the window."
+msgstr "是否在視窗中只開啟一個資料夾時隱藏根項目。"
+
+msgctxt "settings"
+msgid "Whether to indent lines using tab characters, as opposed to multiple spaces."
+msgstr "是否使用 Tab 字元縮排行，而非使用多個空格。"
+
+msgctxt "settings"
+msgid "Whether to keep tabs in preview mode when code navigation is used to navigate away from them. If `enable_preview_file_from_code_navigation` or `enable_preview_multibuffer_from_code_navigation` is also true, the new tab may replace the existing one."
+msgstr "使用程式碼導覽離開分頁時，是否讓分頁維持在預覽模式。如果 `enable_preview_file_from_code_navigation` 或 `enable_preview_multibuffer_from_code_navigation` 也為 true，新分頁可能會取代現有分頁。"
+
+msgctxt "settings"
+msgid "Whether to keep the system awake while agent threads are running."
+msgstr "代理會話執行期間是否讓系統保持喚醒。"
+
+msgctxt "settings"
+msgid "Whether to keep the text selection after copying it to the clipboard."
+msgstr "是否在複製到剪貼簿後保留文字選取狀態。"
+
+msgctxt "settings"
+msgid "Whether to log messages between active debug adapters and Zed."
+msgstr "是否記錄作用中偵錯介面卡與 ForgeKairos 之間的訊息。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when code navigation is used to open a multibuffer."
+msgstr "是否在使用程式碼導覽開啟多重緩衝區時以預覽模式開啟分頁。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when code navigation is used to open a single file."
+msgstr "是否在使用程式碼導覽開啟單一檔案時以預覽模式開啟分頁。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when opened from a multibuffer."
+msgstr "是否從多重緩衝區開啟時以預覽模式開啟分頁。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when opened from the project panel with a single click or the Open action."
+msgstr "是否從專案面板以按一下或「開啟」動作開啟時，以預覽模式開啟分頁。"
+
+msgctxt "settings"
+msgid "Whether to open tabs in preview mode when selected from the file finder."
+msgstr "是否從檔案搜尋器選取時以預覽模式開啟分頁。"
+
+msgctxt "settings"
+msgid "Whether to perform linked edits of associated ranges, if the LS supports it. For example, when editing opening <html> tag, the contents of the closing </html> tag will be edited as well."
+msgstr "如果 LS 支援，是否對相關範圍執行連動編輯。例如，編輯起始 <html> 標籤時，結束 </html> 標籤的內容也會一併編輯。"
+
+msgctxt "settings"
+msgid "Whether to play a sound when the BEL character (`\\a`, `0x07`) is printed"
+msgstr "是否在印出 BEL 字元（`\\a`、`0x07`）時播放音效"
+
+msgctxt "settings"
+msgid "Whether to pop the completions menu while typing in an editor without explicitly requesting it."
+msgstr "在編輯器中輸入時是否自動彈出自動完成選單，而不需明確要求。"
+
+msgctxt "settings"
+msgid "Whether to pull for language server-powered diagnostics or not."
+msgstr "是否拉取由語言伺服器提供的診斷資訊。"
+
+msgctxt "settings"
+msgid "Whether to reduce non-essential motion, such as loading spinners, by rendering them in a static state."
+msgstr "是否以靜態狀態呈現載入旋轉圖示等非必要的動態效果。"
+
+msgctxt "settings"
+msgid "Whether to reveal entries in the project panel automatically when a corresponding project entry becomes active."
+msgstr "當對應的專案項目成為作用中時，是否自動在專案面板中顯示項目。"
+
+msgctxt "settings"
+msgid "Whether to reveal when a corresponding outline entry becomes active."
+msgstr "當對應的大綱項目成為作用中時，是否自動顯示。"
+
+msgctxt "settings"
+msgid "Whether to scroll when clicking near the edge of the visible text area."
+msgstr "按一下靠近可見文字區域邊緣時是否捲動。"
+
+msgctxt "settings"
+msgid "Whether to show a badge on the git panel icon with the count of uncommitted changes."
+msgstr "是否在 Git 面板圖示上顯示未提交變更數量的徽章。"
+
+msgctxt "settings"
+msgid "Whether to show diagnostics inline or not."
+msgstr "是否以內嵌方式顯示診斷資訊。"
+
+msgctxt "settings"
+msgid "Whether to show folder names with bold text in the project panel."
+msgstr "是否在專案面板中以粗體顯示資料夾名稱。"
+
+msgctxt "settings"
+msgid "Whether to show tabs and spaces in the editor."
+msgstr "是否在編輯器中顯示 Tab 與空格。"
+
+msgctxt "settings"
+msgid "Whether to show the addition/deletion change count next to each file in the Git panel."
+msgstr "是否在 Git 面板中的每個檔案旁顯示新增/刪除變更數量。"
+
+msgctxt "settings"
+msgid "Whether to show the agent panel button in the status bar."
+msgstr "是否在狀態列中顯示代理面板按鈕。"
+
+msgctxt "settings"
+msgid "Whether to show the merge conflict indicator in the status bar that offers to resolve conflicts using the agent."
+msgstr "是否在狀態列中顯示合併衝突指示器，以便透過代理解決衝突。"
+
+msgctxt "settings"
+msgid "Whether to show the stage and restore buttons on diff hunks."
+msgstr "是否在差異區塊上顯示暫存和還原按鈕。"
+
+msgctxt "settings"
+msgid "Whether to show turn statistics like elapsed time during generation and final turn duration."
+msgstr "是否顯示回合統計資料，例如產生過程中的經過時間和最終回合持續時間。"
+
+msgctxt "settings"
+msgid "Whether to show warnings or not by default."
+msgstr "是否預設顯示警告。"
+
+msgctxt "settings"
+msgid "Whether to sort file and folder names case-sensitively in the project panel."
+msgstr "是否在專案面板中以區分大小寫的方式排序檔案和資料夾名稱。"
+
+msgctxt "settings"
+msgid "Whether to start a new line with a comment when a previous line is a comment as well."
+msgstr "當前一行也是註解時，是否在新行開頭自動加入註解。"
+
+msgctxt "settings"
+msgid "Whether to stick parent directories at top of the project panel."
+msgstr "是否將父資料夾固定在專案面板頂端。"
+
+msgctxt "settings"
+msgid "Whether to stick scopes to the top of the editor"
+msgstr "是否將範圍固定在編輯器頂端"
+
+msgctxt "settings"
+msgid "Whether to use additional LSP queries to format (and amend) the code after every \"trigger\" symbol input, defined by LSP server capabilities"
+msgstr "是否在每次輸入由 LSP 伺服器能力定義的「觸發」符號後，使用額外的 LSP 查詢來格式化（並修改）程式碼"
+
+msgctxt "settings"
+msgid "Whether to use command history ranking for sorting in the command palette."
+msgstr "是否在命令選擇區中依命令歷程記錄排名排序。"
+
+msgctxt "settings"
+msgid "Whether to use language servers to provide code intelligence."
+msgstr "是否使用語言伺服器提供程式碼智慧功能。"
+
+msgctxt "settings"
+msgid "Whether to zoom the editor font size with the mouse wheel while holding the primary modifier key."
+msgstr "是否在按住主要修飾鍵時使用滑鼠滾輪縮放編輯器字型大小。"
+
+msgctxt "settings"
+msgid "Whether type hints should be shown."
+msgstr "是否顯示型別提示。"
+
+msgctxt "settings"
+msgid "Whether update checks also consider pre-releases. By default only releases are considered."
+msgstr "檢查更新時是否也考慮發行前版本。預設只考慮正式版本。"
+
+msgctxt "settings"
+msgid "Whether your current project should be shared when joining an empty channel."
+msgstr "加入空頻道時，是否分享目前的專案。"
+
+msgctxt "settings"
+msgid "Which diagnostic indicators to show in the scrollbar."
+msgstr "在捲軸中顯示哪些診斷指示器。"
+
+msgctxt "settings"
+msgid "Which files containing diagnostic errors/warnings to mark in the project panel."
+msgstr "在專案面板中標記哪些包含診斷錯誤/警告的檔案。"
+
+msgctxt "settings"
+msgid "Which files containing diagnostic errors/warnings to mark in the tabs."
+msgstr "在分頁中標記哪些包含診斷錯誤/警告的檔案。"
+
+msgctxt "settings"
+msgid "Which level to use to filter out diagnostics displayed in the editor."
+msgstr "使用哪個等級來篩選編輯器中顯示的診斷。"
+
+msgctxt "settings"
+msgid "Which settings should be activated only in Preview build of Zed."
+msgstr "哪些設定只應在 ForgeKairos 的 Preview 版本中啟用。"
+
+msgctxt "settings"
+msgid "Which side of the window the Threads Sidebar appears on."
+msgstr "會話側邊欄顯示在視窗的哪一側。"
+
+msgctxt "settings"
+msgid "Which-key Menu"
+msgstr "Which-key 選單"
+
+msgctxt "settings"
+msgid "Whitespace"
+msgstr "空白字元"
+
+msgctxt "settings"
+msgid "Whole Word"
+msgstr "全字相符"
+
+msgctxt "settings"
+msgid "Width in pixels of the git diff indicators."
+msgstr "Git 差異指示器的寬度（像素）。"
+
+msgctxt "settings"
+msgid "Width of the git diff indicators in the gutter. Default scales with the buffer font size."
+msgstr "裝訂邊中 Git 差異指示器的寬度。預設值會隨緩衝區字型大小縮放。"
+
+msgctxt "settings"
+msgid "Window"
+msgstr "視窗"
+
+msgctxt "settings"
+msgid "Window & Layout"
+msgstr "視窗與版面配置"
+
+msgctxt "settings"
+msgid "Window Decorations"
+msgstr "視窗裝飾"
+
+msgctxt "settings"
+msgid "Window title template. Available variables are `${projectName}`, `${fileName}`, `${filePath}`, `${relativePath}`, `${fileStem}`, `${remoteName}`, `${remoteHost}`, `${appName}`, `${branch}`, and `${separator}`. `${separator}` is omitted when adjacent variables are empty, but literal text is preserved. The collaboration indicator, when present, is appended after the rendered template. If the template renders to nothing, the default template is used instead."
+msgstr "視窗標題範本。可用的變數包括 `${projectName}`、`${fileName}`、`${filePath}`、`${relativePath}`、`${fileStem}`、`${remoteName}`、`${remoteHost}`、`${appName}`、`${branch}` 及 `${separator}`。當相鄰變數為空時會省略 `${separator}`，但字面文字仍會保留。協作指示器（若存在）會附加在轉譯後的範本之後。若範本轉譯結果為空，則會改用預設範本。"
+
+msgctxt "settings"
+msgid "Word Diff Enabled"
+msgstr "啟用單字差異"
+
+msgctxt "settings"
+msgid "Words"
+msgstr "單字"
+
+msgctxt "settings"
+msgid "Words Min Length"
+msgstr "字詞最小長度"
+
+msgctxt "settings"
+msgid "Working Directory"
+msgstr "工作目錄"
+
+msgctxt "settings"
+msgid "Workspace Restoration"
+msgstr "工作區還原"
+
+msgctxt "settings"
+msgid "Wrap Guides"
+msgstr "換行輔助線"
+
+msgctxt "settings"
+msgid "Wrapping"
+msgstr "換行"
+
+msgctxt "settings"
+msgid "Zoomed Padding"
+msgstr "縮放邊框間距"
+
+msgctxt "settings"
+msgid "clangd"
+msgstr "clangd"
+
+msgctxt "settings"
+msgid "e.g. claude"
+msgstr "例如：claude"
+
+msgctxt "settings"
+msgid "when enabled, zed will prefer already-open buffers."
+msgstr "啟用時，ForgeKairos 會優先使用已開啟的緩衝區。"

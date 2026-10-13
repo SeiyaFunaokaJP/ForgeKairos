@@ -958,9 +958,9 @@ impl Render for ProjectDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("commit", i18n::t!("Commit"))
+                Button::new("commit", i18n::tc!("commit button", "Commit"))
                     .tooltip(help_tooltip(
-                        i18n::t!("Commit"),
+                        i18n::tc!("commit button", "Commit"),
                         panel_operation_help(PanelOperation::Commit).sentence(),
                         Some(Box::new(Commit)),
                         Some(focus_handle.clone()),

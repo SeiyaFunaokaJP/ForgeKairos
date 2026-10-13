@@ -1,0 +1,132 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " + {} more"
+msgstr " 외 {}개"
+
+msgid "({server_name}) Error: "
+msgstr "({server_name}) 오류: "
+
+msgid "({server_name}) Warning: "
+msgstr "({server_name}) 경고: "
+
+msgid "Add to Allowlist and Retry"
+msgstr "허용 목록에 추가하고 다시 시도"
+
+msgid "Building the symbol index ({done} / {total})"
+msgstr "심볼 색인 빌드 중 ({done} / {total})"
+
+msgid "Cancel {title}"
+msgstr "{title} 취소"
+
+msgid "Checking for updates to {}..."
+msgstr "{} 업데이트 확인 중..."
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "호스트를 허용 목록에 추가하지 못했습니다: {error}"
+
+msgid "Couldn't download the {display_name} language server"
+msgstr "{display_name} 언어 서버를 다운로드하지 못했습니다"
+
+msgid "Couldn't download {}. Click to show error."
+msgstr "{}을(를) 다운로드하지 못했습니다. 클릭하면 오류를 표시합니다."
+
+msgid "Couldn't install {display_name}: {error}"
+msgstr "{display_name}을(를) 설치하지 못했습니다: {error}"
+
+msgid "Debug: {}"
+msgstr "디버그: {}"
+
+msgid "Directories outside of git repositories and deeper than the `file_scan_depth` setting will be indexed on demand."
+msgstr "Git 저장소 외부에 있으며 `file_scan_depth` 설정값보다 깊은 디렉터리는 필요할 때 인덱싱됩니다."
+
+msgid "Don't Allow This Time"
+msgstr "이번에는 허용 안 함"
+
+msgid "Don't Show This Again"
+msgstr "다시 표시 안 함"
+
+msgid "Downloading the {language} language server"
+msgstr "{language} 언어 서버 다운로드 중"
+
+msgid "Downloading {display_name} needs the following hosts, but the network allowlist denied them."
+msgstr "{display_name}을(를) 다운로드하려면 다음 호스트가 필요하지만 네트워크 허용 목록에서 거부되었습니다."
+
+msgid "Downloading {} was blocked by the egress control. Click to show the hosts it needs."
+msgstr "{} 다운로드가 외부 통신 통제에 의해 차단되었습니다. 클릭하면 필요한 호스트를 표시합니다."
+
+msgid "Downloading {}..."
+msgstr "{} 다운로드 중..."
+
+msgid "Failed to run {}. Click to show error."
+msgstr "{} 실행에 실패했습니다. 오류를 보려면 클릭하세요."
+
+msgid "Formatting failed: {failure}. Click to see logs."
+msgstr "포맷 실패: {failure}. 로그를 보려면 클릭하세요."
+
+msgid "If you'd rather not allow them: {}"
+msgstr "허용하지 않으려면: {}"
+
+msgid "Install"
+msgstr "설치"
+
+msgid "Install on Remote"
+msgstr "원격에 설치"
+
+msgid "Installed {}"
+msgstr "{}을(를) 설치했습니다"
+
+msgid "Installing {display_name}"
+msgstr "{display_name} 설치 중"
+
+msgid "Installing {extension_id} extension…"
+msgstr "{extension_id} 확장 프로그램 설치 중…"
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this (e.g. {command})."
+msgstr "{server_name}을(를) 이 PC(원격 연결 중에는 원격 호스트)에 설치하고 PATH에 추가해도 해결됩니다(예: {command})."
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this."
+msgstr "{server_name}을(를) 이 PC(원격 연결 중에는 원격 호스트)에 설치하고 PATH에 추가해도 해결됩니다."
+
+msgid "Language server {server_name}:\n\n{status}"
+msgstr "언어 서버 {server_name}:\n\n{status}"
+
+msgid "Partial file index"
+msgstr "일부 파일만 인덱싱됨"
+
+msgid "Removing {extension_id} extension…"
+msgstr "{extension_id} 확장 프로그램 제거 중…"
+
+msgid "The following hosts needed for the download were denied by the network allowlist:\n{}\n\n{}\n\n{error}"
+msgstr "다운로드에 필요한 다음 호스트가 네트워크 허용 목록에서 거부되었습니다:\n{}\n\n{}\n\n{error}"
+
+msgid "The following hosts needed to download {display_name} were denied by the network allowlist:\n{}"
+msgstr "{display_name}을(를) 다운로드하는 데 필요한 다음 호스트가 네트워크 허용 목록에서 거부되었습니다:\n{}"
+
+msgid "They're downloaded over this computer's network and placed only in {host}'s home directory (no administrator rights needed; other users aren't affected)."
+msgstr "이 PC의 네트워크를 통해 다운로드되며 {host}의 홈 디렉터리에만 배치됩니다(관리자 권한이 필요 없으며 다른 사용자에게는 영향이 없습니다)."
+
+msgid "They're placed only in this user's data directory."
+msgstr "이 사용자의 데이터 디렉터리에만 배치됩니다."
+
+msgid "Updating {extension_id} extension…"
+msgstr "{extension_id} 확장 프로그램 업데이트 중…"
+
+msgid "{language} tools are missing"
+msgstr "{language} 도구가 없습니다"
+
+msgid "{language} tools are missing on the remote host ({host})"
+msgstr "원격 호스트({host})에 {language} 도구가 없습니다"
+
+msgid "• {host}"
+msgstr "• {host}"
+
+msgid "• {label}"
+msgstr "• {label}"

@@ -1,0 +1,23 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "i18n_catalog test: Goodbye"
+msgstr "i18n_catalog 테스트: 안녕히 가세요"
+
+msgid "i18n_catalog test: Hello"
+msgstr "i18n_catalog 테스트: 안녕하세요"
+
+msgid "i18n_catalog test: {count} file"
+msgid_plural "i18n_catalog test: {count} files"
+msgstr[0] "i18n_catalog 테스트: 파일 {count}개"
+
+msgctxt "i18n_catalog test"
+msgid "Open"
+msgstr "열기"

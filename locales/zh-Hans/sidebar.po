@@ -1,0 +1,148 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " and "
+msgstr " 和 "
+
+msgid "-click"
+msgstr "-点击"
+
+msgid "Add Project"
+msgstr "添加项目"
+
+msgid "Archive Thread"
+msgstr "归档会话"
+
+msgid "Based on {}"
+msgstr "基于 {}"
+
+msgid "Clear Search"
+msgstr "清除搜索"
+
+msgid "Close Terminal"
+msgstr "关闭终端"
+
+msgid "Close Worktree"
+msgstr "关闭工作树"
+
+msgid "Create New Worktree…"
+msgstr "新建工作树…"
+
+msgid "Discard Draft"
+msgstr "放弃草稿"
+
+msgid "Failed to regenerate thread title."
+msgstr "重新生成会话标题失败。"
+
+msgid "Failed to restore worktree: {error}"
+msgstr "恢复工作树失败：{error}"
+
+msgid "Focus Last Project"
+msgstr "聚焦上一个项目"
+
+msgid "Focus Project"
+msgstr "聚焦项目"
+
+msgid "Focus Sidebar"
+msgstr "聚焦侧边栏"
+
+msgid "Hide Thread History"
+msgstr "隐藏会话历史记录"
+
+msgid "Import Threads"
+msgstr "导入会话"
+
+msgid "Import Threads from External Agents"
+msgstr "从外部智能体导入会话"
+
+msgid "Import Threads from Other Channels"
+msgstr "从其他发布渠道导入会话"
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client."
+msgstr "从 Claude Agent、Codex 等智能体导入会话，无论这些会话是在 ForgeKairos 还是其他客户端中开始的。"
+
+msgid "Import threads from {} to continue where you left off."
+msgstr "从 {} 导入会话，以从上次中断的地方继续。"
+
+msgid "Looking for threads from external agents?"
+msgstr "在找外部智能体的会话吗？"
+
+msgid "Move Down"
+msgstr "下移"
+
+msgid "Move Up"
+msgstr "上移"
+
+msgid "New Thread In…"
+msgstr "在以下位置新建会话…"
+
+msgid "No model is configured for summarizing thread titles."
+msgstr "未配置用于总结会话标题的模型。"
+
+msgid "No threads match your search."
+msgstr "没有会话匹配你的搜索。"
+
+msgid "No threads yet"
+msgstr "暂无会话"
+
+msgid "Open Project in New Window"
+msgstr "在新窗口中打开项目"
+
+msgid "Open Thread as Markdown"
+msgstr "以 Markdown 打开会话"
+
+msgid "Open Worktrees"
+msgstr "打开的工作树"
+
+msgid "Regenerate Thread Title"
+msgstr "重新生成会话标题"
+
+msgid "Remote Project"
+msgstr "远程项目"
+
+msgid "Remove"
+msgstr "移除"
+
+msgid "Rename Thread"
+msgstr "重命名会话"
+
+msgid "Rename Title"
+msgstr "重命名标题"
+
+msgid "Search threads…"
+msgstr "搜索会话…"
+
+msgid "Show Thread History"
+msgstr "显示会话历史记录"
+
+msgid "Start New Agent Thread"
+msgstr "新建智能体会话"
+
+msgid "Stop Generation"
+msgstr "停止生成"
+
+msgid "Thread started outside the sandbox"
+msgstr "在沙盒外启动的会话"
+
+msgid "Threads Sidebar"
+msgstr "会话侧边栏"
+
+msgid "Threads found from other channels"
+msgstr "找到来自其他发布渠道的会话"
+
+msgid "Toggle Sidebar"
+msgstr "切换侧边栏"
+
+msgid "Workspace Info"
+msgstr "工作区信息"
+
+msgid "{count} thread is waiting for confirmation"
+msgid_plural "{count} threads are waiting for confirmation"
+msgstr[0] "{count} 个会话正在等待确认"

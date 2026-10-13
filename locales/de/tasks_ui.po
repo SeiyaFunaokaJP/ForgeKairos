@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Delete from Recent Tasks"
+msgstr "Aus zuletzt verwendeten Aufgaben löschen"
+
+msgid "Find a task, or run a command"
+msgstr "Aufgabe suchen oder Befehl ausführen"
+
+msgid "Find a task, or run a command in the central pane"
+msgstr "Aufgabe suchen oder Befehl im mittleren Bereich ausführen"
+
+msgid "Rerun"
+msgstr "Erneut ausführen"
+
+msgid "Rerun Last Task"
+msgstr "Letzte Aufgabe erneut ausführen"
+
+msgid "Rerun Without History"
+msgstr "Ohne Verlauf erneut ausführen"
+
+msgid "Spawn"
+msgstr "Starten"
+
+msgid "Spawn Oneshot"
+msgstr "Einmalig starten"
+
+msgid "Spawn Oneshot Without History"
+msgstr "Einmalig ohne Verlauf starten"
+
+msgid "Spawn Without History"
+msgstr "Ohne Verlauf starten"

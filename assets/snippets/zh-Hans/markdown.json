@@ -1,0 +1,436 @@
+{
+  "Mermaid 流程图": {
+    "prefix": "mermaid-flowchart",
+    "description": "插入 Mermaid 流程图。",
+    "body": [
+      "```mermaid",
+      "flowchart ${1:TD}",
+      "    %% [] 是步骤，{} 是判断。|标签| 为分支添加说明",
+      "    start[${2:开始}] --> condition{${3:条件}}",
+      "    condition -->|是| work[${4:处理}]",
+      "    condition -->|否| finish[${5:结束}]",
+      "    work --> finish",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 时序图": {
+    "prefix": "mermaid-sequence",
+    "description": "插入 Mermaid 时序图。",
+    "body": [
+      "```mermaid",
+      "sequenceDiagram",
+      "    %% ->> 表示调用，-->> 表示回复",
+      "    participant User as ${1:用户}",
+      "    participant App as ${2:应用}",
+      "    User->>App: ${3:请求}",
+      "    App-->>User: ${4:响应}",
+      "    Note over App: ${5:备注}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 类图": {
+    "prefix": "mermaid-class",
+    "description": "插入 Mermaid 类图。",
+    "body": [
+      "```mermaid",
+      "classDiagram",
+      "    %% <|-- 表示继承，*-- 表示组合，o-- 表示聚合",
+      "    class ${1:Base} {",
+      "        +${2:field}: ${3:Type}",
+      "        +${4:method}()",
+      "    }",
+      "    class ${5:Derived} {",
+      "        +${6:extra}()",
+      "    }",
+      "    ${1:Base} <|-- ${5:Derived}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 状态图": {
+    "prefix": "mermaid-state",
+    "description": "插入 Mermaid 状态图。",
+    "body": [
+      "```mermaid",
+      "stateDiagram-v2",
+      "    %% [*] 表示开始和结束。箭头上 : 之后的文本是事件名称",
+      "    [*] --> ${1:Idle}",
+      "    ${1:Idle} --> ${2:Running}: ${3:开始}",
+      "    ${2:Running} --> ${1:Idle}: ${4:完成}",
+      "    ${2:Running} --> [*]: ${5:中止}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid ER 图": {
+    "prefix": "mermaid-er",
+    "description": "插入 Mermaid ER 图（实体关系图）。",
+    "body": [
+      "```mermaid",
+      "erDiagram",
+      "    %% ||--o{ 表示一对多，}o--o{ 表示多对多",
+      "    ${1:CUSTOMER} ||--o{ ${2:ORDER} : \"${3:下单}\"",
+      "    ${2:ORDER} ||--|{ ${4:ORDER_ITEM} : \"${5:包含}\"",
+      "    ${1:CUSTOMER} {",
+      "        int id",
+      "        string name",
+      "    }",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 甘特图": {
+    "prefix": "mermaid-gantt",
+    "description": "插入 Mermaid 甘特图。",
+    "body": [
+      "```mermaid",
+      "gantt",
+      "    title ${1:开发计划}",
+      "    dateFormat YYYY-MM-DD",
+      "    axisFormat %m/%d",
+      "    section ${2:设计}",
+      "    ${3:需求分析} :done, req, ${4:2026-01-06}, 5d",
+      "    ${5:概要设计} :active, design, after req, 7d",
+      "    section ${6:实现}",
+      "    ${7:实现} :impl, after design, 10d",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 饼图": {
+    "prefix": "mermaid-pie",
+    "description": "插入 Mermaid 饼图。",
+    "body": [
+      "```mermaid",
+      "pie title ${1:明细}",
+      "    \"${2:设计}\" : ${3:30}",
+      "    \"${4:实现}\" : ${5:50}",
+      "    \"${6:测试}\" : ${7:20}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid Git 图": {
+    "prefix": "mermaid-gitgraph",
+    "description": "插入 Mermaid Git 图（分支示意图）。",
+    "body": [
+      "```mermaid",
+      "gitGraph",
+      "    commit id: \"${1:初始提交}\"",
+      "    branch ${2:feature}",
+      "    checkout ${2:feature}",
+      "    commit id: \"${3:添加功能}\"",
+      "    checkout main",
+      "    merge ${2:feature}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 思维导图": {
+    "prefix": "mermaid-mindmap",
+    "description": "插入 Mermaid 思维导图。",
+    "body": [
+      "```mermaid",
+      "mindmap",
+      "  root((${1:中心主题}))",
+      "    ${2:类别 A}",
+      "      ${3:项目 1}",
+      "      ${4:项目 2}",
+      "    ${5:类别 B}",
+      "      ${6:项目 3}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 时间线": {
+    "prefix": "mermaid-timeline",
+    "description": "插入 Mermaid 时间线。",
+    "body": [
+      "```mermaid",
+      "timeline",
+      "    title ${1:历程}",
+      "    ${2:2024} : ${3:规划}",
+      "    ${4:2025} : ${5:开发} : ${6:发布}",
+      "    ${7:2026} : ${8:运营}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 用户旅程图": {
+    "prefix": "mermaid-journey",
+    "description": "插入 Mermaid 用户旅程图（体验的各个步骤及每一步的满意度）。",
+    "body": [
+      "```mermaid",
+      "journey",
+      "    %% 任务 : 满意度（1 到 5） : 参与者",
+      "    title ${1:购买路径}",
+      "    section ${2:查找}",
+      "      ${3:搜索商品}: ${4:4}: ${5:客户}",
+      "      比较: 3: 客户",
+      "    section ${6:购买}",
+      "      加入购物车: 5: 客户",
+      "      ${7:付款}: ${8:2}: ${9:客户, 商店}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 象限图": {
+    "prefix": "mermaid-quadrant",
+    "description": "插入 Mermaid 象限图（双轴散点图）。",
+    "body": [
+      "```mermaid",
+      "quadrantChart",
+      "    %% 点的写法为 名称: [x, y]，两者都在 0 到 1 之间",
+      "    title ${1:举措优先级}",
+      "    x-axis ${2:投入低} --> ${3:投入高}",
+      "    y-axis ${4:影响小} --> ${5:影响大}",
+      "    quadrant-1 ${6:规划后执行}",
+      "    quadrant-2 ${7:立即执行}",
+      "    quadrant-3 ${8:稍后执行}",
+      "    quadrant-4 ${9:重新考虑}",
+      "    ${10:举措 A}: [${11:0.3}, ${12:0.8}]",
+      "    举措 B: [0.7, 0.6]",
+      "    举措 C: [0.2, 0.3]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid XY 图表": {
+    "prefix": "mermaid-xychart",
+    "description": "插入 Mermaid XY 图表（柱状图或折线图）。",
+    "body": [
+      "```mermaid",
+      "xychart-beta",
+      "    %% bar 绘制柱形，line 绘制折线。值的个数应与 x 轴的项目数相同",
+      "    title \"${1:月度销售额}\"",
+      "    x-axis [${2:\"1月\", \"2月\", \"3月\", \"4月\"}]",
+      "    y-axis \"${3:销售额（千美元）}\" ${4:0} --> ${5:100}",
+      "    bar [${6:30, 45, 60, 80}]",
+      "    line [${7:30, 45, 60, 80}]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 雷达图": {
+    "prefix": "mermaid-radar",
+    "description": "插入 Mermaid 雷达图（按各坐标轴上的值比较多个系列）。",
+    "body": [
+      "```mermaid",
+      "radar-beta",
+      "    %% axis 定义坐标轴，curve 定义系列。按坐标轴的顺序列出值",
+      "    title ${1:技能对比}",
+      "    axis design[\"设计\"], build[\"实现\"], test[\"测试\"], ops[\"运维\"]",
+      "    curve a[\"成员 A\"]{4, 3, 5, 2}",
+      "    curve b[\"成员 B\"]{2, 5, 3, 4}",
+      "    max 5",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 需求图": {
+    "prefix": "mermaid-requirement",
+    "description": "插入 Mermaid 需求图（需求及满足需求的元素）。",
+    "body": [
+      "```mermaid",
+      "requirementDiagram",
+      "    %% requirement 声明需求；element 声明满足需求的事物。用 - satisfies -> 将它们连接",
+      "    requirement ${1:login} {",
+      "        id: 1",
+      "        text: \"用户可以登录\"",
+      "        risk: high",
+      "        verifymethod: test",
+      "    }",
+      "    element ${2:login_page} {",
+      "        type: \"界面\"",
+      "    }",
+      "    ${2:login_page} - satisfies -> ${1:login}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid C4 图": {
+    "prefix": "mermaid-c4",
+    "description": "插入 Mermaid C4 图（系统、其用户及与之相关的外部系统）。",
+    "body": [
+      "```mermaid",
+      "C4Context",
+      "    %% Person 是用户，System 是你的系统，System_Ext 是外部系统，Rel 是关系",
+      "    title ${1:订单系统概览}",
+      "    Person(customer, \"客户\", \"订购商品\")",
+      "    System(shop, \"订单系统\", \"接收订单\")",
+      "    System_Ext(mail, \"邮件投递\", \"发送通知\")",
+      "    Rel(customer, shop, \"下订单\")",
+      "    Rel(shop, mail, \"请求发送通知\")",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 块图": {
+    "prefix": "mermaid-block",
+    "description": "插入 Mermaid 块图（网格上用箭头连接的方框）。",
+    "body": [
+      "```mermaid",
+      "block-beta",
+      "    %% columns 设置列数，space 是空单元格，--> 是箭头",
+      "    columns 3",
+      "    input[\"${1:输入}\"] process[\"${2:处理}\"] output[\"${3:输出}\"]",
+      "    space log[\"日志\"] space",
+      "    input --> process",
+      "    process --> output",
+      "    process --> log",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 桑基图": {
+    "prefix": "mermaid-sankey",
+    "description": "插入 Mermaid 桑基图（数量的流向）。",
+    "body": [
+      "```mermaid",
+      "sankey-beta",
+      "    %% 每行为 来源,目标,数量。名称请使用 ASCII 字母和数字书写（Mermaid 无法读取非 ASCII 名称）",
+      "    ${1:Power},Home,30",
+      "    ${1:Power},Factory,50",
+      "    ${2:Gas},Home,20",
+      "    ${2:Gas},Factory,10",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 数据包图": {
+    "prefix": "mermaid-packet",
+    "description": "插入 Mermaid 数据包图（按位排列的字段）。",
+    "body": [
+      "```mermaid",
+      "packet-beta",
+      "    %% 起始位-结束位: \"字段名\"",
+      "    title ${1:UDP 报头}",
+      "    0-15: \"源端口\"",
+      "    16-31: \"目标端口\"",
+      "    32-47: \"长度\"",
+      "    48-63: \"校验和\"",
+      "    64-95: \"数据（可变长度）\"",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 韦恩图": {
+    "prefix": "mermaid-venn",
+    "description": "插入 Mermaid 韦恩图（相互重叠的集合）。",
+    "body": [
+      "```mermaid",
+      "venn-beta",
+      "    %% set 定义集合，union 为重叠部分命名",
+      "    title ${1:职责重叠}",
+      "    set Front[\"前端\"]",
+      "    set Back[\"后端\"]",
+      "    union Front,Back[\"API\"]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 看板": {
+    "prefix": "mermaid-kanban",
+    "description": "插入 Mermaid 看板（分列排列的卡片）。",
+    "body": [
+      "```mermaid",
+      "kanban",
+      "    %% 缩进较少的行是列，缩进较多的行是卡片",
+      "    todo[${1:待办}]",
+      "        spec[编写规格]",
+      "        screen[构建界面]",
+      "    doing[${2:进行中}]",
+      "        api[构建 API]",
+      "    done[${3:已完成}]",
+      "        setup[搭建环境]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 矩形树图": {
+    "prefix": "mermaid-treemap",
+    "description": "插入 Mermaid 矩形树图（以嵌套面积表示数量）。",
+    "body": [
+      "```mermaid",
+      "treemap-beta",
+      "    %% 缩进表示嵌套。在 : 之后为每个叶节点指定值",
+      "    \"${1:开发}\"",
+      "        \"设计\": 30",
+      "        \"实现\": 50",
+      "    \"${2:运维}\"",
+      "        \"维护\": 15",
+      "        \"监控\": 5",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 架构图": {
+    "prefix": "mermaid-architecture",
+    "description": "插入 Mermaid 架构图（组件及其连接方式）。",
+    "body": [
+      "```mermaid",
+      "architecture-beta",
+      "    %% group 是分组，service 是组件。:L :R :T :B 选择连线连接的边",
+      "    group app(cloud)[\"${1:应用}\"]",
+      "    service web(server)[\"Web 服务器\"] in app",
+      "    service db(database)[\"数据库\"] in app",
+      "    service disk(disk)[\"存储\"] in app",
+      "    web:R -- L:db",
+      "    web:B -- T:disk",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 树视图": {
+    "prefix": "mermaid-treeview",
+    "description": "插入 Mermaid 树视图（类似文件夹树的层级结构）。",
+    "body": [
+      "```mermaid",
+      "treeView-beta",
+      "    %% 缩进表示层级",
+      "    \"${1:项目}\"",
+      "        \"src\"",
+      "            \"main.rs\"",
+      "            \"lib.rs\"",
+      "        \"docs\"",
+      "            \"README.md\"",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 鱼骨图": {
+    "prefix": "mermaid-ishikawa",
+    "description": "插入 Mermaid 鱼骨图（结果及其原因的鱼骨状图）。",
+    "body": [
+      "```mermaid",
+      "ishikawa-beta",
+      "    %% 第一行是结果，缩进的行是其原因",
+      "    ${1:缺陷过多}",
+      "        人员",
+      "            经验不足",
+      "        方法",
+      "            流程过时",
+      "        材料",
+      "            供应商不稳定",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 事件建模": {
+    "prefix": "mermaid-eventmodeling",
+    "description": "插入 Mermaid 事件模型（界面、命令和事件的流程）。",
+    "body": [
+      "```mermaid",
+      "eventmodeling",
+      "    %% tf 编号 类型 名称。ui 是界面，cmd 是命令，evt 是事件，rmo 是读取模型。名称请使用 ASCII 字母和数字书写（Mermaid 无法读取非 ASCII 名称）",
+      "    tf 01 ui ${1:CartScreen}",
+      "    tf 02 cmd AddItem",
+      "    tf 03 evt ItemAdded",
+      "    tf 04 rmo CartItems ->> 03",
+      "```",
+      "$0"
+    ]
+  }
+}

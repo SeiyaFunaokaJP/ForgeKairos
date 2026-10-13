@@ -1,0 +1,241 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "<global>"
+msgstr "<global>"
+
+msgid "<no arguments>"
+msgstr "<aucun argument>"
+
+msgid "Action"
+msgstr "Action"
+
+msgid "Action '{}' not found"
+msgstr "Action '{}' introuvable"
+
+msgid "Action Arguments"
+msgstr "Arguments de l'action"
+
+msgid "Action name is required"
+msgstr "Le nom de l'action est obligatoire"
+
+msgid "Arguments"
+msgstr "Arguments"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Cannot remove a keybinding that does not exist"
+msgstr "Impossible de supprimer une combinaison de touches qui n'existe pas"
+
+msgid "Clear Keystrokes"
+msgstr "Effacer les frappes"
+
+msgid "Copy Action"
+msgstr "Copier l'action"
+
+msgid "Copy Context"
+msgstr "Copier le contexte"
+
+msgid "Could not save updated keybinding"
+msgstr "Impossible d'enregistrer la combinaison de touches mise à jour"
+
+msgid "Create Keybinding"
+msgstr "Créer une combinaison de touches"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Edit"
+msgstr "Modifier"
+
+msgid "Edit Arguments"
+msgstr "Modifier les arguments"
+
+msgid "Edit Context"
+msgstr "Modifier le contexte"
+
+msgid "Edit Keybinding"
+msgstr "Modifier la combinaison de touches"
+
+msgid "Edit Keystroke"
+msgstr "Modifier la frappe"
+
+msgid "Edit in JSON"
+msgstr "Modifier en JSON"
+
+msgid "Edit this binding"
+msgstr "Modifier cette combinaison de touches"
+
+msgid "Failed to load keymap file"
+msgstr "Impossible de charger le fichier de raccourcis clavier"
+
+msgid "Failed to parse action arguments as JSON"
+msgstr "Impossible d'analyser les arguments de l'action en tant que JSON"
+
+msgid "Failed to parse key context"
+msgstr "Impossible d'analyser le contexte de la combinaison de touches"
+
+msgid "Failed to update keybinding"
+msgstr "Impossible de mettre à jour la combinaison de touches"
+
+msgid "Failed to validate action arguments"
+msgstr "Impossible de valider les arguments de l'action"
+
+msgid "Failed to write keymap file"
+msgstr "Impossible d'écrire le fichier de raccourcis clavier"
+
+msgid "Filter action names…"
+msgstr "Filtrer les noms d'actions…"
+
+msgid "Filters"
+msgstr "Filtres"
+
+msgid "Hit it three times to execute"
+msgstr "Appuyez trois fois pour exécuter"
+
+msgid "Keybinding Context"
+msgstr "Contexte de la combinaison de touches"
+
+msgid "Keymap Editor"
+msgstr "Éditeur de raccourcis clavier"
+
+msgid "Keystrokes"
+msgstr "Frappes"
+
+msgid "Keystrokes cannot be empty"
+msgstr "Les frappes ne peuvent pas être vides"
+
+msgid "No Action"
+msgstr "Aucune action"
+
+msgid "No conflicting keybinds found"
+msgstr "Aucune combinaison de touches en conflit trouvée"
+
+msgid "No conflicting keybinds found that match the provided query"
+msgstr "Aucune combinaison de touches en conflit correspondant à la requête n'a été trouvée"
+
+msgid "No keybinds found matching the entered keystrokes"
+msgstr "Aucune combinaison de touches trouvée correspondant aux touches saisies"
+
+msgid "No matches found for the provided query"
+msgstr "Aucun résultat trouvé pour la requête fournie"
+
+msgid "REC"
+msgstr "ENR"
+
+msgid "SEARCH"
+msgstr "RECHERCHE"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Saved edits to the {} action."
+msgstr "Modifications enregistrées pour l'action {}."
+
+msgid "Search by Keystrokes"
+msgstr "Rechercher par frappes"
+
+msgid "Show Matching Keybindings"
+msgstr "Afficher les combinaisons de touches correspondantes"
+
+msgid "Show matching keybinds"
+msgstr "Afficher les combinaisons de touches correspondantes"
+
+msgid "Source"
+msgstr "Source"
+
+msgid "Start Recording"
+msgstr "Commencer l'enregistrement"
+
+msgid "Start Searching"
+msgstr "Commencer la recherche"
+
+msgid "Stop Recording"
+msgstr "Arrêter l'enregistrement"
+
+msgid "Stop Searching"
+msgstr "Arrêter la recherche"
+
+msgid "There is {count} binding with the same keystrokes."
+msgid_plural "There are {count} bindings with the same keystrokes."
+msgstr[0] "Il existe {count} combinaison avec les mêmes frappes."
+msgstr[1] "Il existe {count} combinaisons avec les mêmes frappes."
+
+msgid "This action is unbound"
+msgstr "Aucune combinaison de touches n'est associée à cette action"
+
+msgid "This binding is overridden by other bindings."
+msgstr "Cette combinaison de touches est remplacée par d'autres combinaisons."
+
+msgid "This binding is overridden by other bindings.\nUse {}+click to edit this binding"
+msgstr "Cette combinaison de touches est remplacée par d'autres combinaisons.\nUtilisez {}+clic pour modifier cette combinaison"
+
+msgid "This binding is overridden."
+msgstr "Cette combinaison de touches est remplacée."
+
+msgid "This keybinding is overridden by the '{}' binding from {}."
+msgstr "Cette combinaison de touches est remplacée par la combinaison '{}' de {}."
+
+msgid "Toggle Exact Match Mode"
+msgstr "Activer/désactiver le mode de correspondance exacte"
+
+msgid "Type an action name"
+msgstr "Saisissez un nom d'action"
+
+msgid "Use {}+click to show all conflicts"
+msgstr "Utilisez {}+clic pour afficher tous les conflits"
+
+msgid "User"
+msgstr "Utilisateur"
+
+msgid "View"
+msgstr "Afficher"
+
+msgid "View conflicts"
+msgstr "Afficher les conflits"
+
+msgid "Your keybind would conflict with other actions"
+msgstr "Votre combinaison de touches entrerait en conflit avec d'autres actions"
+
+msgid "Your keybind would conflict with the \"{}\" action"
+msgstr "Votre combinaison de touches entrerait en conflit avec l'action \"{}\""
+
+msgid "Your keybind would conflict with the \"{}\" action and {} other bindings"
+msgstr "Votre combinaison de touches entrerait en conflit avec l'action \"{}\" et {} autres combinaisons"
+
+msgid "the vim keymap"
+msgstr "les raccourcis clavier Vim"
+
+msgid "your base keymap"
+msgstr "vos raccourcis de base"
+
+msgid "your keymap"
+msgstr "vos raccourcis clavier"
+
+msgctxt "keybinding"
+msgid "Categories"
+msgstr "Catégories"
+
+msgctxt "keybinding"
+msgid "Conflicts"
+msgstr "Conflits"
+
+msgctxt "keybinding"
+msgid "Context"
+msgstr "Contexte"
+
+msgctxt "keybinding"
+msgid "Create"
+msgstr "Ajouter"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "Par défaut"

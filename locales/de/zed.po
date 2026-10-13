@@ -1,0 +1,585 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "About Zed"
+msgstr "Über ForgeKairos"
+
+msgid "Accessibility Tree"
+msgstr "Barrierefreiheitsbaum"
+
+msgid "Add Cursor Above"
+msgstr "Cursor oberhalb hinzufügen"
+
+msgid "Add Cursor Below"
+msgstr "Cursor unterhalb hinzufügen"
+
+msgid "An older version is still running, so this session keeps using the older version's data folders:\n{}\n\nQuit the older version and restart to move them to the new folders."
+msgstr "Eine ältere Version läuft noch, daher verwendet diese Sitzung weiterhin die Datenordner der älteren Version:\n{}\n\nBeenden Sie die ältere Version, und starten Sie neu, um sie in die neuen Ordner zu verschieben."
+
+msgid "Are you sure you want to quit?"
+msgstr "Möchten Sie wirklich beenden?"
+
+msgid "Auto (Language Server)"
+msgstr "Automatisch (Sprachserver)"
+
+msgid "Auto (Prettier)"
+msgstr "Automatisch (Prettier)"
+
+msgid "Auto Signature Help"
+msgstr "Automatische Signaturhilfe"
+
+msgid "Auto-restarting {}"
+msgstr "{} wird automatisch neu gestartet"
+
+msgid "Backup and Update"
+msgstr "Sichern und aktualisieren"
+
+msgid "Based on Zed {version}"
+msgstr "Basiert auf Zed {version}"
+
+msgid "Block Quote"
+msgstr "Zitat"
+
+msgid "Bold"
+msgstr "Fett"
+
+msgid "Buffer Search"
+msgstr "Puffersuche"
+
+msgid "Bullet List"
+msgstr "Aufzählung"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Clear Events"
+msgstr "Ereignisse löschen"
+
+msgid "Clear Outputs"
+msgstr "Ausgaben löschen"
+
+msgid "Code Actions"
+msgstr "Codeaktionen"
+
+msgid "Code Block"
+msgstr "Codeblock"
+
+msgid "Code Lens"
+msgstr "CodeLens"
+
+msgid "Column Git Blame"
+msgstr "Git-Blame-Spalte"
+
+msgid "Commit"
+msgstr "Commit"
+
+msgid "Copy"
+msgstr "Kopieren"
+
+msgid "Could not start ReadDirectoryChangesW"
+msgstr "ReadDirectoryChangesW konnte nicht gestartet werden"
+
+msgid "Could not start inotify"
+msgstr "inotify konnte nicht gestartet werden"
+
+msgid "Debug Filesystem Watching"
+msgstr "Dateisystemüberwachung debuggen"
+
+msgid "Diagnostics"
+msgstr "Diagnosen"
+
+msgid "Diff Against Default Branch"
+msgstr "Diff mit Standard-Branch"
+
+msgid "Don't ask me again"
+msgstr "Nicht erneut fragen"
+
+msgid "Duplicate Selection"
+msgstr "Auswahl duplizieren"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "Mermaid-Diagramm bearbeiten…"
+
+msgid "Edit Predictions"
+msgstr "Bearbeitungsvorhersagen"
+
+msgid "Edit Table"
+msgstr "Tabelle bearbeiten"
+
+msgid "Editor Controls"
+msgstr "Editor-Steuerelemente"
+
+msgid "Enter adds two trailing spaces (a hard break) to the line it ends, so the line break survives saving. This key does the opposite once. The preview already shows line breaks as they are typed, so this is for line breaks that other tools should keep too."
+msgstr "Enter fügt der beendeten Zeile zwei nachgestellte Leerzeichen (einen harten Umbruch) hinzu, sodass der Zeilenumbruch beim Speichern erhalten bleibt. Diese Taste bewirkt einmalig das Gegenteil. Die Vorschau zeigt Zeilenumbrüche bereits so an, wie sie eingegeben werden; dies ist also für Zeilenumbrüche gedacht, die auch andere Tools beibehalten sollen."
+
+msgid "Error registering {scheme}:// scheme"
+msgstr "Fehler beim Registrieren des Schemas {scheme}://"
+
+msgid "Error with kernel {}: {}"
+msgstr "Fehler bei Kernel {}: {}"
+
+msgid "Executable: {}"
+msgstr "Ausführbare Datei: {}"
+
+msgid "Expand Selection"
+msgstr "Auswahl erweitern"
+
+msgid "Export as JSON"
+msgstr "Als JSON exportieren"
+
+msgid "Export to PDF"
+msgstr "Als PDF exportieren"
+
+msgid "Failed to load {path}\n{message}"
+msgstr "{path} konnte nicht geladen werden\n{message}"
+
+msgid "Failed to migrate settings\n{err}"
+msgstr "Die Einstellungen konnten nicht migriert werden\n{err}"
+
+msgid "Failed to move Zed to Applications"
+msgstr "ForgeKairos konnte nicht in den Ordner „Programme“ verschoben werden"
+
+msgid "Failed to read telemetry log: {}"
+msgstr "Telemetrieprotokoll konnte nicht gelesen werden: {}"
+
+msgid "Failed to restore {count} workspace. Check logs for details."
+msgid_plural "Failed to restore {count} workspaces. Check logs for details."
+msgstr[0] "{count} Arbeitsbereich konnte nicht wiederhergestellt werden. Details finden Sie in den Protokollen."
+msgstr[1] "{count} Arbeitsbereiche konnten nicht wiederhergestellt werden. Details finden Sie in den Protokollen."
+
+msgid "Filter events..."
+msgstr "Ereignisse filtern..."
+
+msgid "Fold All"
+msgstr "Alle falten"
+
+msgid "Fold at Level 1"
+msgstr "Auf Ebene 1 falten"
+
+msgid "Fold at Level 2"
+msgstr "Auf Ebene 2 falten"
+
+msgid "Fold at Level 3"
+msgstr "Auf Ebene 3 falten"
+
+msgid "Folding"
+msgstr "Falten"
+
+msgid "Format Selection"
+msgstr "Auswahl formatieren"
+
+msgid "Format Whole File"
+msgstr "Ganze Datei formatieren"
+
+msgid "Formats the selection with {formatter}."
+msgstr "Formatiert die Auswahl mit {formatter}."
+
+msgid "Formats this file with {formatter}."
+msgstr "Formatiert diese Datei mit {formatter}."
+
+msgid "Go to Line/Column"
+msgstr "Zur Zeile/Spalte wechseln"
+
+msgid "Go to Symbol"
+msgstr "Zum Symbol wechseln"
+
+msgid "Hard Break"
+msgstr "Harter Umbruch"
+
+msgid "Hard Break on Enter"
+msgstr "Harter Umbruch bei Enter"
+
+msgid "Heading 1"
+msgstr "Überschrift 1"
+
+msgid "Heading 2"
+msgstr "Überschrift 2"
+
+msgid "Heading 3"
+msgstr "Überschrift 3"
+
+msgid "Helix Mode"
+msgstr "Helix-Modus"
+
+msgid "Horizontal Rule"
+msgstr "Horizontale Linie"
+
+msgid "Inlay Hints"
+msgstr "Inlay-Hinweise"
+
+msgid "Inline Assist"
+msgstr "Inline-Assistent"
+
+msgid "Inline Code"
+msgstr "Inline-Code"
+
+msgid "Inline Diagnostics"
+msgstr "Inline-Diagnosen"
+
+msgid "Inline Git Blame"
+msgstr "Inline-Git-Blame"
+
+msgid "Inline Values"
+msgstr "Inline-Werte"
+
+msgid "Inline diagnostics are not available until regular diagnostics are enabled."
+msgstr "Inline-Diagnosen sind erst verfügbar, wenn die regulären Diagnosen aktiviert sind."
+
+msgid "Insert Details Block"
+msgstr "Details-Block einfügen"
+
+msgid "Insert Image"
+msgstr "Bild einfügen"
+
+msgid "Insert Mermaid Diagram"
+msgstr "Mermaid-Diagramm einfügen"
+
+msgid "Installing Zed…"
+msgstr "ForgeKairos wird installiert…"
+
+msgid "Interrupt"
+msgstr "Unterbrechen"
+
+msgid "Interrupt {} ({})"
+msgstr "{} ({}) unterbrechen"
+
+msgid "Invalid URL: {}"
+msgstr "Ungültige URL: {}"
+
+msgid "Invalid global debug scenarios file\n{error}"
+msgstr "Ungültige globale Debugszenario-Datei\n{error}"
+
+msgid "Invalid global tasks file\n{error}"
+msgstr "Ungültige globale Aufgabendatei\n{error}"
+
+msgid "Invalid user settings file\n{error}"
+msgstr "Ungültige Benutzereinstellungsdatei\n{error}"
+
+msgid "Italic"
+msgstr "Kursiv"
+
+msgid "JSON parse error in keymap file. Bindings not reloaded.\n\n{error}"
+msgstr "JSON-Parse-Fehler in der Keymap-Datei. Die Tastenkombinationen wurden nicht neu geladen.\n\n{error}"
+
+msgid "Language Server"
+msgstr "Sprachserver"
+
+msgid "Line Numbers"
+msgstr "Zeilennummern"
+
+msgid "Link"
+msgstr "Link"
+
+msgid "Live native and polling watch roots across the app."
+msgstr "Aktuell aktive native und abfragebasierte Überwachungswurzeln in der gesamten App."
+
+msgid "Log"
+msgstr "Protokoll"
+
+msgid "Marker"
+msgstr "Markierung"
+
+msgid "Minimap"
+msgstr "Minimap"
+
+msgid "Move Line Down"
+msgstr "Zeile nach unten verschieben"
+
+msgid "Move Line Up"
+msgstr "Zeile nach oben verschieben"
+
+msgid "Move Zed to Applications?"
+msgstr "ForgeKairos in den Ordner „Programme“ verschieben?"
+
+msgid "Moving Zed to Applications"
+msgstr "ForgeKairos wird in den Ordner „Programme“ verschoben"
+
+msgid "New Window"
+msgstr "Neues Fenster"
+
+msgid "Next Problem"
+msgstr "Nächstes Problem"
+
+msgid "No Code Actions Available"
+msgstr "Keine Codeaktionen verfügbar"
+
+msgid "No events match the current filter"
+msgstr "Keine Ereignisse entsprechen dem aktuellen Filter"
+
+msgid "No formatter is configured for this file."
+msgstr "Für diese Datei ist kein Formatierer konfiguriert."
+
+msgid "No local projects are open."
+msgstr "Es sind keine lokalen Projekte geöffnet."
+
+msgid "No telemetry events recorded yet"
+msgstr "Noch keine Telemetrieereignisse aufgezeichnet"
+
+msgid "No watch roots."
+msgstr "Keine Überwachungswurzeln."
+
+msgid "Nothing is selected. Select the text to format."
+msgstr "Es ist nichts ausgewählt. Wählen Sie den zu formatierenden Text aus."
+
+msgid "Nothing running"
+msgstr "Nichts wird ausgeführt"
+
+msgid "Numbered List"
+msgstr "Nummerierte Liste"
+
+msgid "Open File"
+msgstr "Datei öffnen"
+
+msgid "Open Keymap File"
+msgstr "Keymap-Datei öffnen"
+
+msgid "Open Preview"
+msgstr "Vorschau öffnen"
+
+msgid "Open Raw Log File"
+msgstr "Rohe Protokolldatei öffnen"
+
+msgid "Open Settings File"
+msgstr "Einstellungsdatei öffnen"
+
+msgid "Paragraph Text Size"
+msgstr "Textgröße für Absätze"
+
+msgid "Paste a URL to open."
+msgstr "URL zum Öffnen einfügen."
+
+msgid "Patterns Zed skips when scanning your open local projects. Excluded files may still produce watcher events."
+msgstr "Muster, die ForgeKairos beim Scannen Ihrer geöffneten lokalen Projekte überspringt. Für ausgeschlossene Dateien können dennoch Überwachungsereignisse auftreten."
+
+msgid "Preview Markdown"
+msgstr "Markdown-Vorschau anzeigen"
+
+msgid "Preview SVG"
+msgstr "SVG-Vorschau anzeigen"
+
+msgid "Preview Tabular Data"
+msgstr "Tabellendatenvorschau anzeigen"
+
+msgid "Previous Problem"
+msgstr "Vorheriges Problem"
+
+msgid "Quit"
+msgstr "Beenden"
+
+msgid "REPL Menu"
+msgstr "REPL-Menü"
+
+msgid "Raw Events"
+msgstr "Rohereignisse"
+
+msgid "Raw watcher notifications, oldest first. Times are shown in your local time zone."
+msgstr "Unverarbeitete Benachrichtigungen der Überwachung, älteste zuerst. Zeiten werden in Ihrer lokalen Zeitzone angezeigt."
+
+msgid "ReadDirectoryChangesW initialization failed: {}\n\nThis may occur on network filesystems and WSL paths. For troubleshooting see: https://zed.dev/docs/windows\n"
+msgstr "Initialisierung von ReadDirectoryChangesW fehlgeschlagen: {}\n\nDies kann bei Netzwerkdateisystemen und WSL-Pfaden auftreten. Hilfe zur Problembehandlung: https://zed.dev/docs/windows\n"
+
+msgid "Remove Color"
+msgstr "Farbe entfernen"
+
+msgid "Remove Marker"
+msgstr "Markierung entfernen"
+
+msgid "Reset to Default"
+msgstr "Auf Standard zurücksetzen"
+
+msgid "Restart Kernel"
+msgstr "Kernel neu starten"
+
+msgid "Restarting {}"
+msgstr "{} wird neu gestartet"
+
+msgid "Run Line"
+msgstr "Zeile ausführen"
+
+msgid "Run Selection"
+msgstr "Auswahl ausführen"
+
+msgid "Run code on {} ({})"
+msgstr "Code auf {} ({}) ausführen"
+
+msgid "Save failed: {error}"
+msgstr "Speichern fehlgeschlagen: {error}"
+
+msgid "Scan Exclusions"
+msgstr "Scan-Ausschlüsse"
+
+msgid "Select All"
+msgstr "Alle auswählen"
+
+msgid "Select Kernel"
+msgstr "Kernel auswählen"
+
+msgid "Select Next Occurrence"
+msgstr "Nächstes Vorkommen auswählen"
+
+msgid "Selection Controls"
+msgstr "Auswahlsteuerelemente"
+
+msgid "Selection Menu"
+msgstr "Auswahlmenü"
+
+msgid "Semantic Highlights"
+msgstr "Semantische Hervorhebungen"
+
+msgid "Setup Zed REPL for {}"
+msgstr "ForgeKairos-REPL für {} einrichten"
+
+msgid "Shrink Selection"
+msgstr "Auswahl verkleinern"
+
+msgid "Shut Down Kernel"
+msgstr "Kernel herunterfahren"
+
+msgid "Skip"
+msgstr "Überspringen"
+
+msgid "Start REPL for {}"
+msgstr "REPL für {} starten"
+
+msgid "Strikethrough"
+msgstr "Durchgestrichen"
+
+msgid "Task List"
+msgstr "Aufgabenliste"
+
+msgid "Telemetry Log"
+msgstr "Telemetrieprotokoll"
+
+msgid "Text Color"
+msgstr "Textfarbe"
+
+msgid "The data folders of the older version could not be moved to the new folders, so this session keeps using them:\n{}\n\nClose every program that may be using them and restart to try again."
+msgstr "Die Datenordner der älteren Version konnten nicht in die neuen Ordner verschoben werden, daher verwendet diese Sitzung sie weiterhin:\n{}\n\nSchließen Sie alle Programme, die sie verwenden könnten, und starten Sie neu, um es erneut zu versuchen."
+
+msgid "The older version ({}) has created folders again that this version no longer uses, so changes made in them are not reflected here:\n{}\n\n(older version's folder → folder this version uses)"
+msgstr "Die ältere Version ({}) hat Ordner erneut erstellt, die diese Version nicht mehr verwendet; dort vorgenommene Änderungen werden hier daher nicht übernommen:\n{}\n\n(Ordner der älteren Version → von dieser Version verwendeter Ordner)"
+
+msgid "This project has no folders open."
+msgstr "In diesem Projekt sind keine Ordner geöffnet."
+
+msgid "Toggle Fold at Cursor"
+msgstr "Faltung am Cursor umschalten"
+
+msgid "Troubleshoot and Quit"
+msgstr "Problembehandlung und Beenden"
+
+msgid "Unable to access/open log file at path {}: {e}"
+msgstr "Auf die Protokolldatei unter dem Pfad {} kann nicht zugegriffen werden, oder sie kann nicht geöffnet werden: {e}"
+
+msgid "Unfold All"
+msgstr "Alle auffalten"
+
+msgid "Unsupported GPU"
+msgstr "Nicht unterstützte GPU"
+
+msgid "Uses `{command}` on the remote host ({host})."
+msgstr "Verwendet `{command}` auf dem Remote-Host ({host})."
+
+msgid "Version"
+msgstr "Version"
+
+msgid "View Sessions"
+msgstr "Sitzungen anzeigen"
+
+msgid "Vim Mode"
+msgstr "Vim-Modus"
+
+msgid "Waiting for filesystem watcher events…"
+msgstr "Warten auf Ereignisse der Dateisystemüberwachung…"
+
+msgid "Watch Roots"
+msgstr "Überwachungswurzeln"
+
+msgid "You can't toggle edit predictions for this file as it is within the excluded files list."
+msgstr "Bearbeitungsvorhersagen können für diese Datei nicht umgeschaltet werden, da sie in der Liste der ausgeschlossenen Dateien enthalten ist."
+
+msgid "Your {} file uses deprecated settings which can be automatically updated. A backup will be saved to `{}`"
+msgstr "Ihre Datei {} verwendet veraltete Einstellungen, die automatisch aktualisiert werden können. Eine Sicherung wird unter `{}` gespeichert"
+
+msgid "Zed is running from a temporary location. Move it to Applications to finish installing it."
+msgstr "ForgeKairos wird von einem temporären Speicherort aus ausgeführt. Verschieben Sie es in den Ordner „Programme“, um die Installation abzuschließen."
+
+msgid "Zed uses {} for rendering and requires a compatible GPU.\n\nCurrently you are using a software emulated GPU ({}) which\nwill result in awful performance.\n\nFor troubleshooting see: {}\nSet ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.\n"
+msgstr "ForgeKairos verwendet {} zum Rendern und erfordert eine kompatible GPU.\n\nDerzeit verwenden Sie eine softwareemulierte GPU ({}), was\nzu sehr schlechter Leistung führt.\n\nHilfe zur Problembehandlung: {}\nSetzen Sie die Umgebungsvariable ZED_ALLOW_EMULATED_GPU=1, um dies dauerhaft zu übergehen.\n"
+
+msgid "Zed will reopen when installation is complete."
+msgstr "ForgeKairos wird erneut geöffnet, wenn die Installation abgeschlossen ist."
+
+msgid "inotify_init returned {}\n\nThis may be due to system-wide limits on inotify instances. For troubleshooting see: https://zed.dev/docs/linux\n"
+msgstr "inotify_init hat {} zurückgegeben\n\nDies kann an systemweiten Limits für inotify-Instanzen liegen. Hilfe zur Problembehandlung: https://zed.dev/docs/linux\n"
+
+msgid "kernel: {} ({})"
+msgstr "Kernel: {} ({})"
+
+msgid "signed in"
+msgstr "Angemeldet"
+
+msgid "{command} was not found (put it on PATH or in bin\\)."
+msgstr "{command} wurde nicht gefunden (legen Sie es im PATH oder in bin\\ ab)."
+
+msgid "{count} telemetry log entry failed to parse"
+msgid_plural "{count} telemetry log entries failed to parse"
+msgstr[0] "{count} Telemetrie-Protokolleintrag konnte nicht analysiert werden"
+msgstr[1] "{count} Telemetrie-Protokolleinträge konnten nicht analysiert werden"
+
+msgid "{formatter} can't format just a selection. Add {{start_line}} / {{end_line}} to its arguments to allow it."
+msgstr "{formatter} kann nicht nur eine Auswahl formatieren. Fügen Sie {{start_line}} / {{end_line}} zu seinen Argumenten hinzu, um dies zu ermöglichen."
+
+msgid "{formatter} can't format just a selection. Format the whole file instead."
+msgstr "{formatter} kann nicht nur eine Auswahl formatieren. Formatieren Sie stattdessen die ganze Datei."
+
+msgid "{scheme}:// links will now open in {app}."
+msgstr "{scheme}://-Links werden jetzt in {app} geöffnet."
+
+msgid "{} is shutting down"
+msgstr "{} wird heruntergefahren"
+
+msgid "{} is starting"
+msgstr "{} wird gestartet"
+
+msgid "{} state unknown"
+msgstr "Status von {} unbekannt"
+
+msgid "{} state: {}"
+msgstr "Status von {}: {}"
+
+msgid "{} to open in a split"
+msgstr "{} zum Öffnen in einer geteilten Ansicht"
+
+msgid "{} to open in the same tab group"
+msgstr "{}, um in derselben Tab-Gruppe zu öffnen"
+
+msgid "{} to switch this tab"
+msgstr "{}, um diesen Tab zu wechseln"
+
+msgctxt "move to applications"
+msgid "No"
+msgstr "Nein"
+
+msgctxt "move to applications"
+msgid "Yes"
+msgstr "Ja"
+
+msgctxt "quick action bar"
+msgid "Add to Agent Thread"
+msgstr "Zum Agent-Thread hinzufügen"
+
+msgctxt "quick action bar"
+msgid "Next Hunk"
+msgstr "Nächster Hunk"
+
+msgctxt "quick action bar"
+msgid "Previous Hunk"
+msgstr "Vorheriger Hunk"

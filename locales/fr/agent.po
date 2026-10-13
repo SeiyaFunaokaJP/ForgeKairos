@@ -1,0 +1,579 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid " (case-sensitive)"
+msgstr " (sensible à la casse)"
+
+msgid "Abort"
+msgstr "Abandonner"
+
+msgid "Allow"
+msgstr "Autoriser"
+
+msgid "Allow always"
+msgstr "Toujours autoriser"
+
+msgid "Allow for this subagent"
+msgstr "Autoriser pour ce sous-agent"
+
+msgid "Allow for this thread"
+msgstr "Autoriser pour cette conversation"
+
+msgid "Allow once"
+msgstr "Autoriser une fois"
+
+msgid "Always for `{}`"
+msgstr "Toujours pour `{}`"
+
+msgid "Always for `{}` commands"
+msgstr "Toujours pour les commandes `{}`"
+
+msgid "Always for {display_name} MCP tool"
+msgstr "Toujours pour l'outil MCP {display_name}"
+
+msgid "Always for {}"
+msgstr "Toujours pour {}"
+
+msgid "Annotate code"
+msgstr "Annoter le code"
+
+msgid "Annotate code ({count} note)"
+msgid_plural "Annotate code ({count} notes)"
+msgstr[0] "Annoter le code ({count} note)"
+msgstr[1] "Annoter le code ({count} notes)"
+
+msgid "Answered: {selected}"
+msgstr "Réponse : {selected}"
+
+msgid "Apply code action"
+msgstr "Appliquer l'action de code"
+
+msgid "Apply code action #{}"
+msgstr "Appliquer l'action de code #{}"
+
+msgid "Apply code action: {title}"
+msgstr "Appliquer l'action de code : {title}"
+
+msgid "Asking a question"
+msgstr "Question en cours"
+
+msgid "Asking you, because no model is set for the review"
+msgstr "Demande de confirmation, car aucun modèle n'est défini pour l'examen"
+
+msgid "Asking you, because the review couldn't decide"
+msgstr "Demande de confirmation, car l'examen n'a pas pu trancher"
+
+msgid "Asking you, because the review didn't finish in time"
+msgstr "Demande de confirmation, car l'examen ne s'est pas terminé à temps"
+
+msgid "Asking you, because the review's answer couldn't be read"
+msgstr "Demande de confirmation, car la réponse de l'examen n'a pas pu être lue"
+
+msgid "Build a repository map"
+msgstr "Construire une carte du dépôt"
+
+msgid "Build a repository map of {path}"
+msgstr "Construire une carte du dépôt de {path}"
+
+msgid "Call hierarchy"
+msgstr "Hiérarchie des appels"
+
+msgid "Callers of {}"
+msgstr "Appelants de {}"
+
+msgid "Calls made by {}"
+msgstr "Appels effectués par {}"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Check diagnostics for {}"
+msgstr "Vérifier les diagnostics pour {}"
+
+msgid "Check project diagnostics"
+msgstr "Vérifier les diagnostics du projet"
+
+msgid "Check the changes (git diff)"
+msgstr "Vérifier les modifications (git diff)"
+
+msgid "Check the changes (git diff) in {path}"
+msgstr "Vérifier les modifications (git diff) dans {path}"
+
+msgid "Choose an option"
+msgstr "Choisir une option"
+
+msgid "Clear the editor annotations"
+msgstr "Effacer les annotations de l'éditeur"
+
+msgid "Click on the page"
+msgstr "Cliquer sur la page"
+
+msgid "Click {}"
+msgstr "Cliquer sur {}"
+
+msgid "Close AI tab {}"
+msgstr "Fermer l'onglet IA {}"
+
+msgid "Close an AI tab"
+msgstr "Fermer un onglet IA"
+
+msgid "Code tour"
+msgstr "Visite du code"
+
+msgid "Code tour “{title}” ({count} step)"
+msgid_plural "Code tour “{title}” ({count} steps)"
+msgstr[0] "Visite du code \"{title}\" ({count} étape)"
+msgstr[1] "Visite du code \"{title}\" ({count} étapes)"
+
+msgid "Continue"
+msgstr "Continuer"
+
+msgid "Copy path"
+msgstr "Copier le chemin d'accès"
+
+msgid "Copy {src} to {dest}"
+msgstr "Copier {src} vers {dest}"
+
+msgid "Create directory"
+msgstr "Créer un répertoire"
+
+msgid "Create directory {}"
+msgstr "Créer le répertoire {}"
+
+msgid "Create thread"
+msgstr "Créer une conversation"
+
+msgid "Create thread: {}"
+msgstr "Créer une conversation : {}"
+
+msgid "Delete path"
+msgstr "Supprimer le chemin d'accès"
+
+msgid "Delete {}"
+msgstr "Supprimer {}"
+
+msgid "Delete “`{}`”"
+msgstr "Supprimer \"`{}`\""
+
+msgid "Deny"
+msgstr "Refuser"
+
+msgid "Edit {}"
+msgstr "Modifier {}"
+
+msgid "Editing file"
+msgstr "Modification du fichier"
+
+msgid "Failed to read file: {}"
+msgstr "Échec de la lecture du fichier : {}"
+
+msgid "Failed to scan project skills: {}"
+msgstr "Échec de l'analyse des compétences du projet : {}"
+
+msgid "Fetch URL"
+msgstr "Récupérer l'URL"
+
+msgid "Fetch {}"
+msgstr "Récupérer {}"
+
+msgid "Find on the page"
+msgstr "Rechercher dans la page"
+
+msgid "Find paths"
+msgstr "Rechercher des chemins"
+
+msgid "Find paths matching “`{}`”"
+msgstr "Rechercher les chemins correspondant à \"`{}`\""
+
+msgid "Find references"
+msgstr "Rechercher les références"
+
+msgid "Find references to `{symbol_name}`"
+msgstr "Rechercher les références à `{symbol_name}`"
+
+msgid "Find {} on the page"
+msgstr "Rechercher {} dans la page"
+
+msgid "Get code actions"
+msgstr "Obtenir les actions de code"
+
+msgid "Get code actions for `{symbol_name}`"
+msgstr "Obtenir les actions de code pour `{symbol_name}`"
+
+msgid "Get hover information"
+msgstr "Obtenir les informations de survol"
+
+msgid "Get page {page} of search results for regex {regex_str}{case_info}"
+msgstr "Obtenir la page {page} des résultats de recherche pour l'expression régulière {regex_str}{case_info}"
+
+msgid "Go back in the browser"
+msgstr "Revenir en arrière dans le navigateur"
+
+msgid "Go forward in the browser"
+msgstr "Avancer dans le navigateur"
+
+msgid "Go to definition"
+msgstr "Atteindre la définition"
+
+msgid "Go to definition of `{symbol_name}`"
+msgstr "Atteindre la définition de `{symbol_name}`"
+
+msgid "Highlight code"
+msgstr "Mettre le code en surbrillance"
+
+msgid "Highlight code ({count} place)"
+msgid_plural "Highlight code ({count} places)"
+msgstr[0] "Mettre le code en surbrillance ({count} emplacement)"
+msgstr[1] "Mettre le code en surbrillance ({count} emplacements)"
+
+msgid "Hover information for line {1} of {0}"
+msgstr "Informations de survol pour la ligne {1} de {0}"
+
+msgid "Hover information for {}"
+msgstr "Informations de survol pour {}"
+
+msgid "Hover on the page"
+msgstr "Survoler la page"
+
+msgid "Hover over {}"
+msgstr "Survoler {}"
+
+msgid "List agents and models"
+msgstr "Lister les agents et les modèles"
+
+msgid "List directory"
+msgstr "Lister le répertoire"
+
+msgid "List the browser's AI tabs"
+msgstr "Lister les onglets IA du navigateur"
+
+msgid "List the page's network requests"
+msgstr "Lister les requêtes réseau de la page"
+
+msgid "List the {path} directory's contents"
+msgstr "Lister le contenu du répertoire {path}"
+
+msgid "Move path"
+msgstr "Déplacer le chemin d'accès"
+
+msgid "Move {src} to {dest}"
+msgstr "Déplacer {src} vers {dest}"
+
+msgid "Navigate the browser"
+msgstr "Naviguer dans le navigateur"
+
+msgid "Navigate to {}"
+msgstr "Naviguer vers {}"
+
+msgid "No matches"
+msgstr "Aucun résultat"
+
+msgid "Only this time"
+msgstr "Uniquement cette fois"
+
+msgid "Open a new AI tab"
+msgstr "Ouvrir un nouvel onglet IA"
+
+msgid "Open {} in a new AI tab"
+msgstr "Ouvrir {} dans un nouvel onglet IA"
+
+msgid "Or type your own answer"
+msgstr "Ou saisir votre propre réponse"
+
+msgid "Press keys in the page"
+msgstr "Appuyer sur des touches dans la page"
+
+msgid "Press {}"
+msgstr "Appuyer sur {}"
+
+msgid "Read file"
+msgstr "Lire le fichier"
+
+msgid "Read file `{path}`"
+msgstr "Lire le fichier `{path}`"
+
+msgid "Read file `{path}` (from line {})"
+msgstr "Lire le fichier `{path}` (à partir de la ligne {})"
+
+msgid "Read file `{path}` (lines {}-{})"
+msgstr "Lire le fichier `{path}` (lignes {}-{})"
+
+msgid "Read the page's console"
+msgstr "Lire la console de la page"
+
+msgid "Read the page's text"
+msgstr "Lire le texte de la page"
+
+msgid "Recommended"
+msgstr "Recommandé"
+
+msgid "Reload the page"
+msgstr "Recharger la page"
+
+msgid "Rename `{symbol_name}` to `{new_name}`"
+msgstr "Renommer `{symbol_name}` en `{new_name}`"
+
+msgid "Rename symbol"
+msgstr "Renommer le symbole"
+
+msgid "Rename {src} to {filename}"
+msgstr "Renommer {src} en {filename}"
+
+msgid "Retry"
+msgstr "Réessayer"
+
+msgid "Retry (attempt {})"
+msgstr "Réessayer (tentative {})"
+
+msgid "Reviewed as safe"
+msgstr "Examiné et jugé sûr"
+
+msgid "Run JavaScript in the page"
+msgstr "Exécuter du JavaScript dans la page"
+
+msgid "Run MCP tool `{}`"
+msgstr "Exécuter l'outil MCP `{}`"
+
+msgid "Run MCP tool `{}` {}"
+msgstr "Exécuter l'outil MCP `{}` {}"
+
+msgid "Run a git command"
+msgstr "Exécuter une commande Git"
+
+msgid "Run {}"
+msgstr "Exécuter {}"
+
+msgid "Run {} in the page"
+msgstr "Exécuter {} dans la page"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "Le fichier SKILL.md dépasse la taille maximale de {} Ko"
+
+msgid "Scroll the page"
+msgstr "Faire défiler la page"
+
+msgid "Search files for regex {regex_str}{case_info}"
+msgstr "Rechercher dans les fichiers avec l'expression régulière {regex_str}{case_info}"
+
+msgid "Search symbols"
+msgstr "Rechercher des symboles"
+
+msgid "Search symbols: {}"
+msgstr "Rechercher des symboles : {}"
+
+msgid "Search the web for {}"
+msgstr "Rechercher {} sur le Web"
+
+msgid "Search with regex"
+msgstr "Rechercher avec une expression régulière"
+
+msgid "Searched the web: {count} result"
+msgid_plural "Searched the web: {count} results"
+msgstr[0] "Recherche sur le Web : {count} résultat"
+msgstr[1] "Recherche sur le Web : {count} résultats"
+
+msgid "Searching the Web"
+msgstr "Recherche sur le Web"
+
+msgid "Set a form value"
+msgstr "Définir une valeur de formulaire"
+
+msgid "Set the value of {}"
+msgstr "Définir la valeur de {}"
+
+msgid "Skill"
+msgstr "Compétence"
+
+msgid "Spawning agent"
+msgstr "Lancement du sous-agent"
+
+msgid "Switch AI tabs"
+msgstr "Changer d'onglet IA"
+
+msgid "Switch to AI tab {}"
+msgstr "Passer à l'onglet IA {}"
+
+msgid "Take a screenshot of the page"
+msgstr "Prendre une capture d'écran de la page"
+
+msgid "Take a snapshot of the page"
+msgstr "Prendre un instantané de la page"
+
+msgid "Terminal command"
+msgstr "Commande de terminal"
+
+msgid "The review was stopped because the settings changed"
+msgstr "L'examen a été arrêté, car les paramètres ont changé"
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "Les paramètres autorisent l'écriture n'importe où dans le système de fichiers"
+
+msgid "Type into the page"
+msgstr "Saisir du texte dans la page"
+
+msgid "Type layout"
+msgstr "Disposition du type"
+
+msgid "Type layout of {}"
+msgstr "Disposition du type {}"
+
+msgid "Type {}"
+msgstr "Saisir {}"
+
+msgid "Use the browser"
+msgstr "Utiliser le navigateur"
+
+msgid "Wait for the page"
+msgstr "Attendre la page"
+
+msgid "Web Search Failed"
+msgstr "Échec de la recherche sur le Web"
+
+msgid "Writing file"
+msgstr "Écriture du fichier"
+
+msgid "Your answer"
+msgstr "Votre réponse"
+
+msgid "`{}` Skill"
+msgstr "Compétence `{}`"
+
+msgid "`{}` points outside the project (symlink to `{}`)"
+msgstr "`{}` pointe hors du projet (lien symbolique vers `{}`)"
+
+msgid "line {1} of {0}"
+msgstr "ligne {1} de {0}"
+
+msgid "outside the project"
+msgstr "hors du projet"
+
+msgid "which worktree is ambiguous: approving copies it to {destination}"
+msgstr "arborescence de travail ambiguë : l'approbation la copie vers {destination}"
+
+msgid "which worktree is ambiguous: approving moves it to {destination}"
+msgstr "arborescence de travail ambiguë : l'approbation la déplace vers {destination}"
+
+msgid "which worktree is ambiguous: approving writes it to {destination}"
+msgstr "arborescence de travail ambiguë : l'approbation l'écrit dans {destination}"
+
+msgid "{count} match"
+msgid_plural "{count} matches"
+msgstr[0] "{count} correspondance"
+msgstr[1] "{count} correspondances"
+
+msgid "{title} (agent skills)"
+msgstr "{title} (compétences de l'agent)"
+
+msgid "{title} (local settings)"
+msgstr "{title} (paramètres locaux)"
+
+msgid "{title} (no language server)"
+msgstr "{title} (aucun serveur de langage)"
+
+msgid "{title} (settings)"
+msgstr "{title} (paramètres)"
+
+msgid "{} (no name index)"
+msgstr "{} (aucun index des noms)"
+
+msgid "{} (symlinks outside project)"
+msgstr "{} (liens symboliques hors du projet)"
+
+msgctxt "list conjunction"
+msgid " and "
+msgstr " et "
+
+msgctxt "tool name"
+msgid "apply code action"
+msgstr "appliquer une action de code"
+
+msgctxt "tool name"
+msgid "browser: click"
+msgstr "navigateur : cliquer"
+
+msgctxt "tool name"
+msgid "browser: close tab"
+msgstr "navigateur : fermer l'onglet"
+
+msgctxt "tool name"
+msgid "browser: hover"
+msgstr "navigateur : survoler"
+
+msgctxt "tool name"
+msgid "browser: navigate"
+msgstr "navigateur : naviguer"
+
+msgctxt "tool name"
+msgid "browser: open tab"
+msgstr "navigateur : ouvrir un onglet"
+
+msgctxt "tool name"
+msgid "browser: press key"
+msgstr "navigateur : appuyer sur une touche"
+
+msgctxt "tool name"
+msgid "browser: run script"
+msgstr "navigateur : exécuter un script"
+
+msgctxt "tool name"
+msgid "browser: scroll"
+msgstr "navigateur : faire défiler"
+
+msgctxt "tool name"
+msgid "browser: select tab"
+msgstr "navigateur : sélectionner l'onglet"
+
+msgctxt "tool name"
+msgid "browser: set value"
+msgstr "navigateur : définir la valeur"
+
+msgctxt "tool name"
+msgid "browser: type"
+msgstr "navigateur : saisir du texte"
+
+msgctxt "tool name"
+msgid "copy path"
+msgstr "copier le chemin"
+
+msgctxt "tool name"
+msgid "create directory"
+msgstr "créer un répertoire"
+
+msgctxt "tool name"
+msgid "delete path"
+msgstr "supprimer le chemin"
+
+msgctxt "tool name"
+msgid "edit file"
+msgstr "modifier le fichier"
+
+msgctxt "tool name"
+msgid "fetch"
+msgstr "récupérer une URL"
+
+msgctxt "tool name"
+msgid "move path"
+msgstr "déplacer le chemin"
+
+msgctxt "tool name"
+msgid "rename symbol"
+msgstr "renommer le symbole"
+
+msgctxt "tool name"
+msgid "sandboxed terminal"
+msgstr "terminal en bac à sable"
+
+msgctxt "tool name"
+msgid "terminal"
+msgstr "terminal"
+
+msgctxt "tool name"
+msgid "write file"
+msgstr "écrire le fichier"

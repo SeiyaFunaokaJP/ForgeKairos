@@ -280,11 +280,11 @@ pub enum LspPickerKind {
 impl LspPickerKind {
     fn placeholder(self) -> &'static str {
         match self {
-            LspPickerKind::References => "Filter references…",
-            LspPickerKind::Definition => "Filter definitions…",
-            LspPickerKind::Declaration => "Filter declarations…",
-            LspPickerKind::Implementation => "Filter implementations…",
-            LspPickerKind::TypeDefinition => "Filter type definitions…",
+            LspPickerKind::References => i18n::t!("Filter references…"),
+            LspPickerKind::Definition => i18n::t!("Filter definitions…"),
+            LspPickerKind::Declaration => i18n::t!("Filter declarations…"),
+            LspPickerKind::Implementation => i18n::t!("Filter implementations…"),
+            LspPickerKind::TypeDefinition => i18n::t!("Filter type definitions…"),
         }
     }
 
@@ -292,11 +292,11 @@ impl LspPickerKind {
     /// appear to silently do nothing.
     fn empty_message(self) -> &'static str {
         match self {
-            LspPickerKind::References => "No references found",
-            LspPickerKind::Definition => "No definitions found",
-            LspPickerKind::Declaration => "No declarations found",
-            LspPickerKind::Implementation => "No implementations found",
-            LspPickerKind::TypeDefinition => "No type definitions found",
+            LspPickerKind::References => i18n::t!("No references found"),
+            LspPickerKind::Definition => i18n::t!("No definitions found"),
+            LspPickerKind::Declaration => i18n::t!("No declarations found"),
+            LspPickerKind::Implementation => i18n::t!("No implementations found"),
+            LspPickerKind::TypeDefinition => i18n::t!("No type definitions found"),
         }
     }
 

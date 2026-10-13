@@ -1,0 +1,405 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "API URL"
+msgstr "URL de API"
+
+msgid "API key"
+msgstr "Clave de API"
+
+msgid "API key configured"
+msgstr "Clave de API configurada"
+
+msgid "API key configured for {}"
+msgstr "Clave de API configurada para {}"
+
+msgid "API key set in {env_var_name} environment variable"
+msgstr "Clave de API establecida en la variable de entorno {env_var_name}"
+
+msgid "Access Key ID"
+msgstr "ID de clave de acceso"
+
+msgid "Alternatively, you can connect to a remote llama.cpp server by specifying its URL and API key (set with --api-key, may not be required):"
+msgstr "También puede conectarse a un servidor de llama.cpp remoto especificando su URL y clave de API (establecida con --api-key, puede que no sea necesaria):"
+
+msgid "Alternatively, you can connect to an LM Studio server by specifying its URL and API key (may not be required):"
+msgstr "También puede conectarse a un servidor de LM Studio especificando su URL y clave de API (puede que no sea necesaria):"
+
+msgid "Alternatively, you can connect to an Ollama server by specifying its URL and API key (may not be required):"
+msgstr "También puede conectarse a un servidor de Ollama especificando su URL y clave de API (puede que no sea necesaria):"
+
+msgid "Attach the necessary Bedrock permissions to"
+msgstr "Adjunte los permisos de Bedrock necesarios a"
+
+msgid "Authentication failed for Vercel AI Gateway. Check that your Vercel AI Gateway key starts with vck_ and is active."
+msgstr "Error de autenticación en Vercel AI Gateway. Compruebe que su clave de Vercel AI Gateway empieza por vck_ y está activa."
+
+msgid "Authentication failed for Vercel AI Gateway. Use a Vercel AI Gateway key (vck_...).\nCreate or manage keys in Vercel AI Gateway console.\nIf this persists, regenerate the key and update it in Vercel AI Gateway provider settings in Zed."
+msgstr "Falló la autenticación en Vercel AI Gateway. Use una clave de Vercel AI Gateway (vck_...).\nCree o administre las claves en la consola de Vercel AI Gateway.\nSi el problema persiste, vuelva a generar la clave y actualícela en la configuración del proveedor Vercel AI Gateway en ForgeKairos."
+
+msgid "Authentication method is configured in settings. Edit settings.json to change."
+msgstr "El método de autenticación está definido en la configuración. Edite settings.json para cambiarlo."
+
+msgid "Bedrock API Key"
+msgstr "Clave de API de Bedrock"
+
+msgid "Bedrock Console"
+msgstr "Consola de Bedrock"
+
+msgid "Bedrock Model Catalog"
+msgstr "Catálogo de modelos de Bedrock"
+
+msgid "Browse GGUF Models"
+msgstr "Explorar modelos GGUF"
+
+msgid "But first, to access models on AWS, you need to:"
+msgstr "Pero primero, para acceder a modelos en AWS, hay que:"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Click 'Connect' below to start using Ollama in Zed"
+msgstr "Haga clic en 'Conectar' abajo para empezar a usar Ollama en ForgeKairos"
+
+msgid "Click 'Connect' below to start using llama.cpp in Zed"
+msgstr "Haga clic en 'Conectar' abajo para empezar a usar llama.cpp en ForgeKairos"
+
+msgid "Configure ChatGPT"
+msgstr "Configurar ChatGPT"
+
+msgid "Configure Copilot Chat"
+msgstr "Configurar Copilot Chat"
+
+msgid "Configure SuperGrok"
+msgstr "Configurar SuperGrok"
+
+msgid "Connect"
+msgstr "Conectar"
+
+msgid "Connect without an API key (the server needs no authentication)"
+msgstr "Conectar sin clave de API (el servidor no requiere autenticación)"
+
+msgid "Connected"
+msgstr "Conectado"
+
+msgid "Connecting to {} without an API key (the server needs no authentication)"
+msgstr "Conectando a {} sin clave de API (el servidor no requiere autenticación)"
+
+msgid "Context Window"
+msgstr "Ventana de contexto"
+
+msgid "Context Window: {}"
+msgstr "Ventana de contexto: {}"
+
+msgid "Default: Discovered from the server"
+msgstr "Valor predeterminado: obtenido del servidor"
+
+msgid "Default: Model specific"
+msgstr "Valor predeterminado: específico del modelo"
+
+msgid "Download LM Studio"
+msgstr "Descargar LM Studio"
+
+msgid "Download Ollama"
+msgstr "Descargar Ollama"
+
+msgid "Download and install Ollama from"
+msgstr "Descargar e instalar Ollama desde"
+
+msgid "Enable Fast Mode for Anthropic?"
+msgstr "¿Habilitar el modo rápido para Anthropic?"
+
+msgid "Enable Fast Mode for OpenAI?"
+msgstr "¿Habilitar el modo rápido para OpenAI?"
+
+msgid "Enable Fast Mode for Zed?"
+msgstr "¿Habilitar el modo rápido para Zed?"
+
+msgid "Enter either access keys OR a Bedrock API Key below (not both)"
+msgstr "Escriba claves de acceso O una clave de API de Bedrock a continuación (no ambas)"
+
+msgid "Failed to fetch model from API: {error}"
+msgstr "No se pudo obtener el modelo de la API: {error}"
+
+msgid "Failed to load OpenCode {subscription} models: {error}"
+msgstr "No se pudieron cargar los modelos de OpenCode {subscription}: {error}"
+
+msgid "Fast mode lets requests use your Anthropic Priority Tier capacity, which Anthropic prioritizes over standard requests during peak load. Requires a Priority Tier commitment with Anthropic; without one, requests behave the same as the standard tier."
+msgstr "El modo rápido permite que las solicitudes usen la capacidad de su Priority Tier de Anthropic, que Anthropic prioriza sobre las solicitudes estándar en los momentos de máxima carga. Requiere un compromiso de Priority Tier con Anthropic; sin él, las solicitudes se comportan igual que en el nivel estándar."
+
+msgid "Fast mode routes requests through the upstream provider's fast mode or priority tier. The upstream provider's premium per-token pricing applies and is passed through to your Zed billing."
+msgstr "El modo rápido envía las solicitudes a través del modo rápido o del nivel prioritario del proveedor de origen. Se aplica el precio prémium por token del proveedor de origen, que se traslada a su facturación de Zed."
+
+msgid "Fast mode sends requests using OpenAI's Priority processing tier, which targets significantly lower latency than the standard tier and is billed at a premium per-token rate."
+msgstr "El modo rápido envía las solicitudes con el nivel Priority processing de OpenAI, que busca una latencia considerablemente menor que la del nivel estándar y se factura con una tarifa prémium por token."
+
+msgid "For Bedrock API Keys: Generate an API key from the"
+msgstr "Para las claves de API de Bedrock: genere una clave de API desde la"
+
+msgid "For access keys: Create an IAM user in the AWS console with programmatic access"
+msgstr "Para las claves de acceso: cree un usuario de IAM en la consola de AWS con acceso programático"
+
+msgid "Get llama.cpp"
+msgstr "Obtener llama.cpp"
+
+msgid "Grant permissions to the strategy you'll use according to the:"
+msgstr "Conceda a la estrategia que usará los permisos indicados en:"
+
+msgid "IAM Console"
+msgstr "Consola IAM"
+
+msgid "Install llama.cpp from"
+msgstr "Instale llama.cpp desde"
+
+msgid "LM Studio needs to be running with at least one model downloaded."
+msgstr "LM Studio debe estar ejecutándose con al menos un modelo descargado."
+
+msgid "Loading credentials…"
+msgstr "Cargando credenciales…"
+
+msgid "Manage Subscription"
+msgstr "Gestionar suscripción"
+
+msgid "Model Catalog"
+msgstr "Catálogo de modelos"
+
+msgid "No subscriptions enabled. Enable at least one subscription to use OpenCode."
+msgstr "No hay suscripciones habilitadas. Habilite al menos una suscripción para usar OpenCode."
+
+msgid "Not authenticated"
+msgstr "No autenticado"
+
+msgid "Open WebUI"
+msgstr "Abrir WebUI"
+
+msgid "OpenCode Console"
+msgstr "Consola de OpenCode"
+
+msgid "Optionally, if your environment uses AWS CLI profiles, you can set {profile}; if it requires a custom endpoint, you can set {endpoint}; and if it requires a Session Token, you can set {session_token}."
+msgstr "Opcionalmente, si su entorno usa perfiles de AWS CLI, puede establecer {profile}; si requiere un endpoint personalizado, puede establecer {endpoint}; y si requiere un token de sesión, puede establecer {session_token}."
+
+msgid "Paste your API key below and hit enter to start using OpenCode"
+msgstr "Pegue su clave de API abajo y presione Enter para empezar a usar OpenCode"
+
+msgid "Prerequisites"
+msgstr "Requisitos previos"
+
+msgid "Refresh Models"
+msgstr "Actualizar modelos"
+
+msgid "Region is configured via {region} environment variable or settings.json (defaults to us-east-1)."
+msgstr "La región se configura mediante la variable de entorno {region} o settings.json (el valor predeterminado es us-east-1)."
+
+msgid "Remove Provider"
+msgstr "Quitar proveedor"
+
+msgid "Requires an active GitHub Copilot subscription."
+msgstr "Requiere una suscripción activa a GitHub Copilot."
+
+msgid "Reset"
+msgstr "Restablecer"
+
+msgid "Reset API Key"
+msgstr "Restablecer clave de API"
+
+msgid "Reset API URL"
+msgstr "Restablecer URL de API"
+
+msgid "Run LLMs locally on your machine with Ollama, or connect to an Ollama server. Can provide access to Llama, Mistral, Gemma, and hundreds of other models."
+msgstr "Ejecute LLM localmente en su equipo con Ollama o conéctese a un servidor Ollama. Puede proporcionar acceso a Llama, Mistral, Gemma y cientos de otros modelos."
+
+msgid "Run local LLMs like Llama, Phi, and Qwen with LM Studio."
+msgstr "Ejecute LLM locales como Llama, Phi y Qwen con LM Studio."
+
+msgid "Run local LLMs like Llama, Phi, and Qwen."
+msgstr "Ejecute LLM locales como Llama, Phi y Qwen."
+
+msgid "Run local models on your machine with LlamaCpp."
+msgstr "Ejecute modelos locales en su equipo con LlamaCpp."
+
+msgid "Run local models on your machine with Ollama."
+msgstr "Ejecute modelos locales en su equipo con Ollama."
+
+msgid "Run open models locally with llama.cpp's built-in server, or connect to a remote llama.cpp server."
+msgstr "Ejecute modelos abiertos localmente con el servidor integrado de llama.cpp o conéctese a un servidor de llama.cpp remoto."
+
+msgid "Secret Access Key"
+msgstr "Clave de acceso secreta"
+
+msgid "Select the models you would like access to:"
+msgstr "Seleccione los modelos a los que desea tener acceso:"
+
+msgid "Session Token (Optional)"
+msgstr "Token de sesión (opcional)"
+
+msgid "Show Go models"
+msgstr "Mostrar modelos Go"
+
+msgid "Show Zen models"
+msgstr "Mostrar modelos Zen"
+
+msgid "Sign In"
+msgstr "Iniciar sesión"
+
+msgid "Sign In to use Zed AI"
+msgstr "Iniciar sesión para usar Zed AI"
+
+msgid "Sign Out"
+msgstr "Cerrar sesión"
+
+msgid "Sign in and get your key at"
+msgstr "Inicie sesión y obtenga su clave en la"
+
+msgid "Sign in to have access to Zed's complete agentic experience with hosted models."
+msgstr "Inicie sesión para acceder a todas las funciones del agente con los modelos alojados por Zed."
+
+msgid "Sign in with your ChatGPT Plus or Pro subscription to use OpenAI models in Zed's agent."
+msgstr "Inicie sesión con su suscripción a ChatGPT Plus o Pro para usar modelos de OpenAI en el agente de ForgeKairos."
+
+msgid "Sign in with your SuperGrok subscription to use Grok models in Zed's agent."
+msgstr "Inicie sesión con su suscripción a SuperGrok para usar modelos de Grok en el agente de ForgeKairos."
+
+msgid "Signed in"
+msgstr "Sesión iniciada"
+
+msgid "Signed in as {email}"
+msgstr "Sesión iniciada como {email}"
+
+msgid "Signing in…"
+msgstr "Iniciando sesión…"
+
+msgid "Start Free Trial"
+msgstr "Iniciar prueba gratuita"
+
+msgid "Start Ollama and download a model:"
+msgstr "Iniciar Ollama y descargar un modelo:"
+
+msgid "Start a free trial with $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+msgstr "Inicie una prueba gratuita con $5 en GPT Luna y predicciones de edición ilimitadas durante 14 días desde el inicio de la prueba."
+
+msgid "Start the server in router mode:"
+msgstr "Inicie el servidor en modo router:"
+
+msgid "Static Credentials"
+msgstr "Credenciales estáticas"
+
+msgid "Subscribe for access to Zed's hosted models."
+msgstr "Suscríbase para acceder a los modelos alojados por Zed."
+
+msgid "Subscribed to Business"
+msgstr "Suscripción Business"
+
+msgid "Subscribed to Pro"
+msgstr "Suscripción Pro"
+
+msgid "Subscribed to Pro Trial"
+msgstr "Prueba Pro"
+
+msgid "Subscribed to Student"
+msgstr "Suscripción Student"
+
+msgid "Subscribed to VIP"
+msgstr "Suscripción VIP"
+
+msgid "Subscriptions"
+msgstr "Suscripciones"
+
+msgid "This can't be changed while an API key is set in the {env_var_name} environment variable."
+msgstr "No se puede cambiar mientras haya una clave de API en la variable de entorno {env_var_name}."
+
+msgid "This method uses your AWS access key ID and secret access key, or a Bedrock API Key."
+msgstr "Este método usa el ID de clave de acceso y la clave de acceso secreta de AWS, o una clave de API de Bedrock."
+
+msgid "To get your first model, try running"
+msgstr "Para obtener el primer modelo, pruebe a ejecutar"
+
+msgid "To reset your API key, unset the {env_var_name} environment variable."
+msgstr "Para restablecer la clave de API, elimine la variable de entorno {env_var_name}."
+
+msgid "To reset your credentials, unset the {access_key_id}, {secret_access_key}, and {session_token} or {bearer_token} environment variables."
+msgstr "Para restablecer sus credenciales, elimine las variables de entorno {access_key_id}, {secret_access_key} y {session_token} o {bearer_token}."
+
+msgid "To use OpenCode models in Zed, you need an API key."
+msgstr "Para usar modelos de OpenCode en ForgeKairos, se necesita una clave de API."
+
+msgid "To use OpenCode models in Zed, you need an API key:"
+msgstr "Para usar modelos de OpenCode en ForgeKairos, se necesita una clave de API:"
+
+msgid "To use Zed's agent with Bedrock, set a custom authentication strategy in your settings or use static credentials. Mantle-only models (e.g. GPT-5.5, GPT-5.4, Grok 4.3) additionally require IAM permissions for the `bedrock-mantle` endpoint."
+msgstr "Para usar el agente de ForgeKairos con Bedrock, configure una estrategia de autenticación personalizada en la configuración o use credenciales estáticas. Los modelos exclusivos de Mantle (p. ej., GPT-5.5, GPT-5.4, Grok 4.3) también requieren permisos de IAM para el endpoint `bedrock-mantle`."
+
+msgid "To use Zed's agent with Bedrock, you can set a custom authentication strategy through your settings file or use static credentials."
+msgstr "Para usar el agente de ForgeKairos con Bedrock, puede establecer una estrategia de autenticación personalizada mediante el archivo de configuración o usar credenciales estáticas."
+
+msgid "To use Zed's agent with an {provider_name}-compatible provider, you need to add an API key."
+msgstr "Para usar el agente de ForgeKairos con un proveedor compatible con {provider_name}, debe agregar una clave de API."
+
+msgid "To use a local llama.cpp server:"
+msgstr "Para usar un servidor de llama.cpp local:"
+
+msgid "To use local Ollama:"
+msgstr "Para usar Ollama local:"
+
+msgid "Upgrade to Pro"
+msgstr "Pasar a Pro"
+
+msgid "Using AWS SSO profile: {profile_name}"
+msgstr "Usando perfil de AWS SSO: {profile_name}"
+
+msgid "Using AWS profile: {profile_name}"
+msgstr "Usando perfil de AWS: {profile_name}"
+
+msgid "Using Bedrock API Key"
+msgstr "Usando clave de API de Bedrock"
+
+msgid "Using Bedrock API Key from {bearer_token} environment variable"
+msgstr "Usando la clave de API de Bedrock de la variable de entorno {bearer_token}"
+
+msgid "Using IAM credentials"
+msgstr "Usando credenciales de IAM"
+
+msgid "Using IAM credentials from {access_key_id} and {secret_access_key} environment variables"
+msgstr "Usando las credenciales de IAM de las variables de entorno {access_key_id} y {secret_access_key}"
+
+msgid "Using automatic credentials (AWS default chain)"
+msgstr "Usando credenciales automáticas (cadena predeterminada de AWS)"
+
+msgid "Using the API key"
+msgstr "Uso de la clave de API"
+
+msgid "View All Models"
+msgstr "Ver todos los modelos"
+
+msgid "You can also set the {access_key_id}, {secret_access_key} and {region} environment variables (or {bearer_token} for Bedrock API Key authentication) and restart Zed."
+msgstr "También puede establecer las variables de entorno {access_key_id}, {secret_access_key} y {region} (o {bearer_token} para la autenticación con clave de API de Bedrock) y reiniciar ForgeKairos."
+
+msgid "You can also set the {env_var_name} environment variable and restart Zed."
+msgstr "También se puede establecer la variable de entorno {env_var_name} y reiniciar ForgeKairos."
+
+msgid "You have access to Zed's hosted models through your Pro subscription."
+msgstr "Tiene acceso a los modelos alojados por Zed a través de su suscripción Pro."
+
+msgid "You have access to Zed's hosted models through your Student subscription."
+msgstr "Tiene acceso a los modelos alojados por Zed a través de su suscripción Student."
+
+msgid "You have access to Zed's hosted models through your VIP subscription."
+msgstr "Tiene acceso a los modelos alojados por Zed a través de su suscripción VIP."
+
+msgid "You have access to Zed's hosted models through your organization."
+msgstr "Tiene acceso a los modelos alojados por Zed a través de su organización."
+
+msgid "Your Pro trial includes $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+msgstr "Su prueba Pro incluye $5 en GPT Luna y predicciones de edición ilimitadas durante 14 días desde el inicio de la prueba."
+
+msgid "Zed's hosted models are disabled by your organization's configuration."
+msgstr "Los modelos alojados por Zed están deshabilitados por la configuración de su organización."
+
+msgid "this user"
+msgstr "este usuario"

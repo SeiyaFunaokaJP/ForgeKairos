@@ -28,6 +28,12 @@ phrase	service	-	Zed team
 phrase	service	-	Zed チーム
 phrase	fact	-	official Zed
 phrase	fact	-	公式版の Zed
+phrase	fact	-	官方 Zed
+phrase	fact	-	官方版 Zed
+phrase	fact	-	공식 Zed
+phrase	fact	-	offiziellen Zed
+phrase	fact	-	Zed officiel
+phrase	fact	-	Zed oficial
 phrase	fact	-	upstream Zed
 phrase	fact	-	upstream の Zed
 phrase	fact	-	上流の Zed
@@ -54,6 +60,8 @@ message	service	-	This consent is shared with the \"Zed\" LLM provider on the AI
 message	service	-	Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above.
 message	service	-	Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev.
 message	service	-	OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below.
+message	service	-	Enable Fast Mode for Zed?
+message	service	-	Fast mode routes requests through the upstream provider's fast mode or priority tier. The upstream provider's premium per-token pricing applies and is passed through to your Zed billing.
 message	service	settings schema	Allow Zed to collect training data from open-source projects.
 message	identifier	settings schema	Base key bindings scheme. Base keymaps can be overridden with user keymaps.\n\nDefault: Zed
 message	service	settings schema	Control what info is collected by Zed.

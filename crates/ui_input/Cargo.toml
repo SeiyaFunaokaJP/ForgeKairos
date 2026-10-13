@@ -16,6 +16,7 @@ doctest = false
 [dependencies]
 component.workspace = true
 gpui.workspace = true
+i18n.workspace = true
 ui.workspace = true
 
 [features]

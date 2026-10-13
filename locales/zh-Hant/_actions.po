@@ -1,0 +1,7971 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#. action: sequence
+msgctxt "action"
+msgid "action::Sequence"
+msgstr "依序執行動作"
+
+#. activity indicator: show error message
+msgctxt "action"
+msgid "activity_indicator::ShowErrorMessage"
+msgstr "顯示錯誤訊息"
+
+#. agent: add selection to thread
+msgctxt "action"
+msgid "agent::AddSelectionToThread"
+msgstr "代理: 將選取範圍新增至會話"
+
+#. agent: allow always
+msgctxt "action"
+msgid "agent::AllowAlways"
+msgstr "代理: 一律允許"
+
+#. agent: allow once
+msgctxt "action"
+msgid "agent::AllowOnce"
+msgstr "代理: 僅此次允許"
+
+#. agent: archive selected thread
+msgctxt "action"
+msgid "agent::ArchiveSelectedThread"
+msgstr "代理: 封存選取的會話"
+
+#. agent: authorize tool call
+msgctxt "action"
+msgid "agent::AuthorizeToolCall"
+msgstr "代理: 授權工具呼叫"
+
+#. agent: chat
+msgctxt "action"
+msgid "agent::Chat"
+msgstr "代理: 傳送訊息"
+
+#. agent: chat with follow
+msgctxt "action"
+msgid "agent::ChatWithFollow"
+msgstr "代理: 傳送訊息並跟隨"
+
+#. agent: clear message queue
+msgctxt "action"
+msgid "agent::ClearMessageQueue"
+msgstr "代理: 清除佇列中的所有訊息"
+
+#. agent: copy thread to clipboard
+msgctxt "action"
+msgid "agent::CopyThreadToClipboard"
+msgstr "代理: 將會話複製到剪貼簿"
+
+#. agent: create skill from url
+msgctxt "action"
+msgid "agent::CreateSkillFromUrl"
+msgstr "代理: 從 GitHub URL 匯入技能"
+
+#. agent: cycle favorite models
+msgctxt "action"
+msgid "agent::CycleFavoriteModels"
+msgstr "代理: 循環切換最愛的模型"
+
+#. agent: cycle mode selector
+msgctxt "action"
+msgid "agent::CycleModeSelector"
+msgstr "代理: 循環切換模式"
+
+#. agent: cycle next inline assist
+msgctxt "action"
+msgid "agent::CycleNextInlineAssist"
+msgstr "代理: 下一個內嵌輔助候選"
+
+#. agent: cycle previous inline assist
+msgctxt "action"
+msgid "agent::CyclePreviousInlineAssist"
+msgstr "代理: 上一個內嵌輔助候選"
+
+#. agent: cycle thinking effort
+msgctxt "action"
+msgid "agent::CycleThinkingEffort"
+msgstr "代理: 循環切換思考深度"
+
+#. agent: dismiss thread search
+msgctxt "action"
+msgid "agent::DismissThreadSearch"
+msgstr "代理: 關閉會話搜尋列"
+
+#. agent: edit first queued message
+msgctxt "action"
+msgid "agent::EditFirstQueuedMessage"
+msgstr "代理: 編輯佇列中的第一則訊息"
+
+#. agent: expand message editor
+msgctxt "action"
+msgid "agent::ExpandMessageEditor"
+msgstr "代理: 展開訊息編輯器"
+
+#. agent: focus agent
+msgctxt "action"
+msgid "agent::FocusAgent"
+msgstr "代理: 聚焦於面板"
+
+#. agent: focus down
+msgctxt "action"
+msgid "agent::FocusDown"
+msgstr "代理: 將焦點下移"
+
+#. agent: focus left
+msgctxt "action"
+msgid "agent::FocusLeft"
+msgstr "代理: 將焦點左移"
+
+#. agent: focus right
+msgctxt "action"
+msgid "agent::FocusRight"
+msgstr "代理: 將焦點右移"
+
+#. agent: focus up
+msgctxt "action"
+msgid "agent::FocusUp"
+msgstr "代理: 將焦點上移"
+
+#. agent: follow
+msgctxt "action"
+msgid "agent::Follow"
+msgstr "代理: 跟隨代理"
+
+#. agent: import threads from other channels
+msgctxt "action"
+msgid "agent::ImportThreadsFromOtherChannels"
+msgstr "代理: 從其他發行頻道匯入會話"
+
+#. agent: keep
+msgctxt "action"
+msgid "agent::Keep"
+msgstr "代理: 保留變更"
+
+#. agent: keep all
+msgctxt "action"
+msgid "agent::KeepAll"
+msgstr "代理: 保留所有變更"
+
+#. agent: load thread from clipboard
+msgctxt "action"
+msgid "agent::LoadThreadFromClipboard"
+msgstr "代理: 從剪貼簿的 JSON 載入會話"
+
+#. agent: logout agent
+msgctxt "action"
+msgid "agent::LogoutAgent"
+msgstr "代理: 登出外部代理"
+
+#. agent: manage profiles
+msgctxt "action"
+msgid "agent::ManageProfiles"
+msgstr "代理: 管理設定檔"
+
+#. agent: manage skills
+msgctxt "action"
+msgid "agent::ManageSkills"
+msgstr "代理: 管理技能"
+
+#. agent: move thread to panel
+msgctxt "action"
+msgid "agent::MoveThreadToPanel"
+msgstr "代理: 將會話移回面板"
+
+#. agent: new external agent thread
+msgctxt "action"
+msgid "agent::NewExternalAgentThread"
+msgstr "代理: 新增外部代理會話"
+
+#. agent: new native agent thread from summary
+msgctxt "action"
+msgid "agent::NewNativeAgentThreadFromSummary"
+msgstr "代理: 從摘要新增會話"
+
+#. agent: new terminal thread
+msgctxt "action"
+msgid "agent::NewTerminalThread"
+msgstr "代理: 新增終端機會話"
+
+#. agent: new thread
+msgctxt "action"
+msgid "agent::NewThread"
+msgstr "代理: 新增會話"
+
+#. agent: new thread with language model provider
+msgctxt "action"
+msgid "agent::NewThreadWithLanguageModelProvider"
+msgstr "代理: 以語言模型提供者新增會話"
+
+#. agent: open active thread as markdown
+msgctxt "action"
+msgid "agent::OpenActiveThreadAsMarkdown"
+msgstr "代理: 以 Markdown 開啟會話"
+
+#. agent: open add context menu
+msgctxt "action"
+msgid "agent::OpenAddContextMenu"
+msgstr "代理: 開啟「新增上下文」選單"
+
+#. agent: open agent diff
+msgctxt "action"
+msgid "agent::OpenAgentDiff"
+msgstr "代理: 開啟代理差異"
+
+#. agent: open global AGENTS.md rules
+msgctxt "action"
+msgid "agent::OpenGlobalAGENTS.mdRules"
+msgstr "代理: 開啟全域 AGENTS.md 規則"
+
+#. agent: open onboarding modal
+msgctxt "action"
+msgid "agent::OpenOnboardingModal"
+msgstr "代理: 開啟新手導覽"
+
+#. agent: open permission dropdown
+msgctxt "action"
+msgid "agent::OpenPermissionDropdown"
+msgstr "代理: 開啟權限範圍選單"
+
+#. agent: open project AGENTS.md rules
+msgctxt "action"
+msgid "agent::OpenProjectAGENTS.mdRules"
+msgstr "代理: 開啟專案 AGENTS.md 規則"
+
+#. agent: open settings
+msgctxt "action"
+msgid "agent::OpenSettings"
+msgstr "代理: 開啟設定"
+
+#. agent: open skill creator
+msgctxt "action"
+msgid "agent::OpenSkillCreator"
+msgstr "代理: 開啟技能建立工具"
+
+#. agent: open thread in split
+msgctxt "action"
+msgid "agent::OpenThreadInSplit"
+msgstr "代理: 在向右分割中開啟會話"
+
+#. agent: open thread in tab
+msgctxt "action"
+msgid "agent::OpenThreadInTab"
+msgstr "代理: 在分頁中開啟會話"
+
+#. agent: paste raw
+msgctxt "action"
+msgid "agent::PasteRaw"
+msgstr "代理: 貼上純文字"
+
+#. agent: reauthenticate agent
+msgctxt "action"
+msgid "agent::ReauthenticateAgent"
+msgstr "代理: 重新驗證"
+
+#. agent: reconnect parked agent
+msgctxt "action"
+msgid "agent::ReconnectParkedAgent"
+msgstr "代理: 重新連線至已停止的代理"
+
+#. agent: reject
+msgctxt "action"
+msgid "agent::Reject"
+msgstr "代理: 拒絕變更"
+
+#. agent: reject all
+msgctxt "action"
+msgid "agent::RejectAll"
+msgstr "代理: 拒絕所有變更"
+
+#. agent: reject once
+msgctxt "action"
+msgid "agent::RejectOnce"
+msgstr "代理: 僅此次拒絕"
+
+#. agent: remove first queued message
+msgctxt "action"
+msgid "agent::RemoveFirstQueuedMessage"
+msgstr "代理: 移除佇列中的第一則訊息"
+
+#. agent: remove selected thread
+msgctxt "action"
+msgid "agent::RemoveSelectedThread"
+msgstr "代理: 移除選取的會話"
+
+#. agent: rename selected thread
+msgctxt "action"
+msgid "agent::RenameSelectedThread"
+msgstr "代理: 重新命名選取的會話"
+
+#. agent: rerun rules to skills migration
+msgctxt "action"
+msgid "agent::RerunRulesToSkillsMigration"
+msgstr "代理: 重新執行規則至技能的移轉"
+
+#. agent: reset agent zoom
+msgctxt "action"
+msgid "agent::ResetAgentZoom"
+msgstr "代理: 重設面板縮放"
+
+#. agent: reset fast mode warnings
+msgctxt "action"
+msgid "agent::ResetFastModeWarnings"
+msgstr "代理: 重設快速模式警告"
+
+#. agent: reset onboarding
+msgctxt "action"
+msgid "agent::ResetOnboarding"
+msgstr "代理: 重設新手導覽"
+
+#. agent: reset trial end upsell
+msgctxt "action"
+msgid "agent::ResetTrialEndUpsell"
+msgstr "代理: 重設試用結束通知"
+
+#. agent: reset trial upsell
+msgctxt "action"
+msgid "agent::ResetTrialUpsell"
+msgstr "代理: 重設試用通知"
+
+#. agent: resolve conflicted files with agent
+msgctxt "action"
+msgid "agent::ResolveConflictedFilesWithAgent"
+msgstr "代理: 以代理解決衝突的檔案"
+
+#. agent: resolve conflicts with agent
+msgctxt "action"
+msgid "agent::ResolveConflictsWithAgent"
+msgstr "代理: 以代理解決衝突"
+
+#. agent: review branch diff
+msgctxt "action"
+msgid "agent::ReviewBranchDiff"
+msgstr "代理: 檢閱分支差異"
+
+#. agent: revoke outside sandbox consents
+msgctxt "action"
+msgid "agent::RevokeOutsideSandboxConsents"
+msgstr "代理: 撤回在沙箱外啟動的同意"
+
+#. agent: scroll output line down
+msgctxt "action"
+msgid "agent::ScrollOutputLineDown"
+msgstr "代理: 將輸出向下捲動一行"
+
+#. agent: scroll output line up
+msgctxt "action"
+msgid "agent::ScrollOutputLineUp"
+msgstr "代理: 將輸出向上捲動一行"
+
+#. agent: scroll output page down
+msgctxt "action"
+msgid "agent::ScrollOutputPageDown"
+msgstr "代理: 將輸出向下捲動一頁"
+
+#. agent: scroll output page up
+msgctxt "action"
+msgid "agent::ScrollOutputPageUp"
+msgstr "代理: 將輸出向上捲動一頁"
+
+#. agent: scroll output to bottom
+msgctxt "action"
+msgid "agent::ScrollOutputToBottom"
+msgstr "代理: 捲動至輸出底部"
+
+#. agent: scroll output to next message
+msgctxt "action"
+msgid "agent::ScrollOutputToNextMessage"
+msgstr "代理: 捲動至下一則使用者訊息"
+
+#. agent: scroll output to previous message
+msgctxt "action"
+msgid "agent::ScrollOutputToPreviousMessage"
+msgstr "代理: 捲動至上一則使用者訊息"
+
+#. agent: scroll output to top
+msgctxt "action"
+msgid "agent::ScrollOutputToTop"
+msgstr "代理: 捲動至輸出頂端"
+
+#. agent: select agent
+msgctxt "action"
+msgid "agent::SelectAgent"
+msgstr "代理: 選取代理"
+
+#. agent: select next thread match
+msgctxt "action"
+msgid "agent::SelectNextThreadMatch"
+msgstr "代理: 會話中的下一個符合項目"
+
+#. agent: select permission granularity
+msgctxt "action"
+msgid "agent::SelectPermissionGranularity"
+msgstr "代理: 選取權限範圍"
+
+#. agent: select previous thread match
+msgctxt "action"
+msgid "agent::SelectPreviousThreadMatch"
+msgstr "代理: 會話中的上一個符合項目"
+
+#. agent: send immediately
+msgctxt "action"
+msgid "agent::SendImmediately"
+msgstr "代理: 中斷產生並立即傳送"
+
+#. agent: send next queued message
+msgctxt "action"
+msgid "agent::SendNextQueuedMessage"
+msgstr "代理: 立即傳送佇列中的下一則訊息"
+
+#. agent: set up language model provider
+msgctxt "action"
+msgid "agent::SetUpLanguageModelProvider"
+msgstr "代理: 設定語言模型提供者"
+
+#. agent: toggle
+msgctxt "action"
+msgid "agent::Toggle"
+msgstr "代理: 切換面板"
+
+#. agent: toggle auto approve tool actions
+msgctxt "action"
+msgid "agent::ToggleAutoApproveToolActions"
+msgstr "代理: 切換工具動作的自動核准"
+
+#. agent: toggle command pattern
+msgctxt "action"
+msgid "agent::ToggleCommandPattern"
+msgstr "代理: 切換命令模式的選取"
+
+#. agent: toggle fast mode
+msgctxt "action"
+msgid "agent::ToggleFastMode"
+msgstr "代理: 切換快速模式"
+
+#. agent: toggle focus
+msgctxt "action"
+msgid "agent::ToggleFocus"
+msgstr "代理: 切換面板焦點"
+
+#. agent: toggle model selector
+msgctxt "action"
+msgid "agent::ToggleModelSelector"
+msgstr "代理: 選取模型"
+
+#. agent: toggle new thread menu
+msgctxt "action"
+msgid "agent::ToggleNewThreadMenu"
+msgstr "代理: 開啟新增會話選單"
+
+#. agent: toggle options menu
+msgctxt "action"
+msgid "agent::ToggleOptionsMenu"
+msgstr "代理: 選項選單"
+
+#. agent: toggle panel tab bar
+msgctxt "action"
+msgid "agent::TogglePanelTabBar"
+msgstr "代理: 切換面板分頁列"
+
+#. agent: toggle panel thread history
+msgctxt "action"
+msgid "agent::TogglePanelThreadHistory"
+msgstr "代理: 切換面板中的會話歷程"
+
+#. agent: toggle profile selector
+msgctxt "action"
+msgid "agent::ToggleProfileSelector"
+msgstr "代理: 選取設定檔"
+
+#. agent: toggle search
+msgctxt "action"
+msgid "agent::ToggleSearch"
+msgstr "代理: 搜尋會話"
+
+#. agent: toggle steer first queued message
+msgctxt "action"
+msgid "agent::ToggleSteerFirstQueuedMessage"
+msgstr "代理: 切換佇列中第一則訊息的引導"
+
+#. agent: toggle thinking effort menu
+msgctxt "action"
+msgid "agent::ToggleThinkingEffortMenu"
+msgstr "代理: 開啟思考深度選單"
+
+#. agent: toggle thinking mode
+msgctxt "action"
+msgid "agent::ToggleThinkingMode"
+msgstr "代理: 切換思考模式"
+
+#. agent: toggle tool permission selector
+msgctxt "action"
+msgid "agent::ToggleToolPermissionSelector"
+msgstr "代理: 開啟工具權限選擇器"
+
+#. agent: undo last reject
+msgctxt "action"
+msgid "agent::UndoLastReject"
+msgstr "代理: 復原上次拒絕"
+
+#. agents sidebar: focus sidebar filter
+msgctxt "action"
+msgid "agents_sidebar::FocusSidebarFilter"
+msgstr "會話側邊欄: 聚焦於篩選欄位"
+
+#. agents sidebar: new thread in group
+msgctxt "action"
+msgid "agents_sidebar::NewThreadInGroup"
+msgstr "會話側邊欄: 在此專案中新增會話"
+
+#. agents sidebar: toggle thread history
+msgctxt "action"
+msgid "agents_sidebar::ToggleThreadHistory"
+msgstr "會話側邊欄: 切換會話清單與歷程記錄"
+
+#. agents sidebar: toggle thread switcher
+msgctxt "action"
+msgid "agents_sidebar::ToggleThreadSwitcher"
+msgstr "會話側邊欄: 開啟會話切換器"
+
+#. ai browser panel: toggle
+msgctxt "action"
+msgid "ai_browser_panel::Toggle"
+msgstr "AI 瀏覽器: 切換面板"
+
+#. ai browser panel: toggle focus
+msgctxt "action"
+msgid "ai_browser_panel::ToggleFocus"
+msgstr "AI 瀏覽器: 切換面板焦點"
+
+#. app menu: activate menu left
+msgctxt "action"
+msgid "app_menu::ActivateMenuLeft"
+msgstr "應用程式選單: 移至左側選單"
+
+#. app menu: activate menu right
+msgctxt "action"
+msgid "app_menu::ActivateMenuRight"
+msgstr "應用程式選單: 移至右側選單"
+
+#. app menu: open application menu
+msgctxt "action"
+msgid "app_menu::OpenApplicationMenu"
+msgstr "應用程式選單: 開啟選單"
+
+#. assistant: inline assist
+msgctxt "action"
+msgid "assistant::InlineAssist"
+msgstr "代理: 內嵌輔助"
+
+#. auto update: check
+msgctxt "action"
+msgid "auto_update::Check"
+msgstr "檢查更新"
+
+#. auto update: dismiss message
+msgctxt "action"
+msgid "auto_update::DismissMessage"
+msgstr "關閉更新錯誤訊息"
+
+#. auto update: view release notes
+msgctxt "action"
+msgid "auto_update::ViewReleaseNotes"
+msgstr "檢視版本資訊"
+
+#. auto update: view release notes locally
+msgctxt "action"
+msgid "auto_update::ViewReleaseNotesLocally"
+msgstr "在編輯器中檢視版本資訊"
+
+#. bedrock: tab
+msgctxt "action"
+msgid "bedrock::Tab"
+msgstr "Bedrock: 下一個欄位"
+
+#. bedrock: tab prev
+msgctxt "action"
+msgid "bedrock::TabPrev"
+msgstr "Bedrock: 上一個欄位"
+
+#. branch picker: cycle branch filter
+msgctxt "action"
+msgid "branch_picker::CycleBranchFilter"
+msgstr "Git: 循環切換分支篩選"
+
+#. branch picker: delete branch
+msgctxt "action"
+msgid "branch_picker::DeleteBranch"
+msgstr "Git: 刪除分支"
+
+#. branch picker: force delete branch
+msgctxt "action"
+msgid "branch_picker::ForceDeleteBranch"
+msgstr "Git: 強制刪除分支"
+
+#. branch picker: show all branches
+msgctxt "action"
+msgid "branch_picker::ShowAllBranches"
+msgstr "Git: 顯示所有分支"
+
+#. branch picker: show local branches
+msgctxt "action"
+msgid "branch_picker::ShowLocalBranches"
+msgstr "Git: 只顯示本機分支"
+
+#. branch picker: show remote branches
+msgctxt "action"
+msgid "branch_picker::ShowRemoteBranches"
+msgstr "Git: 只顯示遠端分支"
+
+#. branch picker: toggle filter menu
+msgctxt "action"
+msgid "branch_picker::ToggleFilterMenu"
+msgstr "Git: 開啟分支篩選選單"
+
+#. browser panel: add bookmark
+msgctxt "action"
+msgid "browser_panel::AddBookmark"
+msgstr "瀏覽器: 加入書籤"
+
+#. browser panel: ask copilot
+msgctxt "action"
+msgid "browser_panel::AskCopilot"
+msgstr "瀏覽器: 向 Copilot 詢問選取的文字"
+
+#. browser panel: close panel tab
+msgctxt "action"
+msgid "browser_panel::ClosePanelTab"
+msgstr "瀏覽器: 關閉面板分頁"
+
+#. browser panel: focus address bar
+msgctxt "action"
+msgid "browser_panel::FocusAddressBar"
+msgstr "瀏覽器: 聚焦於網址列"
+
+#. browser panel: focus next pane group
+msgctxt "action"
+msgid "browser_panel::FocusNextPaneGroup"
+msgstr "瀏覽器: 聚焦於下一個窗格"
+
+#. browser panel: go home
+msgctxt "action"
+msgid "browser_panel::GoHome"
+msgstr "瀏覽器: 開啟首頁"
+
+#. browser panel: navigate back
+msgctxt "action"
+msgid "browser_panel::NavigateBack"
+msgstr "瀏覽器: 上一頁"
+
+#. browser panel: navigate forward
+msgctxt "action"
+msgid "browser_panel::NavigateForward"
+msgstr "瀏覽器: 下一頁"
+
+#. browser panel: new ai tab
+msgctxt "action"
+msgid "browser_panel::NewAiTab"
+msgstr "瀏覽器: 開啟新的 AI 分頁"
+
+#. browser panel: new browser tab
+msgctxt "action"
+msgid "browser_panel::NewBrowserTab"
+msgstr "瀏覽器: 新增分頁"
+
+#. browser panel: new panel tab
+msgctxt "action"
+msgid "browser_panel::NewPanelTab"
+msgstr "瀏覽器: 在面板中新增分頁"
+
+#. browser panel: open developer tools
+msgctxt "action"
+msgid "browser_panel::OpenDeveloperTools"
+msgstr "瀏覽器: 開啟開發人員工具"
+
+#. browser panel: open in center
+msgctxt "action"
+msgid "browser_panel::OpenInCenter"
+msgstr "瀏覽器: 移至編輯器區域"
+
+#. browser panel: open in external browser
+msgctxt "action"
+msgid "browser_panel::OpenInExternalBrowser"
+msgstr "瀏覽器: 在外部瀏覽器中開啟"
+
+#. browser panel: reload
+msgctxt "action"
+msgid "browser_panel::Reload"
+msgstr "瀏覽器: 重新載入"
+
+#. browser panel: resume ai control
+msgctxt "action"
+msgid "browser_panel::ResumeAiControl"
+msgstr "瀏覽器: 繼續 AI 操作"
+
+#. browser panel: search selection
+msgctxt "action"
+msgid "browser_panel::SearchSelection"
+msgstr "瀏覽器: 在網路上搜尋選取的文字"
+
+#. browser panel: set as home page
+msgctxt "action"
+msgid "browser_panel::SetAsHomePage"
+msgstr "瀏覽器: 將此頁面設為啟動時開啟的頁面"
+
+#. browser panel: split panel right
+msgctxt "action"
+msgid "browser_panel::SplitPanelRight"
+msgstr "瀏覽器: 向右分割面板"
+
+#. browser panel: stop ai control
+msgctxt "action"
+msgid "browser_panel::StopAiControl"
+msgstr "瀏覽器: 停止 AI 操作"
+
+#. browser panel: submit address
+msgctxt "action"
+msgid "browser_panel::SubmitAddress"
+msgstr "瀏覽器: 開啟輸入的 URL"
+
+#. browser panel: toggle
+msgctxt "action"
+msgid "browser_panel::Toggle"
+msgstr "瀏覽器: 切換面板"
+
+#. browser panel: toggle bookmarks
+msgctxt "action"
+msgid "browser_panel::ToggleBookmarks"
+msgstr "瀏覽器: 切換書籤清單"
+
+#. browser panel: toggle focus
+msgctxt "action"
+msgid "browser_panel::ToggleFocus"
+msgstr "瀏覽器: 切換面板焦點"
+
+#. buffer search: deploy
+msgctxt "action"
+msgid "buffer_search::Deploy"
+msgstr "搜尋: 在檔案中搜尋"
+
+#. buffer search: deploy replace
+msgctxt "action"
+msgid "buffer_search::DeployReplace"
+msgstr "搜尋: 在檔案中取代"
+
+#. buffer search: dismiss
+msgctxt "action"
+msgid "buffer_search::Dismiss"
+msgstr "搜尋: 關閉搜尋列"
+
+#. buffer search: focus editor
+msgctxt "action"
+msgid "buffer_search::FocusEditor"
+msgstr "搜尋: 聚焦於編輯器"
+
+#. buffer search: use selection for find
+msgctxt "action"
+msgid "buffer_search::UseSelectionForFind"
+msgstr "搜尋: 使用選取範圍作為搜尋字詞"
+
+#. call graph panel: collapse all
+msgctxt "action"
+msgid "call_graph_panel::CollapseAll"
+msgstr "呼叫圖面板: 全部摺疊"
+
+#. call graph panel: collapse selected
+msgctxt "action"
+msgid "call_graph_panel::CollapseSelected"
+msgstr "呼叫圖面板: 摺疊選取的項目"
+
+#. call graph panel: copy symbol name
+msgctxt "action"
+msgid "call_graph_panel::CopySymbolName"
+msgstr "呼叫圖面板: 複製函式名稱"
+
+#. call graph panel: expand selected
+msgctxt "action"
+msgid "call_graph_panel::ExpandSelected"
+msgstr "呼叫圖面板: 展開選取的項目"
+
+#. call graph panel: inspect cursor
+msgctxt "action"
+msgid "call_graph_panel::InspectCursor"
+msgstr "呼叫圖面板: 檢查游標所在的函式"
+
+#. call graph panel: next root
+msgctxt "action"
+msgid "call_graph_panel::NextRoot"
+msgstr "呼叫圖面板: 下一個根節點"
+
+#. call graph panel: open selected
+msgctxt "action"
+msgid "call_graph_panel::OpenSelected"
+msgstr "呼叫圖面板: 開啟選取的項目"
+
+#. call graph panel: preview selected
+msgctxt "action"
+msgid "call_graph_panel::PreviewSelected"
+msgstr "呼叫圖面板: 預覽選取的項目"
+
+#. call graph panel: previous root
+msgctxt "action"
+msgid "call_graph_panel::PreviousRoot"
+msgstr "呼叫圖面板: 上一個根節點"
+
+#. call graph panel: refresh
+msgctxt "action"
+msgid "call_graph_panel::Refresh"
+msgstr "呼叫圖面板: 重新整理"
+
+#. call graph panel: show callees
+msgctxt "action"
+msgid "call_graph_panel::ShowCallees"
+msgstr "呼叫圖面板: 顯示被呼叫端"
+
+#. call graph panel: show callers
+msgctxt "action"
+msgid "call_graph_panel::ShowCallers"
+msgstr "呼叫圖面板: 顯示呼叫端"
+
+#. call graph panel: toggle
+msgctxt "action"
+msgid "call_graph_panel::Toggle"
+msgstr "呼叫圖面板: 切換"
+
+#. call graph panel: toggle direction
+msgctxt "action"
+msgid "call_graph_panel::ToggleDirection"
+msgstr "呼叫圖面板: 切換呼叫端與被呼叫端"
+
+#. call graph panel: toggle focus
+msgctxt "action"
+msgid "call_graph_panel::ToggleFocus"
+msgstr "呼叫圖面板: 切換焦點"
+
+#. call graph panel: toggle follow cursor
+msgctxt "action"
+msgid "call_graph_panel::ToggleFollowCursor"
+msgstr "呼叫圖面板: 切換跟隨游標"
+
+#. call hierarchy: show incoming calls
+msgctxt "action"
+msgid "call_hierarchy::ShowIncomingCalls"
+msgstr "呼叫階層: 顯示來電呼叫"
+
+#. call hierarchy: show outgoing calls
+msgctxt "action"
+msgid "call_hierarchy::ShowOutgoingCalls"
+msgstr "呼叫階層: 顯示撥出呼叫"
+
+#. call hierarchy: toggle direction
+msgctxt "action"
+msgid "call_hierarchy::ToggleDirection"
+msgstr "呼叫階層: 切換方向"
+
+#. channel modal: remove member
+msgctxt "action"
+msgid "channel_modal::RemoveMember"
+msgstr "頻道: 移除成員"
+
+#. channel modal: select next control
+msgctxt "action"
+msgid "channel_modal::SelectNextControl"
+msgstr "頻道: 選取下一個控制項"
+
+#. channel modal: toggle member admin
+msgctxt "action"
+msgid "channel_modal::ToggleMemberAdmin"
+msgstr "頻道: 切換成員的管理員權限"
+
+#. channel modal: toggle mode
+msgctxt "action"
+msgid "channel_modal::ToggleMode"
+msgstr "頻道: 切換邀請與成員管理"
+
+#. cli: install cli binary
+msgctxt "action"
+msgid "cli::InstallCliBinary"
+msgstr "安裝 CLI"
+
+#. cli: register zed scheme
+msgctxt "action"
+msgid "cli::RegisterZedScheme"
+msgstr "註冊此應用程式的 URL 配置"
+
+#. client: reconnect
+msgctxt "action"
+msgid "client::Reconnect"
+msgstr "共同作業: 重新連線至伺服器"
+
+#. client: sign in
+msgctxt "action"
+msgid "client::SignIn"
+msgstr "登入 Zed 帳戶"
+
+#. client: sign out
+msgctxt "action"
+msgid "client::SignOut"
+msgstr "登出 Zed 帳戶"
+
+#. collab: copy room id
+msgctxt "action"
+msgid "collab::CopyRoomId"
+msgstr "共同作業: 複製會議室 ID"
+
+#. collab: deafen
+msgctxt "action"
+msgid "collab::Deafen"
+msgstr "共同作業: 將麥克風與喇叭靜音"
+
+#. collab: leave call
+msgctxt "action"
+msgid "collab::LeaveCall"
+msgstr "共同作業: 離開通話"
+
+#. collab: mute
+msgctxt "action"
+msgid "collab::Mute"
+msgstr "共同作業: 將麥克風靜音"
+
+#. collab: open channel notes
+msgctxt "action"
+msgid "collab::OpenChannelNotes"
+msgstr "共同作業: 開啟頻道筆記"
+
+#. collab: open channel notes by id
+msgctxt "action"
+msgid "collab::OpenChannelNotesById"
+msgstr "共同作業: 依 ID 開啟頻道筆記"
+
+#. collab: screen share
+msgctxt "action"
+msgid "collab::ScreenShare"
+msgstr "共同作業: 分享螢幕"
+
+#. collab: share project
+msgctxt "action"
+msgid "collab::ShareProject"
+msgstr "共同作業: 分享專案"
+
+#. collab: show call stats
+msgctxt "action"
+msgid "collab::ShowCallStats"
+msgstr "共同作業: 顯示通話統計資料"
+
+#. collab: simulate update available
+msgctxt "action"
+msgid "collab::SimulateUpdateAvailable"
+msgstr "開發人員: 模擬有可用的更新"
+
+#. collab: switch branch
+msgctxt "action"
+msgid "collab::SwitchBranch"
+msgstr "Git: 切換分支（標題列）"
+
+#. collab: toggle project menu
+msgctxt "action"
+msgid "collab::ToggleProjectMenu"
+msgstr "標題列: 開啟專案選單"
+
+#. collab: toggle user menu
+msgctxt "action"
+msgid "collab::ToggleUserMenu"
+msgstr "標題列: 開啟使用者選單"
+
+#. collab panel: collapse selected channel
+msgctxt "action"
+msgid "collab_panel::CollapseSelectedChannel"
+msgstr "共同作業面板: 摺疊頻道"
+
+#. collab panel: expand selected channel
+msgctxt "action"
+msgid "collab_panel::ExpandSelectedChannel"
+msgstr "共同作業面板: 展開頻道"
+
+#. collab panel: insert space
+msgctxt "action"
+msgid "collab_panel::InsertSpace"
+msgstr "共同作業面板: 插入空格"
+
+#. collab panel: move channel down
+msgctxt "action"
+msgid "collab_panel::MoveChannelDown"
+msgstr "共同作業面板: 將頻道下移"
+
+#. collab panel: move channel up
+msgctxt "action"
+msgid "collab_panel::MoveChannelUp"
+msgstr "共同作業面板: 將頻道上移"
+
+#. collab panel: move selected
+msgctxt "action"
+msgid "collab_panel::MoveSelected"
+msgstr "共同作業面板: 將選取的項目移至此處"
+
+#. collab panel: open selected channel notes
+msgctxt "action"
+msgid "collab_panel::OpenSelectedChannelNotes"
+msgstr "共同作業面板: 開啟頻道筆記"
+
+#. collab panel: remove
+msgctxt "action"
+msgid "collab_panel::Remove"
+msgstr "共同作業面板: 移除"
+
+#. collab panel: secondary
+msgctxt "action"
+msgid "collab_panel::Secondary"
+msgstr "共同作業面板: 開啟內容功能表"
+
+#. collab panel: start move channel
+msgctxt "action"
+msgid "collab_panel::StartMoveChannel"
+msgstr "共同作業面板: 開始移動頻道"
+
+#. collab panel: toggle
+msgctxt "action"
+msgid "collab_panel::Toggle"
+msgstr "共同作業面板: 切換"
+
+#. collab panel: toggle focus
+msgctxt "action"
+msgid "collab_panel::ToggleFocus"
+msgstr "共同作業面板: 切換焦點"
+
+#. collab panel: toggle selected channel favorite
+msgctxt "action"
+msgid "collab_panel::ToggleSelectedChannelFavorite"
+msgstr "共同作業面板: 切換頻道的最愛"
+
+#. command palette: remove selected
+msgctxt "action"
+msgid "command_palette::RemoveSelected"
+msgstr "命令選擇區: 從歷程記錄中移除選取的項目"
+
+#. command palette: toggle
+msgctxt "action"
+msgid "command_palette::Toggle"
+msgstr "命令選擇區"
+
+#. console: watch expression
+msgctxt "action"
+msgid "console::WatchExpression"
+msgstr "偵錯: 將運算式加入監看"
+
+#. context server: restart
+msgctxt "action"
+msgid "context_server::Restart"
+msgstr "重新啟動 MCP 伺服器"
+
+#. copilot edit predictions: reinstall
+msgctxt "action"
+msgid "copilot_edit_predictions::Reinstall"
+msgstr "Copilot: 重新安裝編輯預測語言伺服器"
+
+#. debug panel: toggle
+msgctxt "action"
+msgid "debug_panel::Toggle"
+msgstr "偵錯: 切換面板"
+
+#. debug panel: toggle focus
+msgctxt "action"
+msgid "debug_panel::ToggleFocus"
+msgstr "偵錯: 切換面板焦點"
+
+#. debugger: clear all breakpoints
+msgctxt "action"
+msgid "debugger::ClearAllBreakpoints"
+msgstr "偵錯: 清除所有中斷點"
+
+#. debugger: continue
+msgctxt "action"
+msgid "debugger::Continue"
+msgstr "偵錯: 繼續"
+
+#. debugger: continue thread
+msgctxt "action"
+msgid "debugger::ContinueThread"
+msgstr "偵錯: 繼續選取的執行緒"
+
+#. debugger: detach
+msgctxt "action"
+msgid "debugger::Detach"
+msgstr "偵錯: 中斷附加"
+
+#. debugger: evaluate selected text
+msgctxt "action"
+msgid "debugger::EvaluateSelectedText"
+msgstr "偵錯: 評估選取範圍"
+
+#. debugger: focus breakpoint list
+msgctxt "action"
+msgid "debugger::FocusBreakpointList"
+msgstr "偵錯: 聚焦於中斷點清單"
+
+#. debugger: focus console
+msgctxt "action"
+msgid "debugger::FocusConsole"
+msgstr "偵錯: 聚焦於主控台"
+
+#. debugger: focus frames
+msgctxt "action"
+msgid "debugger::FocusFrames"
+msgstr "偵錯: 聚焦於呼叫堆疊"
+
+#. debugger: focus loaded sources
+msgctxt "action"
+msgid "debugger::FocusLoadedSources"
+msgstr "偵錯: 聚焦於已載入的來源"
+
+#. debugger: focus modules
+msgctxt "action"
+msgid "debugger::FocusModules"
+msgstr "偵錯: 聚焦於模組"
+
+#. debugger: focus terminal
+msgctxt "action"
+msgid "debugger::FocusTerminal"
+msgstr "偵錯: 聚焦於終端機"
+
+#. debugger: focus variables
+msgctxt "action"
+msgid "debugger::FocusVariables"
+msgstr "偵錯: 聚焦於變數"
+
+#. debugger: go to selected address
+msgctxt "action"
+msgid "debugger::GoToSelectedAddress"
+msgstr "偵錯: 前往選取的位址"
+
+#. debugger: next breakpoint property
+msgctxt "action"
+msgid "debugger::NextBreakpointProperty"
+msgstr "偵錯: 下一個中斷點屬性"
+
+#. debugger: open project debug tasks
+msgctxt "action"
+msgid "debugger::OpenProjectDebugTasks"
+msgstr "偵錯: 開啟專案的偵錯工作"
+
+#. debugger: pause
+msgctxt "action"
+msgid "debugger::Pause"
+msgstr "偵錯: 暫停"
+
+#. debugger: previous breakpoint property
+msgctxt "action"
+msgid "debugger::PreviousBreakpointProperty"
+msgstr "偵錯: 上一個中斷點屬性"
+
+#. debugger: rerun
+msgctxt "action"
+msgid "debugger::Rerun"
+msgstr "偵錯: 重新執行"
+
+#. debugger: rerun session
+msgctxt "action"
+msgid "debugger::RerunSession"
+msgstr "偵錯: 重新執行工作階段"
+
+#. debugger: restart
+msgctxt "action"
+msgid "debugger::Restart"
+msgstr "偵錯: 重新啟動"
+
+#. debugger: run to cursor
+msgctxt "action"
+msgid "debugger::RunToCursor"
+msgstr "偵錯: 執行至游標處"
+
+#. debugger: start
+msgctxt "action"
+msgid "debugger::Start"
+msgstr "偵錯: 開始"
+
+#. debugger: step back
+msgctxt "action"
+msgid "debugger::StepBack"
+msgstr "偵錯: 倒退"
+
+#. debugger: step into
+msgctxt "action"
+msgid "debugger::StepInto"
+msgstr "偵錯: 逐步執行"
+
+#. debugger: step out
+msgctxt "action"
+msgid "debugger::StepOut"
+msgstr "偵錯: 跳離函式"
+
+#. debugger: step over
+msgctxt "action"
+msgid "debugger::StepOver"
+msgstr "偵錯: 不進入函式"
+
+#. debugger: stop
+msgctxt "action"
+msgid "debugger::Stop"
+msgstr "偵錯: 停止"
+
+#. debugger: toggle data breakpoint
+msgctxt "action"
+msgid "debugger::ToggleDataBreakpoint"
+msgstr "偵錯: 切換資料中斷點"
+
+#. debugger: toggle enable breakpoint
+msgctxt "action"
+msgid "debugger::ToggleEnableBreakpoint"
+msgstr "偵錯: 切換中斷點的啟用/停用"
+
+#. debugger: toggle expand item
+msgctxt "action"
+msgid "debugger::ToggleExpandItem"
+msgstr "偵錯: 展開/摺疊項目"
+
+#. debugger: toggle ignore breakpoints
+msgctxt "action"
+msgid "debugger::ToggleIgnoreBreakpoints"
+msgstr "偵錯: 暫時略過中斷點"
+
+#. debugger: toggle session picker
+msgctxt "action"
+msgid "debugger::ToggleSessionPicker"
+msgstr "偵錯: 選取工作階段"
+
+#. debugger: toggle thread picker
+msgctxt "action"
+msgid "debugger::ToggleThreadPicker"
+msgstr "偵錯: 選取執行緒"
+
+#. debugger: toggle user frames
+msgctxt "action"
+msgid "debugger::ToggleUserFrames"
+msgstr "偵錯: 僅顯示使用者程式碼的框架"
+
+#. debugger: unset breakpoint
+msgctxt "action"
+msgid "debugger::UnsetBreakpoint"
+msgstr "偵錯: 移除中斷點"
+
+#. dev: copy accessibility tree
+msgctxt "action"
+msgid "dev::CopyAccessibilityTree"
+msgstr "開發人員: 複製協助工具樹狀結構"
+
+#. dev: copy debug adapter arguments
+msgctxt "action"
+msgid "dev::CopyDebugAdapterArguments"
+msgstr "開發人員: 複製偵錯介面卡引數"
+
+#. dev: debug filesystem watching
+msgctxt "action"
+msgid "dev::DebugFilesystemWatching"
+msgstr "開發人員: 偵錯檔案系統監看"
+
+#. dev: dump accessibility tree
+msgctxt "action"
+msgid "dev::DumpAccessibilityTree"
+msgstr "開發人員: 顯示協助工具樹狀結構"
+
+#. dev: dump input latency histogram
+msgctxt "action"
+msgid "dev::DumpInputLatencyHistogram"
+msgstr "開發人員: 顯示輸入延遲長條圖"
+
+#. dev: dump workspace info
+msgctxt "action"
+msgid "dev::DumpWorkspaceInfo"
+msgstr "開發人員: 顯示工作區資訊"
+
+#. dev: edit prediction context go back
+msgctxt "action"
+msgid "dev::EditPredictionContextGoBack"
+msgstr "開發人員: 編輯預測上下文返回"
+
+#. dev: edit prediction context go forward
+msgctxt "action"
+msgid "dev::EditPredictionContextGoForward"
+msgstr "開發人員: 編輯預測上下文前進"
+
+#. dev: hang action
+msgctxt "action"
+msgid "dev::HangAction"
+msgstr "開發人員: 引發停止回應（動作）"
+
+#. dev: hang background
+msgctxt "action"
+msgid "dev::HangBackground"
+msgstr "開發人員: 引發停止回應（背景）"
+
+#. dev: hang foreground
+msgctxt "action"
+msgid "dev::HangForeground"
+msgstr "開發人員: 引發停止回應（前景）"
+
+#. dev: open acp logs
+msgctxt "action"
+msgid "dev::OpenAcpLogs"
+msgstr "開發人員: 開啟 ACP 記錄"
+
+#. dev: open debug adapter logs
+msgctxt "action"
+msgid "dev::OpenDebugAdapterLogs"
+msgstr "開發人員: 開啟偵錯介面卡記錄"
+
+#. dev: open edit prediction context view
+msgctxt "action"
+msgid "dev::OpenEditPredictionContextView"
+msgstr "開發人員: 顯示編輯預測上下文"
+
+#. dev: open highlights tree view
+msgctxt "action"
+msgid "dev::OpenHighlightsTreeView"
+msgstr "開發人員: 開啟醒目提示樹狀檢視"
+
+#. dev: open key context view
+msgctxt "action"
+msgid "dev::OpenKeyContextView"
+msgstr "開發人員: 顯示按鍵內容"
+
+#. dev: open language server logs
+msgctxt "action"
+msgid "dev::OpenLanguageServerLogs"
+msgstr "開發人員: 開啟語言伺服器記錄"
+
+#. dev: open syntax tree view
+msgctxt "action"
+msgid "dev::OpenSyntaxTreeView"
+msgstr "開發人員: 開啟語法樹"
+
+#. dev: open theme preview
+msgctxt "action"
+msgid "dev::OpenThemePreview"
+msgstr "開發人員: 開啟佈景主題預覽"
+
+#. dev: open url prompt
+msgctxt "action"
+msgid "dev::OpenUrlPrompt"
+msgstr "開發人員: 輸入 URL 並開啟"
+
+#. dev: reset frame overlay stats
+msgctxt "action"
+msgid "dev::ResetFrameOverlayStats"
+msgstr "開發人員: 重設畫面時間統計資料"
+
+#. dev: show all sidebar thread metadata
+msgctxt "action"
+msgid "dev::ShowAllSidebarThreadMetadata"
+msgstr "開發人員: 顯示側邊欄所有會話的中繼資料"
+
+#. dev: show git job queue
+msgctxt "action"
+msgid "dev::ShowGitJobQueue"
+msgstr "開發人員: 顯示 Git 工作佇列"
+
+#. dev: show thread metadata
+msgctxt "action"
+msgid "dev::ShowThreadMetadata"
+msgstr "開發人員: 顯示會話中繼資料"
+
+#. dev: show workspace error
+msgctxt "action"
+msgid "dev::ShowWorkspaceError"
+msgstr "開發人員: 顯示工作區錯誤"
+
+#. dev: toggle fps overlay
+msgctxt "action"
+msgid "dev::ToggleFpsOverlay"
+msgstr "開發人員: 切換畫面時間顯示"
+
+#. dev: toggle inspector
+msgctxt "action"
+msgid "dev::ToggleInspector"
+msgstr "開發人員: 切換 GPUI 檢查器"
+
+#. diagnostics: deploy
+msgctxt "action"
+msgid "diagnostics::Deploy"
+msgstr "問題: 開啟專案診斷"
+
+#. diagnostics: deploy current file
+msgctxt "action"
+msgid "diagnostics::DeployCurrentFile"
+msgstr "問題: 開啟此檔案的診斷"
+
+#. diagnostics: toggle diagnostics refresh
+msgctxt "action"
+msgid "diagnostics::ToggleDiagnosticsRefresh"
+msgstr "問題: 切換自動重新整理"
+
+#. diagnostics: toggle warnings
+msgctxt "action"
+msgid "diagnostics::ToggleWarnings"
+msgstr "問題: 切換警告顯示"
+
+#. edit prediction: clear history
+msgctxt "action"
+msgid "edit_prediction::ClearHistory"
+msgstr "編輯預測: 清除歷程記錄"
+
+#. edit prediction: rate predictions
+msgctxt "action"
+msgid "edit_prediction::RatePredictions"
+msgstr "編輯預測: 評分預測"
+
+#. edit prediction: reset onboarding
+msgctxt "action"
+msgid "edit_prediction::ResetOnboarding"
+msgstr "編輯預測: 重設新手導覽"
+
+#. edit prediction: toggle menu
+msgctxt "action"
+msgid "edit_prediction::ToggleMenu"
+msgstr "編輯預測: 顯示選單"
+
+#. editor: accept edit prediction
+msgctxt "action"
+msgid "editor::AcceptEditPrediction"
+msgstr "接受編輯預測"
+
+#. editor: accept next line edit prediction
+msgctxt "action"
+msgid "editor::AcceptNextLineEditPrediction"
+msgstr "編輯預測: 接受下一行"
+
+#. editor: accept next word edit prediction
+msgctxt "action"
+msgid "editor::AcceptNextWordEditPrediction"
+msgstr "編輯預測: 接受下一個字組"
+
+#. editor: accept partial copilot suggestion
+msgctxt "action"
+msgid "editor::AcceptPartialCopilotSuggestion"
+msgstr "編輯預測: 接受部分建議"
+
+#. editor: add selection above
+msgctxt "action"
+msgid "editor::AddSelectionAbove"
+msgstr "選取項目: 在上方新增游標"
+
+#. editor: add selection below
+msgctxt "action"
+msgid "editor::AddSelectionBelow"
+msgstr "選取項目: 在下方新增游標"
+
+#. editor: align selections
+msgctxt "action"
+msgid "editor::AlignSelections"
+msgstr "編輯: 對齊選取範圍"
+
+#. editor: apply all diff hunks
+msgctxt "action"
+msgid "editor::ApplyAllDiffHunks"
+msgstr "套用所有差異區塊"
+
+#. editor: apply diff hunk
+msgctxt "action"
+msgid "editor::ApplyDiffHunk"
+msgstr "套用差異區塊"
+
+#. editor: auto indent
+msgctxt "action"
+msgid "editor::AutoIndent"
+msgstr "編輯: 自動縮排"
+
+#. editor: backspace
+msgctxt "action"
+msgid "editor::Backspace"
+msgstr "編輯: 刪除前一個字元"
+
+#. editor: backtab
+msgctxt "action"
+msgid "editor::Backtab"
+msgstr "編輯: 減少一層縮排"
+
+#. editor: blame hover
+msgctxt "action"
+msgid "editor::BlameHover"
+msgstr "Git: 以暫留顯示 Blame"
+
+#. editor: blame previous revision
+msgctxt "action"
+msgid "editor::BlamePreviousRevision"
+msgstr "Git: Blame 上一個修訂"
+
+#. editor: blame revision
+msgctxt "action"
+msgid "editor::BlameRevision"
+msgstr "Git: Blame 此修訂"
+
+#. editor: cancel
+msgctxt "action"
+msgid "editor::Cancel"
+msgstr "取消"
+
+#. editor: cancel edit review comment
+msgctxt "action"
+msgid "editor::CancelEditReviewComment"
+msgstr "差異檢閱: 取消編輯留言"
+
+#. editor: cancel flycheck
+msgctxt "action"
+msgid "editor::CancelFlycheck"
+msgstr "中止 flycheck"
+
+#. editor: cancel language server work
+msgctxt "action"
+msgid "editor::CancelLanguageServerWork"
+msgstr "中止語言伺服器的處理"
+
+#. editor: clear flycheck
+msgctxt "action"
+msgid "editor::ClearFlycheck"
+msgstr "清除 flycheck 結果"
+
+#. editor: collapse all diff hunks
+msgctxt "action"
+msgid "editor::CollapseAllDiffHunks"
+msgstr "全部摺疊差異區塊"
+
+#. editor: compose completion
+msgctxt "action"
+msgid "editor::ComposeCompletion"
+msgstr "插入完成項目並繼續輸入"
+
+#. editor: confirm code action
+msgctxt "action"
+msgid "editor::ConfirmCodeAction"
+msgstr "確認程式碼動作"
+
+#. editor: confirm completion
+msgctxt "action"
+msgid "editor::ConfirmCompletion"
+msgstr "確認完成項目"
+
+#. editor: confirm completion insert
+msgctxt "action"
+msgid "editor::ConfirmCompletionInsert"
+msgstr "插入並確認完成項目"
+
+#. editor: confirm completion replace
+msgctxt "action"
+msgid "editor::ConfirmCompletionReplace"
+msgstr "取代並確認完成項目"
+
+#. editor: confirm edit review comment
+msgctxt "action"
+msgid "editor::ConfirmEditReviewComment"
+msgstr "差異檢閱: 確認編輯留言"
+
+#. editor: confirm rename
+msgctxt "action"
+msgid "editor::ConfirmRename"
+msgstr "確認重新命名符號"
+
+#. editor: context menu first
+msgctxt "action"
+msgid "editor::ContextMenuFirst"
+msgstr "選單: 選取第一個項目"
+
+#. editor: context menu last
+msgctxt "action"
+msgid "editor::ContextMenuLast"
+msgstr "選單: 選取最後一個項目"
+
+#. editor: context menu next
+msgctxt "action"
+msgid "editor::ContextMenuNext"
+msgstr "選單: 選取下一個項目"
+
+#. editor: context menu previous
+msgctxt "action"
+msgid "editor::ContextMenuPrevious"
+msgstr "選單: 選取上一個項目"
+
+#. editor: convert from base64
+msgctxt "action"
+msgid "editor::ConvertFromBase64"
+msgstr "編輯: 從 Base64 解碼"
+
+#. editor: convert indentation to spaces
+msgctxt "action"
+msgid "editor::ConvertIndentationToSpaces"
+msgstr "編輯: 將縮排轉換為空格"
+
+#. editor: convert indentation to tabs
+msgctxt "action"
+msgid "editor::ConvertIndentationToTabs"
+msgstr "編輯: 將縮排轉換為定位字元"
+
+#. editor: convert to base64
+msgctxt "action"
+msgid "editor::ConvertToBase64"
+msgstr "編輯: 編碼為 Base64"
+
+#. editor: convert to kebab case
+msgctxt "action"
+msgid "editor::ConvertToKebabCase"
+msgstr "編輯: 轉換為 kebab-case"
+
+#. editor: convert to lower camel case
+msgctxt "action"
+msgid "editor::ConvertToLowerCamelCase"
+msgstr "編輯: 轉換為 lowerCamelCase"
+
+#. editor: convert to lower case
+msgctxt "action"
+msgid "editor::ConvertToLowerCase"
+msgstr "編輯: 轉換為小寫"
+
+#. editor: convert to opposite case
+msgctxt "action"
+msgid "editor::ConvertToOppositeCase"
+msgstr "編輯: 反轉大小寫"
+
+#. editor: convert to rot13
+msgctxt "action"
+msgid "editor::ConvertToRot13"
+msgstr "編輯: 轉換為 ROT13"
+
+#. editor: convert to rot47
+msgctxt "action"
+msgid "editor::ConvertToRot47"
+msgstr "編輯: 轉換為 ROT47"
+
+#. editor: convert to sentence case
+msgctxt "action"
+msgid "editor::ConvertToSentenceCase"
+msgstr "編輯: 轉換為句首大寫"
+
+#. editor: convert to snake case
+msgctxt "action"
+msgid "editor::ConvertToSnakeCase"
+msgstr "編輯: 轉換為 snake_case"
+
+#. editor: convert to title case
+msgctxt "action"
+msgid "editor::ConvertToTitleCase"
+msgstr "編輯: 轉換為字首大寫"
+
+#. editor: convert to upper camel case
+msgctxt "action"
+msgid "editor::ConvertToUpperCamelCase"
+msgstr "編輯: 轉換為 UpperCamelCase"
+
+#. editor: convert to upper case
+msgctxt "action"
+msgid "editor::ConvertToUpperCase"
+msgstr "編輯: 轉換為大寫"
+
+#. editor: copy
+msgctxt "action"
+msgid "editor::Copy"
+msgstr "編輯: 複製"
+
+#. editor: copy and trim
+msgctxt "action"
+msgid "editor::CopyAndTrim"
+msgstr "編輯: 修剪空白後複製"
+
+#. editor: copy file location
+msgctxt "action"
+msgid "editor::CopyFileLocation"
+msgstr "複製檔案位置"
+
+#. editor: copy file name
+msgctxt "action"
+msgid "editor::CopyFileName"
+msgstr "複製檔案名稱"
+
+#. editor: copy file name without extension
+msgctxt "action"
+msgid "editor::CopyFileNameWithoutExtension"
+msgstr "複製不含副檔名的檔案名稱"
+
+#. editor: copy highlight json
+msgctxt "action"
+msgid "editor::CopyHighlightJson"
+msgstr "以 JSON 複製醒目提示資訊"
+
+#. editor: copy permalink to line
+msgctxt "action"
+msgid "editor::CopyPermalinkToLine"
+msgstr "複製此行的永久連結"
+
+#. editor: cut
+msgctxt "action"
+msgid "editor::Cut"
+msgstr "編輯: 剪下"
+
+#. editor: cut to end of line
+msgctxt "action"
+msgid "editor::CutToEndOfLine"
+msgstr "編輯: 剪下至行尾"
+
+#. editor: delete
+msgctxt "action"
+msgid "editor::Delete"
+msgstr "編輯: 刪除下一個字元"
+
+#. editor: delete line
+msgctxt "action"
+msgid "editor::DeleteLine"
+msgstr "編輯: 刪除行"
+
+#. editor: delete review comment
+msgctxt "action"
+msgid "editor::DeleteReviewComment"
+msgstr "差異檢閱: 刪除留言"
+
+#. editor: delete to beginning of line
+msgctxt "action"
+msgid "editor::DeleteToBeginningOfLine"
+msgstr "編輯: 刪除至行首"
+
+#. editor: delete to end of line
+msgctxt "action"
+msgid "editor::DeleteToEndOfLine"
+msgstr "編輯: 刪除至行尾"
+
+#. editor: delete to next subword end
+msgctxt "action"
+msgid "editor::DeleteToNextSubwordEnd"
+msgstr "編輯: 刪除至下一個子字組結尾"
+
+#. editor: delete to next word end
+msgctxt "action"
+msgid "editor::DeleteToNextWordEnd"
+msgstr "編輯: 刪除至下一個字組結尾"
+
+#. editor: delete to previous subword start
+msgctxt "action"
+msgid "editor::DeleteToPreviousSubwordStart"
+msgstr "編輯: 刪除至上一個子字組開頭"
+
+#. editor: delete to previous word start
+msgctxt "action"
+msgid "editor::DeleteToPreviousWordStart"
+msgstr "編輯: 刪除至上一個字組開頭"
+
+#. editor: diff clipboard with selection
+msgctxt "action"
+msgid "editor::DiffClipboardWithSelection"
+msgstr "編輯: 比較剪貼簿與選取範圍"
+
+#. editor: disable breakpoint
+msgctxt "action"
+msgid "editor::DisableBreakpoint"
+msgstr "偵錯: 停用中斷點"
+
+#. editor: display cursor names
+msgctxt "action"
+msgid "editor::DisplayCursorNames"
+msgstr "檢視: 顯示游標名稱"
+
+#. editor: duplicate line down
+msgctxt "action"
+msgid "editor::DuplicateLineDown"
+msgstr "編輯: 向下複製行"
+
+#. editor: duplicate line up
+msgctxt "action"
+msgid "editor::DuplicateLineUp"
+msgstr "編輯: 向上複製行"
+
+#. editor: duplicate selection
+msgctxt "action"
+msgid "editor::DuplicateSelection"
+msgstr "編輯: 複製選取範圍"
+
+#. editor: edit bookmark
+msgctxt "action"
+msgid "editor::EditBookmark"
+msgstr "編輯書籤"
+
+#. editor: edit log breakpoint
+msgctxt "action"
+msgid "editor::EditLogBreakpoint"
+msgstr "編輯記錄點"
+
+#. editor: edit review comment
+msgctxt "action"
+msgid "editor::EditReviewComment"
+msgstr "差異檢閱: 編輯留言"
+
+#. editor: enable breakpoint
+msgctxt "action"
+msgid "editor::EnableBreakpoint"
+msgstr "偵錯: 啟用中斷點"
+
+#. editor: expand all diff hunks
+msgctxt "action"
+msgid "editor::ExpandAllDiffHunks"
+msgstr "全部展開差異區塊"
+
+#. editor: expand excerpts
+msgctxt "action"
+msgid "editor::ExpandExcerpts"
+msgstr "展開摘錄"
+
+#. editor: expand excerpts down
+msgctxt "action"
+msgid "editor::ExpandExcerptsDown"
+msgstr "向下展開摘錄"
+
+#. editor: expand excerpts up
+msgctxt "action"
+msgid "editor::ExpandExcerptsUp"
+msgstr "向上展開摘錄"
+
+#. editor: expand macro recursively
+msgctxt "action"
+msgid "editor::ExpandMacroRecursively"
+msgstr "遞迴展開巨集"
+
+#. editor: find all references
+msgctxt "action"
+msgid "editor::FindAllReferences"
+msgstr "尋找所有參考"
+
+#. editor: find next match
+msgctxt "action"
+msgid "editor::FindNextMatch"
+msgstr "搜尋: 下一個符合項目"
+
+#. editor: find previous match
+msgctxt "action"
+msgid "editor::FindPreviousMatch"
+msgstr "搜尋: 上一個符合項目"
+
+#. editor: fold
+msgctxt "action"
+msgid "editor::Fold"
+msgstr "摺疊"
+
+#. editor: fold all
+msgctxt "action"
+msgid "editor::FoldAll"
+msgstr "全部摺疊"
+
+#. editor: fold at level
+msgctxt "action"
+msgid "editor::FoldAtLevel"
+msgstr "摺疊: 摺疊至指定層級"
+
+#. editor: fold at level 1
+msgctxt "action"
+msgid "editor::FoldAtLevel_1"
+msgstr "摺疊: 摺疊至層級 1"
+
+#. editor: fold at level 2
+msgctxt "action"
+msgid "editor::FoldAtLevel_2"
+msgstr "摺疊: 摺疊至層級 2"
+
+#. editor: fold at level 3
+msgctxt "action"
+msgid "editor::FoldAtLevel_3"
+msgstr "摺疊: 摺疊至層級 3"
+
+#. editor: fold at level 4
+msgctxt "action"
+msgid "editor::FoldAtLevel_4"
+msgstr "摺疊: 摺疊至層級 4"
+
+#. editor: fold at level 5
+msgctxt "action"
+msgid "editor::FoldAtLevel_5"
+msgstr "摺疊: 摺疊至層級 5"
+
+#. editor: fold at level 6
+msgctxt "action"
+msgid "editor::FoldAtLevel_6"
+msgstr "摺疊: 摺疊至層級 6"
+
+#. editor: fold at level 7
+msgctxt "action"
+msgid "editor::FoldAtLevel_7"
+msgstr "摺疊: 摺疊至層級 7"
+
+#. editor: fold at level 8
+msgctxt "action"
+msgid "editor::FoldAtLevel_8"
+msgstr "摺疊: 摺疊至層級 8"
+
+#. editor: fold at level 9
+msgctxt "action"
+msgid "editor::FoldAtLevel_9"
+msgstr "摺疊: 摺疊至層級 9"
+
+#. editor: fold function bodies
+msgctxt "action"
+msgid "editor::FoldFunctionBodies"
+msgstr "摺疊函式主體"
+
+#. editor: fold recursive
+msgctxt "action"
+msgid "editor::FoldRecursive"
+msgstr "遞迴摺疊"
+
+#. editor: fold selected ranges
+msgctxt "action"
+msgid "editor::FoldSelectedRanges"
+msgstr "摺疊選取範圍"
+
+#. editor: format
+msgctxt "action"
+msgid "editor::Format"
+msgstr "格式化: 格式化文件"
+
+#. editor: format selections
+msgctxt "action"
+msgid "editor::FormatSelections"
+msgstr "格式化: 格式化選取範圍"
+
+#. editor: go to declaration
+msgctxt "action"
+msgid "editor::GoToDeclaration"
+msgstr "前往宣告"
+
+#. editor: go to declaration split
+msgctxt "action"
+msgid "editor::GoToDeclarationSplit"
+msgstr "前往宣告（分割開啟）"
+
+#. editor: go to definition
+msgctxt "action"
+msgid "editor::GoToDefinition"
+msgstr "前往定義"
+
+#. editor: go to definition split
+msgctxt "action"
+msgid "editor::GoToDefinitionSplit"
+msgstr "前往定義（分割開啟）"
+
+#. editor: go to diagnostic
+msgctxt "action"
+msgid "editor::GoToDiagnostic"
+msgstr "移至: 下一個問題"
+
+#. editor: go to hunk
+msgctxt "action"
+msgid "editor::GoToHunk"
+msgstr "移至: 下一個變更區塊"
+
+#. editor: go to implementation
+msgctxt "action"
+msgid "editor::GoToImplementation"
+msgstr "前往實作"
+
+#. editor: go to implementation split
+msgctxt "action"
+msgid "editor::GoToImplementationSplit"
+msgstr "前往實作（分割開啟）"
+
+#. editor: go to next bookmark
+msgctxt "action"
+msgid "editor::GoToNextBookmark"
+msgstr "書籤: 下一個書籤"
+
+#. editor: go to next change
+msgctxt "action"
+msgid "editor::GoToNextChange"
+msgstr "移至: 下一個變更"
+
+#. editor: go to next document highlight
+msgctxt "action"
+msgid "editor::GoToNextDocumentHighlight"
+msgstr "移至: 下一個符號出現位置"
+
+#. editor: go to next reference
+msgctxt "action"
+msgid "editor::GoToNextReference"
+msgstr "移至: 下一個參考"
+
+#. editor: go to next symbol
+msgctxt "action"
+msgid "editor::GoToNextSymbol"
+msgstr "移至: 下一個符號"
+
+#. editor: go to parent module
+msgctxt "action"
+msgid "editor::GoToParentModule"
+msgstr "移至: 父模組"
+
+#. editor: go to previous bookmark
+msgctxt "action"
+msgid "editor::GoToPreviousBookmark"
+msgstr "書籤: 上一個書籤"
+
+#. editor: go to previous change
+msgctxt "action"
+msgid "editor::GoToPreviousChange"
+msgstr "移至: 上一個變更"
+
+#. editor: go to previous diagnostic
+msgctxt "action"
+msgid "editor::GoToPreviousDiagnostic"
+msgstr "移至: 上一個問題"
+
+#. editor: go to previous document highlight
+msgctxt "action"
+msgid "editor::GoToPreviousDocumentHighlight"
+msgstr "移至: 上一個符號出現位置"
+
+#. editor: go to previous hunk
+msgctxt "action"
+msgid "editor::GoToPreviousHunk"
+msgstr "移至: 上一個變更區塊"
+
+#. editor: go to previous reference
+msgctxt "action"
+msgid "editor::GoToPreviousReference"
+msgstr "移至: 上一個參考"
+
+#. editor: go to previous symbol
+msgctxt "action"
+msgid "editor::GoToPreviousSymbol"
+msgstr "移至: 上一個符號"
+
+#. editor: go to type definition
+msgctxt "action"
+msgid "editor::GoToTypeDefinition"
+msgstr "前往型別定義"
+
+#. editor: go to type definition split
+msgctxt "action"
+msgid "editor::GoToTypeDefinitionSplit"
+msgstr "前往型別定義（分割開啟）"
+
+#. editor: half page down
+msgctxt "action"
+msgid "editor::HalfPageDown"
+msgstr "捲動: 向下半頁"
+
+#. editor: half page up
+msgctxt "action"
+msgid "editor::HalfPageUp"
+msgstr "捲動: 向上半頁"
+
+#. editor: handle input
+msgctxt "action"
+msgid "editor::HandleInput"
+msgstr "編輯: 輸入字元"
+
+#. editor: hover
+msgctxt "action"
+msgid "editor::Hover"
+msgstr "顯示暫留資訊"
+
+#. editor: indent
+msgctxt "action"
+msgid "editor::Indent"
+msgstr "編輯: 縮排"
+
+#. editor: insert snippet
+msgctxt "action"
+msgid "editor::InsertSnippet"
+msgstr "編輯: 插入程式碼片段"
+
+#. editor: insert uuid v4
+msgctxt "action"
+msgid "editor::InsertUuidV4"
+msgstr "編輯: 插入 UUID v4"
+
+#. editor: insert uuid v7
+msgctxt "action"
+msgid "editor::InsertUuidV7"
+msgstr "編輯: 插入 UUID v7"
+
+#. editor: join lines
+msgctxt "action"
+msgid "editor::JoinLines"
+msgstr "編輯: 合併行"
+
+#. editor: kill ring cut
+msgctxt "action"
+msgid "editor::KillRingCut"
+msgstr "編輯: 剪下至 Kill Ring"
+
+#. editor: kill ring yank
+msgctxt "action"
+msgid "editor::KillRingYank"
+msgstr "編輯: 從 Kill Ring 貼上"
+
+#. editor: kill ring yank pop
+msgctxt "action"
+msgid "editor::KillRingYankPop"
+msgstr "編輯: 以 Kill Ring 的前一項取代"
+
+#. editor: line down
+msgctxt "action"
+msgid "editor::LineDown"
+msgstr "捲動: 向下一行"
+
+#. editor: line up
+msgctxt "action"
+msgid "editor::LineUp"
+msgstr "捲動: 向上一行"
+
+#. editor: move down
+msgctxt "action"
+msgid "editor::MoveDown"
+msgstr "移至: 向下"
+
+#. editor: move down by lines
+msgctxt "action"
+msgid "editor::MoveDownByLines"
+msgstr "移至: 向下移動指定行數"
+
+#. editor: move left
+msgctxt "action"
+msgid "editor::MoveLeft"
+msgstr "移至: 向左"
+
+#. editor: move line down
+msgctxt "action"
+msgid "editor::MoveLineDown"
+msgstr "編輯: 將行下移"
+
+#. editor: move line up
+msgctxt "action"
+msgid "editor::MoveLineUp"
+msgstr "編輯: 將行上移"
+
+#. editor: move page down
+msgctxt "action"
+msgid "editor::MovePageDown"
+msgstr "移至: 將游標向下移動一頁"
+
+#. editor: move page up
+msgctxt "action"
+msgid "editor::MovePageUp"
+msgstr "移至: 將游標向上移動一頁"
+
+#. editor: move right
+msgctxt "action"
+msgid "editor::MoveRight"
+msgstr "移至: 向右"
+
+#. editor: move to beginning
+msgctxt "action"
+msgid "editor::MoveToBeginning"
+msgstr "移至: 開頭"
+
+#. editor: move to beginning of line
+msgctxt "action"
+msgid "editor::MoveToBeginningOfLine"
+msgstr "移至: 行首"
+
+#. editor: move to enclosing bracket
+msgctxt "action"
+msgid "editor::MoveToEnclosingBracket"
+msgstr "移至: 對應的括號"
+
+#. editor: move to end
+msgctxt "action"
+msgid "editor::MoveToEnd"
+msgstr "移至: 結尾"
+
+#. editor: move to end of excerpt
+msgctxt "action"
+msgid "editor::MoveToEndOfExcerpt"
+msgstr "移至: 摘錄結尾"
+
+#. editor: move to end of larger syntax node
+msgctxt "action"
+msgid "editor::MoveToEndOfLargerSyntaxNode"
+msgstr "移至: 外層語法節點結尾"
+
+#. editor: move to end of line
+msgctxt "action"
+msgid "editor::MoveToEndOfLine"
+msgstr "移至: 行尾"
+
+#. editor: move to end of paragraph
+msgctxt "action"
+msgid "editor::MoveToEndOfParagraph"
+msgstr "移至: 段落結尾"
+
+#. editor: move to end of previous excerpt
+msgctxt "action"
+msgid "editor::MoveToEndOfPreviousExcerpt"
+msgstr "移至: 上一個摘錄結尾"
+
+#. editor: move to next comment paragraph
+msgctxt "action"
+msgid "editor::MoveToNextCommentParagraph"
+msgstr "移至: 下一個註解段落"
+
+#. editor: move to next subword end
+msgctxt "action"
+msgid "editor::MoveToNextSubwordEnd"
+msgstr "移至: 下一個子字組結尾"
+
+#. editor: move to next word end
+msgctxt "action"
+msgid "editor::MoveToNextWordEnd"
+msgstr "移至: 下一個字組結尾"
+
+#. editor: move to previous comment paragraph
+msgctxt "action"
+msgid "editor::MoveToPreviousCommentParagraph"
+msgstr "移至: 上一個註解段落"
+
+#. editor: move to previous subword start
+msgctxt "action"
+msgid "editor::MoveToPreviousSubwordStart"
+msgstr "移至: 上一個子字組開頭"
+
+#. editor: move to previous word start
+msgctxt "action"
+msgid "editor::MoveToPreviousWordStart"
+msgstr "移至: 上一個字組開頭"
+
+#. editor: move to start of excerpt
+msgctxt "action"
+msgid "editor::MoveToStartOfExcerpt"
+msgstr "移至: 摘錄開頭"
+
+#. editor: move to start of larger syntax node
+msgctxt "action"
+msgid "editor::MoveToStartOfLargerSyntaxNode"
+msgstr "移至: 外層語法節點開頭"
+
+#. editor: move to start of next excerpt
+msgctxt "action"
+msgid "editor::MoveToStartOfNextExcerpt"
+msgstr "移至: 下一個摘錄開頭"
+
+#. editor: move to start of paragraph
+msgctxt "action"
+msgid "editor::MoveToStartOfParagraph"
+msgstr "移至: 段落開頭"
+
+#. editor: move up
+msgctxt "action"
+msgid "editor::MoveUp"
+msgstr "移至: 向上"
+
+#. editor: move up by lines
+msgctxt "action"
+msgid "editor::MoveUpByLines"
+msgstr "移至: 向上移動指定行數"
+
+#. editor: newline
+msgctxt "action"
+msgid "editor::Newline"
+msgstr "編輯: 插入新行"
+
+#. editor: newline above
+msgctxt "action"
+msgid "editor::NewlineAbove"
+msgstr "編輯: 在上方插入行"
+
+#. editor: newline below
+msgctxt "action"
+msgid "editor::NewlineBelow"
+msgstr "編輯: 在下方插入行"
+
+#. editor: next edit prediction
+msgctxt "action"
+msgid "editor::NextEditPrediction"
+msgstr "編輯預測: 下一個預測"
+
+#. editor: next screen
+msgctxt "action"
+msgid "editor::NextScreen"
+msgstr "捲動: 下一個畫面"
+
+#. editor: next snippet tabstop
+msgctxt "action"
+msgid "editor::NextSnippetTabstop"
+msgstr "程式碼片段: 下一個定位停駐點"
+
+#. editor: open context menu
+msgctxt "action"
+msgid "editor::OpenContextMenu"
+msgstr "開啟內容功能表"
+
+#. editor: open docs
+msgctxt "action"
+msgid "editor::OpenDocs"
+msgstr "顯示文件"
+
+#. editor: open excerpts
+msgctxt "action"
+msgid "editor::OpenExcerpts"
+msgstr "開啟摘錄"
+
+#. editor: open excerpts split
+msgctxt "action"
+msgid "editor::OpenExcerptsSplit"
+msgstr "分割開啟摘錄"
+
+#. editor: open git blame commit
+msgctxt "action"
+msgid "editor::OpenGitBlameCommit"
+msgstr "Git: 開啟此行的提交"
+
+#. editor: open permalink to line
+msgctxt "action"
+msgid "editor::OpenPermalinkToLine"
+msgstr "開啟此行的永久連結"
+
+#. editor: open proposed changes editor
+msgctxt "action"
+msgid "editor::OpenProposedChangesEditor"
+msgstr "開啟提議的變更"
+
+#. editor: open selected filename
+msgctxt "action"
+msgid "editor::OpenSelectedFilename"
+msgstr "開啟選取的檔案名稱"
+
+#. editor: open selections in multibuffer
+msgctxt "action"
+msgid "editor::OpenSelectionsInMultibuffer"
+msgstr "在多重緩衝區中開啟選取範圍"
+
+#. editor: open url
+msgctxt "action"
+msgid "editor::OpenUrl"
+msgstr "開啟 URL"
+
+#. editor: organize imports
+msgctxt "action"
+msgid "editor::OrganizeImports"
+msgstr "整理匯入"
+
+#. editor: outdent
+msgctxt "action"
+msgid "editor::Outdent"
+msgstr "編輯: 凸排"
+
+#. editor: page down
+msgctxt "action"
+msgid "editor::PageDown"
+msgstr "移至: 向下一頁"
+
+#. editor: page up
+msgctxt "action"
+msgid "editor::PageUp"
+msgstr "移至: 向上一頁"
+
+#. editor: paste
+msgctxt "action"
+msgid "editor::Paste"
+msgstr "編輯: 貼上"
+
+#. editor: previous edit prediction
+msgctxt "action"
+msgid "editor::PreviousEditPrediction"
+msgstr "編輯預測: 上一個預測"
+
+#. editor: previous snippet tabstop
+msgctxt "action"
+msgid "editor::PreviousSnippetTabstop"
+msgstr "程式碼片段: 上一個定位停駐點"
+
+#. editor: redo
+msgctxt "action"
+msgid "editor::Redo"
+msgstr "編輯: 取消復原"
+
+#. editor: redo selection
+msgctxt "action"
+msgid "editor::RedoSelection"
+msgstr "選取項目: 取消復原選取"
+
+#. editor: reload file
+msgctxt "action"
+msgid "editor::ReloadFile"
+msgstr "重新載入檔案"
+
+#. editor: rename
+msgctxt "action"
+msgid "editor::Rename"
+msgstr "重新命名符號"
+
+#. editor: restart language server
+msgctxt "action"
+msgid "editor::RestartLanguageServer"
+msgstr "重新啟動語言伺服器"
+
+#. editor: reveal in file manager
+msgctxt "action"
+msgid "editor::RevealInFileManager"
+msgstr "在檔案管理員中顯示"
+
+#. editor: reverse lines
+msgctxt "action"
+msgid "editor::ReverseLines"
+msgstr "編輯: 反轉行順序"
+
+#. editor: rewrap
+msgctxt "action"
+msgid "editor::Rewrap"
+msgstr "編輯: 重新換行段落"
+
+#. editor: rotate selections backward
+msgctxt "action"
+msgid "editor::RotateSelectionsBackward"
+msgstr "選取項目: 向後輪替選取範圍內容"
+
+#. editor: rotate selections forward
+msgctxt "action"
+msgid "editor::RotateSelectionsForward"
+msgstr "選取項目: 向前輪替選取範圍內容"
+
+#. editor: run flycheck
+msgctxt "action"
+msgid "editor::RunFlycheck"
+msgstr "執行 flycheck"
+
+#. editor: save location
+msgctxt "action"
+msgid "editor::SaveLocation"
+msgstr "記錄目前位置"
+
+#. editor: scroll cursor bottom
+msgctxt "action"
+msgid "editor::ScrollCursorBottom"
+msgstr "捲動: 將游標捲至底部"
+
+#. editor: scroll cursor center
+msgctxt "action"
+msgid "editor::ScrollCursorCenter"
+msgstr "捲動: 將游標捲至中央"
+
+#. editor: scroll cursor center top bottom
+msgctxt "action"
+msgid "editor::ScrollCursorCenterTopBottom"
+msgstr "捲動: 將游標捲至中央/頂端/底部"
+
+#. editor: scroll cursor top
+msgctxt "action"
+msgid "editor::ScrollCursorTop"
+msgstr "捲動: 將游標捲至頂端"
+
+#. editor: select all
+msgctxt "action"
+msgid "editor::SelectAll"
+msgstr "選取項目: 全選"
+
+#. editor: select all matches
+msgctxt "action"
+msgid "editor::SelectAllMatches"
+msgstr "選取項目: 選取所有符合項目"
+
+#. editor: select around delimiters
+msgctxt "action"
+msgid "editor::SelectAroundDelimiters"
+msgstr "選取項目: 選取包含分隔符號的範圍"
+
+#. editor: select down
+msgctxt "action"
+msgid "editor::SelectDown"
+msgstr "選取項目: 向下擴展"
+
+#. editor: select down by lines
+msgctxt "action"
+msgid "editor::SelectDownByLines"
+msgstr "選取項目: 向下擴展指定行數"
+
+#. editor: select enclosing symbol
+msgctxt "action"
+msgid "editor::SelectEnclosingSymbol"
+msgstr "選取項目: 選取外層符號"
+
+#. editor: select inside delimiters
+msgctxt "action"
+msgid "editor::SelectInsideDelimiters"
+msgstr "選取項目: 選取分隔符號內側"
+
+#. editor: select larger syntax node
+msgctxt "action"
+msgid "editor::SelectLargerSyntaxNode"
+msgstr "選取項目: 擴展選取範圍"
+
+#. editor: select left
+msgctxt "action"
+msgid "editor::SelectLeft"
+msgstr "選取項目: 向左擴展"
+
+#. editor: select line
+msgctxt "action"
+msgid "editor::SelectLine"
+msgstr "選取項目: 選取行"
+
+#. editor: select next
+msgctxt "action"
+msgid "editor::SelectNext"
+msgstr "選取項目: 將下一個符合項目加入選取"
+
+#. editor: select next syntax node
+msgctxt "action"
+msgid "editor::SelectNextSyntaxNode"
+msgstr "選取項目: 選取下一個語法節點"
+
+#. editor: select page down
+msgctxt "action"
+msgid "editor::SelectPageDown"
+msgstr "選取項目: 向下擴展一頁"
+
+#. editor: select page up
+msgctxt "action"
+msgid "editor::SelectPageUp"
+msgstr "選取項目: 向上擴展一頁"
+
+#. editor: select previous
+msgctxt "action"
+msgid "editor::SelectPrevious"
+msgstr "選取項目: 將上一個符合項目加入選取"
+
+#. editor: select previous syntax node
+msgctxt "action"
+msgid "editor::SelectPreviousSyntaxNode"
+msgstr "選取項目: 選取上一個語法節點"
+
+#. editor: select right
+msgctxt "action"
+msgid "editor::SelectRight"
+msgstr "選取項目: 向右擴展"
+
+#. editor: select smaller syntax node
+msgctxt "action"
+msgid "editor::SelectSmallerSyntaxNode"
+msgstr "選取項目: 縮小選取範圍"
+
+#. editor: select to beginning
+msgctxt "action"
+msgid "editor::SelectToBeginning"
+msgstr "選取項目: 擴展至開頭"
+
+#. editor: select to beginning of line
+msgctxt "action"
+msgid "editor::SelectToBeginningOfLine"
+msgstr "選取項目: 擴展至行首"
+
+#. editor: select to end
+msgctxt "action"
+msgid "editor::SelectToEnd"
+msgstr "選取項目: 擴展至結尾"
+
+#. editor: select to end of excerpt
+msgctxt "action"
+msgid "editor::SelectToEndOfExcerpt"
+msgstr "選取項目: 擴展至摘錄結尾"
+
+#. editor: select to end of larger syntax node
+msgctxt "action"
+msgid "editor::SelectToEndOfLargerSyntaxNode"
+msgstr "選取項目: 擴展至外層語法節點結尾"
+
+#. editor: select to end of line
+msgctxt "action"
+msgid "editor::SelectToEndOfLine"
+msgstr "選取項目: 擴展至行尾"
+
+#. editor: select to end of paragraph
+msgctxt "action"
+msgid "editor::SelectToEndOfParagraph"
+msgstr "選取項目: 擴展至段落結尾"
+
+#. editor: select to end of previous excerpt
+msgctxt "action"
+msgid "editor::SelectToEndOfPreviousExcerpt"
+msgstr "選取項目: 擴展至上一個摘錄結尾"
+
+#. editor: select to next subword end
+msgctxt "action"
+msgid "editor::SelectToNextSubwordEnd"
+msgstr "選取項目: 擴展至下一個子字組結尾"
+
+#. editor: select to next word end
+msgctxt "action"
+msgid "editor::SelectToNextWordEnd"
+msgstr "選取項目: 擴展至下一個字組結尾"
+
+#. editor: select to previous subword start
+msgctxt "action"
+msgid "editor::SelectToPreviousSubwordStart"
+msgstr "選取項目: 擴展至上一個子字組開頭"
+
+#. editor: select to previous word start
+msgctxt "action"
+msgid "editor::SelectToPreviousWordStart"
+msgstr "選取項目: 擴展至上一個字組開頭"
+
+#. editor: select to start of excerpt
+msgctxt "action"
+msgid "editor::SelectToStartOfExcerpt"
+msgstr "選取項目: 擴展至摘錄開頭"
+
+#. editor: select to start of larger syntax node
+msgctxt "action"
+msgid "editor::SelectToStartOfLargerSyntaxNode"
+msgstr "選取項目: 擴展至外層語法節點開頭"
+
+#. editor: select to start of next excerpt
+msgctxt "action"
+msgid "editor::SelectToStartOfNextExcerpt"
+msgstr "選取項目: 擴展至下一個摘錄開頭"
+
+#. editor: select to start of paragraph
+msgctxt "action"
+msgid "editor::SelectToStartOfParagraph"
+msgstr "選取項目: 擴展至段落開頭"
+
+#. editor: select up
+msgctxt "action"
+msgid "editor::SelectUp"
+msgstr "選取項目: 向上擴展"
+
+#. editor: select up by lines
+msgctxt "action"
+msgid "editor::SelectUpByLines"
+msgstr "選取項目: 向上擴展指定行數"
+
+#. editor: send review to agent
+msgctxt "action"
+msgid "editor::SendReviewToAgent"
+msgstr "差異檢閱: 傳送給代理"
+
+#. editor: set mark
+msgctxt "action"
+msgid "editor::SetMark"
+msgstr "編輯: 設定標記"
+
+#. editor: show character palette
+msgctxt "action"
+msgid "editor::ShowCharacterPalette"
+msgstr "編輯: 顯示表情符號與符號"
+
+#. editor: show completions
+msgctxt "action"
+msgid "editor::ShowCompletions"
+msgstr "顯示完成項目"
+
+#. editor: show edit prediction
+msgctxt "action"
+msgid "editor::ShowEditPrediction"
+msgstr "顯示編輯預測"
+
+#. editor: show signature help
+msgctxt "action"
+msgid "editor::ShowSignatureHelp"
+msgstr "顯示簽章說明"
+
+#. editor: show word completions
+msgctxt "action"
+msgid "editor::ShowWordCompletions"
+msgstr "顯示字組完成項目"
+
+#. editor: shuffle lines
+msgctxt "action"
+msgid "editor::ShuffleLines"
+msgstr "編輯: 隨機排列行"
+
+#. editor: signature help next
+msgctxt "action"
+msgid "editor::SignatureHelpNext"
+msgstr "簽章說明: 下一個簽章"
+
+#. editor: signature help previous
+msgctxt "action"
+msgid "editor::SignatureHelpPrevious"
+msgstr "簽章說明: 上一個簽章"
+
+#. editor: sort lines by length
+msgctxt "action"
+msgid "editor::SortLinesByLength"
+msgstr "編輯: 依長度排序行"
+
+#. editor: sort lines case insensitive
+msgctxt "action"
+msgid "editor::SortLinesCaseInsensitive"
+msgstr "編輯: 排序行（不區分大小寫）"
+
+#. editor: sort lines case sensitive
+msgctxt "action"
+msgid "editor::SortLinesCaseSensitive"
+msgstr "編輯: 排序行（區分大小寫）"
+
+#. editor: spawn nearest task
+msgctxt "action"
+msgid "editor::SpawnNearestTask"
+msgstr "工作: 執行最近的工作"
+
+#. editor: split selection into lines
+msgctxt "action"
+msgid "editor::SplitSelectionIntoLines"
+msgstr "選取項目: 將選取範圍分割成行"
+
+#. editor: stop language server
+msgctxt "action"
+msgid "editor::StopLanguageServer"
+msgstr "停止語言伺服器"
+
+#. editor: submit diff review comment
+msgctxt "action"
+msgid "editor::SubmitDiffReviewComment"
+msgstr "差異檢閱: 送出留言"
+
+#. editor: swap selection ends
+msgctxt "action"
+msgid "editor::SwapSelectionEnds"
+msgstr "選取項目: 交換選取範圍的兩端"
+
+#. editor: switch source header
+msgctxt "action"
+msgid "editor::SwitchSourceHeader"
+msgstr "切換原始檔/標頭檔"
+
+#. editor: tab
+msgctxt "action"
+msgid "editor::Tab"
+msgstr "編輯: 插入定位字元"
+
+#. editor: toggle all diff hunks
+msgctxt "action"
+msgid "editor::ToggleAllDiffHunks"
+msgstr "切換展開所有差異區塊"
+
+#. editor: toggle auto signature help
+msgctxt "action"
+msgid "editor::ToggleAutoSignatureHelp"
+msgstr "切換自動顯示簽章說明"
+
+#. editor: toggle block comments
+msgctxt "action"
+msgid "editor::ToggleBlockComments"
+msgstr "編輯: 切換區塊註解"
+
+#. editor: toggle bookmark
+msgctxt "action"
+msgid "editor::ToggleBookmark"
+msgstr "書籤: 切換"
+
+#. editor: toggle bookmark with label
+msgctxt "action"
+msgid "editor::ToggleBookmarkWithLabel"
+msgstr "書籤: 加上標籤並切換"
+
+#. editor: toggle breadcrumb
+msgctxt "action"
+msgid "editor::ToggleBreadcrumb"
+msgstr "檢視: 切換階層連結"
+
+#. editor: toggle breakpoint
+msgctxt "action"
+msgid "editor::ToggleBreakpoint"
+msgstr "偵錯: 切換中斷點"
+
+#. editor: toggle case
+msgctxt "action"
+msgid "editor::ToggleCase"
+msgstr "編輯: 切換大小寫"
+
+#. editor: toggle code actions
+msgctxt "action"
+msgid "editor::ToggleCodeActions"
+msgstr "顯示程式碼動作"
+
+#. editor: toggle code lens
+msgctxt "action"
+msgid "editor::ToggleCodeLens"
+msgstr "檢視: 切換 CodeLens"
+
+#. editor: toggle comments
+msgctxt "action"
+msgid "editor::ToggleComments"
+msgstr "編輯: 切換行註解"
+
+#. editor: toggle diagnostics
+msgctxt "action"
+msgid "editor::ToggleDiagnostics"
+msgstr "檢視: 切換診斷"
+
+#. editor: toggle edit prediction
+msgctxt "action"
+msgid "editor::ToggleEditPrediction"
+msgstr "切換編輯預測"
+
+#. editor: toggle focus
+msgctxt "action"
+msgid "editor::ToggleFocus"
+msgstr "聚焦於編輯器"
+
+#. editor: toggle fold
+msgctxt "action"
+msgid "editor::ToggleFold"
+msgstr "切換摺疊"
+
+#. editor: toggle fold all
+msgctxt "action"
+msgid "editor::ToggleFoldAll"
+msgstr "切換全部摺疊"
+
+#. editor: toggle fold recursive
+msgctxt "action"
+msgid "editor::ToggleFoldRecursive"
+msgstr "摺疊: 遞迴切換"
+
+#. editor: toggle git blame inline
+msgctxt "action"
+msgid "editor::ToggleGitBlameInline"
+msgstr "Git: 切換內嵌 Blame"
+
+#. editor: toggle indent guides
+msgctxt "action"
+msgid "editor::ToggleIndentGuides"
+msgstr "檢視: 切換縮排輔助線"
+
+#. editor: toggle inlay hints
+msgctxt "action"
+msgid "editor::ToggleInlayHints"
+msgstr "檢視: 切換內嵌提示"
+
+#. editor: toggle inline diagnostics
+msgctxt "action"
+msgid "editor::ToggleInlineDiagnostics"
+msgstr "檢視: 切換內嵌診斷"
+
+#. editor: toggle inline values
+msgctxt "action"
+msgid "editor::ToggleInlineValues"
+msgstr "切換內嵌值顯示"
+
+#. editor: toggle line numbers
+msgctxt "action"
+msgid "editor::ToggleLineNumbers"
+msgstr "檢視: 切換行號"
+
+#. editor: toggle minimap
+msgctxt "action"
+msgid "editor::ToggleMinimap"
+msgstr "檢視: 切換縮圖"
+
+#. editor: toggle relative line numbers
+msgctxt "action"
+msgid "editor::ToggleRelativeLineNumbers"
+msgstr "檢視: 切換相對行號"
+
+#. editor: toggle review comments expanded
+msgctxt "action"
+msgid "editor::ToggleReviewCommentsExpanded"
+msgstr "差異檢閱: 展開/摺疊留言"
+
+#. editor: toggle selected diff hunks
+msgctxt "action"
+msgid "editor::ToggleSelectedDiffHunks"
+msgstr "切換展開選取的差異區塊"
+
+#. editor: toggle selection menu
+msgctxt "action"
+msgid "editor::ToggleSelectionMenu"
+msgstr "切換選取項目選單"
+
+#. editor: toggle semantic highlights
+msgctxt "action"
+msgid "editor::ToggleSemanticHighlights"
+msgstr "檢視: 切換語意醒目提示"
+
+#. editor: toggle soft wrap
+msgctxt "action"
+msgid "editor::ToggleSoftWrap"
+msgstr "檢視: 切換自動換行"
+
+#. editor: toggle split diff
+msgctxt "action"
+msgid "editor::ToggleSplitDiff"
+msgstr "切換差異並排顯示"
+
+#. editor: toggle tab bar
+msgctxt "action"
+msgid "editor::ToggleTabBar"
+msgstr "檢視: 切換分頁列"
+
+#. editor: transpose
+msgctxt "action"
+msgid "editor::Transpose"
+msgstr "編輯: 調換字元"
+
+#. editor: undo
+msgctxt "action"
+msgid "editor::Undo"
+msgstr "編輯: 復原"
+
+#. editor: undo selection
+msgctxt "action"
+msgid "editor::UndoSelection"
+msgstr "選取項目: 復原選取"
+
+#. editor: unfold all
+msgctxt "action"
+msgid "editor::UnfoldAll"
+msgstr "全部展開"
+
+#. editor: unfold lines
+msgctxt "action"
+msgid "editor::UnfoldLines"
+msgstr "展開"
+
+#. editor: unfold recursive
+msgctxt "action"
+msgid "editor::UnfoldRecursive"
+msgstr "遞迴展開"
+
+#. editor: unique lines case insensitive
+msgctxt "action"
+msgid "editor::UniqueLinesCaseInsensitive"
+msgstr "編輯: 刪除重複行（不區分大小寫）"
+
+#. editor: unique lines case sensitive
+msgctxt "action"
+msgid "editor::UniqueLinesCaseSensitive"
+msgstr "編輯: 刪除重複行（區分大小寫）"
+
+#. editor: unwrap syntax node
+msgctxt "action"
+msgid "editor::UnwrapSyntaxNode"
+msgstr "編輯: 移除外層語法節點"
+
+#. editor: view bookmarks
+msgctxt "action"
+msgid "editor::ViewBookmarks"
+msgstr "書籤: 檢視清單"
+
+#. editor: wrap selections in tag
+msgctxt "action"
+msgid "editor::WrapSelectionsInTag"
+msgstr "編輯: 以標籤包住選取範圍"
+
+#. editor: wrap with abbreviation
+msgctxt "action"
+msgid "editor::WrapWithAbbreviation"
+msgstr "編輯: 以 Emmet 縮寫包住選取範圍"
+
+#. encoding selector: toggle
+msgctxt "action"
+msgid "encoding_selector::Toggle"
+msgstr "選取字元編碼"
+
+#. feedback: email zed
+msgctxt "action"
+msgid "feedback::EmailZed"
+msgstr "傳送電子郵件給 Zed"
+
+#. feedback: file bug report
+msgctxt "action"
+msgid "feedback::FileBugReport"
+msgstr "回報錯誤"
+
+#. feedback: request feature
+msgctxt "action"
+msgid "feedback::RequestFeature"
+msgstr "要求功能"
+
+#. file finder: open without dismiss
+msgctxt "action"
+msgid "file_finder::OpenWithoutDismiss"
+msgstr "移至檔案: 開啟但不關閉"
+
+#. file finder: select previous
+msgctxt "action"
+msgid "file_finder::SelectPrevious"
+msgstr "移至檔案: 選取上一個項目"
+
+#. file finder: toggle
+msgctxt "action"
+msgid "file_finder::Toggle"
+msgstr "移至檔案"
+
+#. file transfer: focus next field
+msgctxt "action"
+msgid "file_transfer::FocusNextField"
+msgstr "檔案傳輸: 下一個欄位"
+
+#. file transfer: focus previous field
+msgctxt "action"
+msgid "file_transfer::FocusPreviousField"
+msgstr "檔案傳輸: 上一個欄位"
+
+#. git: add
+msgctxt "action"
+msgid "git::Add"
+msgstr "Git: 加入暫存"
+
+#. git: add to git info exclude
+msgctxt "action"
+msgid "git::AddToGitInfoExclude"
+msgstr "Git: 加入 .git/info/exclude"
+
+#. git: add to gitignore
+msgctxt "action"
+msgid "git::AddToGitignore"
+msgstr "Git: 加入 .gitignore"
+
+#. git: amend
+msgctxt "action"
+msgid "git::Amend"
+msgstr "Git: 修正上一個提交"
+
+#. git: apply current stash
+msgctxt "action"
+msgid "git::ApplyCurrentStash"
+msgstr "Git: 套用顯示中的貯藏"
+
+#. git: apply patch
+msgctxt "action"
+msgid "git::ApplyPatch"
+msgstr "Git: 套用修補檔"
+
+#. git: blame
+msgctxt "action"
+msgid "git::Blame"
+msgstr "Git: 顯示 Blame"
+
+#. git: branch
+msgctxt "action"
+msgid "git::Branch"
+msgstr "Git: 分支清單"
+
+#. git: cancel
+msgctxt "action"
+msgid "git::Cancel"
+msgstr "Git: 取消操作"
+
+#. git: checkout branch
+msgctxt "action"
+msgid "git::CheckoutBranch"
+msgstr "Git: 簽出分支"
+
+#. git: checkout commit
+msgctxt "action"
+msgid "git::CheckoutCommit"
+msgstr "Git: 簽出此提交（detached）"
+
+#. git: cherry pick commit
+msgctxt "action"
+msgid "git::CherryPickCommit"
+msgstr "Git: 將此提交揀選至目前的分支"
+
+#. git: choose fixup commit
+msgctxt "action"
+msgid "git::ChooseFixupCommit"
+msgstr "Git: 選擇要放入目前變更的提交（fixup）"
+
+#. git: clone
+msgctxt "action"
+msgid "git::Clone"
+msgstr "Git: 複製儲存庫"
+
+#. git: commit
+msgctxt "action"
+msgid "git::Commit"
+msgstr "Git: 提交"
+
+#. git: compare refs
+msgctxt "action"
+msgid "git::CompareRefs"
+msgstr "Git: 比較兩個分支/標籤"
+
+#. git: compare with branch
+msgctxt "action"
+msgid "git::CompareWithBranch"
+msgstr "Git: 與分支比較"
+
+#. git: confirm force push
+msgctxt "action"
+msgid "git::ConfirmForcePush"
+msgstr "Git: 確認後強制推送（使用 lease）"
+
+#. git: copy branch name
+msgctxt "action"
+msgid "git::CopyBranchName"
+msgstr "Git: 複製分支名稱"
+
+#. git: copy file permalink
+msgctxt "action"
+msgid "git::CopyFilePermalink"
+msgstr "Git: 複製檔案永久連結"
+
+#. git: copy tag distance
+msgctxt "action"
+msgid "git::CopyTagDistance"
+msgstr "Git: 複製與最新標籤的距離"
+
+#. git: create branch from
+msgctxt "action"
+msgid "git::CreateBranchFrom"
+msgstr "Git: 從此提交建立分支"
+
+#. git: create patch
+msgctxt "action"
+msgid "git::CreatePatch"
+msgstr "Git: 建立修補檔"
+
+#. git: create pull request
+msgctxt "action"
+msgid "git::CreatePullRequest"
+msgstr "Git: 建立 Pull Request"
+
+#. git: create remote
+msgctxt "action"
+msgid "git::CreateRemote"
+msgstr "Git: 新增遠端"
+
+#. git: create tag at
+msgctxt "action"
+msgid "git::CreateTagAt"
+msgstr "Git: 為此提交加上標籤"
+
+#. git: create worktree
+msgctxt "action"
+msgid "git::CreateWorktree"
+msgstr "Git: 建立工作樹"
+
+#. git: diff
+msgctxt "action"
+msgid "git::Diff"
+msgstr "Git: 顯示差異"
+
+#. git: diff branch
+msgctxt "action"
+msgid "git::DiffBranch"
+msgstr "Git: 顯示與分支的差異"
+
+#. git: diff head
+msgctxt "action"
+msgid "git::DiffHead"
+msgstr "Git: 顯示與 HEAD 的差異"
+
+#. git: drop commit
+msgctxt "action"
+msgid "git::DropCommit"
+msgstr "Git: 從歷程記錄移除此提交"
+
+#. git: drop current stash
+msgctxt "action"
+msgid "git::DropCurrentStash"
+msgstr "Git: 捨棄顯示中的貯藏"
+
+#. git: expand commit editor
+msgctxt "action"
+msgid "git::ExpandCommitEditor"
+msgstr "Git: 展開提交編輯器"
+
+#. git: fetch
+msgctxt "action"
+msgid "git::Fetch"
+msgstr "Git: 擷取"
+
+#. git: fetch from
+msgctxt "action"
+msgid "git::FetchFrom"
+msgstr "Git: 從指定來源擷取"
+
+#. git: file history
+msgctxt "action"
+msgid "git::FileHistory"
+msgstr "Git: 檔案歷程"
+
+#. git: filter remotes
+msgctxt "action"
+msgid "git::FilterRemotes"
+msgstr "Git: 依遠端篩選"
+
+#. git: fixup commit
+msgctxt "action"
+msgid "git::FixupCommit"
+msgstr "Git: 將目前的變更放入此提交（fixup）"
+
+#. git: force push
+msgctxt "action"
+msgid "git::ForcePush"
+msgstr "Git: 強制推送"
+
+#. git: force push without lease
+msgctxt "action"
+msgid "git::ForcePushWithoutLease"
+msgstr "Git: 強制推送（不使用 lease）"
+
+#. git: generate commit message
+msgctxt "action"
+msgid "git::GenerateCommitMessage"
+msgstr "Git: 產生提交訊息"
+
+#. git: init
+msgctxt "action"
+msgid "git::Init"
+msgstr "Git: 初始化儲存庫"
+
+#. git: leader and follower
+msgctxt "action"
+msgid "git::LeaderAndFollower"
+msgstr "Git: 領導者與跟隨者"
+
+#. git: merge
+msgctxt "action"
+msgid "git::Merge"
+msgstr "Git: 合併分支"
+
+#. git: open file at head
+msgctxt "action"
+msgid "git::OpenFileAtHead"
+msgstr "Git: 開啟 HEAD 的檔案"
+
+#. git: open file diff
+msgctxt "action"
+msgid "git::OpenFileDiff"
+msgstr "Git: 開啟檔案差異"
+
+#. git: open file permalink
+msgctxt "action"
+msgid "git::OpenFilePermalink"
+msgstr "Git: 開啟檔案永久連結"
+
+#. git: open merge request box
+msgctxt "action"
+msgid "git::OpenMergeRequestBox"
+msgstr "Git: 開啟 MR 盒"
+
+#. git: open modified files
+msgctxt "action"
+msgid "git::OpenModifiedFiles"
+msgstr "Git: 開啟已修改的檔案"
+
+#. git: open worktree in new window
+msgctxt "action"
+msgid "git::OpenWorktreeInNewWindow"
+msgstr "Git: 在新視窗中開啟工作樹"
+
+#. git: pack refs
+msgctxt "action"
+msgid "git::PackRefs"
+msgstr "Git: 打包 ref 以加速（pack-refs）"
+
+#. git: pop current stash
+msgctxt "action"
+msgid "git::PopCurrentStash"
+msgstr "Git: 取出顯示中的貯藏"
+
+#. git: pull
+msgctxt "action"
+msgid "git::Pull"
+msgstr "Git: 拉取"
+
+#. git: pull rebase
+msgctxt "action"
+msgid "git::PullRebase"
+msgstr "Git: 拉取（重訂基底）"
+
+#. git: push
+msgctxt "action"
+msgid "git::Push"
+msgstr "Git: 推送"
+
+#. git: push to
+msgctxt "action"
+msgid "git::PushTo"
+msgstr "Git: 推送至指定目標"
+
+#. git: remove remote
+msgctxt "action"
+msgid "git::RemoveRemote"
+msgstr "Git: 移除遠端"
+
+#. git: rename branch
+msgctxt "action"
+msgid "git::RenameBranch"
+msgstr "Git: 重新命名分支"
+
+#. git: reset to commit
+msgctxt "action"
+msgid "git::ResetToCommit"
+msgstr "Git: 重設至此提交"
+
+#. git: reset to remote
+msgctxt "action"
+msgid "git::ResetToRemote"
+msgstr "Git: 強制與遠端一致"
+
+#. git: restore
+msgctxt "action"
+msgid "git::Restore"
+msgstr "Git: 還原變更"
+
+#. git: restore and next
+msgctxt "action"
+msgid "git::RestoreAndNext"
+msgstr "Git: 還原變更並前往下一個"
+
+#. git: restore file
+msgctxt "action"
+msgid "git::RestoreFile"
+msgstr "Git: 還原檔案"
+
+#. git: restore tracked files
+msgctxt "action"
+msgid "git::RestoreTrackedFiles"
+msgstr "Git: 還原已追蹤檔案的變更"
+
+#. git: revert commit
+msgctxt "action"
+msgid "git::RevertCommit"
+msgstr "Git: 還原此提交"
+
+#. git: review diff
+msgctxt "action"
+msgid "git::ReviewDiff"
+msgstr "Git: 以代理檢閱差異"
+
+#. git: reword commit
+msgctxt "action"
+msgid "git::RewordCommit"
+msgstr "Git: 改寫提交訊息"
+
+#. git: select repo
+msgctxt "action"
+msgid "git::SelectRepo"
+msgstr "Git: 選取儲存庫"
+
+#. git: show guide
+msgctxt "action"
+msgid "git::ShowGuide"
+msgstr "Git: 開啟操作指南"
+
+#. git: signoff
+msgctxt "action"
+msgid "git::Signoff"
+msgstr "Git: 簽署 (Signoff)"
+
+#. git: skip hooks
+msgctxt "action"
+msgid "git::SkipHooks"
+msgstr "Git: 略過 Hook"
+
+#. git: stage all
+msgctxt "action"
+msgid "git::StageAll"
+msgstr "Git: 全部暫存"
+
+#. git: stage and next
+msgctxt "action"
+msgid "git::StageAndNext"
+msgstr "Git: 暫存並前往下一個"
+
+#. git: stage file
+msgctxt "action"
+msgid "git::StageFile"
+msgstr "Git: 暫存檔案"
+
+#. git: stage range
+msgctxt "action"
+msgid "git::StageRange"
+msgstr "Git: 暫存選取範圍"
+
+#. git: stage section
+msgctxt "action"
+msgid "git::StageSection"
+msgstr "Git: 暫存此區段"
+
+#. git: start amend
+msgctxt "action"
+msgid "git::StartAmend"
+msgstr "Git: 開始修正上一個提交"
+
+#. git: stash all
+msgctxt "action"
+msgid "git::StashAll"
+msgstr "Git: 全部貯藏"
+
+#. git: stash apply
+msgctxt "action"
+msgid "git::StashApply"
+msgstr "Git: 套用貯藏"
+
+#. git: stash pop
+msgctxt "action"
+msgid "git::StashPop"
+msgstr "Git: 取出貯藏"
+
+#. git: stash staged
+msgctxt "action"
+msgid "git::StashStaged"
+msgstr "Git: 貯藏已暫存的變更"
+
+#. git: stash tracked
+msgctxt "action"
+msgid "git::StashTracked"
+msgstr "Git: 貯藏已追蹤的檔案"
+
+#. git: switch
+msgctxt "action"
+msgid "git::Switch"
+msgstr "Git: 切換分支"
+
+#. git: switch worktree
+msgctxt "action"
+msgid "git::SwitchWorktree"
+msgstr "Git: 切換工作樹"
+
+#. git: toggle diff base
+msgctxt "action"
+msgid "git::ToggleDiffBase"
+msgstr "Git: 切換差異基準（HEAD/預設分支）"
+
+#. git: toggle fill commit editor
+msgctxt "action"
+msgid "git::ToggleFillCommitEditor"
+msgstr "Git: 切換提交訊息欄位最大化"
+
+#. git: toggle merge request box
+msgctxt "action"
+msgid "git::ToggleMergeRequestBox"
+msgstr "Git: 開啟/關閉 MR 盒"
+
+#. git: toggle staged
+msgctxt "action"
+msgid "git::ToggleStaged"
+msgstr "Git: 切換暫存狀態"
+
+#. git: trash untracked files
+msgctxt "action"
+msgid "git::TrashUntrackedFiles"
+msgstr "Git: 將未追蹤的檔案移至垃圾桶"
+
+#. git: uncommit
+msgctxt "action"
+msgid "git::Uncommit"
+msgstr "Git: 取消提交"
+
+#. git: unstage all
+msgctxt "action"
+msgid "git::UnstageAll"
+msgstr "Git: 全部取消暫存"
+
+#. git: unstage and next
+msgctxt "action"
+msgid "git::UnstageAndNext"
+msgstr "Git: 取消暫存並前往下一個"
+
+#. git: unstage file
+msgctxt "action"
+msgid "git::UnstageFile"
+msgstr "Git: 取消暫存檔案"
+
+#. git: unstage section
+msgctxt "action"
+msgid "git::UnstageSection"
+msgstr "Git: 取消暫存此區段"
+
+#. git: view commit
+msgctxt "action"
+msgid "git::ViewCommit"
+msgstr "Git: 檢視提交"
+
+#. git: view file
+msgctxt "action"
+msgid "git::ViewFile"
+msgstr "Git: 檢視檔案（無差異）"
+
+#. git: view staged changes
+msgctxt "action"
+msgid "git::ViewStagedChanges"
+msgstr "Git: 檢視已暫存的變更"
+
+#. git: view stash
+msgctxt "action"
+msgid "git::ViewStash"
+msgstr "Git: 檢視貯藏"
+
+#. git: view uncommitted changes
+msgctxt "action"
+msgid "git::ViewUncommittedChanges"
+msgstr "Git: 檢視未提交的變更"
+
+#. git: view unstaged changes
+msgctxt "action"
+msgid "git::ViewUnstagedChanges"
+msgstr "Git: 檢視未暫存的變更"
+
+#. git: worktree
+msgctxt "action"
+msgid "git::Worktree"
+msgstr "Git: 選取工作樹"
+
+#. git graph: copy commit sha
+msgctxt "action"
+msgid "git_graph::CopyCommitSha"
+msgstr "Git: 複製提交 SHA"
+
+#. git graph: copy commit tag
+msgctxt "action"
+msgid "git_graph::CopyCommitTag"
+msgstr "Git: 複製提交標籤"
+
+#. git graph: edit selected commits
+msgctxt "action"
+msgid "git_graph::EditSelectedCommits"
+msgstr "Git: 重新排序/壓縮/捨棄選取的提交"
+
+#. git graph: focus next tab stop
+msgctxt "action"
+msgid "git_graph::FocusNextTabStop"
+msgstr "Git: 聚焦於提交圖的下一個項目"
+
+#. git graph: focus previous tab stop
+msgctxt "action"
+msgid "git_graph::FocusPreviousTabStop"
+msgstr "Git: 聚焦於提交圖的上一個項目"
+
+#. git graph: focus search
+msgctxt "action"
+msgid "git_graph::FocusSearch"
+msgstr "Git: 聚焦於提交圖搜尋"
+
+#. git graph: open
+msgctxt "action"
+msgid "git_graph::Open"
+msgstr "Git: 開啟提交圖"
+
+#. git graph: open at commit
+msgctxt "action"
+msgid "git_graph::OpenAtCommit"
+msgstr "Git: 在此提交處開啟提交圖"
+
+#. git graph: open commit view
+msgctxt "action"
+msgid "git_graph::OpenCommitView"
+msgstr "Git: 開啟選取的提交"
+
+#. git graph: scroll down
+msgctxt "action"
+msgid "git_graph::ScrollDown"
+msgstr "Git: 在提交圖中向下選取半頁"
+
+#. git graph: scroll up
+msgctxt "action"
+msgid "git_graph::ScrollUp"
+msgstr "Git: 在提交圖中向上選取半頁"
+
+#. git graph: toggle changed files view
+msgctxt "action"
+msgid "git_graph::ToggleChangedFilesView"
+msgstr "Git: 切換變更檔案的清單/樹狀檢視"
+
+#. git onboarding: open git integration onboarding
+msgctxt "action"
+msgid "git_onboarding::OpenGitIntegrationOnboarding"
+msgstr "Git: 開啟 Git 整合導覽"
+
+#. git panel: activate changes tab
+msgctxt "action"
+msgid "git_panel::ActivateChangesTab"
+msgstr "Git: 顯示變更分頁"
+
+#. git panel: activate history tab
+msgctxt "action"
+msgid "git_panel::ActivateHistoryTab"
+msgstr "Git: 顯示歷程記錄分頁"
+
+#. git panel: close
+msgctxt "action"
+msgid "git_panel::Close"
+msgstr "Git: 關閉面板"
+
+#. git panel: collapse selected entry
+msgctxt "action"
+msgid "git_panel::CollapseSelectedEntry"
+msgstr "Git: 摺疊選取的項目"
+
+#. git panel: expand selected entry
+msgctxt "action"
+msgid "git_panel::ExpandSelectedEntry"
+msgstr "Git: 展開選取的項目"
+
+#. git panel: first entry
+msgctxt "action"
+msgid "git_panel::FirstEntry"
+msgstr "Git: 第一個項目"
+
+#. git panel: focus changes
+msgctxt "action"
+msgid "git_panel::FocusChanges"
+msgstr "Git: 聚焦於變更清單"
+
+#. git panel: focus editor
+msgctxt "action"
+msgid "git_panel::FocusEditor"
+msgstr "Git: 聚焦於提交訊息欄位"
+
+#. git panel: last entry
+msgctxt "action"
+msgid "git_panel::LastEntry"
+msgstr "Git: 最後一個項目"
+
+#. git panel: next entry
+msgctxt "action"
+msgid "git_panel::NextEntry"
+msgstr "Git: 下一個項目"
+
+#. git panel: open menu
+msgctxt "action"
+msgid "git_panel::OpenMenu"
+msgstr "Git: 開啟面板選單"
+
+#. git panel: previous entry
+msgctxt "action"
+msgid "git_panel::PreviousEntry"
+msgstr "Git: 上一個項目"
+
+#. git panel: set group by none
+msgctxt "action"
+msgid "git_panel::SetGroupByNone"
+msgstr "Git: 不分組"
+
+#. git panel: set group by staging
+msgctxt "action"
+msgid "git_panel::SetGroupByStaging"
+msgstr "Git: 依暫存狀態分組"
+
+#. git panel: set group by status
+msgctxt "action"
+msgid "git_panel::SetGroupByStatus"
+msgstr "Git: 依狀態分組"
+
+#. git panel: set sort by name
+msgctxt "action"
+msgid "git_panel::SetSortByName"
+msgstr "Git: 依名稱排序"
+
+#. git panel: set sort by path
+msgctxt "action"
+msgid "git_panel::SetSortByPath"
+msgstr "Git: 依路徑排序"
+
+#. git panel: toggle
+msgctxt "action"
+msgid "git_panel::Toggle"
+msgstr "Git: 切換面板"
+
+#. git panel: toggle fill co authors
+msgctxt "action"
+msgid "git_panel::ToggleFillCoAuthors"
+msgstr "Git: 切換自動填入 Co-authored-by"
+
+#. git panel: toggle focus
+msgctxt "action"
+msgid "git_panel::ToggleFocus"
+msgstr "Git: 切換面板焦點"
+
+#. git panel: toggle tree view
+msgctxt "action"
+msgid "git_panel::ToggleTreeView"
+msgstr "Git: 切換樹狀檢視"
+
+#. git panel: view staged changes
+msgctxt "action"
+msgid "git_panel::ViewStagedChanges"
+msgstr "Git: 在面板中檢視已暫存的變更"
+
+#. git panel: view unstaged changes
+msgctxt "action"
+msgid "git_panel::ViewUnstagedChanges"
+msgstr "Git: 在面板中檢視未暫存的變更"
+
+#. git picker: activate branches tab
+msgctxt "action"
+msgid "git_picker::ActivateBranchesTab"
+msgstr "Git: 顯示分支分頁"
+
+#. git picker: activate stash tab
+msgctxt "action"
+msgid "git_picker::ActivateStashTab"
+msgstr "Git: 顯示貯藏分頁"
+
+#. go to line: toggle
+msgctxt "action"
+msgid "go_to_line::Toggle"
+msgstr "移至行/欄"
+
+#. highlights tree view: toggle semantic tokens
+msgctxt "action"
+msgid "highlights_tree_view::ToggleSemanticTokens"
+msgstr "醒目提示樹狀檢視: 切換語意標記"
+
+#. highlights tree view: toggle syntax tokens
+msgctxt "action"
+msgid "highlights_tree_view::ToggleSyntaxTokens"
+msgstr "醒目提示樹狀檢視: 切換語法標記"
+
+#. highlights tree view: toggle text highlights
+msgctxt "action"
+msgid "highlights_tree_view::ToggleTextHighlights"
+msgstr "醒目提示樹狀檢視: 切換文字醒目提示"
+
+#. icon theme selector: toggle
+msgctxt "action"
+msgid "icon_theme_selector::Toggle"
+msgstr "選取圖示佈景主題"
+
+#. ide assist: end tour
+msgctxt "action"
+msgid "ide_assist::EndTour"
+msgstr "導覽: 結束"
+
+#. ide assist: next tour step
+msgctxt "action"
+msgid "ide_assist::NextTourStep"
+msgstr "導覽: 下一步"
+
+#. ide assist: previous tour step
+msgctxt "action"
+msgid "ide_assist::PreviousTourStep"
+msgstr "導覽: 上一步"
+
+#. ide server: copy mcp configuration
+msgctxt "action"
+msgid "ide_server::CopyMcpConfiguration"
+msgstr "IDE 伺服器: 複製 MCP 設定"
+
+#. ide server: reveal lock file
+msgctxt "action"
+msgid "ide_server::RevealLockFile"
+msgstr "IDE 伺服器: 顯示鎖定檔位置"
+
+#. ide server: send selection to claude code
+msgctxt "action"
+msgid "ide_server::SendSelectionToClaudeCode"
+msgstr "IDE 伺服器: 將選取範圍傳送至 Claude Code"
+
+#. ide server: toggle ide server
+msgctxt "action"
+msgid "ide_server::ToggleIdeServer"
+msgstr "IDE 伺服器: 切換啟用/停用"
+
+#. image viewer: fit to view
+msgctxt "action"
+msgid "image_viewer::FitToView"
+msgstr "影像: 符合檢視大小"
+
+#. image viewer: reset zoom
+msgctxt "action"
+msgid "image_viewer::ResetZoom"
+msgstr "影像: 重設縮放"
+
+#. image viewer: zoom in
+msgctxt "action"
+msgid "image_viewer::ZoomIn"
+msgstr "影像: 放大"
+
+#. image viewer: zoom out
+msgctxt "action"
+msgid "image_viewer::ZoomOut"
+msgstr "影像: 縮小"
+
+#. image viewer: zoom to actual size
+msgctxt "action"
+msgid "image_viewer::ZoomToActualSize"
+msgstr "影像: 實際大小"
+
+#. inline assistant: thumbs down result
+msgctxt "action"
+msgid "inline_assistant::ThumbsDownResult"
+msgstr "內嵌輔助: 給予結果負評"
+
+#. inline assistant: thumbs up result
+msgctxt "action"
+msgid "inline_assistant::ThumbsUpResult"
+msgstr "內嵌輔助: 給予結果好評"
+
+#. journal: new journal entry
+msgctxt "action"
+msgid "journal::NewJournalEntry"
+msgstr "新增日誌項目"
+
+#. keymap editor: copy action
+msgctxt "action"
+msgid "keymap_editor::CopyAction"
+msgstr "按鍵對應: 複製動作名稱"
+
+#. keymap editor: copy context
+msgctxt "action"
+msgid "keymap_editor::CopyContext"
+msgstr "按鍵對應: 複製內容"
+
+#. keymap editor: create binding
+msgctxt "action"
+msgid "keymap_editor::CreateBinding"
+msgstr "按鍵對應: 新增按鍵繫結"
+
+#. keymap editor: delete binding
+msgctxt "action"
+msgid "keymap_editor::DeleteBinding"
+msgstr "按鍵對應: 刪除按鍵繫結"
+
+#. keymap editor: edit binding
+msgctxt "action"
+msgid "keymap_editor::EditBinding"
+msgstr "按鍵對應: 編輯按鍵繫結"
+
+#. keymap editor: open create keybinding modal
+msgctxt "action"
+msgid "keymap_editor::OpenCreateKeybindingModal"
+msgstr "按鍵對應: 開啟新增按鍵繫結對話方塊"
+
+#. keymap editor: show matching keybinds
+msgctxt "action"
+msgid "keymap_editor::ShowMatchingKeybinds"
+msgstr "按鍵對應: 顯示符合的按鍵繫結"
+
+#. keymap editor: toggle conflict filter
+msgctxt "action"
+msgid "keymap_editor::ToggleConflictFilter"
+msgstr "按鍵對應: 切換只顯示衝突"
+
+#. keymap editor: toggle exact keystroke matching
+msgctxt "action"
+msgid "keymap_editor::ToggleExactKeystrokeMatching"
+msgstr "按鍵對應: 切換按鍵輸入完全相符"
+
+#. keymap editor: toggle keystroke search
+msgctxt "action"
+msgid "keymap_editor::ToggleKeystrokeSearch"
+msgstr "按鍵對應: 切換按鍵輸入搜尋"
+
+#. keymap editor: toggle no action bindings
+msgctxt "action"
+msgid "keymap_editor::ToggleNoActionBindings"
+msgstr "按鍵對應: 切換顯示已停用的繫結"
+
+#. keystroke input: clear keystrokes
+msgctxt "action"
+msgid "keystroke_input::ClearKeystrokes"
+msgstr "按鍵輸入: 清除記錄"
+
+#. keystroke input: start recording
+msgctxt "action"
+msgid "keystroke_input::StartRecording"
+msgstr "按鍵輸入: 開始記錄"
+
+#. keystroke input: stop recording
+msgctxt "action"
+msgid "keystroke_input::StopRecording"
+msgstr "按鍵輸入: 停止記錄"
+
+#. language selector: toggle
+msgctxt "action"
+msgid "language_selector::Toggle"
+msgstr "選取語言模式"
+
+#. line ending selector: toggle
+msgctxt "action"
+msgid "line_ending_selector::Toggle"
+msgstr "選取行尾序列"
+
+#. lsp command selector: toggle
+msgctxt "action"
+msgid "lsp_command_selector::Toggle"
+msgstr "選取語言伺服器命令"
+
+#. lsp command selector: toggle arguments focus
+msgctxt "action"
+msgid "lsp_command_selector::ToggleArgumentsFocus"
+msgstr "語言伺服器命令: 切換引數欄位焦點"
+
+#. lsp tool: review paused worktree code
+msgctxt "action"
+msgid "lsp_tool::ReviewPausedWorktreeCode"
+msgstr "檢閱暫停之資料夾中的程式碼"
+
+#. lsp tool: toggle menu
+msgctxt "action"
+msgid "lsp_tool::ToggleMenu"
+msgstr "開啟語言伺服器選單"
+
+#. markdown: close and return to editor
+msgctxt "action"
+msgid "markdown::CloseAndReturnToEditor"
+msgstr "Markdown 預覽: 關閉並返回編輯器"
+
+#. markdown: copy
+msgctxt "action"
+msgid "markdown::Copy"
+msgstr "Markdown: 複製"
+
+#. markdown: copy as markdown
+msgctxt "action"
+msgid "markdown::CopyAsMarkdown"
+msgstr "Markdown: 複製為 Markdown"
+
+#. markdown: edit mermaid
+msgctxt "action"
+msgid "markdown::EditMermaid"
+msgstr "Markdown: 編輯 Mermaid 圖表…"
+
+#. markdown: edit table
+msgctxt "action"
+msgid "markdown::EditTable"
+msgstr "Markdown: 編輯表格…"
+
+#. markdown: export to pdf
+msgctxt "action"
+msgid "markdown::ExportToPdf"
+msgstr "Markdown: 匯出為 PDF"
+
+#. markdown: fold all headings
+msgctxt "action"
+msgid "markdown::FoldAllHeadings"
+msgstr "Markdown: 摺疊所有標題"
+
+#. markdown: fold headings
+msgctxt "action"
+msgid "markdown::FoldHeadings"
+msgstr "Markdown: 依指定標題層級摺疊"
+
+#. markdown: fold headings picker
+msgctxt "action"
+msgid "markdown::FoldHeadingsPicker"
+msgstr "Markdown: 摺疊標題（選擇層級）"
+
+#. markdown: insert details
+msgctxt "action"
+msgid "markdown::InsertDetails"
+msgstr "Markdown: 插入摺疊區塊（details）"
+
+#. markdown: insert horizontal rule
+msgctxt "action"
+msgid "markdown::InsertHorizontalRule"
+msgstr "Markdown: 插入水平線"
+
+#. markdown: insert image
+msgctxt "action"
+msgid "markdown::InsertImage"
+msgstr "Markdown: 插入/編輯影像…"
+
+#. markdown: insert link
+msgctxt "action"
+msgid "markdown::InsertLink"
+msgstr "Markdown: 插入連結"
+
+#. markdown: insert mermaid diagram
+msgctxt "action"
+msgid "markdown::InsertMermaidDiagram"
+msgstr "Markdown: 插入 Mermaid 圖表"
+
+#. markdown: insert mermaid diagram picker
+msgctxt "action"
+msgid "markdown::InsertMermaidDiagramPicker"
+msgstr "Markdown: 插入 Mermaid 圖表（選擇類型）"
+
+#. markdown: newline invert hard break
+msgctxt "action"
+msgid "markdown::NewlineInvertHardBreak"
+msgstr "Markdown: 換行（反轉行尾空格換行）"
+
+#. markdown: open following preview
+msgctxt "action"
+msgid "markdown::OpenFollowingPreview"
+msgstr "Markdown: 開啟跟隨預覽"
+
+#. markdown: open preview
+msgctxt "action"
+msgid "markdown::OpenPreview"
+msgstr "Markdown: 開啟預覽"
+
+#. markdown: open preview to the side
+msgctxt "action"
+msgid "markdown::OpenPreviewToTheSide"
+msgstr "Markdown: 在側邊開啟預覽"
+
+#. markdown: remove marker
+msgctxt "action"
+msgid "markdown::RemoveMarker"
+msgstr "Markdown: 移除螢光標記"
+
+#. markdown: remove text color
+msgctxt "action"
+msgid "markdown::RemoveTextColor"
+msgstr "Markdown: 移除文字色彩"
+
+#. markdown: reset text size
+msgctxt "action"
+msgid "markdown::ResetTextSize"
+msgstr "Markdown: 將段落文字大小還原為一般"
+
+#. markdown: scroll down
+msgctxt "action"
+msgid "markdown::ScrollDown"
+msgstr "Markdown 預覽: 向下捲動"
+
+#. markdown: scroll down by item
+msgctxt "action"
+msgid "markdown::ScrollDownByItem"
+msgstr "Markdown 預覽: 向下捲動一個項目"
+
+#. markdown: scroll page down
+msgctxt "action"
+msgid "markdown::ScrollPageDown"
+msgstr "Markdown 預覽: 向下捲動一頁"
+
+#. markdown: scroll page up
+msgctxt "action"
+msgid "markdown::ScrollPageUp"
+msgstr "Markdown 預覽: 向上捲動一頁"
+
+#. markdown: scroll to bottom
+msgctxt "action"
+msgid "markdown::ScrollToBottom"
+msgstr "Markdown 預覽: 捲動至底部"
+
+#. markdown: scroll to top
+msgctxt "action"
+msgid "markdown::ScrollToTop"
+msgstr "Markdown 預覽: 捲動至頂端"
+
+#. markdown: scroll up
+msgctxt "action"
+msgid "markdown::ScrollUp"
+msgstr "Markdown 預覽: 向上捲動"
+
+#. markdown: scroll up by item
+msgctxt "action"
+msgid "markdown::ScrollUpByItem"
+msgstr "Markdown 預覽: 向上捲動一個項目"
+
+#. markdown: set marker
+msgctxt "action"
+msgid "markdown::SetMarker"
+msgstr "Markdown: 加上螢光標記"
+
+#. markdown: set text color
+msgctxt "action"
+msgid "markdown::SetTextColor"
+msgstr "Markdown: 設定文字色彩"
+
+#. markdown: set text size
+msgctxt "action"
+msgid "markdown::SetTextSize"
+msgstr "Markdown: 變更段落文字大小"
+
+#. markdown: toggle block quote
+msgctxt "action"
+msgid "markdown::ToggleBlockQuote"
+msgstr "Markdown: 切換引文"
+
+#. markdown: toggle bold
+msgctxt "action"
+msgid "markdown::ToggleBold"
+msgstr "Markdown: 切換粗體"
+
+#. markdown: toggle bullet list
+msgctxt "action"
+msgid "markdown::ToggleBulletList"
+msgstr "Markdown: 切換項目符號清單"
+
+#. markdown: toggle heading1
+msgctxt "action"
+msgid "markdown::ToggleHeading1"
+msgstr "Markdown: 切換標題 1"
+
+#. markdown: toggle heading2
+msgctxt "action"
+msgid "markdown::ToggleHeading2"
+msgstr "Markdown: 切換標題 2"
+
+#. markdown: toggle heading3
+msgctxt "action"
+msgid "markdown::ToggleHeading3"
+msgstr "Markdown: 切換標題 3"
+
+#. markdown: toggle inline code
+msgctxt "action"
+msgid "markdown::ToggleInlineCode"
+msgstr "Markdown: 切換內嵌程式碼"
+
+#. markdown: toggle italic
+msgctxt "action"
+msgid "markdown::ToggleItalic"
+msgstr "Markdown: 切換斜體"
+
+#. markdown: toggle marker
+msgctxt "action"
+msgid "markdown::ToggleMarker"
+msgstr "Markdown: 切換螢光標記（黃色）"
+
+#. markdown: toggle numbered list
+msgctxt "action"
+msgid "markdown::ToggleNumberedList"
+msgstr "Markdown: 切換編號清單"
+
+#. markdown: toggle strikethrough
+msgctxt "action"
+msgid "markdown::ToggleStrikethrough"
+msgstr "Markdown: 切換刪除線"
+
+#. markdown: toggle task list
+msgctxt "action"
+msgid "markdown::ToggleTaskList"
+msgstr "Markdown: 切換工作清單"
+
+#. markdown: unfold all headings
+msgctxt "action"
+msgid "markdown::UnfoldAllHeadings"
+msgstr "Markdown: 展開所有標題"
+
+#. markdown: wrap in code block
+msgctxt "action"
+msgid "markdown::WrapInCodeBlock"
+msgstr "Markdown: 以程式碼區塊包住"
+
+#. menu: cancel
+msgctxt "action"
+msgid "menu::Cancel"
+msgstr "選單: 取消"
+
+#. menu: confirm
+msgctxt "action"
+msgid "menu::Confirm"
+msgstr "選單: 確認"
+
+#. menu: end slot
+msgctxt "action"
+msgid "menu::EndSlot"
+msgstr "選單: 結尾位置"
+
+#. menu: restart
+msgctxt "action"
+msgid "menu::Restart"
+msgstr "選單: 從頭開始"
+
+#. menu: secondary confirm
+msgctxt "action"
+msgid "menu::SecondaryConfirm"
+msgstr "選單: 次要確認"
+
+#. menu: select child
+msgctxt "action"
+msgid "menu::SelectChild"
+msgstr "選單: 進入子選單"
+
+#. menu: select first
+msgctxt "action"
+msgid "menu::SelectFirst"
+msgstr "選單: 選取第一個項目"
+
+#. menu: select last
+msgctxt "action"
+msgid "menu::SelectLast"
+msgstr "選單: 選取最後一個項目"
+
+#. menu: select next
+msgctxt "action"
+msgid "menu::SelectNext"
+msgstr "選單: 選取下一個項目"
+
+#. menu: select parent
+msgctxt "action"
+msgid "menu::SelectParent"
+msgstr "選單: 返回上層選單"
+
+#. menu: select previous
+msgctxt "action"
+msgid "menu::SelectPrevious"
+msgstr "選單: 選取上一個項目"
+
+#. multi workspace: close workspace sidebar
+msgctxt "action"
+msgid "multi_workspace::CloseWorkspaceSidebar"
+msgstr "檢視: 關閉會話側邊欄"
+
+#. multi workspace: focus workspace sidebar
+msgctxt "action"
+msgid "multi_workspace::FocusWorkspaceSidebar"
+msgstr "檢視: 切換會話側邊欄焦點"
+
+#. multi workspace: move project down
+msgctxt "action"
+msgid "multi_workspace::MoveProjectDown"
+msgstr "在側邊欄中將專案下移"
+
+#. multi workspace: move project to new window
+msgctxt "action"
+msgid "multi_workspace::MoveProjectToNewWindow"
+msgstr "將專案移至新視窗"
+
+#. multi workspace: move project up
+msgctxt "action"
+msgid "multi_workspace::MoveProjectUp"
+msgstr "在側邊欄中將專案上移"
+
+#. multi workspace: new thread
+msgctxt "action"
+msgid "multi_workspace::NewThread"
+msgstr "代理: 在此工作區中新增會話"
+
+#. multi workspace: next project
+msgctxt "action"
+msgid "multi_workspace::NextProject"
+msgstr "下一個專案"
+
+#. multi workspace: next thread
+msgctxt "action"
+msgid "multi_workspace::NextThread"
+msgstr "下一個會話"
+
+#. multi workspace: previous project
+msgctxt "action"
+msgid "multi_workspace::PreviousProject"
+msgstr "上一個專案"
+
+#. multi workspace: previous thread
+msgctxt "action"
+msgid "multi_workspace::PreviousThread"
+msgstr "上一個會話"
+
+#. multi workspace: toggle workspace sidebar
+msgctxt "action"
+msgid "multi_workspace::ToggleWorkspaceSidebar"
+msgstr "檢視: 切換會話側邊欄"
+
+#. new process modal: activate attach tab
+msgctxt "action"
+msgid "new_process_modal::ActivateAttachTab"
+msgstr "偵錯: 新增處理序 - 附加分頁"
+
+#. new process modal: activate debug tab
+msgctxt "action"
+msgid "new_process_modal::ActivateDebugTab"
+msgstr "偵錯: 新增處理序 - 偵錯分頁"
+
+#. new process modal: activate launch tab
+msgctxt "action"
+msgid "new_process_modal::ActivateLaunchTab"
+msgstr "偵錯: 新增處理序 - 啟動分頁"
+
+#. new process modal: activate task tab
+msgctxt "action"
+msgid "new_process_modal::ActivateTaskTab"
+msgstr "偵錯: 新增處理序 - 工作分頁"
+
+#. notebook: add code block
+msgctxt "action"
+msgid "notebook::AddCodeBlock"
+msgstr "筆記本: 新增程式碼儲存格"
+
+#. notebook: add markdown block
+msgctxt "action"
+msgid "notebook::AddMarkdownBlock"
+msgstr "筆記本: 新增 Markdown 儲存格"
+
+#. notebook: clear outputs
+msgctxt "action"
+msgid "notebook::ClearOutputs"
+msgstr "筆記本: 清除所有輸出"
+
+#. notebook: delete cell
+msgctxt "action"
+msgid "notebook::DeleteCell"
+msgstr "筆記本: 刪除儲存格"
+
+#. notebook: enter command mode
+msgctxt "action"
+msgid "notebook::EnterCommandMode"
+msgstr "筆記本: 返回命令模式"
+
+#. notebook: enter edit mode
+msgctxt "action"
+msgid "notebook::EnterEditMode"
+msgstr "筆記本: 編輯儲存格"
+
+#. notebook: interrupt kernel
+msgctxt "action"
+msgid "notebook::InterruptKernel"
+msgstr "筆記本: 中斷執行"
+
+#. notebook: move cell down
+msgctxt "action"
+msgid "notebook::MoveCellDown"
+msgstr "筆記本: 將儲存格下移"
+
+#. notebook: move cell up
+msgctxt "action"
+msgid "notebook::MoveCellUp"
+msgstr "筆記本: 將儲存格上移"
+
+#. notebook: notebook move down
+msgctxt "action"
+msgid "notebook::NotebookMoveDown"
+msgstr "筆記本: 移至下方儲存格"
+
+#. notebook: notebook move up
+msgctxt "action"
+msgid "notebook::NotebookMoveUp"
+msgstr "筆記本: 移至上方儲存格"
+
+#. notebook: open notebook
+msgctxt "action"
+msgid "notebook::OpenNotebook"
+msgstr "筆記本: 開啟 Jupyter 筆記本"
+
+#. notebook: restart kernel
+msgctxt "action"
+msgid "notebook::RestartKernel"
+msgstr "筆記本: 重新啟動核心"
+
+#. notebook: run
+msgctxt "action"
+msgid "notebook::Run"
+msgstr "筆記本: 執行儲存格"
+
+#. notebook: run all
+msgctxt "action"
+msgid "notebook::RunAll"
+msgstr "筆記本: 全部執行"
+
+#. notebook: run and advance
+msgctxt "action"
+msgid "notebook::RunAndAdvance"
+msgstr "筆記本: 執行儲存格並前往下一個"
+
+#. onboarding: finish
+msgctxt "action"
+msgid "onboarding::Finish"
+msgstr "新手導覽: 完成"
+
+#. onboarding: open account
+msgctxt "action"
+msgid "onboarding::OpenAccount"
+msgstr "新手導覽: 開啟帳戶"
+
+#. onboarding: reset hints
+msgctxt "action"
+msgid "onboarding::ResetHints"
+msgstr "新手導覽: 重設歡迎頁面提示"
+
+#. onboarding: sign in
+msgctxt "action"
+msgid "onboarding::SignIn"
+msgstr "新手導覽: 登入"
+
+#. outline: toggle
+msgctxt "action"
+msgid "outline::Toggle"
+msgstr "大綱: 移至符號"
+
+#. outline panel: collapse all entries
+msgctxt "action"
+msgid "outline_panel::CollapseAllEntries"
+msgstr "大綱面板: 全部摺疊"
+
+#. outline panel: collapse selected entry
+msgctxt "action"
+msgid "outline_panel::CollapseSelectedEntry"
+msgstr "大綱面板: 摺疊選取的項目"
+
+#. outline panel: expand all entries
+msgctxt "action"
+msgid "outline_panel::ExpandAllEntries"
+msgstr "大綱面板: 全部展開"
+
+#. outline panel: expand selected entry
+msgctxt "action"
+msgid "outline_panel::ExpandSelectedEntry"
+msgstr "大綱面板: 展開選取的項目"
+
+#. outline panel: fold directory
+msgctxt "action"
+msgid "outline_panel::FoldDirectory"
+msgstr "大綱面板: 合併顯示資料夾"
+
+#. outline panel: open selected entry
+msgctxt "action"
+msgid "outline_panel::OpenSelectedEntry"
+msgstr "大綱面板: 開啟選取的項目"
+
+#. outline panel: reveal in file manager
+msgctxt "action"
+msgid "outline_panel::RevealInFileManager"
+msgstr "大綱面板: 在檔案管理員中顯示"
+
+#. outline panel: scroll cursor bottom
+msgctxt "action"
+msgid "outline_panel::ScrollCursorBottom"
+msgstr "大綱面板: 將游標捲至底部"
+
+#. outline panel: scroll cursor center
+msgctxt "action"
+msgid "outline_panel::ScrollCursorCenter"
+msgstr "大綱面板: 將游標捲至中央"
+
+#. outline panel: scroll cursor top
+msgctxt "action"
+msgid "outline_panel::ScrollCursorTop"
+msgstr "大綱面板: 將游標捲至頂端"
+
+#. outline panel: scroll down
+msgctxt "action"
+msgid "outline_panel::ScrollDown"
+msgstr "大綱面板: 向下捲動半頁"
+
+#. outline panel: scroll up
+msgctxt "action"
+msgid "outline_panel::ScrollUp"
+msgstr "大綱面板: 向上捲動半頁"
+
+#. outline panel: select parent
+msgctxt "action"
+msgid "outline_panel::SelectParent"
+msgstr "大綱面板: 選取父項目"
+
+#. outline panel: toggle
+msgctxt "action"
+msgid "outline_panel::Toggle"
+msgstr "大綱面板: 切換"
+
+#. outline panel: toggle active editor pin
+msgctxt "action"
+msgid "outline_panel::ToggleActiveEditorPin"
+msgstr "大綱面板: 切換釘選使用中的編輯器"
+
+#. outline panel: toggle focus
+msgctxt "action"
+msgid "outline_panel::ToggleFocus"
+msgstr "大綱面板: 切換焦點"
+
+#. outline panel: toggle symbols
+msgctxt "action"
+msgid "outline_panel::ToggleSymbols"
+msgstr "大綱面板: 切換符號顯示"
+
+#. outline panel: unfold directory
+msgctxt "action"
+msgid "outline_panel::UnfoldDirectory"
+msgstr "大綱面板: 展開顯示資料夾"
+
+#. pane: activate item
+msgctxt "action"
+msgid "pane::ActivateItem"
+msgstr "分頁: 指定編號的分頁"
+
+#. pane: activate last item
+msgctxt "action"
+msgid "pane::ActivateLastItem"
+msgstr "分頁: 最後一個分頁"
+
+#. pane: activate next item
+msgctxt "action"
+msgid "pane::ActivateNextItem"
+msgstr "分頁: 下一個分頁"
+
+#. pane: activate previous item
+msgctxt "action"
+msgid "pane::ActivatePreviousItem"
+msgstr "分頁: 上一個分頁"
+
+#. pane: alternate file
+msgctxt "action"
+msgid "pane::AlternateFile"
+msgstr "檔案: 切換至上一個檔案"
+
+#. pane: close active item
+msgctxt "action"
+msgid "pane::CloseActiveItem"
+msgstr "分頁: 關閉分頁"
+
+#. pane: close all items
+msgctxt "action"
+msgid "pane::CloseAllItems"
+msgstr "分頁: 關閉所有分頁"
+
+#. pane: close clean items
+msgctxt "action"
+msgid "pane::CloseCleanItems"
+msgstr "分頁: 關閉未修改的分頁"
+
+#. pane: close items to the left
+msgctxt "action"
+msgid "pane::CloseItemsToTheLeft"
+msgstr "分頁: 關閉左側的分頁"
+
+#. pane: close items to the right
+msgctxt "action"
+msgid "pane::CloseItemsToTheRight"
+msgstr "分頁: 關閉右側的分頁"
+
+#. pane: close multibuffer items
+msgctxt "action"
+msgid "pane::CloseMultibufferItems"
+msgstr "分頁: 關閉多重緩衝區分頁"
+
+#. pane: close other items
+msgctxt "action"
+msgid "pane::CloseOtherItems"
+msgstr "分頁: 關閉其他分頁"
+
+#. pane: deploy search
+msgctxt "action"
+msgid "pane::DeploySearch"
+msgstr "搜尋: 開啟專案搜尋"
+
+#. pane: go back
+msgctxt "action"
+msgid "pane::GoBack"
+msgstr "移至: 返回"
+
+#. pane: go forward
+msgctxt "action"
+msgid "pane::GoForward"
+msgstr "移至: 前進"
+
+#. pane: go to newer tag
+msgctxt "action"
+msgid "pane::GoToNewerTag"
+msgstr "移至: 標籤堆疊前進"
+
+#. pane: go to older tag
+msgctxt "action"
+msgid "pane::GoToOlderTag"
+msgstr "移至: 標籤堆疊返回"
+
+#. pane: join all
+msgctxt "action"
+msgid "pane::JoinAll"
+msgstr "窗格: 全部合併"
+
+#. pane: join into next
+msgctxt "action"
+msgid "pane::JoinIntoNext"
+msgstr "窗格: 合併至下一個窗格"
+
+#. pane: reopen closed item
+msgctxt "action"
+msgid "pane::ReopenClosedItem"
+msgstr "分頁: 重新開啟已關閉的分頁"
+
+#. pane: reveal in project panel
+msgctxt "action"
+msgid "pane::RevealInProjectPanel"
+msgstr "在專案面板中顯示"
+
+#. pane: split and move down
+msgctxt "action"
+msgid "pane::SplitAndMoveDown"
+msgstr "窗格: 向下分割並移動"
+
+#. pane: split and move left
+msgctxt "action"
+msgid "pane::SplitAndMoveLeft"
+msgstr "窗格: 向左分割並移動"
+
+#. pane: split and move right
+msgctxt "action"
+msgid "pane::SplitAndMoveRight"
+msgstr "窗格: 向右分割並移動"
+
+#. pane: split and move up
+msgctxt "action"
+msgid "pane::SplitAndMoveUp"
+msgstr "窗格: 向上分割並移動"
+
+#. pane: split down
+msgctxt "action"
+msgid "pane::SplitDown"
+msgstr "窗格: 向下分割"
+
+#. pane: split horizontal
+msgctxt "action"
+msgid "pane::SplitHorizontal"
+msgstr "窗格: 水平分割"
+
+#. pane: split left
+msgctxt "action"
+msgid "pane::SplitLeft"
+msgstr "窗格: 向左分割"
+
+#. pane: split right
+msgctxt "action"
+msgid "pane::SplitRight"
+msgstr "窗格: 向右分割"
+
+#. pane: split up
+msgctxt "action"
+msgid "pane::SplitUp"
+msgstr "窗格: 向上分割"
+
+#. pane: split vertical
+msgctxt "action"
+msgid "pane::SplitVertical"
+msgstr "窗格: 垂直分割"
+
+#. pane: swap item left
+msgctxt "action"
+msgid "pane::SwapItemLeft"
+msgstr "分頁: 向左移動"
+
+#. pane: swap item right
+msgctxt "action"
+msgid "pane::SwapItemRight"
+msgstr "分頁: 向右移動"
+
+#. pane: toggle pin tab
+msgctxt "action"
+msgid "pane::TogglePinTab"
+msgstr "分頁: 切換釘選"
+
+#. pane: toggle preview tab
+msgctxt "action"
+msgid "pane::TogglePreviewTab"
+msgstr "分頁: 切換預覽分頁"
+
+#. pane: unpin all tabs
+msgctxt "action"
+msgid "pane::UnpinAllTabs"
+msgstr "分頁: 取消釘選所有分頁"
+
+#. picker: confirm completion
+msgctxt "action"
+msgid "picker::ConfirmCompletion"
+msgstr "選擇器: 確認完成項目"
+
+#. picker: confirm input
+msgctxt "action"
+msgid "picker::ConfirmInput"
+msgstr "選擇器: 以輸入的文字確認"
+
+#. picker: multi select next
+msgctxt "action"
+msgid "picker::MultiSelectNext"
+msgstr "選擇器: 選取並前往下一個"
+
+#. picker: set preview below
+msgctxt "action"
+msgid "picker::SetPreviewBelow"
+msgstr "選擇器: 在下方顯示預覽"
+
+#. picker: set preview hidden
+msgctxt "action"
+msgid "picker::SetPreviewHidden"
+msgstr "選擇器: 隱藏預覽"
+
+#. picker: set preview right
+msgctxt "action"
+msgid "picker::SetPreviewRight"
+msgstr "選擇器: 在右側顯示預覽"
+
+#. picker: toggle actions menu
+msgctxt "action"
+msgid "picker::ToggleActionsMenu"
+msgstr "選擇器: 開啟動作選單"
+
+#. picker: toggle multi select
+msgctxt "action"
+msgid "picker::ToggleMultiSelect"
+msgstr "選擇器: 切換多重選取模式"
+
+#. picker: toggle preview
+msgctxt "action"
+msgid "picker::TogglePreview"
+msgstr "選擇器: 切換預覽"
+
+#. project panel: collapse all entries
+msgctxt "action"
+msgid "project_panel::CollapseAllEntries"
+msgstr "專案面板: 全部摺疊"
+
+#. project panel: collapse selected entry
+msgctxt "action"
+msgid "project_panel::CollapseSelectedEntry"
+msgstr "專案面板: 摺疊選取的項目"
+
+#. project panel: collapse selected entry and children
+msgctxt "action"
+msgid "project_panel::CollapseSelectedEntryAndChildren"
+msgstr "專案面板: 摺疊選取的項目及其子項目"
+
+#. project panel: compare marked files
+msgctxt "action"
+msgid "project_panel::CompareMarkedFiles"
+msgstr "專案面板: 比較已標記的檔案"
+
+#. project panel: copy
+msgctxt "action"
+msgid "project_panel::Copy"
+msgstr "專案面板: 複製"
+
+#. project panel: cut
+msgctxt "action"
+msgid "project_panel::Cut"
+msgstr "專案面板: 剪下"
+
+#. project panel: delete
+msgctxt "action"
+msgid "project_panel::Delete"
+msgstr "專案面板: 永久刪除"
+
+#. project panel: download from remote
+msgctxt "action"
+msgid "project_panel::DownloadFromRemote"
+msgstr "專案面板: 從遠端下載"
+
+#. project panel: duplicate
+msgctxt "action"
+msgid "project_panel::Duplicate"
+msgstr "專案面板: 建立副本"
+
+#. project panel: expand all entries
+msgctxt "action"
+msgid "project_panel::ExpandAllEntries"
+msgstr "專案面板: 全部展開"
+
+#. project panel: expand selected entry
+msgctxt "action"
+msgid "project_panel::ExpandSelectedEntry"
+msgstr "專案面板: 展開選取的項目"
+
+#. project panel: expand selected entry and children
+msgctxt "action"
+msgid "project_panel::ExpandSelectedEntryAndChildren"
+msgstr "專案面板: 展開選取的項目及其子項目"
+
+#. project panel: fold directory
+msgctxt "action"
+msgid "project_panel::FoldDirectory"
+msgstr "專案面板: 合併顯示資料夾"
+
+#. project panel: new directory
+msgctxt "action"
+msgid "project_panel::NewDirectory"
+msgstr "專案面板: 新增資料夾"
+
+#. project panel: new file
+msgctxt "action"
+msgid "project_panel::NewFile"
+msgstr "專案面板: 新增檔案"
+
+#. project panel: new search in directory
+msgctxt "action"
+msgid "project_panel::NewSearchInDirectory"
+msgstr "專案面板: 在此資料夾中搜尋"
+
+#. project panel: open
+msgctxt "action"
+msgid "project_panel::Open"
+msgstr "專案面板: 開啟"
+
+#. project panel: open context menu
+msgctxt "action"
+msgid "project_panel::OpenContextMenu"
+msgstr "專案面板: 開啟內容功能表"
+
+#. project panel: open markdown preview
+msgctxt "action"
+msgid "project_panel::OpenMarkdownPreview"
+msgstr "專案面板: 開啟 Markdown 預覽"
+
+#. project panel: open permanent
+msgctxt "action"
+msgid "project_panel::OpenPermanent"
+msgstr "專案面板: 以固定分頁開啟"
+
+#. project panel: open split horizontal
+msgctxt "action"
+msgid "project_panel::OpenSplitHorizontal"
+msgstr "專案面板: 以水平分割開啟"
+
+#. project panel: open split vertical
+msgctxt "action"
+msgid "project_panel::OpenSplitVertical"
+msgstr "專案面板: 以垂直分割開啟"
+
+#. project panel: paste
+msgctxt "action"
+msgid "project_panel::Paste"
+msgstr "專案面板: 貼上"
+
+#. project panel: redo
+msgctxt "action"
+msgid "project_panel::Redo"
+msgstr "專案面板: 取消復原檔案操作"
+
+#. project panel: refresh
+msgctxt "action"
+msgid "project_panel::Refresh"
+msgstr "專案面板: 重新整理"
+
+#. project panel: remove from project
+msgctxt "action"
+msgid "project_panel::RemoveFromProject"
+msgstr "專案面板: 從專案移除"
+
+#. project panel: rename
+msgctxt "action"
+msgid "project_panel::Rename"
+msgstr "專案面板: 重新命名"
+
+#. project panel: reveal in file manager
+msgctxt "action"
+msgid "project_panel::RevealInFileManager"
+msgstr "專案面板: 在檔案管理員中顯示"
+
+#. project panel: scroll cursor bottom
+msgctxt "action"
+msgid "project_panel::ScrollCursorBottom"
+msgstr "專案面板: 將游標捲至底部"
+
+#. project panel: scroll cursor center
+msgctxt "action"
+msgid "project_panel::ScrollCursorCenter"
+msgstr "專案面板: 將游標捲至中央"
+
+#. project panel: scroll cursor top
+msgctxt "action"
+msgid "project_panel::ScrollCursorTop"
+msgstr "專案面板: 將游標捲至頂端"
+
+#. project panel: scroll down
+msgctxt "action"
+msgid "project_panel::ScrollDown"
+msgstr "專案面板: 向下捲動半頁"
+
+#. project panel: scroll up
+msgctxt "action"
+msgid "project_panel::ScrollUp"
+msgstr "專案面板: 向上捲動半頁"
+
+#. project panel: select next diagnostic
+msgctxt "action"
+msgid "project_panel::SelectNextDiagnostic"
+msgstr "專案面板: 下一個問題"
+
+#. project panel: select next directory
+msgctxt "action"
+msgid "project_panel::SelectNextDirectory"
+msgstr "專案面板: 下一個資料夾"
+
+#. project panel: select next git entry
+msgctxt "action"
+msgid "project_panel::SelectNextGitEntry"
+msgstr "專案面板: 下一個 Git 變更"
+
+#. project panel: select parent
+msgctxt "action"
+msgid "project_panel::SelectParent"
+msgstr "專案面板: 選取父資料夾"
+
+#. project panel: select prev diagnostic
+msgctxt "action"
+msgid "project_panel::SelectPrevDiagnostic"
+msgstr "專案面板: 上一個問題"
+
+#. project panel: select prev directory
+msgctxt "action"
+msgid "project_panel::SelectPrevDirectory"
+msgstr "專案面板: 上一個資料夾"
+
+#. project panel: select prev git entry
+msgctxt "action"
+msgid "project_panel::SelectPrevGitEntry"
+msgstr "專案面板: 上一個 Git 變更"
+
+#. project panel: toggle
+msgctxt "action"
+msgid "project_panel::Toggle"
+msgstr "專案面板: 切換"
+
+#. project panel: toggle focus
+msgctxt "action"
+msgid "project_panel::ToggleFocus"
+msgstr "專案面板: 切換焦點"
+
+#. project panel: toggle hide git ignore
+msgctxt "action"
+msgid "project_panel::ToggleHideGitIgnore"
+msgstr "專案面板: 切換顯示 Git 忽略的檔案"
+
+#. project panel: toggle hide hidden
+msgctxt "action"
+msgid "project_panel::ToggleHideHidden"
+msgstr "專案面板: 切換顯示隱藏檔案"
+
+#. project panel: trash
+msgctxt "action"
+msgid "project_panel::Trash"
+msgstr "專案面板: 移至垃圾桶"
+
+#. project panel: undo
+msgctxt "action"
+msgid "project_panel::Undo"
+msgstr "專案面板: 復原檔案操作"
+
+#. project panel: unfold directory
+msgctxt "action"
+msgid "project_panel::UnfoldDirectory"
+msgstr "專案面板: 展開顯示資料夾"
+
+#. project search: next field
+msgctxt "action"
+msgid "project_search::NextField"
+msgstr "搜尋: 下一個欄位"
+
+#. project search: open text finder
+msgctxt "action"
+msgid "project_search::OpenTextFinder"
+msgstr "搜尋: 開啟文字尋找工具"
+
+#. project search: search in new
+msgctxt "action"
+msgid "project_search::SearchInNew"
+msgstr "搜尋: 在新分頁中搜尋"
+
+#. project search: toggle all search results
+msgctxt "action"
+msgid "project_search::ToggleAllSearchResults"
+msgstr "搜尋: 切換展開搜尋結果"
+
+#. project search: toggle filters
+msgctxt "action"
+msgid "project_search::ToggleFilters"
+msgstr "搜尋: 切換篩選條件顯示"
+
+#. project search: toggle focus
+msgctxt "action"
+msgid "project_search::ToggleFocus"
+msgstr "搜尋: 聚焦於專案搜尋"
+
+#. project symbols: toggle
+msgctxt "action"
+msgid "project_symbols::Toggle"
+msgstr "移至專案中的符號"
+
+#. projects: initialize dev container
+msgctxt "action"
+msgid "projects::InitializeDevContainer"
+msgstr "初始化 Dev Container"
+
+#. projects: open dev container
+msgctxt "action"
+msgid "projects::OpenDevContainer"
+msgstr "開啟 Dev Container"
+
+#. projects: open folder in wsl
+msgctxt "action"
+msgid "projects::OpenFolderInWsl"
+msgstr "開啟 WSL 中的資料夾"
+
+#. projects: open recent
+msgctxt "action"
+msgid "projects::OpenRecent"
+msgstr "開啟最近的專案"
+
+#. projects: open remote
+msgctxt "action"
+msgid "projects::OpenRemote"
+msgstr "開啟遠端專案"
+
+#. projects: open wsl
+msgctxt "action"
+msgid "projects::OpenWsl"
+msgstr "開啟 WSL 專案"
+
+#. recent projects: add to workspace
+msgctxt "action"
+msgid "recent_projects::AddToWorkspace"
+msgstr "新增至工作區"
+
+#. recent projects: remove selected
+msgctxt "action"
+msgid "recent_projects::RemoveSelected"
+msgstr "最近的專案: 從清單移除"
+
+#. recent projects: toggle actions menu
+msgctxt "action"
+msgid "recent_projects::ToggleActionsMenu"
+msgstr "最近的專案: 開啟動作選單"
+
+#. remote debug: simulate disconnect
+msgctxt "action"
+msgid "remote_debug::SimulateDisconnect"
+msgstr "開發人員: 模擬遠端中斷連線"
+
+#. remote debug: simulate timeout
+msgctxt "action"
+msgid "remote_debug::SimulateTimeout"
+msgstr "開發人員: 模擬遠端逾時"
+
+#. remote debug: simulate timeout exhausted
+msgctxt "action"
+msgid "remote_debug::SimulateTimeoutExhausted"
+msgstr "開發人員: 模擬遠端重試次數用盡"
+
+#. repl: clear current output
+msgctxt "action"
+msgid "repl::ClearCurrentOutput"
+msgstr "REPL: 清除目前的輸出"
+
+#. repl: clear outputs
+msgctxt "action"
+msgid "repl::ClearOutputs"
+msgstr "REPL: 清除輸出"
+
+#. repl: interrupt
+msgctxt "action"
+msgid "repl::Interrupt"
+msgstr "REPL: 中斷"
+
+#. repl: refresh kernelspecs
+msgctxt "action"
+msgid "repl::RefreshKernelspecs"
+msgstr "REPL: 重新整理核心清單"
+
+#. repl: restart
+msgctxt "action"
+msgid "repl::Restart"
+msgstr "REPL: 重新啟動"
+
+#. repl: run
+msgctxt "action"
+msgid "repl::Run"
+msgstr "REPL: 執行"
+
+#. repl: run in place
+msgctxt "action"
+msgid "repl::RunInPlace"
+msgstr "REPL: 就地執行"
+
+#. repl: sessions
+msgctxt "action"
+msgid "repl::Sessions"
+msgstr "REPL: 工作階段清單"
+
+#. repl: shutdown
+msgctxt "action"
+msgid "repl::Shutdown"
+msgstr "REPL: 關閉"
+
+#. search: cycle mode
+msgctxt "action"
+msgid "search::CycleMode"
+msgstr "搜尋: 循環切換搜尋模式"
+
+#. search: focus search
+msgctxt "action"
+msgid "search::FocusSearch"
+msgstr "搜尋: 聚焦於搜尋方塊"
+
+#. search: new search in directory
+msgctxt "action"
+msgid "search::NewSearchInDirectory"
+msgstr "搜尋: 在此資料夾中搜尋"
+
+#. search: next history query
+msgctxt "action"
+msgid "search::NextHistoryQuery"
+msgstr "搜尋: 下一個搜尋歷程"
+
+#. search: previous history query
+msgctxt "action"
+msgid "search::PreviousHistoryQuery"
+msgstr "搜尋: 上一個搜尋歷程"
+
+#. search: replace all
+msgctxt "action"
+msgid "search::ReplaceAll"
+msgstr "搜尋: 全部取代"
+
+#. search: replace next
+msgctxt "action"
+msgid "search::ReplaceNext"
+msgstr "搜尋: 取代下一個"
+
+#. search: select all matches
+msgctxt "action"
+msgid "search::SelectAllMatches"
+msgstr "搜尋: 選取所有符合項目"
+
+#. search: select next match
+msgctxt "action"
+msgid "search::SelectNextMatch"
+msgstr "搜尋: 下一個符合項目"
+
+#. search: select previous match
+msgctxt "action"
+msgid "search::SelectPreviousMatch"
+msgstr "搜尋: 上一個符合項目"
+
+#. search: toggle case sensitive
+msgctxt "action"
+msgid "search::ToggleCaseSensitive"
+msgstr "搜尋: 大小寫須相符"
+
+#. search: toggle include ignored
+msgctxt "action"
+msgid "search::ToggleIncludeIgnored"
+msgstr "搜尋: 包含已忽略的檔案"
+
+#. search: toggle regex
+msgctxt "action"
+msgid "search::ToggleRegex"
+msgstr "搜尋: 使用規則運算式"
+
+#. search: toggle replace
+msgctxt "action"
+msgid "search::ToggleReplace"
+msgstr "搜尋: 切換取代"
+
+#. search: toggle selection
+msgctxt "action"
+msgid "search::ToggleSelection"
+msgstr "搜尋: 在選取範圍中搜尋"
+
+#. search: toggle whole word
+msgctxt "action"
+msgid "search::ToggleWholeWord"
+msgstr "搜尋: 全字拼寫須相符"
+
+#. settings editor: collapse nav entry
+msgctxt "action"
+msgid "settings_editor::CollapseNavEntry"
+msgstr "設定: 摺疊導覽項目"
+
+#. settings editor: expand nav entry
+msgctxt "action"
+msgid "settings_editor::ExpandNavEntry"
+msgstr "設定: 展開導覽項目"
+
+#. settings editor: focus file
+msgctxt "action"
+msgid "settings_editor::FocusFile"
+msgstr "設定: 前往指定的設定檔案"
+
+#. settings editor: focus first nav entry
+msgctxt "action"
+msgid "settings_editor::FocusFirstNavEntry"
+msgstr "設定: 第一個導覽項目"
+
+#. settings editor: focus last nav entry
+msgctxt "action"
+msgid "settings_editor::FocusLastNavEntry"
+msgstr "設定: 最後一個導覽項目"
+
+#. settings editor: focus next file
+msgctxt "action"
+msgid "settings_editor::FocusNextFile"
+msgstr "設定: 下一個設定檔案"
+
+#. settings editor: focus next nav entry
+msgctxt "action"
+msgid "settings_editor::FocusNextNavEntry"
+msgstr "設定: 開啟下一個導覽項目"
+
+#. settings editor: focus next root nav entry
+msgctxt "action"
+msgid "settings_editor::FocusNextRootNavEntry"
+msgstr "設定: 下一個最上層項目"
+
+#. settings editor: focus previous file
+msgctxt "action"
+msgid "settings_editor::FocusPreviousFile"
+msgstr "設定: 上一個設定檔案"
+
+#. settings editor: focus previous nav entry
+msgctxt "action"
+msgid "settings_editor::FocusPreviousNavEntry"
+msgstr "設定: 開啟上一個導覽項目"
+
+#. settings editor: focus previous root nav entry
+msgctxt "action"
+msgid "settings_editor::FocusPreviousRootNavEntry"
+msgstr "設定: 上一個最上層項目"
+
+#. settings editor: minimize
+msgctxt "action"
+msgid "settings_editor::Minimize"
+msgstr "設定: 最小化視窗"
+
+#. settings editor: open current file
+msgctxt "action"
+msgid "settings_editor::OpenCurrentFile"
+msgstr "設定: 開啟目前的設定檔案"
+
+#. settings editor: toggle focus nav
+msgctxt "action"
+msgid "settings_editor::ToggleFocusNav"
+msgstr "設定: 切換導覽與內容的焦點"
+
+#. settings profile selector: toggle
+msgctxt "action"
+msgid "settings_profile_selector::Toggle"
+msgstr "選取設定檔"
+
+#. skill creator: cancel
+msgctxt "action"
+msgid "skill_creator::Cancel"
+msgstr "技能建立: 取消"
+
+#. skill creator: focus next field
+msgctxt "action"
+msgid "skill_creator::FocusNextField"
+msgstr "技能建立: 下一個欄位"
+
+#. skill creator: focus previous field
+msgctxt "action"
+msgid "skill_creator::FocusPreviousField"
+msgstr "技能建立: 上一個欄位"
+
+#. skill creator: save skill
+msgctxt "action"
+msgid "skill_creator::SaveSkill"
+msgstr "技能建立: 儲存技能"
+
+#. snippets: configure snippets
+msgctxt "action"
+msgid "snippets::ConfigureSnippets"
+msgstr "設定程式碼片段"
+
+#. snippets: open folder
+msgctxt "action"
+msgid "snippets::OpenFolder"
+msgstr "開啟程式碼片段資料夾"
+
+#. stash picker: drop stash item
+msgctxt "action"
+msgid "stash_picker::DropStashItem"
+msgstr "Git: 捨棄貯藏"
+
+#. stash picker: show stash item
+msgctxt "action"
+msgid "stash_picker::ShowStashItem"
+msgstr "Git: 顯示貯藏的差異"
+
+#. svg: open following preview
+msgctxt "action"
+msgid "svg::OpenFollowingPreview"
+msgstr "SVG: 開啟跟隨預覽"
+
+#. svg: open preview
+msgctxt "action"
+msgid "svg::OpenPreview"
+msgstr "SVG: 開啟預覽"
+
+#. svg: open preview to the side
+msgctxt "action"
+msgid "svg::OpenPreviewToTheSide"
+msgstr "SVG: 在側邊開啟預覽"
+
+#. syntax tree view: use active editor
+msgctxt "action"
+msgid "syntax_tree_view::UseActiveEditor"
+msgstr "語法樹: 顯示最後使用的編輯器"
+
+#. tab switcher: close selected item
+msgctxt "action"
+msgid "tab_switcher::CloseSelectedItem"
+msgstr "關閉選取的分頁"
+
+#. tab switcher: open in active pane
+msgctxt "action"
+msgid "tab_switcher::OpenInActivePane"
+msgstr "切換所有窗格的分頁（在使用中的窗格開啟）"
+
+#. tab switcher: toggle
+msgctxt "action"
+msgid "tab_switcher::Toggle"
+msgstr "切換分頁"
+
+#. tab switcher: toggle all
+msgctxt "action"
+msgid "tab_switcher::ToggleAll"
+msgstr "切換所有分頁"
+
+#. tabular data: append column
+msgctxt "action"
+msgid "tabular_data::AppendColumn"
+msgstr "表格（CSV / TSV）: 在結尾新增欄"
+
+#. tabular data: append row
+msgctxt "action"
+msgid "tabular_data::AppendRow"
+msgstr "表格（CSV / TSV）: 在結尾新增列"
+
+#. tabular data: cancel editing
+msgctxt "action"
+msgid "tabular_data::CancelEditing"
+msgstr "表格（CSV / TSV）: 取消編輯"
+
+#. tabular data: clear all filters
+msgctxt "action"
+msgid "tabular_data::ClearAllFilters"
+msgstr "表格（CSV / TSV）: 清除所有篩選"
+
+#. tabular data: clear cell colors
+msgctxt "action"
+msgid "tabular_data::ClearCellColors"
+msgstr "表格（CSV / TSV）: 清除儲存格色彩"
+
+#. tabular data: clear cells
+msgctxt "action"
+msgid "tabular_data::ClearCells"
+msgstr "表格（CSV / TSV）: 清除儲存格內容"
+
+#. tabular data: commit and move down
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveDown"
+msgstr "表格（CSV / TSV）: 確認並移至下方儲存格"
+
+#. tabular data: commit and move left
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveLeft"
+msgstr "表格（CSV / TSV）: 確認並移至左側儲存格"
+
+#. tabular data: commit and move right
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveRight"
+msgstr "表格（CSV / TSV）: 確認並移至右側儲存格"
+
+#. tabular data: commit and move up
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveUp"
+msgstr "表格（CSV / TSV）: 確認並移至上方儲存格"
+
+#. tabular data: commit editing
+msgctxt "action"
+msgid "tabular_data::CommitEditing"
+msgstr "表格（CSV / TSV）: 確認編輯"
+
+#. tabular data: copy cells
+msgctxt "action"
+msgid "tabular_data::CopyCells"
+msgstr "表格（CSV / TSV）: 複製儲存格"
+
+#. tabular data: cut cells
+msgctxt "action"
+msgid "tabular_data::CutCells"
+msgstr "表格（CSV / TSV）: 剪下儲存格"
+
+#. tabular data: delete columns
+msgctxt "action"
+msgid "tabular_data::DeleteColumns"
+msgstr "表格（CSV / TSV）: 刪除欄"
+
+#. tabular data: delete rows
+msgctxt "action"
+msgid "tabular_data::DeleteRows"
+msgstr "表格（CSV / TSV）: 刪除列"
+
+#. tabular data: delete rows or columns
+msgctxt "action"
+msgid "tabular_data::DeleteRowsOrColumns"
+msgstr "表格（CSV / TSV）: 刪除選取的列或欄"
+
+#. tabular data: diff selected cells
+msgctxt "action"
+msgid "tabular_data::DiffSelectedCells"
+msgstr "表格（CSV / TSV）: 比較選取的儲存格"
+
+#. tabular data: diff with file
+msgctxt "action"
+msgid "tabular_data::DiffWithFile"
+msgstr "表格（CSV / TSV）: 與檔案比較"
+
+#. tabular data: diff with head
+msgctxt "action"
+msgid "tabular_data::DiffWithHead"
+msgstr "表格（CSV / TSV）: 與 HEAD 比較"
+
+#. tabular data: fill down
+msgctxt "action"
+msgid "tabular_data::FillDown"
+msgstr "表格（CSV / TSV）: 向下填滿"
+
+#. tabular data: fill right
+msgctxt "action"
+msgid "tabular_data::FillRight"
+msgstr "表格（CSV / TSV）: 向右填滿"
+
+#. tabular data: insert column left
+msgctxt "action"
+msgid "tabular_data::InsertColumnLeft"
+msgstr "表格（CSV / TSV）: 在左側插入欄"
+
+#. tabular data: insert column right
+msgctxt "action"
+msgid "tabular_data::InsertColumnRight"
+msgstr "表格（CSV / TSV）: 在右側插入欄"
+
+#. tabular data: insert line break
+msgctxt "action"
+msgid "tabular_data::InsertLineBreak"
+msgstr "表格（CSV / TSV）: 在儲存格內換行"
+
+#. tabular data: insert row above
+msgctxt "action"
+msgid "tabular_data::InsertRowAbove"
+msgstr "表格（CSV / TSV）: 在上方插入列"
+
+#. tabular data: insert row below
+msgctxt "action"
+msgid "tabular_data::InsertRowBelow"
+msgstr "表格（CSV / TSV）: 在下方插入列"
+
+#. tabular data: insert rows or columns
+msgctxt "action"
+msgid "tabular_data::InsertRowsOrColumns"
+msgstr "表格（CSV / TSV）: 依選取範圍插入列或欄"
+
+#. tabular data: open as text
+msgctxt "action"
+msgid "tabular_data::OpenAsText"
+msgstr "CSV / TSV: 在側邊以文字開啟"
+
+#. tabular data: open preview
+msgctxt "action"
+msgid "tabular_data::OpenPreview"
+msgstr "CSV / TSV: 以表格開啟"
+
+#. tabular data: open preview to the side
+msgctxt "action"
+msgid "tabular_data::OpenPreviewToTheSide"
+msgstr "CSV / TSV: 在側邊開啟表格"
+
+#. tabular data: paste cells
+msgctxt "action"
+msgid "tabular_data::PasteCells"
+msgstr "表格（CSV / TSV）: 貼上儲存格"
+
+#. tabular data: recompute diff
+msgctxt "action"
+msgid "tabular_data::RecomputeDiff"
+msgstr "表格（CSV / TSV）: 重新計算差異"
+
+#. tabular data: select all cells
+msgctxt "action"
+msgid "tabular_data::SelectAllCells"
+msgstr "表格（CSV / TSV）: 選取所有儲存格"
+
+#. tabular data: select column
+msgctxt "action"
+msgid "tabular_data::SelectColumn"
+msgstr "表格（CSV / TSV）: 選取欄"
+
+#. tabular data: select row
+msgctxt "action"
+msgid "tabular_data::SelectRow"
+msgstr "表格（CSV / TSV）: 選取列"
+
+#. tabular data: set fill color
+msgctxt "action"
+msgid "tabular_data::SetFillColor"
+msgstr "表格（CSV / TSV）: 填滿儲存格"
+
+#. tabular data: set text color
+msgctxt "action"
+msgid "tabular_data::SetTextColor"
+msgstr "表格（CSV / TSV）: 變更文字色彩"
+
+#. tabular data: start editing
+msgctxt "action"
+msgid "tabular_data::StartEditing"
+msgstr "表格（CSV / TSV）: 編輯儲存格"
+
+#. tabular data: toggle filter menu
+msgctxt "action"
+msgid "tabular_data::ToggleFilterMenu"
+msgstr "表格（CSV / TSV）: 開啟篩選選單"
+
+#. tabular data: toggle header row
+msgctxt "action"
+msgid "tabular_data::ToggleHeaderRow"
+msgstr "表格（CSV / TSV）: 切換標題列"
+
+#. task: rerun
+msgctxt "action"
+msgid "task::Rerun"
+msgstr "工作: 重新執行上一個工作"
+
+#. task: spawn
+msgctxt "action"
+msgid "task::Spawn"
+msgstr "工作: 執行工作"
+
+#. terminal: cancel macro
+msgctxt "action"
+msgid "terminal::CancelMacro"
+msgstr "終端機: 停止巨集"
+
+#. terminal: clear
+msgctxt "action"
+msgid "terminal::Clear"
+msgstr "終端機: 清除畫面"
+
+#. terminal: copy
+msgctxt "action"
+msgid "terminal::Copy"
+msgstr "終端機: 複製"
+
+#. terminal: edit macros
+msgctxt "action"
+msgid "terminal::EditMacros"
+msgstr "終端機: 編輯巨集…"
+
+#. terminal: install claude code
+msgctxt "action"
+msgid "terminal::InstallClaudeCode"
+msgstr "終端機: 安裝 Claude Code（官方命令）"
+
+#. terminal: launch claude code
+msgctxt "action"
+msgid "terminal::LaunchClaudeCode"
+msgstr "終端機: 啟動 Claude Code"
+
+#. terminal: launch claude code outside sandbox
+msgctxt "action"
+msgid "terminal::LaunchClaudeCodeOutsideSandbox"
+msgstr "終端機: 在沙箱外啟動 Claude Code"
+
+#. terminal: open file transfer
+msgctxt "action"
+msgid "terminal::OpenFileTransfer"
+msgstr "終端機: 檔案傳輸…"
+
+#. terminal: open session log
+msgctxt "action"
+msgid "terminal::OpenSessionLog"
+msgstr "終端機: 開啟記錄檔位置"
+
+#. terminal: paste
+msgctxt "action"
+msgid "terminal::Paste"
+msgstr "終端機: 貼上"
+
+#. terminal: paste text
+msgctxt "action"
+msgid "terminal::PasteText"
+msgstr "終端機: 貼上文字"
+
+#. terminal: quick connect
+msgctxt "action"
+msgid "terminal::QuickConnect"
+msgstr "終端機: 快速連線…"
+
+#. terminal: rename terminal
+msgctxt "action"
+msgid "terminal::RenameTerminal"
+msgstr "終端機: 重新命名"
+
+#. terminal: rerun task
+msgctxt "action"
+msgid "terminal::RerunTask"
+msgstr "終端機: 重新執行工作"
+
+#. terminal: restart terminal
+msgctxt "action"
+msgid "terminal::RestartTerminal"
+msgstr "終端機: 重新啟動"
+
+#. terminal: run macro
+msgctxt "action"
+msgid "terminal::RunMacro"
+msgstr "終端機: 執行巨集…"
+
+#. terminal: scroll half page down
+msgctxt "action"
+msgid "terminal::ScrollHalfPageDown"
+msgstr "終端機: 向下捲動半頁"
+
+#. terminal: scroll half page up
+msgctxt "action"
+msgid "terminal::ScrollHalfPageUp"
+msgstr "終端機: 向上捲動半頁"
+
+#. terminal: scroll line down
+msgctxt "action"
+msgid "terminal::ScrollLineDown"
+msgstr "終端機: 向下捲動一行"
+
+#. terminal: scroll line up
+msgctxt "action"
+msgid "terminal::ScrollLineUp"
+msgstr "終端機: 向上捲動一行"
+
+#. terminal: scroll page down
+msgctxt "action"
+msgid "terminal::ScrollPageDown"
+msgstr "終端機: 向下捲動一頁"
+
+#. terminal: scroll page up
+msgctxt "action"
+msgid "terminal::ScrollPageUp"
+msgstr "終端機: 向上捲動一頁"
+
+#. terminal: scroll to bottom
+msgctxt "action"
+msgid "terminal::ScrollToBottom"
+msgstr "終端機: 捲動至底部"
+
+#. terminal: scroll to top
+msgctxt "action"
+msgid "terminal::ScrollToTop"
+msgstr "終端機: 捲動至頂端"
+
+#. terminal: search test
+msgctxt "action"
+msgid "terminal::SearchTest"
+msgstr "終端機: 搜尋文字"
+
+#. terminal: select all
+msgctxt "action"
+msgid "terminal::SelectAll"
+msgstr "終端機: 全選"
+
+#. terminal: send keystroke
+msgctxt "action"
+msgid "terminal::SendKeystroke"
+msgstr "終端機: 傳送按鍵輸入"
+
+#. terminal: send text
+msgctxt "action"
+msgid "terminal::SendText"
+msgstr "終端機: 傳送文字"
+
+#. terminal: show character palette
+msgctxt "action"
+msgid "terminal::ShowCharacterPalette"
+msgstr "終端機: 顯示表情符號與符號"
+
+#. terminal: split grid
+msgctxt "action"
+msgid "terminal::SplitGrid"
+msgstr "終端機: 分割為格狀"
+
+#. terminal: start session log
+msgctxt "action"
+msgid "terminal::StartSessionLog"
+msgstr "終端機: 開始記錄（選擇儲存位置）…"
+
+#. terminal: stop session log
+msgctxt "action"
+msgid "terminal::StopSessionLog"
+msgstr "終端機: 停止記錄"
+
+#. terminal: tail session log
+msgctxt "action"
+msgid "terminal::TailSessionLog"
+msgstr "終端機: 在編輯器中開啟記錄"
+
+#. terminal: toggle broadcast input
+msgctxt "action"
+msgid "terminal::ToggleBroadcastInput"
+msgstr "終端機: 同步輸入至所有窗格"
+
+#. terminal: toggle session log
+msgctxt "action"
+msgid "terminal::ToggleSessionLog"
+msgstr "終端機: 開始/停止記錄"
+
+#. terminal: toggle vi mode
+msgctxt "action"
+msgid "terminal::ToggleViMode"
+msgstr "終端機: 切換 Vim 模式"
+
+#. terminal panel: toggle
+msgctxt "action"
+msgid "terminal_panel::Toggle"
+msgstr "終端機: 切換"
+
+#. terminal panel: toggle focus
+msgctxt "action"
+msgid "terminal_panel::ToggleFocus"
+msgstr "終端機: 切換焦點"
+
+#. text finder: fold
+msgctxt "action"
+msgid "text_finder::Fold"
+msgstr "移至文字: 摺疊"
+
+#. text finder: to project search
+msgctxt "action"
+msgid "text_finder::ToProjectSearch"
+msgstr "移至文字: 轉為專案搜尋分頁"
+
+#. text finder: toggle
+msgctxt "action"
+msgid "text_finder::Toggle"
+msgstr "移至文字"
+
+#. text finder: toggle fold all
+msgctxt "action"
+msgid "text_finder::ToggleFoldAll"
+msgstr "移至文字: 切換全部摺疊"
+
+#. text finder: unfold
+msgctxt "action"
+msgid "text_finder::Unfold"
+msgstr "移至文字: 展開"
+
+#. theme: toggle mode
+msgctxt "action"
+msgid "theme::ToggleMode"
+msgstr "佈景主題: 切換淺色/深色"
+
+#. theme selector: reload
+msgctxt "action"
+msgid "theme_selector::Reload"
+msgstr "重新載入佈景主題"
+
+#. theme selector: toggle
+msgctxt "action"
+msgid "theme_selector::Toggle"
+msgstr "選取佈景主題"
+
+#. toast: run action
+msgctxt "action"
+msgid "toast::RunAction"
+msgstr "通知: 執行動作"
+
+#. toolchain: add toolchain
+msgctxt "action"
+msgid "toolchain::AddToolchain"
+msgstr "新增工具鏈"
+
+#. toolchain: select
+msgctxt "action"
+msgid "toolchain::Select"
+msgstr "選取工具鏈"
+
+#. variable list: add watch
+msgctxt "action"
+msgid "variable_list::AddWatch"
+msgstr "偵錯: 將變數加入監看"
+
+#. variable list: collapse selected entry
+msgctxt "action"
+msgid "variable_list::CollapseSelectedEntry"
+msgstr "偵錯: 摺疊選取的項目"
+
+#. variable list: copy variable name
+msgctxt "action"
+msgid "variable_list::CopyVariableName"
+msgstr "偵錯: 複製變數名稱"
+
+#. variable list: copy variable value
+msgctxt "action"
+msgid "variable_list::CopyVariableValue"
+msgstr "偵錯: 複製變數值"
+
+#. variable list: edit variable
+msgctxt "action"
+msgid "variable_list::EditVariable"
+msgstr "偵錯: 編輯變數"
+
+#. variable list: expand selected entry
+msgctxt "action"
+msgid "variable_list::ExpandSelectedEntry"
+msgstr "偵錯: 展開選取的項目"
+
+#. variable list: go to memory
+msgctxt "action"
+msgid "variable_list::GoToMemory"
+msgstr "偵錯: 檢視記憶體"
+
+#. variable list: remove watch
+msgctxt "action"
+msgid "variable_list::RemoveWatch"
+msgstr "偵錯: 移除監看"
+
+#. vim: angle brackets
+msgctxt "action"
+msgid "vim::AngleBrackets"
+msgstr "Vim: 角括號 <> 文字物件"
+
+#. vim: any brackets
+msgctxt "action"
+msgid "vim::AnyBrackets"
+msgstr "Vim: 任意括號文字物件"
+
+#. vim: any pair
+msgctxt "action"
+msgid "vim::AnyPair"
+msgstr "Vim: 任意成對符號文字物件"
+
+#. vim: any quotes
+msgctxt "action"
+msgid "vim::AnyQuotes"
+msgstr "Vim: 任意引號文字物件"
+
+#. vim: argument
+msgctxt "action"
+msgid "vim::Argument"
+msgstr "Vim: 函式引數文字物件"
+
+#. vim: argument required
+msgctxt "action"
+msgid "vim::ArgumentRequired"
+msgstr "Vim: 需要引數"
+
+#. vim: auto indent
+msgctxt "action"
+msgid "vim::AutoIndent"
+msgstr "Vim: 自動縮排"
+
+#. vim: back quotes
+msgctxt "action"
+msgid "vim::BackQuotes"
+msgstr "Vim: 反引號文字物件"
+
+#. vim: change case
+msgctxt "action"
+msgid "vim::ChangeCase"
+msgstr "Vim: 切換大小寫"
+
+#. vim: change list newer
+msgctxt "action"
+msgid "vim::ChangeListNewer"
+msgstr "Vim: 變更清單中較新的位置"
+
+#. vim: change list older
+msgctxt "action"
+msgid "vim::ChangeListOlder"
+msgstr "Vim: 變更清單中較舊的位置"
+
+#. vim: change to end of line
+msgctxt "action"
+msgid "vim::ChangeToEndOfLine"
+msgstr "Vim: 變更至行尾"
+
+#. vim: class
+msgctxt "action"
+msgid "vim::Class"
+msgstr "Vim: 類別文字物件"
+
+#. vim: clear exchange
+msgctxt "action"
+msgid "vim::ClearExchange"
+msgstr "Vim: 清除交換記錄"
+
+#. vim: clear operators
+msgctxt "action"
+msgid "vim::ClearOperators"
+msgstr "Vim: 清除輸入中的運算子"
+
+#. vim: column left
+msgctxt "action"
+msgid "vim::ColumnLeft"
+msgstr "Vim: 向左捲動一欄"
+
+#. vim: column right
+msgctxt "action"
+msgid "vim::ColumnRight"
+msgstr "Vim: 向右捲動一欄"
+
+#. vim: comment
+msgctxt "action"
+msgid "vim::Comment"
+msgstr "Vim: 註解文字物件"
+
+#. vim: convert to lower case
+msgctxt "action"
+msgid "vim::ConvertToLowerCase"
+msgstr "Vim: 轉換為小寫"
+
+#. vim: convert to rot13
+msgctxt "action"
+msgid "vim::ConvertToRot13"
+msgstr "Vim: 轉換為 ROT13"
+
+#. vim: convert to rot47
+msgctxt "action"
+msgid "vim::ConvertToRot47"
+msgstr "Vim: 轉換為 ROT47"
+
+#. vim: convert to upper case
+msgctxt "action"
+msgid "vim::ConvertToUpperCase"
+msgstr "Vim: 轉換為大寫"
+
+#. vim: count command
+msgctxt "action"
+msgid "vim::CountCommand"
+msgstr "Vim: 開啟命令列（以次數作為範圍）"
+
+#. vim: curly brackets
+msgctxt "action"
+msgid "vim::CurlyBrackets"
+msgstr "Vim: 大括號文字物件"
+
+#. vim: current line
+msgctxt "action"
+msgid "vim::CurrentLine"
+msgstr "Vim: 目前行文字物件"
+
+#. vim: decrement
+msgctxt "action"
+msgid "vim::Decrement"
+msgstr "Vim: 遞減游標處的數值"
+
+#. vim: delete left
+msgctxt "action"
+msgid "vim::DeleteLeft"
+msgstr "Vim: 刪除左側字元"
+
+#. vim: delete right
+msgctxt "action"
+msgid "vim::DeleteRight"
+msgstr "Vim: 刪除右側字元"
+
+#. vim: delete to end of line
+msgctxt "action"
+msgid "vim::DeleteToEndOfLine"
+msgstr "Vim: 刪除至行尾"
+
+#. vim: double quotes
+msgctxt "action"
+msgid "vim::DoubleQuotes"
+msgstr "Vim: 雙引號文字物件"
+
+#. vim: down
+msgctxt "action"
+msgid "vim::Down"
+msgstr "Vim: 向下"
+
+#. vim: end of document
+msgctxt "action"
+msgid "vim::EndOfDocument"
+msgstr "Vim: 移至檔案結尾"
+
+#. vim: end of line
+msgctxt "action"
+msgid "vim::EndOfLine"
+msgstr "Vim: 移至行尾"
+
+#. vim: end of line downward
+msgctxt "action"
+msgid "vim::EndOfLineDownward"
+msgstr "Vim: 移至行中最後一個非空白字元（依次數往下行）"
+
+#. vim: end of paragraph
+msgctxt "action"
+msgid "vim::EndOfParagraph"
+msgstr "Vim: 移至段落結尾"
+
+#. vim: end repeat
+msgctxt "action"
+msgid "vim::EndRepeat"
+msgstr "Vim: 結束重複記錄"
+
+#. vim: enter
+msgctxt "action"
+msgid "vim::Enter"
+msgstr "Vim: 插入新行"
+
+#. vim: entire file
+msgctxt "action"
+msgid "vim::EntireFile"
+msgstr "Vim: 整個檔案文字物件"
+
+#. vim: exchange
+msgctxt "action"
+msgid "vim::Exchange"
+msgstr "Vim: 交換範圍"
+
+#. vim: find command
+msgctxt "action"
+msgid "vim::FindCommand"
+msgstr "Vim: 執行搜尋命令"
+
+#. vim: first non whitespace
+msgctxt "action"
+msgid "vim::FirstNonWhitespace"
+msgstr "Vim: 移至行中第一個非空白字元"
+
+#. vim: go to column
+msgctxt "action"
+msgid "vim::GoToColumn"
+msgstr "Vim: 移至指定欄"
+
+#. vim: go to next reference
+msgctxt "action"
+msgid "vim::GoToNextReference"
+msgstr "Vim: 下一個參考"
+
+#. vim: go to percentage
+msgctxt "action"
+msgid "vim::GoToPercentage"
+msgstr "Vim: 移至檔案中指定百分比的位置"
+
+#. vim: go to previous reference
+msgctxt "action"
+msgid "vim::GoToPreviousReference"
+msgstr "Vim: 上一個參考"
+
+#. vim: go to previous tab
+msgctxt "action"
+msgid "vim::GoToPreviousTab"
+msgstr "Vim: 上一個分頁"
+
+#. vim: go to tab
+msgctxt "action"
+msgid "vim::GoToTab"
+msgstr "Vim: 下一個分頁（依次數移至該編號的分頁）"
+
+#. vim: half page left
+msgctxt "action"
+msgid "vim::HalfPageLeft"
+msgstr "Vim: 向左捲動半頁"
+
+#. vim: half page right
+msgctxt "action"
+msgid "vim::HalfPageRight"
+msgstr "Vim: 向右捲動半頁"
+
+#. vim: helix append
+msgctxt "action"
+msgid "vim::HelixAppend"
+msgstr "Helix: 在選取範圍結尾附加"
+
+#. vim: helix collapse selection
+msgctxt "action"
+msgid "vim::HelixCollapseSelection"
+msgstr "Helix: 將選取範圍收合為游標"
+
+#. vim: helix delete
+msgctxt "action"
+msgid "vim::HelixDelete"
+msgstr "Helix: 刪除"
+
+#. vim: helix duplicate above
+msgctxt "action"
+msgid "vim::HelixDuplicateAbove"
+msgstr "Helix: 向上複製選取範圍"
+
+#. vim: helix duplicate below
+msgctxt "action"
+msgid "vim::HelixDuplicateBelow"
+msgstr "Helix: 向下複製選取範圍"
+
+#. vim: helix goto last modification
+msgctxt "action"
+msgid "vim::HelixGotoLastModification"
+msgstr "Helix: 移至最後修改的位置"
+
+#. vim: helix goto line
+msgctxt "action"
+msgid "vim::HelixGotoLine"
+msgstr "Helix: 移至指定行"
+
+#. vim: helix insert
+msgctxt "action"
+msgid "vim::HelixInsert"
+msgstr "Helix: 在選取範圍開頭插入"
+
+#. vim: helix insert end of line
+msgctxt "action"
+msgid "vim::HelixInsertEndOfLine"
+msgstr "Helix: 在行尾插入"
+
+#. vim: helix jump to word
+msgctxt "action"
+msgid "vim::HelixJumpToWord"
+msgstr "Helix: 以標籤跳至字組"
+
+#. vim: helix keep newest selection
+msgctxt "action"
+msgid "vim::HelixKeepNewestSelection"
+msgstr "Helix: 只保留最新的選取範圍"
+
+#. vim: helix paste
+msgctxt "action"
+msgid "vim::HelixPaste"
+msgstr "Helix: 從暫存器貼上"
+
+#. vim: helix select line
+msgctxt "action"
+msgid "vim::HelixSelectLine"
+msgstr "Helix: 選取行"
+
+#. vim: helix select next
+msgctxt "action"
+msgid "vim::HelixSelectNext"
+msgstr "Helix: 選取下一個符合項目"
+
+#. vim: helix select previous
+msgctxt "action"
+msgid "vim::HelixSelectPrevious"
+msgstr "Helix: 選取上一個符合項目"
+
+#. vim: helix select regex
+msgctxt "action"
+msgid "vim::HelixSelectRegex"
+msgstr "Helix: 選取選取範圍中所有符合模式的項目"
+
+#. vim: helix substitute
+msgctxt "action"
+msgid "vim::HelixSubstitute"
+msgstr "Helix: 刪除選取範圍並插入"
+
+#. vim: helix substitute no yank
+msgctxt "action"
+msgid "vim::HelixSubstituteNoYank"
+msgstr "Helix: 刪除選取範圍（不 yank）並插入"
+
+#. vim: helix trim selections
+msgctxt "action"
+msgid "vim::HelixTrimSelections"
+msgstr "Helix: 移除選取範圍前後的空白字元"
+
+#. vim: helix yank
+msgctxt "action"
+msgid "vim::HelixYank"
+msgstr "Helix: 複製（yank）"
+
+#. vim: increment
+msgctxt "action"
+msgid "vim::Increment"
+msgstr "Vim: 遞增游標處的數值"
+
+#. vim: indent
+msgctxt "action"
+msgid "vim::Indent"
+msgstr "Vim: 縮排"
+
+#. vim: indent obj
+msgctxt "action"
+msgid "vim::IndentObj"
+msgstr "Vim: 相同縮排文字物件"
+
+#. vim: inner object
+msgctxt "action"
+msgid "vim::InnerObject"
+msgstr "Vim: 內側文字物件"
+
+#. vim: insert after
+msgctxt "action"
+msgid "vim::InsertAfter"
+msgstr "Vim: 在游標後插入"
+
+#. vim: insert at previous
+msgctxt "action"
+msgid "vim::InsertAtPrevious"
+msgstr "Vim: 在上次插入的位置插入"
+
+#. vim: insert before
+msgctxt "action"
+msgid "vim::InsertBefore"
+msgstr "Vim: 在游標前插入"
+
+#. vim: insert empty line above
+msgctxt "action"
+msgid "vim::InsertEmptyLineAbove"
+msgstr "Vim: 在上方插入空白行"
+
+#. vim: insert empty line below
+msgctxt "action"
+msgid "vim::InsertEmptyLineBelow"
+msgstr "Vim: 在下方插入空白行"
+
+#. vim: insert end of line
+msgctxt "action"
+msgid "vim::InsertEndOfLine"
+msgstr "Vim: 在行尾插入"
+
+#. vim: insert first non whitespace
+msgctxt "action"
+msgid "vim::InsertFirstNonWhitespace"
+msgstr "Vim: 在行中第一個非空白字元前插入"
+
+#. vim: insert from above
+msgctxt "action"
+msgid "vim::InsertFromAbove"
+msgstr "Vim: 插入上一行的字元"
+
+#. vim: insert from below
+msgctxt "action"
+msgid "vim::InsertFromBelow"
+msgstr "Vim: 插入下一行的字元"
+
+#. vim: insert line above
+msgctxt "action"
+msgid "vim::InsertLineAbove"
+msgstr "Vim: 在上方插入行"
+
+#. vim: insert line below
+msgctxt "action"
+msgid "vim::InsertLineBelow"
+msgstr "Vim: 在下方插入行"
+
+#. vim: join lines
+msgctxt "action"
+msgid "vim::JoinLines"
+msgstr "Vim: 合併行"
+
+#. vim: join lines no whitespace
+msgctxt "action"
+msgid "vim::JoinLinesNoWhitespace"
+msgstr "Vim: 合併行（不插入空白）"
+
+#. vim: left
+msgctxt "action"
+msgid "vim::Left"
+msgstr "Vim: 向左"
+
+#. vim: line down
+msgctxt "action"
+msgid "vim::LineDown"
+msgstr "Vim: 向下捲動一行"
+
+#. vim: line up
+msgctxt "action"
+msgid "vim::LineUp"
+msgstr "Vim: 向上捲動一行"
+
+#. vim: literal
+msgctxt "action"
+msgid "vim::Literal"
+msgstr "Vim: 直接插入字元"
+
+#. vim: matching
+msgctxt "action"
+msgid "vim::Matching"
+msgstr "Vim: 移至對應的括號"
+
+#. vim: maximize pane
+msgctxt "action"
+msgid "vim::MaximizePane"
+msgstr "Vim: 最大化窗格高度"
+
+#. vim: menu select next
+msgctxt "action"
+msgid "vim::MenuSelectNext"
+msgstr "Vim: 選取選單的下一個項目"
+
+#. vim: menu select previous
+msgctxt "action"
+msgid "vim::MenuSelectPrevious"
+msgstr "Vim: 選取選單的上一個項目"
+
+#. vim: method
+msgctxt "action"
+msgid "vim::Method"
+msgstr "Vim: 方法文字物件"
+
+#. vim: middle of line
+msgctxt "action"
+msgid "vim::MiddleOfLine"
+msgstr "Vim: 移至行的中央"
+
+#. vim: mini brackets
+msgctxt "action"
+msgid "vim::MiniBrackets"
+msgstr "Vim: 最近括號文字物件"
+
+#. vim: mini quotes
+msgctxt "action"
+msgid "vim::MiniQuotes"
+msgstr "Vim: 最近引號文字物件"
+
+#. vim: move to next
+msgctxt "action"
+msgid "vim::MoveToNext"
+msgstr "Vim: 游標處字組的下一個出現位置"
+
+#. vim: move to next match
+msgctxt "action"
+msgid "vim::MoveToNextMatch"
+msgstr "Vim: 下一個符合項目"
+
+#. vim: move to previous
+msgctxt "action"
+msgid "vim::MoveToPrevious"
+msgstr "Vim: 游標處字組的上一個出現位置"
+
+#. vim: move to previous match
+msgctxt "action"
+msgid "vim::MoveToPreviousMatch"
+msgstr "Vim: 上一個符合項目"
+
+#. vim: next comment
+msgctxt "action"
+msgid "vim::NextComment"
+msgstr "Vim: 下一個註解"
+
+#. vim: next greater indent
+msgctxt "action"
+msgid "vim::NextGreaterIndent"
+msgstr "Vim: 下一個縮排較深的行"
+
+#. vim: next lesser indent
+msgctxt "action"
+msgid "vim::NextLesserIndent"
+msgstr "Vim: 下一個縮排較淺的行"
+
+#. vim: next line start
+msgctxt "action"
+msgid "vim::NextLineStart"
+msgstr "Vim: 移至下一行的第一個非空白字元"
+
+#. vim: next method end
+msgctxt "action"
+msgid "vim::NextMethodEnd"
+msgstr "Vim: 下一個方法的結尾"
+
+#. vim: next method start
+msgctxt "action"
+msgid "vim::NextMethodStart"
+msgstr "Vim: 下一個方法的開頭"
+
+#. vim: next same indent
+msgctxt "action"
+msgid "vim::NextSameIndent"
+msgstr "Vim: 下一個縮排相同的行"
+
+#. vim: next section end
+msgctxt "action"
+msgid "vim::NextSectionEnd"
+msgstr "Vim: 下一個區段的結尾"
+
+#. vim: next section start
+msgctxt "action"
+msgid "vim::NextSectionStart"
+msgstr "Vim: 下一個區段的開頭"
+
+#. vim: next subword end
+msgctxt "action"
+msgid "vim::NextSubwordEnd"
+msgstr "Vim: 下一個子字組的結尾"
+
+#. vim: next subword start
+msgctxt "action"
+msgid "vim::NextSubwordStart"
+msgstr "Vim: 下一個子字組的開頭"
+
+#. vim: next word end
+msgctxt "action"
+msgid "vim::NextWordEnd"
+msgstr "Vim: 下一個字組的結尾"
+
+#. vim: next word start
+msgctxt "action"
+msgid "vim::NextWordStart"
+msgstr "Vim: 下一個字組的開頭"
+
+#. vim: normal before
+msgctxt "action"
+msgid "vim::NormalBefore"
+msgstr "Vim: 將游標退回一個字元並進入 Normal 模式"
+
+#. vim: number
+msgctxt "action"
+msgid "vim::Number"
+msgstr "Vim: 輸入次數"
+
+#. vim: open default keymap
+msgctxt "action"
+msgid "vim::OpenDefaultKeymap"
+msgstr "Vim: 開啟預設按鍵對應"
+
+#. vim: other end
+msgctxt "action"
+msgid "vim::OtherEnd"
+msgstr "Vim: 移至選取範圍的另一端"
+
+#. vim: other end row aware
+msgctxt "action"
+msgid "vim::OtherEndRowAware"
+msgstr "Vim: 移至選取範圍的另一端（考慮行）"
+
+#. vim: outdent
+msgctxt "action"
+msgid "vim::Outdent"
+msgstr "Vim: 凸排"
+
+#. vim: page down
+msgctxt "action"
+msgid "vim::PageDown"
+msgstr "Vim: 向下捲動一頁"
+
+#. vim: page up
+msgctxt "action"
+msgid "vim::PageUp"
+msgstr "Vim: 向上捲動一頁"
+
+#. vim: paragraph
+msgctxt "action"
+msgid "vim::Paragraph"
+msgstr "Vim: 段落文字物件"
+
+#. vim: parentheses
+msgctxt "action"
+msgid "vim::Parentheses"
+msgstr "Vim: 小括號 () 文字物件"
+
+#. vim: paste
+msgctxt "action"
+msgid "vim::Paste"
+msgstr "Vim: 從暫存器貼上"
+
+#. vim: previous comment
+msgctxt "action"
+msgid "vim::PreviousComment"
+msgstr "Vim: 上一個註解"
+
+#. vim: previous greater indent
+msgctxt "action"
+msgid "vim::PreviousGreaterIndent"
+msgstr "Vim: 上一個縮排較深的行"
+
+#. vim: previous lesser indent
+msgctxt "action"
+msgid "vim::PreviousLesserIndent"
+msgstr "Vim: 上一個縮排較淺的行"
+
+#. vim: previous line start
+msgctxt "action"
+msgid "vim::PreviousLineStart"
+msgstr "Vim: 移至上一行的第一個非空白字元"
+
+#. vim: previous method end
+msgctxt "action"
+msgid "vim::PreviousMethodEnd"
+msgstr "Vim: 上一個方法的結尾"
+
+#. vim: previous method start
+msgctxt "action"
+msgid "vim::PreviousMethodStart"
+msgstr "Vim: 上一個方法的開頭"
+
+#. vim: previous same indent
+msgctxt "action"
+msgid "vim::PreviousSameIndent"
+msgstr "Vim: 上一個縮排相同的行"
+
+#. vim: previous section end
+msgctxt "action"
+msgid "vim::PreviousSectionEnd"
+msgstr "Vim: 上一個區段的結尾"
+
+#. vim: previous section start
+msgctxt "action"
+msgid "vim::PreviousSectionStart"
+msgstr "Vim: 上一個區段的開頭"
+
+#. vim: previous subword end
+msgctxt "action"
+msgid "vim::PreviousSubwordEnd"
+msgstr "Vim: 上一個子字組的結尾"
+
+#. vim: previous subword start
+msgctxt "action"
+msgid "vim::PreviousSubwordStart"
+msgstr "Vim: 上一個子字組的開頭"
+
+#. vim: previous word end
+msgctxt "action"
+msgid "vim::PreviousWordEnd"
+msgstr "Vim: 上一個字組的結尾"
+
+#. vim: previous word start
+msgctxt "action"
+msgid "vim::PreviousWordStart"
+msgstr "Vim: 上一個字組的開頭"
+
+#. vim: push add surrounds
+msgctxt "action"
+msgid "vim::PushAddSurrounds"
+msgstr "Vim: 新增包圍字元"
+
+#. vim: push auto indent
+msgctxt "action"
+msgid "vim::PushAutoIndent"
+msgstr "Vim: 開始自動縮排操作"
+
+#. vim: push change
+msgctxt "action"
+msgid "vim::PushChange"
+msgstr "Vim: 開始變更操作"
+
+#. vim: push change surrounds
+msgctxt "action"
+msgid "vim::PushChangeSurrounds"
+msgstr "Vim: 變更包圍字元"
+
+#. vim: push delete
+msgctxt "action"
+msgid "vim::PushDelete"
+msgstr "Vim: 開始刪除操作"
+
+#. vim: push delete surrounds
+msgctxt "action"
+msgid "vim::PushDeleteSurrounds"
+msgstr "Vim: 刪除包圍字元"
+
+#. vim: push digraph
+msgctxt "action"
+msgid "vim::PushDigraph"
+msgstr "Vim: 輸入二合字元"
+
+#. vim: push find backward
+msgctxt "action"
+msgid "vim::PushFindBackward"
+msgstr "Vim: 向後搜尋字元"
+
+#. vim: push find forward
+msgctxt "action"
+msgid "vim::PushFindForward"
+msgstr "Vim: 向前搜尋字元"
+
+#. vim: push forced motion
+msgctxt "action"
+msgid "vim::PushForcedMotion"
+msgstr "Vim: 強制動作類型"
+
+#. vim: push helix match
+msgctxt "action"
+msgid "vim::PushHelixMatch"
+msgstr "Helix: 開始比對模式"
+
+#. vim: push helix next
+msgctxt "action"
+msgid "vim::PushHelixNext"
+msgstr "Helix: 選取下一個物件"
+
+#. vim: push helix previous
+msgctxt "action"
+msgid "vim::PushHelixPrevious"
+msgstr "Helix: 選取上一個物件"
+
+#. vim: push helix surround add
+msgctxt "action"
+msgid "vim::PushHelixSurroundAdd"
+msgstr "Helix: 新增包圍字元"
+
+#. vim: push helix surround delete
+msgctxt "action"
+msgid "vim::PushHelixSurroundDelete"
+msgstr "Helix: 刪除包圍字元"
+
+#. vim: push helix surround replace
+msgctxt "action"
+msgid "vim::PushHelixSurroundReplace"
+msgstr "Helix: 取代包圍字元"
+
+#. vim: push indent
+msgctxt "action"
+msgid "vim::PushIndent"
+msgstr "Vim: 開始縮排操作"
+
+#. vim: push jump
+msgctxt "action"
+msgid "vim::PushJump"
+msgstr "Vim: 跳至標記"
+
+#. vim: push literal
+msgctxt "action"
+msgid "vim::PushLiteral"
+msgstr "Vim: 直接輸入字元"
+
+#. vim: push lowercase
+msgctxt "action"
+msgid "vim::PushLowercase"
+msgstr "Vim: 開始轉換為小寫操作"
+
+#. vim: push mark
+msgctxt "action"
+msgid "vim::PushMark"
+msgstr "Vim: 在目前位置設定標記"
+
+#. vim: push object
+msgctxt "action"
+msgid "vim::PushObject"
+msgstr "Vim: 選擇文字物件"
+
+#. vim: push opposite case
+msgctxt "action"
+msgid "vim::PushOppositeCase"
+msgstr "Vim: 開始反轉大小寫操作"
+
+#. vim: push outdent
+msgctxt "action"
+msgid "vim::PushOutdent"
+msgstr "Vim: 開始凸排操作"
+
+#. vim: push record register
+msgctxt "action"
+msgid "vim::PushRecordRegister"
+msgstr "Vim: 開始將巨集記錄至暫存器"
+
+#. vim: push register
+msgctxt "action"
+msgid "vim::PushRegister"
+msgstr "Vim: 選取暫存器"
+
+#. vim: push replace
+msgctxt "action"
+msgid "vim::PushReplace"
+msgstr "Vim: 取代一個字元"
+
+#. vim: push replace with register
+msgctxt "action"
+msgid "vim::PushReplaceWithRegister"
+msgstr "Vim: 以暫存器內容取代"
+
+#. vim: push replay register
+msgctxt "action"
+msgid "vim::PushReplayRegister"
+msgstr "Vim: 重播暫存器中的巨集"
+
+#. vim: push rewrap
+msgctxt "action"
+msgid "vim::PushRewrap"
+msgstr "Vim: 開始重新換行操作"
+
+#. vim: push rot13
+msgctxt "action"
+msgid "vim::PushRot13"
+msgstr "Vim: 開始轉換為 ROT13 操作"
+
+#. vim: push rot47
+msgctxt "action"
+msgid "vim::PushRot47"
+msgstr "Vim: 開始轉換為 ROT47 操作"
+
+#. vim: push shell command
+msgctxt "action"
+msgid "vim::PushShellCommand"
+msgstr "Vim: 開始以 Shell 命令篩選操作"
+
+#. vim: push sneak
+msgctxt "action"
+msgid "vim::PushSneak"
+msgstr "Vim: 以 Sneak 向前移動"
+
+#. vim: push sneak backward
+msgctxt "action"
+msgid "vim::PushSneakBackward"
+msgstr "Vim: 以 Sneak 向後移動"
+
+#. vim: push toggle block comments
+msgctxt "action"
+msgid "vim::PushToggleBlockComments"
+msgstr "Vim: 開始切換區塊註解操作"
+
+#. vim: push toggle comments
+msgctxt "action"
+msgid "vim::PushToggleComments"
+msgstr "Vim: 開始切換註解操作"
+
+#. vim: push uppercase
+msgctxt "action"
+msgid "vim::PushUppercase"
+msgstr "Vim: 開始轉換為大寫操作"
+
+#. vim: push yank
+msgctxt "action"
+msgid "vim::PushYank"
+msgstr "Vim: 開始 yank 操作"
+
+#. vim: quotes
+msgctxt "action"
+msgid "vim::Quotes"
+msgstr "Vim: 單引號文字物件"
+
+#. vim: redo
+msgctxt "action"
+msgid "vim::Redo"
+msgstr "Vim: 取消復原"
+
+#. vim: repeat
+msgctxt "action"
+msgid "vim::Repeat"
+msgstr "Vim: 重複上一次變更"
+
+#. vim: repeat find
+msgctxt "action"
+msgid "vim::RepeatFind"
+msgstr "Vim: 重複上一次字元搜尋"
+
+#. vim: repeat find reversed
+msgctxt "action"
+msgid "vim::RepeatFindReversed"
+msgstr "Vim: 反向重複上一次字元搜尋"
+
+#. vim: replay last recording
+msgctxt "action"
+msgid "vim::ReplayLastRecording"
+msgstr "Vim: 重播最後記錄的巨集"
+
+#. vim: reset pane sizes
+msgctxt "action"
+msgid "vim::ResetPaneSizes"
+msgstr "Vim: 重設窗格大小"
+
+#. vim: resize pane down
+msgctxt "action"
+msgid "vim::ResizePaneDown"
+msgstr "Vim: 減少窗格高度"
+
+#. vim: resize pane left
+msgctxt "action"
+msgid "vim::ResizePaneLeft"
+msgstr "Vim: 縮小窗格寬度"
+
+#. vim: resize pane right
+msgctxt "action"
+msgid "vim::ResizePaneRight"
+msgstr "Vim: 增加窗格寬度"
+
+#. vim: resize pane up
+msgctxt "action"
+msgid "vim::ResizePaneUp"
+msgstr "Vim: 增加窗格高度"
+
+#. vim: restore visual selection
+msgctxt "action"
+msgid "vim::RestoreVisualSelection"
+msgstr "Vim: 還原上一次的 Visual 選取"
+
+#. vim: rewrap
+msgctxt "action"
+msgid "vim::Rewrap"
+msgstr "Vim: 重新換行"
+
+#. vim: right
+msgctxt "action"
+msgid "vim::Right"
+msgstr "Vim: 向右"
+
+#. vim: scroll down
+msgctxt "action"
+msgid "vim::ScrollDown"
+msgstr "Vim: 向下捲動半頁"
+
+#. vim: scroll up
+msgctxt "action"
+msgid "vim::ScrollUp"
+msgstr "Vim: 向上捲動半頁"
+
+#. vim: search
+msgctxt "action"
+msgid "vim::Search"
+msgstr "Vim: 搜尋"
+
+#. vim: search submit
+msgctxt "action"
+msgid "vim::SearchSubmit"
+msgstr "Vim: 執行搜尋"
+
+#. vim: search under cursor
+msgctxt "action"
+msgid "vim::SearchUnderCursor"
+msgstr "Vim: 搜尋游標處的字組（不移動）"
+
+#. vim: search under cursor previous
+msgctxt "action"
+msgid "vim::SearchUnderCursorPrevious"
+msgstr "Vim: 向後搜尋游標處的字組（不移動）"
+
+#. vim: select larger syntax node
+msgctxt "action"
+msgid "vim::SelectLargerSyntaxNode"
+msgstr "Vim: 選取外層語法節點"
+
+#. vim: select next
+msgctxt "action"
+msgid "vim::SelectNext"
+msgstr "Vim: 將下一個出現位置加入選取"
+
+#. vim: select next match
+msgctxt "action"
+msgid "vim::SelectNextMatch"
+msgstr "Vim: 選取下一個搜尋符合項目"
+
+#. vim: select next syntax node
+msgctxt "action"
+msgid "vim::SelectNextSyntaxNode"
+msgstr "Vim: 選取下一個語法節點"
+
+#. vim: select previous
+msgctxt "action"
+msgid "vim::SelectPrevious"
+msgstr "Vim: 將上一個出現位置加入選取"
+
+#. vim: select previous match
+msgctxt "action"
+msgid "vim::SelectPreviousMatch"
+msgstr "Vim: 選取上一個搜尋符合項目"
+
+#. vim: select previous syntax node
+msgctxt "action"
+msgid "vim::SelectPreviousSyntaxNode"
+msgstr "Vim: 選取上一個語法節點"
+
+#. vim: select register
+msgctxt "action"
+msgid "vim::SelectRegister"
+msgstr "Vim: 指定暫存器"
+
+#. vim: select smaller syntax node
+msgctxt "action"
+msgid "vim::SelectSmallerSyntaxNode"
+msgstr "Vim: 選取內層語法節點"
+
+#. vim: sentence
+msgctxt "action"
+msgid "vim::Sentence"
+msgstr "Vim: 句子文字物件"
+
+#. vim: sentence backward
+msgctxt "action"
+msgid "vim::SentenceBackward"
+msgstr "Vim: 移至上一個句子的開頭"
+
+#. vim: sentence forward
+msgctxt "action"
+msgid "vim::SentenceForward"
+msgstr "Vim: 移至下一個句子的開頭"
+
+#. vim: shell command
+msgctxt "action"
+msgid "vim::ShellCommand"
+msgstr "Vim: 對選取範圍輸入 Shell 命令"
+
+#. vim: show location
+msgctxt "action"
+msgid "vim::ShowLocation"
+msgstr "Vim: 顯示檔案中的目前位置"
+
+#. vim: square brackets
+msgctxt "action"
+msgid "vim::SquareBrackets"
+msgstr "Vim: 中括號 [] 文字物件"
+
+#. vim: start of document
+msgctxt "action"
+msgid "vim::StartOfDocument"
+msgstr "Vim: 移至檔案開頭"
+
+#. vim: start of line
+msgctxt "action"
+msgid "vim::StartOfLine"
+msgstr "Vim: 移至行首"
+
+#. vim: start of line downward
+msgctxt "action"
+msgid "vim::StartOfLineDownward"
+msgstr "Vim: 移至行中第一個非空白字元（依次數往下行）"
+
+#. vim: start of paragraph
+msgctxt "action"
+msgid "vim::StartOfParagraph"
+msgstr "Vim: 移至段落開頭"
+
+#. vim: substitute
+msgctxt "action"
+msgid "vim::Substitute"
+msgstr "Vim: 刪除字元並插入"
+
+#. vim: substitute line
+msgctxt "action"
+msgid "vim::SubstituteLine"
+msgstr "Vim: 刪除行並插入"
+
+#. vim: subword
+msgctxt "action"
+msgid "vim::Subword"
+msgstr "Vim: 子字組文字物件"
+
+#. vim: switch to helix normal mode
+msgctxt "action"
+msgid "vim::SwitchToHelixNormalMode"
+msgstr "Helix: 切換至 Normal 模式"
+
+#. vim: switch to insert mode
+msgctxt "action"
+msgid "vim::SwitchToInsertMode"
+msgstr "Vim: 切換至 Insert 模式"
+
+#. vim: switch to normal mode
+msgctxt "action"
+msgid "vim::SwitchToNormalMode"
+msgstr "Vim: 切換至 Normal 模式"
+
+#. vim: switch to replace mode
+msgctxt "action"
+msgid "vim::SwitchToReplaceMode"
+msgstr "Vim: 切換至 Replace 模式"
+
+#. vim: switch to visual block mode
+msgctxt "action"
+msgid "vim::SwitchToVisualBlockMode"
+msgstr "Vim: 切換至 Visual Block 模式"
+
+#. vim: switch to visual line mode
+msgctxt "action"
+msgid "vim::SwitchToVisualLineMode"
+msgstr "Vim: 切換至 Visual Line 模式"
+
+#. vim: switch to visual mode
+msgctxt "action"
+msgid "vim::SwitchToVisualMode"
+msgstr "Vim: 切換至 Visual 模式"
+
+#. vim: tab
+msgctxt "action"
+msgid "vim::Tab"
+msgstr "Vim: 插入定位字元"
+
+#. vim: tag
+msgctxt "action"
+msgid "vim::Tag"
+msgstr "Vim: HTML/XML 標籤文字物件"
+
+#. vim: temporary normal
+msgctxt "action"
+msgid "vim::TemporaryNormal"
+msgstr "Vim: 暫時以 Normal 模式執行一個命令"
+
+#. vim: toggle block comments
+msgctxt "action"
+msgid "vim::ToggleBlockComments"
+msgstr "Vim: 切換區塊註解"
+
+#. vim: toggle comments
+msgctxt "action"
+msgid "vim::ToggleComments"
+msgstr "Vim: 切換註解"
+
+#. vim: toggle marks view
+msgctxt "action"
+msgid "vim::ToggleMarksView"
+msgstr "Vim: 切換標記清單顯示"
+
+#. vim: toggle project panel focus
+msgctxt "action"
+msgid "vim::ToggleProjectPanelFocus"
+msgstr "Vim: 切換專案面板焦點"
+
+#. vim: toggle record
+msgctxt "action"
+msgid "vim::ToggleRecord"
+msgstr "Vim: 切換巨集記錄"
+
+#. vim: toggle registers view
+msgctxt "action"
+msgid "vim::ToggleRegistersView"
+msgstr "Vim: 切換暫存器清單顯示"
+
+#. vim: toggle replace
+msgctxt "action"
+msgid "vim::ToggleReplace"
+msgstr "Vim: 切換 Replace 模式"
+
+#. vim: toggle visual
+msgctxt "action"
+msgid "vim::ToggleVisual"
+msgstr "Vim: 切換 Visual 模式"
+
+#. vim: toggle visual block
+msgctxt "action"
+msgid "vim::ToggleVisualBlock"
+msgstr "Vim: 切換 Visual Block 模式"
+
+#. vim: toggle visual line
+msgctxt "action"
+msgid "vim::ToggleVisualLine"
+msgstr "Vim: 切換 Visual Line 模式"
+
+#. vim: undo
+msgctxt "action"
+msgid "vim::Undo"
+msgstr "Vim: 復原"
+
+#. vim: undo last line
+msgctxt "action"
+msgid "vim::UndoLastLine"
+msgstr "Vim: 復原最後變更的行"
+
+#. vim: undo replace
+msgctxt "action"
+msgid "vim::UndoReplace"
+msgstr "Vim: 復原上一次取代"
+
+#. vim: unmatched backward
+msgctxt "action"
+msgid "vim::UnmatchedBackward"
+msgstr "Vim: 上一個未配對的括號"
+
+#. vim: unmatched forward
+msgctxt "action"
+msgid "vim::UnmatchedForward"
+msgstr "Vim: 下一個未配對的括號"
+
+#. vim: up
+msgctxt "action"
+msgid "vim::Up"
+msgstr "Vim: 向上"
+
+#. vim: vertical bars
+msgctxt "action"
+msgid "vim::VerticalBars"
+msgstr "Vim: 直線 | 文字物件"
+
+#. vim: visual command
+msgctxt "action"
+msgid "vim::VisualCommand"
+msgstr "Vim: 對選取範圍開啟命令列"
+
+#. vim: visual delete
+msgctxt "action"
+msgid "vim::VisualDelete"
+msgstr "Vim: 刪除選取範圍"
+
+#. vim: visual delete line
+msgctxt "action"
+msgid "vim::VisualDeleteLine"
+msgstr "Vim: 刪除選取的行"
+
+#. vim: visual insert end of line
+msgctxt "action"
+msgid "vim::VisualInsertEndOfLine"
+msgstr "Vim: 在每個選取行的行尾插入"
+
+#. vim: visual insert first non white space
+msgctxt "action"
+msgid "vim::VisualInsertFirstNonWhiteSpace"
+msgstr "Vim: 在每個選取行的第一個非空白字元前插入"
+
+#. vim: visual yank
+msgctxt "action"
+msgid "vim::VisualYank"
+msgstr "Vim: yank 選取範圍"
+
+#. vim: visual yank line
+msgctxt "action"
+msgid "vim::VisualYankLine"
+msgstr "Vim: yank 選取的行"
+
+#. vim: window bottom
+msgctxt "action"
+msgid "vim::WindowBottom"
+msgstr "Vim: 移至畫面底部的行"
+
+#. vim: window middle
+msgctxt "action"
+msgid "vim::WindowMiddle"
+msgstr "Vim: 移至畫面中央的行"
+
+#. vim: window top
+msgctxt "action"
+msgid "vim::WindowTop"
+msgstr "Vim: 移至畫面頂端的行"
+
+#. vim: word
+msgctxt "action"
+msgid "vim::Word"
+msgstr "Vim: 字組文字物件"
+
+#. vim: wrapping left
+msgctxt "action"
+msgid "vim::WrappingLeft"
+msgstr "Vim: 向左（換至上一行）"
+
+#. vim: wrapping right
+msgctxt "action"
+msgid "vim::WrappingRight"
+msgstr "Vim: 向右（換至下一行）"
+
+#. vim: yank
+msgctxt "action"
+msgid "vim::Yank"
+msgstr "Vim: yank"
+
+#. vim: yank line
+msgctxt "action"
+msgid "vim::YankLine"
+msgstr "Vim: yank 行"
+
+#. vim: yank to end of line
+msgctxt "action"
+msgid "vim::YankToEndOfLine"
+msgstr "Vim: yank 至行尾"
+
+#. welcome: open recent project
+msgctxt "action"
+msgid "welcome::OpenRecentProject"
+msgstr "歡迎使用: 開啟最近的專案"
+
+#. window: merge all windows
+msgctxt "action"
+msgid "window::MergeAllWindows"
+msgstr "視窗: 合併所有視窗"
+
+#. window: move tab to new window
+msgctxt "action"
+msgid "window::MoveTabToNewWindow"
+msgstr "視窗: 將系統分頁移至新視窗"
+
+#. window: show next window tab
+msgctxt "action"
+msgid "window::ShowNextWindowTab"
+msgstr "視窗: 下一個系統分頁"
+
+#. window: show previous window tab
+msgctxt "action"
+msgid "window::ShowPreviousWindowTab"
+msgstr "視窗: 上一個系統分頁"
+
+#. workspace: activate last pane
+msgctxt "action"
+msgid "workspace::ActivateLastPane"
+msgstr "窗格: 最後一個窗格"
+
+#. workspace: activate next pane
+msgctxt "action"
+msgid "workspace::ActivateNextPane"
+msgstr "窗格: 下一個窗格"
+
+#. workspace: activate next window
+msgctxt "action"
+msgid "workspace::ActivateNextWindow"
+msgstr "視窗: 下一個視窗"
+
+#. workspace: activate pane
+msgctxt "action"
+msgid "workspace::ActivatePane"
+msgstr "窗格: 指定編號的窗格"
+
+#. workspace: activate pane down
+msgctxt "action"
+msgid "workspace::ActivatePaneDown"
+msgstr "窗格: 下方窗格"
+
+#. workspace: activate pane left
+msgctxt "action"
+msgid "workspace::ActivatePaneLeft"
+msgstr "窗格: 左側窗格"
+
+#. workspace: activate pane right
+msgctxt "action"
+msgid "workspace::ActivatePaneRight"
+msgstr "窗格: 右側窗格"
+
+#. workspace: activate pane up
+msgctxt "action"
+msgid "workspace::ActivatePaneUp"
+msgstr "窗格: 上方窗格"
+
+#. workspace: activate previous pane
+msgctxt "action"
+msgid "workspace::ActivatePreviousPane"
+msgstr "窗格: 上一個窗格"
+
+#. workspace: activate previous window
+msgctxt "action"
+msgid "workspace::ActivatePreviousWindow"
+msgstr "視窗: 上一個視窗"
+
+#. workspace: add folder to project
+msgctxt "action"
+msgid "workspace::AddFolderToProject"
+msgstr "將資料夾新增至專案"
+
+#. workspace: change project folder
+msgctxt "action"
+msgid "workspace::ChangeProjectFolder"
+msgstr "變更資料夾"
+
+#. workspace: clear all notifications
+msgctxt "action"
+msgid "workspace::ClearAllNotifications"
+msgstr "清除所有通知"
+
+#. workspace: clear bookmarks
+msgctxt "action"
+msgid "workspace::ClearBookmarks"
+msgstr "書籤: 全部清除"
+
+#. workspace: clear navigation history
+msgctxt "action"
+msgid "workspace::ClearNavigationHistory"
+msgstr "移至: 清除歷程記錄"
+
+#. workspace: clear trusted worktrees
+msgctxt "action"
+msgid "workspace::ClearTrustedWorktrees"
+msgstr "清除受信任的工作樹"
+
+#. workspace: close active dock
+msgctxt "action"
+msgid "workspace::CloseActiveDock"
+msgstr "檢視: 關閉使用中的停駐區"
+
+#. workspace: close all docks
+msgctxt "action"
+msgid "workspace::CloseAllDocks"
+msgstr "檢視: 關閉所有停駐區"
+
+#. workspace: close all items and panes
+msgctxt "action"
+msgid "workspace::CloseAllItemsAndPanes"
+msgstr "分頁: 關閉所有分頁與窗格"
+
+#. workspace: close inactive tabs and panes
+msgctxt "action"
+msgid "workspace::CloseInactiveTabsAndPanes"
+msgstr "分頁: 關閉非使用中的分頁與窗格"
+
+#. workspace: close item in all panes
+msgctxt "action"
+msgid "workspace::CloseItemInAllPanes"
+msgstr "分頁: 在所有窗格中關閉此項目"
+
+#. workspace: close project
+msgctxt "action"
+msgid "workspace::CloseProject"
+msgstr "關閉專案"
+
+#. workspace: close window
+msgctxt "action"
+msgid "workspace::CloseWindow"
+msgstr "視窗: 關閉視窗"
+
+#. workspace: copy path
+msgctxt "action"
+msgid "workspace::CopyPath"
+msgstr "複製路徑"
+
+#. workspace: copy relative path
+msgctxt "action"
+msgid "workspace::CopyRelativePath"
+msgstr "複製相對路徑"
+
+#. workspace: decrease active dock size
+msgctxt "action"
+msgid "workspace::DecreaseActiveDockSize"
+msgstr "檢視: 縮小停駐區"
+
+#. workspace: decrease open docks size
+msgctxt "action"
+msgid "workspace::DecreaseOpenDocksSize"
+msgstr "檢視: 縮小所有開啟的停駐區"
+
+#. workspace: feedback
+msgctxt "action"
+msgid "workspace::Feedback"
+msgstr "傳送意見回饋"
+
+#. workspace: focus center pane
+msgctxt "action"
+msgid "workspace::FocusCenterPane"
+msgstr "窗格: 聚焦於中央窗格"
+
+#. workspace: focus next part
+msgctxt "action"
+msgid "workspace::FocusNextPart"
+msgstr "檢視: 聚焦於下一個區域"
+
+#. workspace: focus previous part
+msgctxt "action"
+msgid "workspace::FocusPreviousPart"
+msgstr "檢視: 聚焦於上一個區域"
+
+#. workspace: follow next collaborator
+msgctxt "action"
+msgid "workspace::FollowNextCollaborator"
+msgstr "共同作業: 跟隨下一位協作者"
+
+#. workspace: format and save
+msgctxt "action"
+msgid "workspace::FormatAndSave"
+msgstr "檔案: 格式化並儲存"
+
+#. workspace: increase active dock size
+msgctxt "action"
+msgid "workspace::IncreaseActiveDockSize"
+msgstr "檢視: 放大停駐區"
+
+#. workspace: increase open docks size
+msgctxt "action"
+msgid "workspace::IncreaseOpenDocksSize"
+msgstr "檢視: 放大所有開啟的停駐區"
+
+#. workspace: move focused panel to next position
+msgctxt "action"
+msgid "workspace::MoveFocusedPanelToNextPosition"
+msgstr "檢視: 將面板移至下一個位置"
+
+#. workspace: move item to new window
+msgctxt "action"
+msgid "workspace::MoveItemToNewWindow"
+msgstr "分頁: 移至新視窗"
+
+#. workspace: move item to pane
+msgctxt "action"
+msgid "workspace::MoveItemToPane"
+msgstr "分頁: 移至指定編號的窗格"
+
+#. workspace: move item to pane in direction
+msgctxt "action"
+msgid "workspace::MoveItemToPaneInDirection"
+msgstr "分頁: 移至指定方向的窗格"
+
+#. workspace: move pane down
+msgctxt "action"
+msgid "workspace::MovePaneDown"
+msgstr "窗格: 下移"
+
+#. workspace: move pane left
+msgctxt "action"
+msgid "workspace::MovePaneLeft"
+msgstr "窗格: 左移"
+
+#. workspace: move pane right
+msgctxt "action"
+msgid "workspace::MovePaneRight"
+msgstr "窗格: 右移"
+
+#. workspace: move pane up
+msgctxt "action"
+msgid "workspace::MovePaneUp"
+msgstr "窗格: 上移"
+
+#. workspace: new center terminal
+msgctxt "action"
+msgid "workspace::NewCenterTerminal"
+msgstr "終端機: 在中央窗格新增終端機"
+
+#. workspace: new file
+msgctxt "action"
+msgid "workspace::NewFile"
+msgstr "檔案: 新增檔案"
+
+#. workspace: new file split
+msgctxt "action"
+msgid "workspace::NewFileSplit"
+msgstr "檔案: 新增檔案（往指定方向分割）"
+
+#. workspace: new file split horizontal
+msgctxt "action"
+msgid "workspace::NewFileSplitHorizontal"
+msgstr "檔案: 新增檔案（水平分割）"
+
+#. workspace: new file split vertical
+msgctxt "action"
+msgid "workspace::NewFileSplitVertical"
+msgstr "檔案: 新增檔案（垂直分割）"
+
+#. workspace: new search
+msgctxt "action"
+msgid "workspace::NewSearch"
+msgstr "搜尋: 專案搜尋"
+
+#. workspace: new terminal
+msgctxt "action"
+msgid "workspace::NewTerminal"
+msgstr "終端機: 新增終端機"
+
+#. workspace: new window
+msgctxt "action"
+msgid "workspace::NewWindow"
+msgstr "視窗: 新視窗"
+
+#. workspace: open
+msgctxt "action"
+msgid "workspace::Open"
+msgstr "檔案: 開啟資料夾或檔案"
+
+#. workspace: open component preview
+msgctxt "action"
+msgid "workspace::OpenComponentPreview"
+msgstr "開發人員: 開啟元件預覽"
+
+#. workspace: open files
+msgctxt "action"
+msgid "workspace::OpenFiles"
+msgstr "檔案: 開啟檔案"
+
+#. workspace: open in terminal
+msgctxt "action"
+msgid "workspace::OpenInTerminal"
+msgstr "終端機: 在此處開啟終端機"
+
+#. workspace: open terminal
+msgctxt "action"
+msgid "workspace::OpenTerminal"
+msgstr "終端機: 開啟終端機"
+
+#. workspace: open with system
+msgctxt "action"
+msgid "workspace::OpenWithSystem"
+msgstr "檔案: 以預設應用程式開啟"
+
+#. workspace: reload
+msgctxt "action"
+msgid "workspace::Reload"
+msgstr "視窗: 重新載入"
+
+#. workspace: reload active item
+msgctxt "action"
+msgid "workspace::ReloadActiveItem"
+msgstr "檔案: 重新載入此檔案"
+
+#. workspace: reopen last picker
+msgctxt "action"
+msgid "workspace::ReopenLastPicker"
+msgstr "重新開啟上一個選擇器"
+
+#. workspace: reset active dock size
+msgctxt "action"
+msgid "workspace::ResetActiveDockSize"
+msgstr "檢視: 重設停駐區大小"
+
+#. workspace: reset open docks size
+msgctxt "action"
+msgid "workspace::ResetOpenDocksSize"
+msgstr "檢視: 重設開啟之停駐區的大小"
+
+#. workspace: reset pane sizes
+msgctxt "action"
+msgid "workspace::ResetPaneSizes"
+msgstr "窗格: 重設大小"
+
+#. workspace: restore banner
+msgctxt "action"
+msgid "workspace::RestoreBanner"
+msgstr "重新顯示橫幅"
+
+#. workspace: save
+msgctxt "action"
+msgid "workspace::Save"
+msgstr "檔案: 儲存"
+
+#. workspace: save all
+msgctxt "action"
+msgid "workspace::SaveAll"
+msgstr "檔案: 全部儲存"
+
+#. workspace: save as
+msgctxt "action"
+msgid "workspace::SaveAs"
+msgstr "檔案: 另存新檔"
+
+#. workspace: save without format
+msgctxt "action"
+msgid "workspace::SaveWithoutFormat"
+msgstr "檔案: 儲存但不格式化"
+
+#. workspace: send keystrokes
+msgctxt "action"
+msgid "workspace::SendKeystrokes"
+msgstr "傳送按鍵輸入"
+
+#. workspace: shutdown debug adapters
+msgctxt "action"
+msgid "workspace::ShutdownDebugAdapters"
+msgstr "偵錯: 關閉偵錯介面卡"
+
+#. workspace: suppress notification
+msgctxt "action"
+msgid "workspace::SuppressNotification"
+msgstr "不要再顯示此通知"
+
+#. workspace: swap pane adjacent
+msgctxt "action"
+msgid "workspace::SwapPaneAdjacent"
+msgstr "窗格: 與相鄰窗格交換"
+
+#. workspace: swap pane down
+msgctxt "action"
+msgid "workspace::SwapPaneDown"
+msgstr "窗格: 與下方窗格交換"
+
+#. workspace: swap pane left
+msgctxt "action"
+msgid "workspace::SwapPaneLeft"
+msgstr "窗格: 與左側窗格交換"
+
+#. workspace: swap pane right
+msgctxt "action"
+msgid "workspace::SwapPaneRight"
+msgstr "窗格: 與右側窗格交換"
+
+#. workspace: swap pane up
+msgctxt "action"
+msgid "workspace::SwapPaneUp"
+msgstr "窗格: 與上方窗格交換"
+
+#. workspace: toggle all docks
+msgctxt "action"
+msgid "workspace::ToggleAllDocks"
+msgstr "檢視: 切換所有停駐區"
+
+#. workspace: toggle bottom dock
+msgctxt "action"
+msgid "workspace::ToggleBottomDock"
+msgstr "檢視: 切換底部停駐區"
+
+#. workspace: toggle centered layout
+msgctxt "action"
+msgid "workspace::ToggleCenteredLayout"
+msgstr "檢視: 切換置中版面配置"
+
+#. workspace: toggle edit prediction
+msgctxt "action"
+msgid "workspace::ToggleEditPrediction"
+msgstr "切換編輯預測"
+
+#. workspace: toggle editor zoom
+msgctxt "action"
+msgid "workspace::ToggleEditorZoom"
+msgstr "檢視: 切換編輯器縮放"
+
+#. workspace: toggle expand item
+msgctxt "action"
+msgid "workspace::ToggleExpandItem"
+msgstr "檢視: 展開/摺疊選取的項目"
+
+#. workspace: toggle helix mode
+msgctxt "action"
+msgid "workspace::ToggleHelixMode"
+msgstr "切換 Helix 模式"
+
+#. workspace: toggle left dock
+msgctxt "action"
+msgid "workspace::ToggleLeftDock"
+msgstr "檢視: 切換左側停駐區"
+
+#. workspace: toggle read only file
+msgctxt "action"
+msgid "workspace::ToggleReadOnlyFile"
+msgstr "檔案: 切換唯讀"
+
+#. workspace: toggle right dock
+msgctxt "action"
+msgid "workspace::ToggleRightDock"
+msgstr "檢視: 切換右側停駐區"
+
+#. workspace: toggle vim mode
+msgctxt "action"
+msgid "workspace::ToggleVimMode"
+msgstr "切換 Vim 模式"
+
+#. workspace: toggle worktree security
+msgctxt "action"
+msgid "workspace::ToggleWorktreeSecurity"
+msgstr "切換工作樹的信任設定"
+
+#. workspace: toggle zoom
+msgctxt "action"
+msgid "workspace::ToggleZoom"
+msgstr "檢視: 切換面板縮放"
+
+#. workspace: unfollow
+msgctxt "action"
+msgid "workspace::Unfollow"
+msgstr "共同作業: 取消跟隨"
+
+#. workspace: use agentic layout
+msgctxt "action"
+msgid "workspace::UseAgenticLayout"
+msgstr "檢視: 代理版面配置"
+
+#. workspace: use classic layout
+msgctxt "action"
+msgid "workspace::UseClassicLayout"
+msgstr "檢視: 傳統版面配置"
+
+#. workspace: zoom in
+msgctxt "action"
+msgid "workspace::ZoomIn"
+msgstr "檢視: 放大"
+
+#. workspace: zoom out
+msgctxt "action"
+msgid "workspace::ZoomOut"
+msgstr "檢視: 縮小"
+
+#. worktree picker: delete worktree
+msgctxt "action"
+msgid "worktree_picker::DeleteWorktree"
+msgstr "Git: 刪除工作樹"
+
+#. worktree picker: force delete worktree
+msgctxt "action"
+msgid "worktree_picker::ForceDeleteWorktree"
+msgstr "Git: 強制刪除工作樹"
+
+#. zed: about
+msgctxt "action"
+msgid "zed::About"
+msgstr "關於 ForgeKairos"
+
+#. zed: acp registry
+msgctxt "action"
+msgid "zed::AcpRegistry"
+msgstr "開啟 ACP 登錄庫"
+
+#. zed: cancel etw trace
+msgctxt "action"
+msgid "zed::CancelEtwTrace"
+msgstr "開發人員: 中止 ETW 追蹤（不儲存）"
+
+#. zed: change keybinding
+msgctxt "action"
+msgid "zed::ChangeKeybinding"
+msgstr "喜好設定: 變更按鍵繫結"
+
+#. zed: copy installed extensions into clipboard
+msgctxt "action"
+msgid "zed::CopyInstalledExtensionsIntoClipboard"
+msgstr "將已安裝的擴充功能複製到剪貼簿"
+
+#. zed: copy system specs into clipboard
+msgctxt "action"
+msgid "zed::CopySystemSpecsIntoClipboard"
+msgstr "將系統資訊複製到剪貼簿"
+
+#. zed: debug elements
+msgctxt "action"
+msgid "zed::DebugElements"
+msgstr "開發人員: 開啟元素檢查器"
+
+#. zed: decrease buffer font size
+msgctxt "action"
+msgid "zed::DecreaseBufferFontSize"
+msgstr "編輯器: 縮小字型大小"
+
+#. zed: decrease ui font size
+msgctxt "action"
+msgid "zed::DecreaseUiFontSize"
+msgstr "檢視: 縮小 UI 字型大小"
+
+#. zed: extensions
+msgctxt "action"
+msgid "zed::Extensions"
+msgstr "擴充功能"
+
+#. zed: get merch
+msgctxt "action"
+msgid "zed::GetMerch"
+msgstr "開啟 Zed 周邊商品商店"
+
+#. zed: hide
+msgctxt "action"
+msgid "zed::Hide"
+msgstr "視窗: 隱藏"
+
+#. zed: hide others
+msgctxt "action"
+msgid "zed::HideOthers"
+msgstr "視窗: 隱藏其他"
+
+#. zed: import cursor settings
+msgctxt "action"
+msgid "zed::ImportCursorSettings"
+msgstr "匯入 Cursor 設定"
+
+#. zed: import vs code settings
+msgctxt "action"
+msgid "zed::ImportVsCodeSettings"
+msgstr "匯入 VS Code 設定"
+
+#. zed: increase buffer font size
+msgctxt "action"
+msgid "zed::IncreaseBufferFontSize"
+msgstr "編輯器: 放大字型大小"
+
+#. zed: increase ui font size
+msgctxt "action"
+msgid "zed::IncreaseUiFontSize"
+msgstr "檢視: 放大 UI 字型大小"
+
+#. zed: install dev extension
+msgctxt "action"
+msgid "zed::InstallDevExtension"
+msgstr "安裝開發中的擴充功能"
+
+#. zed: minimize
+msgctxt "action"
+msgid "zed::Minimize"
+msgstr "視窗: 最小化"
+
+#. zed: no action
+msgctxt "action"
+msgid "zed::NoAction"
+msgstr "停用按鍵繫結（NoAction）"
+
+#. zed: open account settings
+msgctxt "action"
+msgid "zed::OpenAccountSettings"
+msgstr "喜好設定: 開啟帳戶設定"
+
+#. zed: open browser
+msgctxt "action"
+msgid "zed::OpenBrowser"
+msgstr "在瀏覽器中開啟 URL"
+
+#. zed: open debug tasks
+msgctxt "action"
+msgid "zed::OpenDebugTasks"
+msgstr "工作: 開啟偵錯工作"
+
+#. zed: open default keymap
+msgctxt "action"
+msgid "zed::OpenDefaultKeymap"
+msgstr "喜好設定: 開啟預設按鍵對應"
+
+#. zed: open default settings
+msgctxt "action"
+msgid "zed::OpenDefaultSettings"
+msgstr "喜好設定: 開啟預設設定"
+
+#. zed: open docs
+msgctxt "action"
+msgid "zed::OpenDocs"
+msgstr "開啟文件"
+
+#. zed: open keymap
+msgctxt "action"
+msgid "zed::OpenKeymap"
+msgstr "喜好設定: 開啟按鍵對應"
+
+#. zed: open keymap file
+msgctxt "action"
+msgid "zed::OpenKeymapFile"
+msgstr "喜好設定: 開啟 keymap.json"
+
+#. zed: open licenses
+msgctxt "action"
+msgid "zed::OpenLicenses"
+msgstr "開啟授權"
+
+#. zed: open log
+msgctxt "action"
+msgid "zed::OpenLog"
+msgstr "開啟記錄檔"
+
+#. zed: open onboarding
+msgctxt "action"
+msgid "zed::OpenOnboarding"
+msgstr "開啟新手導覽"
+
+#. zed: open performance profiler
+msgctxt "action"
+msgid "zed::OpenPerformanceProfiler"
+msgstr "開啟效能分析工具"
+
+#. zed: open project settings
+msgctxt "action"
+msgid "zed::OpenProjectSettings"
+msgstr "喜好設定: 開啟專案設定"
+
+#. zed: open project settings file
+msgctxt "action"
+msgid "zed::OpenProjectSettingsFile"
+msgstr "喜好設定: 開啟專案的 settings.json"
+
+#. zed: open project tasks
+msgctxt "action"
+msgid "zed::OpenProjectTasks"
+msgstr "工作: 開啟專案工作"
+
+#. zed: open server settings
+msgctxt "action"
+msgid "zed::OpenServerSettings"
+msgstr "喜好設定: 開啟伺服器設定"
+
+#. zed: open settings
+msgctxt "action"
+msgid "zed::OpenSettings"
+msgstr "喜好設定: 開啟設定"
+
+#. zed: open settings at
+msgctxt "action"
+msgid "zed::OpenSettingsAt"
+msgstr "喜好設定: 開啟指定的設定"
+
+#. zed: open settings file
+msgctxt "action"
+msgid "zed::OpenSettingsFile"
+msgstr "喜好設定: 開啟 settings.json"
+
+#. zed: open settings page
+msgctxt "action"
+msgid "zed::OpenSettingsPage"
+msgstr "喜好設定: 開啟設定頁面"
+
+#. zed: open status page
+msgctxt "action"
+msgid "zed::OpenStatusPage"
+msgstr "開啟狀態頁面"
+
+#. zed: open tasks
+msgctxt "action"
+msgid "zed::OpenTasks"
+msgstr "工作: 開啟 tasks.json"
+
+#. zed: open telemetry log
+msgctxt "action"
+msgid "zed::OpenTelemetryLog"
+msgstr "開啟遙測記錄"
+
+#. zed: open worktree setup tasks
+msgctxt "action"
+msgid "zed::OpenWorktreeSetupTasks"
+msgstr "工作: 開啟工作樹設定工作"
+
+#. zed: open zed repo
+msgctxt "action"
+msgid "zed::OpenZedRepo"
+msgstr "開啟 Zed 儲存庫"
+
+#. zed: open zed url
+msgctxt "action"
+msgid "zed::OpenZedUrl"
+msgstr "開啟 zed:// URL"
+
+#. zed: quit
+msgctxt "action"
+msgid "zed::Quit"
+msgstr "結束 ForgeKairos"
+
+#. zed: rebuild dev extension
+msgctxt "action"
+msgid "zed::RebuildDevExtension"
+msgstr "重新建置開發中的擴充功能"
+
+#. zed: record etw trace
+msgctxt "action"
+msgid "zed::RecordEtwTrace"
+msgstr "開發人員: 開始記錄 ETW 追蹤"
+
+#. zed: record etw trace with heap tracing
+msgctxt "action"
+msgid "zed::RecordEtwTraceWithHeapTracing"
+msgstr "開發人員: 開始記錄 ETW 追蹤（含堆積追蹤）"
+
+#. zed: reload extensions
+msgctxt "action"
+msgid "zed::ReloadExtensions"
+msgstr "重新載入擴充功能"
+
+#. zed: reset all zoom
+msgctxt "action"
+msgid "zed::ResetAllZoom"
+msgstr "檢視: 重設所有縮放"
+
+#. zed: reset buffer font size
+msgctxt "action"
+msgid "zed::ResetBufferFontSize"
+msgstr "編輯器: 重設字型大小"
+
+#. zed: reset database
+msgctxt "action"
+msgid "zed::ResetDatabase"
+msgstr "重設資料庫"
+
+#. zed: reset ui font size
+msgctxt "action"
+msgid "zed::ResetUiFontSize"
+msgstr "檢視: 重設 UI 字型大小"
+
+#. zed: reveal log in file manager
+msgctxt "action"
+msgid "zed::RevealLogInFileManager"
+msgstr "在檔案管理員中顯示記錄檔"
+
+#. zed: save etw trace
+msgctxt "action"
+msgid "zed::SaveEtwTrace"
+msgstr "開發人員: 儲存 ETW 追蹤"
+
+#. zed: show all
+msgctxt "action"
+msgid "zed::ShowAll"
+msgstr "視窗: 全部顯示"
+
+#. zed: show default semantic token rules
+msgctxt "action"
+msgid "zed::ShowDefaultSemanticTokenRules"
+msgstr "喜好設定: 顯示預設語意標記規則"
+
+#. zed: show update notification
+msgctxt "action"
+msgid "zed::ShowUpdateNotification"
+msgstr "開發人員: 顯示更新通知"
+
+#. zed: show welcome
+msgctxt "action"
+msgid "zed::ShowWelcome"
+msgstr "開啟歡迎頁面"
+
+#. zed: test crash
+msgctxt "action"
+msgid "zed::TestCrash"
+msgstr "開發人員: 引發當機"
+
+#. zed: test panic
+msgctxt "action"
+msgid "zed::TestPanic"
+msgstr "開發人員: 引發 panic"
+
+#. zed: toggle base keymap selector
+msgctxt "action"
+msgid "zed::ToggleBaseKeymapSelector"
+msgstr "喜好設定: 選取基礎按鍵對應"
+
+#. zed: toggle full screen
+msgctxt "action"
+msgid "zed::ToggleFullScreen"
+msgstr "檢視: 切換全螢幕"
+
+#. zed: unbind
+msgctxt "action"
+msgid "zed::Unbind"
+msgstr "解除按鍵繫結（Unbind）"
+
+#. zed: zoom
+msgctxt "action"
+msgid "zed::Zoom"
+msgstr "視窗: 縮放"
+
+#. zed predict onboarding: open zed predict onboarding
+msgctxt "action"
+msgid "zed_predict_onboarding::OpenZedPredictOnboarding"
+msgstr "編輯預測: 開啟新手導覽"
+
+#. zeta: focus predictions
+msgctxt "action"
+msgid "zeta::FocusPredictions"
+msgstr "編輯預測: 聚焦於預測"
+
+#. zeta: next edit
+msgctxt "action"
+msgid "zeta::NextEdit"
+msgstr "編輯預測: 下一個編輯"
+
+#. zeta: preview prediction
+msgctxt "action"
+msgid "zeta::PreviewPrediction"
+msgstr "編輯預測: 預覽預測"
+
+#. zeta: previous edit
+msgctxt "action"
+msgid "zeta::PreviousEdit"
+msgstr "編輯預測: 上一個編輯"
+
+#. zeta: thumbs down active prediction
+msgctxt "action"
+msgid "zeta::ThumbsDownActivePrediction"
+msgstr "編輯預測: 給予預測負評"
+
+#. zeta: thumbs up active prediction
+msgctxt "action"
+msgid "zeta::ThumbsUpActivePrediction"
+msgstr "編輯預測: 給予預測好評"

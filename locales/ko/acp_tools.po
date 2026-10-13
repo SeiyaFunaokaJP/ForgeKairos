@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Clear Messages"
+msgstr "메시지 지우기"
+
+msgid "Copy All Messages"
+msgstr "모든 메시지 복사"
+
+msgid "Disconnected"
+msgstr "연결 끊김"
+
+msgid "No active connection"
+msgstr "활성 연결 없음"
+
+msgid "No active connections"
+msgstr "활성 연결 없음"
+
+msgid "No connection selected"
+msgstr "선택된 연결 없음"
+
+msgid "No messages recorded yet"
+msgstr "아직 기록된 메시지가 없습니다"
+
+msgid "Reconnecting to {}"
+msgstr "{}에 다시 연결 중"
+
+msgid "Restart Connection"
+msgstr "연결 다시 시작"
+
+msgid "[unrecognized response]"
+msgstr "[인식할 수 없는 응답]"

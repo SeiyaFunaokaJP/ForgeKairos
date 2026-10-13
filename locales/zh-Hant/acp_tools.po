@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Clear Messages"
+msgstr "清除訊息"
+
+msgid "Copy All Messages"
+msgstr "複製所有訊息"
+
+msgid "Disconnected"
+msgstr "已中斷連線"
+
+msgid "No active connection"
+msgstr "沒有作用中的連線"
+
+msgid "No active connections"
+msgstr "沒有作用中的連線"
+
+msgid "No connection selected"
+msgstr "未選取連線"
+
+msgid "No messages recorded yet"
+msgstr "尚未記錄任何訊息"
+
+msgid "Reconnecting to {}"
+msgstr "正在重新連線至 {}"
+
+msgid "Restart Connection"
+msgstr "重新啟動連線"
+
+msgid "[unrecognized response]"
+msgstr "[無法辨識的回應]"

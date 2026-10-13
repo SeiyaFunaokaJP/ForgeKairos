@@ -1,0 +1,63 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "Un fichier ou un dossier portant le même nom existe déjà. Le remplacer écrasera son contenu actuel."
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Cannot open {dir}: {error}"
+msgstr "Impossible d'ouvrir {dir} : {error}"
+
+msgid "Enter: Go into Folder"
+msgstr "Enter : entrer dans le dossier"
+
+msgid "Enter: Open"
+msgstr "Enter : ouvrir"
+
+msgid "No such file or directory"
+msgstr "Fichier ou répertoire introuvable"
+
+msgid "Open This Folder"
+msgstr "Ouvrir ce dossier"
+
+msgid "Open {listed_directory} itself"
+msgstr "Ouvrir {listed_directory} lui-même"
+
+msgid "Replace"
+msgstr "Remplacer"
+
+msgid "Type a path…"
+msgstr "Saisir un chemin d'accès…"
+
+msgid "[directory{}]filename.ext"
+msgstr "[répertoire{}]nomdefichier.ext"
+
+msgid "go to parent directory"
+msgstr "aller au répertoire parent"
+
+msgid "go to parent directory ({parent})"
+msgstr "aller au répertoire parent ({parent})"
+
+msgid "open this directory"
+msgstr "ouvrir ce répertoire"
+
+msgid "{confirm_hint} / Ctrl+Enter: Choose Selected Folder"
+msgstr "{confirm_hint} / Ctrl+Enter : choisir le dossier sélectionné"
+
+msgid "{label} (create)"
+msgstr "{label} (créer)"
+
+msgid "{label} (replace)"
+msgstr "{label} (remplacer)"
+
+msgid "{prompted_path} already exists. Do you want to replace it?"
+msgstr "{prompted_path} existe déjà. Voulez-vous le remplacer ?"

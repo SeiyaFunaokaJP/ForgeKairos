@@ -1,0 +1,7971 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#. action: sequence
+msgctxt "action"
+msgid "action::Sequence"
+msgstr "작업 순차 실행"
+
+#. activity indicator: show error message
+msgctxt "action"
+msgid "activity_indicator::ShowErrorMessage"
+msgstr "오류 메시지 표시"
+
+#. agent: add selection to thread
+msgctxt "action"
+msgid "agent::AddSelectionToThread"
+msgstr "에이전트: 선택 영역을 스레드에 추가"
+
+#. agent: allow always
+msgctxt "action"
+msgid "agent::AllowAlways"
+msgstr "에이전트: 항상 허용"
+
+#. agent: allow once
+msgctxt "action"
+msgid "agent::AllowOnce"
+msgstr "에이전트: 이번만 허용"
+
+#. agent: archive selected thread
+msgctxt "action"
+msgid "agent::ArchiveSelectedThread"
+msgstr "에이전트: 선택한 스레드 보관"
+
+#. agent: authorize tool call
+msgctxt "action"
+msgid "agent::AuthorizeToolCall"
+msgstr "에이전트: 도구 호출 승인"
+
+#. agent: chat
+msgctxt "action"
+msgid "agent::Chat"
+msgstr "에이전트: 메시지 보내기"
+
+#. agent: chat with follow
+msgctxt "action"
+msgid "agent::ChatWithFollow"
+msgstr "에이전트: 메시지 보내고 따라가기"
+
+#. agent: clear message queue
+msgctxt "action"
+msgid "agent::ClearMessageQueue"
+msgstr "에이전트: 대기 중인 메시지 모두 지우기"
+
+#. agent: copy thread to clipboard
+msgctxt "action"
+msgid "agent::CopyThreadToClipboard"
+msgstr "에이전트: 스레드를 클립보드에 복사"
+
+#. agent: create skill from url
+msgctxt "action"
+msgid "agent::CreateSkillFromUrl"
+msgstr "에이전트: URL에서 스킬 만들기"
+
+#. agent: cycle favorite models
+msgctxt "action"
+msgid "agent::CycleFavoriteModels"
+msgstr "에이전트: 즐겨찾는 모델 순환"
+
+#. agent: cycle mode selector
+msgctxt "action"
+msgid "agent::CycleModeSelector"
+msgstr "에이전트: 모드 순환"
+
+#. agent: cycle next inline assist
+msgctxt "action"
+msgid "agent::CycleNextInlineAssist"
+msgstr "에이전트: 다음 인라인 어시스트 대안"
+
+#. agent: cycle previous inline assist
+msgctxt "action"
+msgid "agent::CyclePreviousInlineAssist"
+msgstr "에이전트: 이전 인라인 어시스트 대안"
+
+#. agent: cycle thinking effort
+msgctxt "action"
+msgid "agent::CycleThinkingEffort"
+msgstr "에이전트: 사고 강도 순환"
+
+#. agent: dismiss thread search
+msgctxt "action"
+msgid "agent::DismissThreadSearch"
+msgstr "에이전트: 스레드 검색 닫기"
+
+#. agent: edit first queued message
+msgctxt "action"
+msgid "agent::EditFirstQueuedMessage"
+msgstr "에이전트: 첫 번째 대기 중인 메시지 편집"
+
+#. agent: expand message editor
+msgctxt "action"
+msgid "agent::ExpandMessageEditor"
+msgstr "에이전트: 메시지 편집기 확장"
+
+#. agent: focus agent
+msgctxt "action"
+msgid "agent::FocusAgent"
+msgstr "에이전트: 패널에 포커스"
+
+#. agent: focus down
+msgctxt "action"
+msgid "agent::FocusDown"
+msgstr "에이전트: 아래로 포커스 이동"
+
+#. agent: focus left
+msgctxt "action"
+msgid "agent::FocusLeft"
+msgstr "에이전트: 왼쪽으로 포커스 이동"
+
+#. agent: focus right
+msgctxt "action"
+msgid "agent::FocusRight"
+msgstr "에이전트: 오른쪽으로 포커스 이동"
+
+#. agent: focus up
+msgctxt "action"
+msgid "agent::FocusUp"
+msgstr "에이전트: 위로 포커스 이동"
+
+#. agent: follow
+msgctxt "action"
+msgid "agent::Follow"
+msgstr "에이전트: 에이전트 따라가기"
+
+#. agent: import threads from other channels
+msgctxt "action"
+msgid "agent::ImportThreadsFromOtherChannels"
+msgstr "에이전트: 다른 릴리스 채널의 스레드 가져오기"
+
+#. agent: keep
+msgctxt "action"
+msgid "agent::Keep"
+msgstr "에이전트: 변경 사항 유지"
+
+#. agent: keep all
+msgctxt "action"
+msgid "agent::KeepAll"
+msgstr "에이전트: 모든 변경 사항 유지"
+
+#. agent: load thread from clipboard
+msgctxt "action"
+msgid "agent::LoadThreadFromClipboard"
+msgstr "에이전트: 클립보드에서 스레드 로드"
+
+#. agent: logout agent
+msgctxt "action"
+msgid "agent::LogoutAgent"
+msgstr "에이전트: 외부 에이전트에서 로그아웃"
+
+#. agent: manage profiles
+msgctxt "action"
+msgid "agent::ManageProfiles"
+msgstr "에이전트: 프로필 관리"
+
+#. agent: manage skills
+msgctxt "action"
+msgid "agent::ManageSkills"
+msgstr "에이전트: 스킬 관리"
+
+#. agent: move thread to panel
+msgctxt "action"
+msgid "agent::MoveThreadToPanel"
+msgstr "에이전트: 스레드를 패널로 되돌리기"
+
+#. agent: new external agent thread
+msgctxt "action"
+msgid "agent::NewExternalAgentThread"
+msgstr "에이전트: 새 외부 에이전트 스레드"
+
+#. agent: new native agent thread from summary
+msgctxt "action"
+msgid "agent::NewNativeAgentThreadFromSummary"
+msgstr "에이전트: 요약에서 새 스레드"
+
+#. agent: new terminal thread
+msgctxt "action"
+msgid "agent::NewTerminalThread"
+msgstr "에이전트: 새 터미널 스레드"
+
+#. agent: new thread
+msgctxt "action"
+msgid "agent::NewThread"
+msgstr "에이전트: 새 스레드"
+
+#. agent: new thread with language model provider
+msgctxt "action"
+msgid "agent::NewThreadWithLanguageModelProvider"
+msgstr "에이전트: LLM 프로바이더로 새 스레드"
+
+#. agent: open active thread as markdown
+msgctxt "action"
+msgid "agent::OpenActiveThreadAsMarkdown"
+msgstr "에이전트: 스레드를 Markdown으로 열기"
+
+#. agent: open add context menu
+msgctxt "action"
+msgid "agent::OpenAddContextMenu"
+msgstr "에이전트: 컨텍스트 추가 메뉴 열기"
+
+#. agent: open agent diff
+msgctxt "action"
+msgid "agent::OpenAgentDiff"
+msgstr "에이전트: 에이전트 Diff 열기"
+
+#. agent: open global AGENTS.md rules
+msgctxt "action"
+msgid "agent::OpenGlobalAGENTS.mdRules"
+msgstr "에이전트: 전역 AGENTS.md 규칙 열기"
+
+#. agent: open onboarding modal
+msgctxt "action"
+msgid "agent::OpenOnboardingModal"
+msgstr "에이전트: 온보딩 열기"
+
+#. agent: open permission dropdown
+msgctxt "action"
+msgid "agent::OpenPermissionDropdown"
+msgstr "에이전트: 권한 드롭다운 열기"
+
+#. agent: open project AGENTS.md rules
+msgctxt "action"
+msgid "agent::OpenProjectAGENTS.mdRules"
+msgstr "에이전트: 프로젝트 AGENTS.md 규칙 열기"
+
+#. agent: open settings
+msgctxt "action"
+msgid "agent::OpenSettings"
+msgstr "에이전트: 설정 열기"
+
+#. agent: open skill creator
+msgctxt "action"
+msgid "agent::OpenSkillCreator"
+msgstr "에이전트: 스킬 만들기 열기"
+
+#. agent: open thread in split
+msgctxt "action"
+msgid "agent::OpenThreadInSplit"
+msgstr "에이전트: 스레드를 오른쪽으로 분할하여 열기"
+
+#. agent: open thread in tab
+msgctxt "action"
+msgid "agent::OpenThreadInTab"
+msgstr "에이전트: 스레드를 탭으로 열기"
+
+#. agent: paste raw
+msgctxt "action"
+msgid "agent::PasteRaw"
+msgstr "에이전트: 서식 없이 붙여넣기"
+
+#. agent: reauthenticate agent
+msgctxt "action"
+msgid "agent::ReauthenticateAgent"
+msgstr "에이전트: 다시 인증"
+
+#. agent: reconnect parked agent
+msgctxt "action"
+msgid "agent::ReconnectParkedAgent"
+msgstr "에이전트: 중지된 에이전트에 다시 연결"
+
+#. agent: reject
+msgctxt "action"
+msgid "agent::Reject"
+msgstr "에이전트: 변경 사항 거부"
+
+#. agent: reject all
+msgctxt "action"
+msgid "agent::RejectAll"
+msgstr "에이전트: 모든 변경 사항 거부"
+
+#. agent: reject once
+msgctxt "action"
+msgid "agent::RejectOnce"
+msgstr "에이전트: 이번만 거부"
+
+#. agent: remove first queued message
+msgctxt "action"
+msgid "agent::RemoveFirstQueuedMessage"
+msgstr "에이전트: 첫 번째 대기 중인 메시지 제거"
+
+#. agent: remove selected thread
+msgctxt "action"
+msgid "agent::RemoveSelectedThread"
+msgstr "에이전트: 선택한 스레드 제거"
+
+#. agent: rename selected thread
+msgctxt "action"
+msgid "agent::RenameSelectedThread"
+msgstr "에이전트: 선택한 스레드 이름 변경"
+
+#. agent: rerun rules to skills migration
+msgctxt "action"
+msgid "agent::RerunRulesToSkillsMigration"
+msgstr "에이전트: 규칙에서 스킬로 마이그레이션 다시 실행"
+
+#. agent: reset agent zoom
+msgctxt "action"
+msgid "agent::ResetAgentZoom"
+msgstr "에이전트: 패널 확대/축소 초기화"
+
+#. agent: reset fast mode warnings
+msgctxt "action"
+msgid "agent::ResetFastModeWarnings"
+msgstr "에이전트: 빠른 모드 경고 초기화"
+
+#. agent: reset onboarding
+msgctxt "action"
+msgid "agent::ResetOnboarding"
+msgstr "에이전트: 온보딩 초기화"
+
+#. agent: reset trial end upsell
+msgctxt "action"
+msgid "agent::ResetTrialEndUpsell"
+msgstr "에이전트: 체험 종료 안내 초기화"
+
+#. agent: reset trial upsell
+msgctxt "action"
+msgid "agent::ResetTrialUpsell"
+msgstr "에이전트: 체험 안내 초기화"
+
+#. agent: resolve conflicted files with agent
+msgctxt "action"
+msgid "agent::ResolveConflictedFilesWithAgent"
+msgstr "에이전트: 에이전트로 충돌 파일 해결"
+
+#. agent: resolve conflicts with agent
+msgctxt "action"
+msgid "agent::ResolveConflictsWithAgent"
+msgstr "에이전트: 에이전트로 충돌 해결"
+
+#. agent: review branch diff
+msgctxt "action"
+msgid "agent::ReviewBranchDiff"
+msgstr "에이전트: 브랜치 Diff 검토"
+
+#. agent: revoke outside sandbox consents
+msgctxt "action"
+msgid "agent::RevokeOutsideSandboxConsents"
+msgstr "에이전트: 샌드박스 외부 실행 동의 철회"
+
+#. agent: scroll output line down
+msgctxt "action"
+msgid "agent::ScrollOutputLineDown"
+msgstr "에이전트: 출력을 아래로 몇 줄 스크롤"
+
+#. agent: scroll output line up
+msgctxt "action"
+msgid "agent::ScrollOutputLineUp"
+msgstr "에이전트: 출력을 위로 몇 줄 스크롤"
+
+#. agent: scroll output page down
+msgctxt "action"
+msgid "agent::ScrollOutputPageDown"
+msgstr "에이전트: 출력을 아래로 한 페이지 스크롤"
+
+#. agent: scroll output page up
+msgctxt "action"
+msgid "agent::ScrollOutputPageUp"
+msgstr "에이전트: 출력을 위로 한 페이지 스크롤"
+
+#. agent: scroll output to bottom
+msgctxt "action"
+msgid "agent::ScrollOutputToBottom"
+msgstr "에이전트: 출력 맨 아래로 스크롤"
+
+#. agent: scroll output to next message
+msgctxt "action"
+msgid "agent::ScrollOutputToNextMessage"
+msgstr "에이전트: 다음 사용자 메시지로 스크롤"
+
+#. agent: scroll output to previous message
+msgctxt "action"
+msgid "agent::ScrollOutputToPreviousMessage"
+msgstr "에이전트: 이전 사용자 메시지로 스크롤"
+
+#. agent: scroll output to top
+msgctxt "action"
+msgid "agent::ScrollOutputToTop"
+msgstr "에이전트: 출력 맨 위로 스크롤"
+
+#. agent: select agent
+msgctxt "action"
+msgid "agent::SelectAgent"
+msgstr "에이전트: 에이전트 선택"
+
+#. agent: select next thread match
+msgctxt "action"
+msgid "agent::SelectNextThreadMatch"
+msgstr "에이전트: 스레드에서 다음 일치 항목 선택"
+
+#. agent: select permission granularity
+msgctxt "action"
+msgid "agent::SelectPermissionGranularity"
+msgstr "에이전트: 권한 범위 선택"
+
+#. agent: select previous thread match
+msgctxt "action"
+msgid "agent::SelectPreviousThreadMatch"
+msgstr "에이전트: 스레드에서 이전 일치 항목 선택"
+
+#. agent: send immediately
+msgctxt "action"
+msgid "agent::SendImmediately"
+msgstr "에이전트: 생성을 중단하고 지금 보내기"
+
+#. agent: send next queued message
+msgctxt "action"
+msgid "agent::SendNextQueuedMessage"
+msgstr "에이전트: 다음 대기 중인 메시지 지금 보내기"
+
+#. agent: set up language model provider
+msgctxt "action"
+msgid "agent::SetUpLanguageModelProvider"
+msgstr "에이전트: LLM 프로바이더 설정"
+
+#. agent: toggle
+msgctxt "action"
+msgid "agent::Toggle"
+msgstr "에이전트: 패널 전환"
+
+#. agent: toggle auto approve tool actions
+msgctxt "action"
+msgid "agent::ToggleAutoApproveToolActions"
+msgstr "에이전트: 도구 작업 자동 승인 전환"
+
+#. agent: toggle command pattern
+msgctxt "action"
+msgid "agent::ToggleCommandPattern"
+msgstr "에이전트: 명령 패턴 선택 전환"
+
+#. agent: toggle fast mode
+msgctxt "action"
+msgid "agent::ToggleFastMode"
+msgstr "에이전트: 빠른 모드 전환"
+
+#. agent: toggle focus
+msgctxt "action"
+msgid "agent::ToggleFocus"
+msgstr "에이전트: 패널 포커스 전환"
+
+#. agent: toggle model selector
+msgctxt "action"
+msgid "agent::ToggleModelSelector"
+msgstr "에이전트: 모델 선택기 전환"
+
+#. agent: toggle new thread menu
+msgctxt "action"
+msgid "agent::ToggleNewThreadMenu"
+msgstr "에이전트: 새 스레드 메뉴 전환"
+
+#. agent: toggle options menu
+msgctxt "action"
+msgid "agent::ToggleOptionsMenu"
+msgstr "에이전트: 옵션 메뉴 전환"
+
+#. agent: toggle panel tab bar
+msgctxt "action"
+msgid "agent::TogglePanelTabBar"
+msgstr "에이전트: 패널 탭 표시줄 전환"
+
+#. agent: toggle panel thread history
+msgctxt "action"
+msgid "agent::TogglePanelThreadHistory"
+msgstr "에이전트: 패널 스레드 기록 전환"
+
+#. agent: toggle profile selector
+msgctxt "action"
+msgid "agent::ToggleProfileSelector"
+msgstr "에이전트: 프로필 선택기 전환"
+
+#. agent: toggle search
+msgctxt "action"
+msgid "agent::ToggleSearch"
+msgstr "에이전트: 스레드 검색 전환"
+
+#. agent: toggle steer first queued message
+msgctxt "action"
+msgid "agent::ToggleSteerFirstQueuedMessage"
+msgstr "에이전트: 첫 번째 대기 중인 메시지 방향 조정 전환"
+
+#. agent: toggle thinking effort menu
+msgctxt "action"
+msgid "agent::ToggleThinkingEffortMenu"
+msgstr "에이전트: 사고 강도 메뉴 전환"
+
+#. agent: toggle thinking mode
+msgctxt "action"
+msgid "agent::ToggleThinkingMode"
+msgstr "에이전트: 사고 모드 전환"
+
+#. agent: toggle tool permission selector
+msgctxt "action"
+msgid "agent::ToggleToolPermissionSelector"
+msgstr "에이전트: 도구 권한 선택기 전환"
+
+#. agent: undo last reject
+msgctxt "action"
+msgid "agent::UndoLastReject"
+msgstr "에이전트: 마지막 거부 실행 취소"
+
+#. agents sidebar: focus sidebar filter
+msgctxt "action"
+msgid "agents_sidebar::FocusSidebarFilter"
+msgstr "스레드 사이드바: 필터 입력란에 포커스"
+
+#. agents sidebar: new thread in group
+msgctxt "action"
+msgid "agents_sidebar::NewThreadInGroup"
+msgstr "스레드 사이드바: 이 프로젝트에 새 스레드"
+
+#. agents sidebar: toggle thread history
+msgctxt "action"
+msgid "agents_sidebar::ToggleThreadHistory"
+msgstr "스레드 사이드바: 스레드 목록과 기록 전환"
+
+#. agents sidebar: toggle thread switcher
+msgctxt "action"
+msgid "agents_sidebar::ToggleThreadSwitcher"
+msgstr "스레드 사이드바: 스레드 전환기 열기"
+
+#. ai browser panel: toggle
+msgctxt "action"
+msgid "ai_browser_panel::Toggle"
+msgstr "AI 브라우저: 패널 전환"
+
+#. ai browser panel: toggle focus
+msgctxt "action"
+msgid "ai_browser_panel::ToggleFocus"
+msgstr "AI 브라우저: 패널 포커스 전환"
+
+#. app menu: activate menu left
+msgctxt "action"
+msgid "app_menu::ActivateMenuLeft"
+msgstr "애플리케이션 메뉴: 왼쪽 메뉴로 이동"
+
+#. app menu: activate menu right
+msgctxt "action"
+msgid "app_menu::ActivateMenuRight"
+msgstr "애플리케이션 메뉴: 오른쪽 메뉴로 이동"
+
+#. app menu: open application menu
+msgctxt "action"
+msgid "app_menu::OpenApplicationMenu"
+msgstr "애플리케이션 메뉴: 메뉴 열기"
+
+#. assistant: inline assist
+msgctxt "action"
+msgid "assistant::InlineAssist"
+msgstr "에이전트: 인라인 어시스트"
+
+#. auto update: check
+msgctxt "action"
+msgid "auto_update::Check"
+msgstr "업데이트 확인"
+
+#. auto update: dismiss message
+msgctxt "action"
+msgid "auto_update::DismissMessage"
+msgstr "업데이트 오류 메시지 닫기"
+
+#. auto update: view release notes
+msgctxt "action"
+msgid "auto_update::ViewReleaseNotes"
+msgstr "릴리스 노트 보기"
+
+#. auto update: view release notes locally
+msgctxt "action"
+msgid "auto_update::ViewReleaseNotesLocally"
+msgstr "편집기에서 릴리스 노트 보기"
+
+#. bedrock: tab
+msgctxt "action"
+msgid "bedrock::Tab"
+msgstr "Bedrock: 다음 입력란으로 이동"
+
+#. bedrock: tab prev
+msgctxt "action"
+msgid "bedrock::TabPrev"
+msgstr "Bedrock: 이전 입력란으로 이동"
+
+#. branch picker: cycle branch filter
+msgctxt "action"
+msgid "branch_picker::CycleBranchFilter"
+msgstr "Git: 브랜치 필터 순환"
+
+#. branch picker: delete branch
+msgctxt "action"
+msgid "branch_picker::DeleteBranch"
+msgstr "Git: 브랜치 삭제"
+
+#. branch picker: force delete branch
+msgctxt "action"
+msgid "branch_picker::ForceDeleteBranch"
+msgstr "Git: 브랜치 강제 삭제"
+
+#. branch picker: show all branches
+msgctxt "action"
+msgid "branch_picker::ShowAllBranches"
+msgstr "Git: 모든 브랜치 표시"
+
+#. branch picker: show local branches
+msgctxt "action"
+msgid "branch_picker::ShowLocalBranches"
+msgstr "Git: 로컬 브랜치만 표시"
+
+#. branch picker: show remote branches
+msgctxt "action"
+msgid "branch_picker::ShowRemoteBranches"
+msgstr "Git: 원격 브랜치만 표시"
+
+#. branch picker: toggle filter menu
+msgctxt "action"
+msgid "branch_picker::ToggleFilterMenu"
+msgstr "Git: 브랜치 필터 메뉴 전환"
+
+#. browser panel: add bookmark
+msgctxt "action"
+msgid "browser_panel::AddBookmark"
+msgstr "브라우저: 북마크 추가"
+
+#. browser panel: ask copilot
+msgctxt "action"
+msgid "browser_panel::AskCopilot"
+msgstr "브라우저: 선택한 텍스트를 Copilot에 질문"
+
+#. browser panel: close panel tab
+msgctxt "action"
+msgid "browser_panel::ClosePanelTab"
+msgstr "브라우저: 패널 탭 닫기"
+
+#. browser panel: focus address bar
+msgctxt "action"
+msgid "browser_panel::FocusAddressBar"
+msgstr "브라우저: 주소 표시줄에 포커스"
+
+#. browser panel: focus next pane group
+msgctxt "action"
+msgid "browser_panel::FocusNextPaneGroup"
+msgstr "브라우저: 다음 분할 영역에 포커스"
+
+#. browser panel: go home
+msgctxt "action"
+msgid "browser_panel::GoHome"
+msgstr "브라우저: 홈으로 이동"
+
+#. browser panel: navigate back
+msgctxt "action"
+msgid "browser_panel::NavigateBack"
+msgstr "브라우저: 뒤로"
+
+#. browser panel: navigate forward
+msgctxt "action"
+msgid "browser_panel::NavigateForward"
+msgstr "브라우저: 앞으로"
+
+#. browser panel: new ai tab
+msgctxt "action"
+msgid "browser_panel::NewAiTab"
+msgstr "브라우저: 새 AI 탭"
+
+#. browser panel: new browser tab
+msgctxt "action"
+msgid "browser_panel::NewBrowserTab"
+msgstr "브라우저: 새 탭"
+
+#. browser panel: new panel tab
+msgctxt "action"
+msgid "browser_panel::NewPanelTab"
+msgstr "브라우저: 패널에 새 탭"
+
+#. browser panel: open developer tools
+msgctxt "action"
+msgid "browser_panel::OpenDeveloperTools"
+msgstr "브라우저: 개발자 도구 열기"
+
+#. browser panel: open in center
+msgctxt "action"
+msgid "browser_panel::OpenInCenter"
+msgstr "브라우저: 편집기 영역으로 옮기기"
+
+#. browser panel: open in external browser
+msgctxt "action"
+msgid "browser_panel::OpenInExternalBrowser"
+msgstr "브라우저: 외부 브라우저에서 열기"
+
+#. browser panel: reload
+msgctxt "action"
+msgid "browser_panel::Reload"
+msgstr "브라우저: 다시 로드"
+
+#. browser panel: resume ai control
+msgctxt "action"
+msgid "browser_panel::ResumeAiControl"
+msgstr "브라우저: AI 제어 재개"
+
+#. browser panel: search selection
+msgctxt "action"
+msgid "browser_panel::SearchSelection"
+msgstr "브라우저: 선택한 텍스트를 웹에서 검색"
+
+#. browser panel: set as home page
+msgctxt "action"
+msgid "browser_panel::SetAsHomePage"
+msgstr "브라우저: 이 페이지를 시작 페이지로 설정"
+
+#. browser panel: split panel right
+msgctxt "action"
+msgid "browser_panel::SplitPanelRight"
+msgstr "브라우저: 패널을 오른쪽으로 분할"
+
+#. browser panel: stop ai control
+msgctxt "action"
+msgid "browser_panel::StopAiControl"
+msgstr "브라우저: AI 제어 중지"
+
+#. browser panel: submit address
+msgctxt "action"
+msgid "browser_panel::SubmitAddress"
+msgstr "브라우저: 입력한 주소 열기"
+
+#. browser panel: toggle
+msgctxt "action"
+msgid "browser_panel::Toggle"
+msgstr "브라우저: 패널 전환"
+
+#. browser panel: toggle bookmarks
+msgctxt "action"
+msgid "browser_panel::ToggleBookmarks"
+msgstr "브라우저: 북마크 목록 전환"
+
+#. browser panel: toggle focus
+msgctxt "action"
+msgid "browser_panel::ToggleFocus"
+msgstr "브라우저: 패널 포커스 전환"
+
+#. buffer search: deploy
+msgctxt "action"
+msgid "buffer_search::Deploy"
+msgstr "검색: 파일에서 검색"
+
+#. buffer search: deploy replace
+msgctxt "action"
+msgid "buffer_search::DeployReplace"
+msgstr "검색: 파일에서 바꾸기"
+
+#. buffer search: dismiss
+msgctxt "action"
+msgid "buffer_search::Dismiss"
+msgstr "검색: 검색 표시줄 닫기"
+
+#. buffer search: focus editor
+msgctxt "action"
+msgid "buffer_search::FocusEditor"
+msgstr "검색: 편집기에 포커스"
+
+#. buffer search: use selection for find
+msgctxt "action"
+msgid "buffer_search::UseSelectionForFind"
+msgstr "검색: 선택 영역을 검색어로 사용"
+
+#. call graph panel: collapse all
+msgctxt "action"
+msgid "call_graph_panel::CollapseAll"
+msgstr "호출 그래프 패널: 모두 접기"
+
+#. call graph panel: collapse selected
+msgctxt "action"
+msgid "call_graph_panel::CollapseSelected"
+msgstr "호출 그래프 패널: 선택 항목 접기"
+
+#. call graph panel: copy symbol name
+msgctxt "action"
+msgid "call_graph_panel::CopySymbolName"
+msgstr "호출 그래프 패널: 함수 이름 복사"
+
+#. call graph panel: expand selected
+msgctxt "action"
+msgid "call_graph_panel::ExpandSelected"
+msgstr "호출 그래프 패널: 선택 항목 펼치기"
+
+#. call graph panel: inspect cursor
+msgctxt "action"
+msgid "call_graph_panel::InspectCursor"
+msgstr "호출 그래프 패널: 커서 위치의 함수 검사"
+
+#. call graph panel: next root
+msgctxt "action"
+msgid "call_graph_panel::NextRoot"
+msgstr "호출 그래프 패널: 다음 루트"
+
+#. call graph panel: open selected
+msgctxt "action"
+msgid "call_graph_panel::OpenSelected"
+msgstr "호출 그래프 패널: 선택 항목 열기"
+
+#. call graph panel: preview selected
+msgctxt "action"
+msgid "call_graph_panel::PreviewSelected"
+msgstr "호출 그래프 패널: 선택 항목 미리 보기"
+
+#. call graph panel: previous root
+msgctxt "action"
+msgid "call_graph_panel::PreviousRoot"
+msgstr "호출 그래프 패널: 이전 루트"
+
+#. call graph panel: refresh
+msgctxt "action"
+msgid "call_graph_panel::Refresh"
+msgstr "호출 그래프 패널: 새로 고침"
+
+#. call graph panel: show callees
+msgctxt "action"
+msgid "call_graph_panel::ShowCallees"
+msgstr "호출 그래프 패널: 피호출자 표시"
+
+#. call graph panel: show callers
+msgctxt "action"
+msgid "call_graph_panel::ShowCallers"
+msgstr "호출 그래프 패널: 호출자 표시"
+
+#. call graph panel: toggle
+msgctxt "action"
+msgid "call_graph_panel::Toggle"
+msgstr "호출 그래프 패널: 전환"
+
+#. call graph panel: toggle direction
+msgctxt "action"
+msgid "call_graph_panel::ToggleDirection"
+msgstr "호출 그래프 패널: 호출자/피호출자 전환"
+
+#. call graph panel: toggle focus
+msgctxt "action"
+msgid "call_graph_panel::ToggleFocus"
+msgstr "호출 그래프 패널: 포커스 전환"
+
+#. call graph panel: toggle follow cursor
+msgctxt "action"
+msgid "call_graph_panel::ToggleFollowCursor"
+msgstr "호출 그래프 패널: 커서 따라가기 전환"
+
+#. call hierarchy: show incoming calls
+msgctxt "action"
+msgid "call_hierarchy::ShowIncomingCalls"
+msgstr "호출 계층: 들어오는 호출 표시"
+
+#. call hierarchy: show outgoing calls
+msgctxt "action"
+msgid "call_hierarchy::ShowOutgoingCalls"
+msgstr "호출 계층: 나가는 호출 표시"
+
+#. call hierarchy: toggle direction
+msgctxt "action"
+msgid "call_hierarchy::ToggleDirection"
+msgstr "호출 계층: 방향 전환"
+
+#. channel modal: remove member
+msgctxt "action"
+msgid "channel_modal::RemoveMember"
+msgstr "채널: 멤버 제거"
+
+#. channel modal: select next control
+msgctxt "action"
+msgid "channel_modal::SelectNextControl"
+msgstr "채널: 다음 컨트롤 선택"
+
+#. channel modal: toggle member admin
+msgctxt "action"
+msgid "channel_modal::ToggleMemberAdmin"
+msgstr "채널: 멤버 관리자 권한 전환"
+
+#. channel modal: toggle mode
+msgctxt "action"
+msgid "channel_modal::ToggleMode"
+msgstr "채널: 초대/멤버 관리 모드 전환"
+
+#. cli: install cli binary
+msgctxt "action"
+msgid "cli::InstallCliBinary"
+msgstr "CLI 설치"
+
+#. cli: register zed scheme
+msgctxt "action"
+msgid "cli::RegisterZedScheme"
+msgstr "이 앱의 URL 스킴 등록"
+
+#. client: reconnect
+msgctxt "action"
+msgid "client::Reconnect"
+msgstr "협업: 서버에 다시 연결"
+
+#. client: sign in
+msgctxt "action"
+msgid "client::SignIn"
+msgstr "Zed 계정에 로그인"
+
+#. client: sign out
+msgctxt "action"
+msgid "client::SignOut"
+msgstr "Zed 계정에서 로그아웃"
+
+#. collab: copy room id
+msgctxt "action"
+msgid "collab::CopyRoomId"
+msgstr "협업: 룸 ID 복사"
+
+#. collab: deafen
+msgctxt "action"
+msgid "collab::Deafen"
+msgstr "협업: 마이크와 스피커 음소거"
+
+#. collab: leave call
+msgctxt "action"
+msgid "collab::LeaveCall"
+msgstr "협업: 통화 나가기"
+
+#. collab: mute
+msgctxt "action"
+msgid "collab::Mute"
+msgstr "협업: 마이크 음소거"
+
+#. collab: open channel notes
+msgctxt "action"
+msgid "collab::OpenChannelNotes"
+msgstr "협업: 채널 노트 열기"
+
+#. collab: open channel notes by id
+msgctxt "action"
+msgid "collab::OpenChannelNotesById"
+msgstr "협업: ID로 채널 노트 열기"
+
+#. collab: screen share
+msgctxt "action"
+msgid "collab::ScreenShare"
+msgstr "협업: 화면 공유"
+
+#. collab: share project
+msgctxt "action"
+msgid "collab::ShareProject"
+msgstr "협업: 프로젝트 공유"
+
+#. collab: show call stats
+msgctxt "action"
+msgid "collab::ShowCallStats"
+msgstr "협업: 통화 통계 표시"
+
+#. collab: simulate update available
+msgctxt "action"
+msgid "collab::SimulateUpdateAvailable"
+msgstr "개발: 업데이트 있음 상태 시뮬레이션"
+
+#. collab: switch branch
+msgctxt "action"
+msgid "collab::SwitchBranch"
+msgstr "Git: 브랜치 전환(제목 표시줄)"
+
+#. collab: toggle project menu
+msgctxt "action"
+msgid "collab::ToggleProjectMenu"
+msgstr "제목 표시줄: 프로젝트 메뉴 전환"
+
+#. collab: toggle user menu
+msgctxt "action"
+msgid "collab::ToggleUserMenu"
+msgstr "제목 표시줄: 사용자 메뉴 전환"
+
+#. collab panel: collapse selected channel
+msgctxt "action"
+msgid "collab_panel::CollapseSelectedChannel"
+msgstr "협업 패널: 선택한 채널 접기"
+
+#. collab panel: expand selected channel
+msgctxt "action"
+msgid "collab_panel::ExpandSelectedChannel"
+msgstr "협업 패널: 선택한 채널 펼치기"
+
+#. collab panel: insert space
+msgctxt "action"
+msgid "collab_panel::InsertSpace"
+msgstr "협업 패널: 공백 삽입"
+
+#. collab panel: move channel down
+msgctxt "action"
+msgid "collab_panel::MoveChannelDown"
+msgstr "협업 패널: 채널 아래로 이동"
+
+#. collab panel: move channel up
+msgctxt "action"
+msgid "collab_panel::MoveChannelUp"
+msgstr "협업 패널: 채널 위로 이동"
+
+#. collab panel: move selected
+msgctxt "action"
+msgid "collab_panel::MoveSelected"
+msgstr "협업 패널: 선택 항목을 여기로 이동"
+
+#. collab panel: open selected channel notes
+msgctxt "action"
+msgid "collab_panel::OpenSelectedChannelNotes"
+msgstr "협업 패널: 선택한 채널 노트 열기"
+
+#. collab panel: remove
+msgctxt "action"
+msgid "collab_panel::Remove"
+msgstr "협업 패널: 제거"
+
+#. collab panel: secondary
+msgctxt "action"
+msgid "collab_panel::Secondary"
+msgstr "협업 패널: 컨텍스트 메뉴 열기"
+
+#. collab panel: start move channel
+msgctxt "action"
+msgid "collab_panel::StartMoveChannel"
+msgstr "협업 패널: 채널 이동 시작"
+
+#. collab panel: toggle
+msgctxt "action"
+msgid "collab_panel::Toggle"
+msgstr "협업 패널: 전환"
+
+#. collab panel: toggle focus
+msgctxt "action"
+msgid "collab_panel::ToggleFocus"
+msgstr "협업 패널: 포커스 전환"
+
+#. collab panel: toggle selected channel favorite
+msgctxt "action"
+msgid "collab_panel::ToggleSelectedChannelFavorite"
+msgstr "협업 패널: 선택한 채널 즐겨찾기 전환"
+
+#. command palette: remove selected
+msgctxt "action"
+msgid "command_palette::RemoveSelected"
+msgstr "명령 팔레트: 선택한 항목을 기록에서 제거"
+
+#. command palette: toggle
+msgctxt "action"
+msgid "command_palette::Toggle"
+msgstr "명령 팔레트"
+
+#. console: watch expression
+msgctxt "action"
+msgid "console::WatchExpression"
+msgstr "디버그: 식을 조사식에 추가"
+
+#. context server: restart
+msgctxt "action"
+msgid "context_server::Restart"
+msgstr "MCP 서버 다시 시작"
+
+#. copilot edit predictions: reinstall
+msgctxt "action"
+msgid "copilot_edit_predictions::Reinstall"
+msgstr "Copilot: 편집 예측 언어 서버 다시 설치"
+
+#. debug panel: toggle
+msgctxt "action"
+msgid "debug_panel::Toggle"
+msgstr "디버그: 패널 전환"
+
+#. debug panel: toggle focus
+msgctxt "action"
+msgid "debug_panel::ToggleFocus"
+msgstr "디버그: 패널 포커스 전환"
+
+#. debugger: clear all breakpoints
+msgctxt "action"
+msgid "debugger::ClearAllBreakpoints"
+msgstr "디버그: 모든 중단점 지우기"
+
+#. debugger: continue
+msgctxt "action"
+msgid "debugger::Continue"
+msgstr "디버그: 계속"
+
+#. debugger: continue thread
+msgctxt "action"
+msgid "debugger::ContinueThread"
+msgstr "디버그: 선택한 스레드 계속"
+
+#. debugger: detach
+msgctxt "action"
+msgid "debugger::Detach"
+msgstr "디버그: 분리"
+
+#. debugger: evaluate selected text
+msgctxt "action"
+msgid "debugger::EvaluateSelectedText"
+msgstr "디버그: 선택한 텍스트 평가"
+
+#. debugger: focus breakpoint list
+msgctxt "action"
+msgid "debugger::FocusBreakpointList"
+msgstr "디버그: 중단점 목록에 포커스"
+
+#. debugger: focus console
+msgctxt "action"
+msgid "debugger::FocusConsole"
+msgstr "디버그: 콘솔에 포커스"
+
+#. debugger: focus frames
+msgctxt "action"
+msgid "debugger::FocusFrames"
+msgstr "디버그: 호출 스택에 포커스"
+
+#. debugger: focus loaded sources
+msgctxt "action"
+msgid "debugger::FocusLoadedSources"
+msgstr "디버그: 로드된 소스에 포커스"
+
+#. debugger: focus modules
+msgctxt "action"
+msgid "debugger::FocusModules"
+msgstr "디버그: 모듈에 포커스"
+
+#. debugger: focus terminal
+msgctxt "action"
+msgid "debugger::FocusTerminal"
+msgstr "디버그: 터미널에 포커스"
+
+#. debugger: focus variables
+msgctxt "action"
+msgid "debugger::FocusVariables"
+msgstr "디버그: 변수에 포커스"
+
+#. debugger: go to selected address
+msgctxt "action"
+msgid "debugger::GoToSelectedAddress"
+msgstr "디버그: 선택한 주소로 이동"
+
+#. debugger: next breakpoint property
+msgctxt "action"
+msgid "debugger::NextBreakpointProperty"
+msgstr "디버그: 다음 중단점 속성"
+
+#. debugger: open project debug tasks
+msgctxt "action"
+msgid "debugger::OpenProjectDebugTasks"
+msgstr "디버그: 프로젝트 디버그 작업 열기"
+
+#. debugger: pause
+msgctxt "action"
+msgid "debugger::Pause"
+msgstr "디버그: 일시 중지"
+
+#. debugger: previous breakpoint property
+msgctxt "action"
+msgid "debugger::PreviousBreakpointProperty"
+msgstr "디버그: 이전 중단점 속성"
+
+#. debugger: rerun
+msgctxt "action"
+msgid "debugger::Rerun"
+msgstr "디버그: 다시 실행"
+
+#. debugger: rerun session
+msgctxt "action"
+msgid "debugger::RerunSession"
+msgstr "디버그: 세션 다시 실행"
+
+#. debugger: restart
+msgctxt "action"
+msgid "debugger::Restart"
+msgstr "디버그: 다시 시작"
+
+#. debugger: run to cursor
+msgctxt "action"
+msgid "debugger::RunToCursor"
+msgstr "디버그: 커서까지 실행"
+
+#. debugger: start
+msgctxt "action"
+msgid "debugger::Start"
+msgstr "디버그: 시작"
+
+#. debugger: step back
+msgctxt "action"
+msgid "debugger::StepBack"
+msgstr "디버그: 한 단계 뒤로"
+
+#. debugger: step into
+msgctxt "action"
+msgid "debugger::StepInto"
+msgstr "디버그: 한 단계씩 들어가기"
+
+#. debugger: step out
+msgctxt "action"
+msgid "debugger::StepOut"
+msgstr "디버그: 한 단계씩 나가기"
+
+#. debugger: step over
+msgctxt "action"
+msgid "debugger::StepOver"
+msgstr "디버그: 프로시저 단위 실행"
+
+#. debugger: stop
+msgctxt "action"
+msgid "debugger::Stop"
+msgstr "디버그: 중지"
+
+#. debugger: toggle data breakpoint
+msgctxt "action"
+msgid "debugger::ToggleDataBreakpoint"
+msgstr "디버그: 데이터 중단점 전환"
+
+#. debugger: toggle enable breakpoint
+msgctxt "action"
+msgid "debugger::ToggleEnableBreakpoint"
+msgstr "디버그: 중단점 활성화/비활성화 전환"
+
+#. debugger: toggle expand item
+msgctxt "action"
+msgid "debugger::ToggleExpandItem"
+msgstr "디버그: 항목 펼치기/접기 전환"
+
+#. debugger: toggle ignore breakpoints
+msgctxt "action"
+msgid "debugger::ToggleIgnoreBreakpoints"
+msgstr "디버그: 중단점 무시 전환"
+
+#. debugger: toggle session picker
+msgctxt "action"
+msgid "debugger::ToggleSessionPicker"
+msgstr "디버그: 세션 선택기 전환"
+
+#. debugger: toggle thread picker
+msgctxt "action"
+msgid "debugger::ToggleThreadPicker"
+msgstr "디버그: 스레드 선택기 전환"
+
+#. debugger: toggle user frames
+msgctxt "action"
+msgid "debugger::ToggleUserFrames"
+msgstr "디버그: 사용자 코드 프레임만 표시 전환"
+
+#. debugger: unset breakpoint
+msgctxt "action"
+msgid "debugger::UnsetBreakpoint"
+msgstr "디버그: 중단점 해제"
+
+#. dev: copy accessibility tree
+msgctxt "action"
+msgid "dev::CopyAccessibilityTree"
+msgstr "개발: 접근성 트리 복사"
+
+#. dev: copy debug adapter arguments
+msgctxt "action"
+msgid "dev::CopyDebugAdapterArguments"
+msgstr "개발: 디버그 어댑터 인수 복사"
+
+#. dev: debug filesystem watching
+msgctxt "action"
+msgid "dev::DebugFilesystemWatching"
+msgstr "개발: 파일 시스템 감시 디버그"
+
+#. dev: dump accessibility tree
+msgctxt "action"
+msgid "dev::DumpAccessibilityTree"
+msgstr "개발: 접근성 트리 덤프"
+
+#. dev: dump input latency histogram
+msgctxt "action"
+msgid "dev::DumpInputLatencyHistogram"
+msgstr "개발: 입력 지연 히스토그램 덤프"
+
+#. dev: dump workspace info
+msgctxt "action"
+msgid "dev::DumpWorkspaceInfo"
+msgstr "개발: 작업 영역 정보 덤프"
+
+#. dev: edit prediction context go back
+msgctxt "action"
+msgid "dev::EditPredictionContextGoBack"
+msgstr "개발: 편집 예측 컨텍스트에서 뒤로"
+
+#. dev: edit prediction context go forward
+msgctxt "action"
+msgid "dev::EditPredictionContextGoForward"
+msgstr "개발: 편집 예측 컨텍스트에서 앞으로"
+
+#. dev: hang action
+msgctxt "action"
+msgid "dev::HangAction"
+msgstr "개발: 중단 유발(작업)"
+
+#. dev: hang background
+msgctxt "action"
+msgid "dev::HangBackground"
+msgstr "개발: 중단 유발(백그라운드)"
+
+#. dev: hang foreground
+msgctxt "action"
+msgid "dev::HangForeground"
+msgstr "개발: 중단 유발(포그라운드)"
+
+#. dev: open acp logs
+msgctxt "action"
+msgid "dev::OpenAcpLogs"
+msgstr "개발: ACP 로그 열기"
+
+#. dev: open debug adapter logs
+msgctxt "action"
+msgid "dev::OpenDebugAdapterLogs"
+msgstr "개발: 디버그 어댑터 로그 열기"
+
+#. dev: open edit prediction context view
+msgctxt "action"
+msgid "dev::OpenEditPredictionContextView"
+msgstr "개발: 편집 예측 컨텍스트 보기 열기"
+
+#. dev: open highlights tree view
+msgctxt "action"
+msgid "dev::OpenHighlightsTreeView"
+msgstr "개발: 강조 표시 트리 보기 열기"
+
+#. dev: open key context view
+msgctxt "action"
+msgid "dev::OpenKeyContextView"
+msgstr "개발: 키 컨텍스트 보기 열기"
+
+#. dev: open language server logs
+msgctxt "action"
+msgid "dev::OpenLanguageServerLogs"
+msgstr "개발: 언어 서버 로그 열기"
+
+#. dev: open syntax tree view
+msgctxt "action"
+msgid "dev::OpenSyntaxTreeView"
+msgstr "개발: 구문 트리 보기 열기"
+
+#. dev: open theme preview
+msgctxt "action"
+msgid "dev::OpenThemePreview"
+msgstr "개발: 테마 미리 보기 열기"
+
+#. dev: open url prompt
+msgctxt "action"
+msgid "dev::OpenUrlPrompt"
+msgstr "개발: URL 입력하여 열기"
+
+#. dev: reset frame overlay stats
+msgctxt "action"
+msgid "dev::ResetFrameOverlayStats"
+msgstr "개발: 프레임 오버레이 통계 초기화"
+
+#. dev: show all sidebar thread metadata
+msgctxt "action"
+msgid "dev::ShowAllSidebarThreadMetadata"
+msgstr "개발: 사이드바의 모든 스레드 메타데이터 표시"
+
+#. dev: show git job queue
+msgctxt "action"
+msgid "dev::ShowGitJobQueue"
+msgstr "개발: Git 작업 대기열 표시"
+
+#. dev: show thread metadata
+msgctxt "action"
+msgid "dev::ShowThreadMetadata"
+msgstr "개발: 스레드 메타데이터 표시"
+
+#. dev: show workspace error
+msgctxt "action"
+msgid "dev::ShowWorkspaceError"
+msgstr "개발: 작업 영역 오류 표시"
+
+#. dev: toggle fps overlay
+msgctxt "action"
+msgid "dev::ToggleFpsOverlay"
+msgstr "개발: FPS 오버레이 전환"
+
+#. dev: toggle inspector
+msgctxt "action"
+msgid "dev::ToggleInspector"
+msgstr "개발: GPUI 인스펙터 전환"
+
+#. diagnostics: deploy
+msgctxt "action"
+msgid "diagnostics::Deploy"
+msgstr "문제: 프로젝트 진단 열기"
+
+#. diagnostics: deploy current file
+msgctxt "action"
+msgid "diagnostics::DeployCurrentFile"
+msgstr "문제: 현재 파일 진단 열기"
+
+#. diagnostics: toggle diagnostics refresh
+msgctxt "action"
+msgid "diagnostics::ToggleDiagnosticsRefresh"
+msgstr "문제: 진단 자동 새로 고침 전환"
+
+#. diagnostics: toggle warnings
+msgctxt "action"
+msgid "diagnostics::ToggleWarnings"
+msgstr "문제: 경고 표시 전환"
+
+#. edit prediction: clear history
+msgctxt "action"
+msgid "edit_prediction::ClearHistory"
+msgstr "편집 예측: 기록 지우기"
+
+#. edit prediction: rate predictions
+msgctxt "action"
+msgid "edit_prediction::RatePredictions"
+msgstr "편집 예측: 예측 평가"
+
+#. edit prediction: reset onboarding
+msgctxt "action"
+msgid "edit_prediction::ResetOnboarding"
+msgstr "편집 예측: 온보딩 초기화"
+
+#. edit prediction: toggle menu
+msgctxt "action"
+msgid "edit_prediction::ToggleMenu"
+msgstr "편집 예측: 메뉴 전환"
+
+#. editor: accept edit prediction
+msgctxt "action"
+msgid "editor::AcceptEditPrediction"
+msgstr "편집 예측 수락"
+
+#. editor: accept next line edit prediction
+msgctxt "action"
+msgid "editor::AcceptNextLineEditPrediction"
+msgstr "편집 예측: 다음 줄 수락"
+
+#. editor: accept next word edit prediction
+msgctxt "action"
+msgid "editor::AcceptNextWordEditPrediction"
+msgstr "편집 예측: 다음 단어 수락"
+
+#. editor: accept partial copilot suggestion
+msgctxt "action"
+msgid "editor::AcceptPartialCopilotSuggestion"
+msgstr "편집 예측: Copilot 제안 일부 수락"
+
+#. editor: add selection above
+msgctxt "action"
+msgid "editor::AddSelectionAbove"
+msgstr "선택: 위에 커서 추가"
+
+#. editor: add selection below
+msgctxt "action"
+msgid "editor::AddSelectionBelow"
+msgstr "선택: 아래에 커서 추가"
+
+#. editor: align selections
+msgctxt "action"
+msgid "editor::AlignSelections"
+msgstr "편집: 선택 영역 정렬"
+
+#. editor: apply all diff hunks
+msgctxt "action"
+msgid "editor::ApplyAllDiffHunks"
+msgstr "모든 Diff 변경 단위 적용"
+
+#. editor: apply diff hunk
+msgctxt "action"
+msgid "editor::ApplyDiffHunk"
+msgstr "Diff 변경 단위 적용"
+
+#. editor: auto indent
+msgctxt "action"
+msgid "editor::AutoIndent"
+msgstr "편집: 자동 들여쓰기"
+
+#. editor: backspace
+msgctxt "action"
+msgid "editor::Backspace"
+msgstr "편집: 앞 문자 삭제"
+
+#. editor: backtab
+msgctxt "action"
+msgid "editor::Backtab"
+msgstr "편집: 내어쓰기"
+
+#. editor: blame hover
+msgctxt "action"
+msgid "editor::BlameHover"
+msgstr "Git: Blame 호버 표시"
+
+#. editor: blame previous revision
+msgctxt "action"
+msgid "editor::BlamePreviousRevision"
+msgstr "Git: 이전 리비전 Blame"
+
+#. editor: blame revision
+msgctxt "action"
+msgid "editor::BlameRevision"
+msgstr "Git: 이 리비전 Blame"
+
+#. editor: cancel
+msgctxt "action"
+msgid "editor::Cancel"
+msgstr "취소"
+
+#. editor: cancel edit review comment
+msgctxt "action"
+msgid "editor::CancelEditReviewComment"
+msgstr "Diff 검토: 주석 편집 취소"
+
+#. editor: cancel flycheck
+msgctxt "action"
+msgid "editor::CancelFlycheck"
+msgstr "flycheck 취소"
+
+#. editor: cancel language server work
+msgctxt "action"
+msgid "editor::CancelLanguageServerWork"
+msgstr "언어 서버 작업 취소"
+
+#. editor: clear flycheck
+msgctxt "action"
+msgid "editor::ClearFlycheck"
+msgstr "flycheck 결과 지우기"
+
+#. editor: collapse all diff hunks
+msgctxt "action"
+msgid "editor::CollapseAllDiffHunks"
+msgstr "모든 Diff 변경 단위 접기"
+
+#. editor: compose completion
+msgctxt "action"
+msgid "editor::ComposeCompletion"
+msgstr "완성 항목을 삽입하고 계속 입력"
+
+#. editor: confirm code action
+msgctxt "action"
+msgid "editor::ConfirmCodeAction"
+msgstr "코드 액션 확인"
+
+#. editor: confirm completion
+msgctxt "action"
+msgid "editor::ConfirmCompletion"
+msgstr "자동 완성 확인"
+
+#. editor: confirm completion insert
+msgctxt "action"
+msgid "editor::ConfirmCompletionInsert"
+msgstr "자동 완성 삽입하여 확인"
+
+#. editor: confirm completion replace
+msgctxt "action"
+msgid "editor::ConfirmCompletionReplace"
+msgstr "자동 완성으로 바꾸어 확인"
+
+#. editor: confirm edit review comment
+msgctxt "action"
+msgid "editor::ConfirmEditReviewComment"
+msgstr "Diff 검토: 주석 편집 확인"
+
+#. editor: confirm rename
+msgctxt "action"
+msgid "editor::ConfirmRename"
+msgstr "심볼 이름 변경 확인"
+
+#. editor: context menu first
+msgctxt "action"
+msgid "editor::ContextMenuFirst"
+msgstr "메뉴: 첫 번째 항목 선택"
+
+#. editor: context menu last
+msgctxt "action"
+msgid "editor::ContextMenuLast"
+msgstr "메뉴: 마지막 항목 선택"
+
+#. editor: context menu next
+msgctxt "action"
+msgid "editor::ContextMenuNext"
+msgstr "메뉴: 다음 항목 선택"
+
+#. editor: context menu previous
+msgctxt "action"
+msgid "editor::ContextMenuPrevious"
+msgstr "메뉴: 이전 항목 선택"
+
+#. editor: convert from base64
+msgctxt "action"
+msgid "editor::ConvertFromBase64"
+msgstr "편집: Base64에서 디코딩"
+
+#. editor: convert indentation to spaces
+msgctxt "action"
+msgid "editor::ConvertIndentationToSpaces"
+msgstr "편집: 들여쓰기를 공백으로 변환"
+
+#. editor: convert indentation to tabs
+msgctxt "action"
+msgid "editor::ConvertIndentationToTabs"
+msgstr "편집: 들여쓰기를 탭으로 변환"
+
+#. editor: convert to base64
+msgctxt "action"
+msgid "editor::ConvertToBase64"
+msgstr "편집: Base64로 인코딩"
+
+#. editor: convert to kebab case
+msgctxt "action"
+msgid "editor::ConvertToKebabCase"
+msgstr "편집: 케밥 케이스로 변환"
+
+#. editor: convert to lower camel case
+msgctxt "action"
+msgid "editor::ConvertToLowerCamelCase"
+msgstr "편집: 로어 카멜 케이스로 변환"
+
+#. editor: convert to lower case
+msgctxt "action"
+msgid "editor::ConvertToLowerCase"
+msgstr "편집: 소문자로 변환"
+
+#. editor: convert to opposite case
+msgctxt "action"
+msgid "editor::ConvertToOppositeCase"
+msgstr "편집: 대소문자 반전"
+
+#. editor: convert to rot13
+msgctxt "action"
+msgid "editor::ConvertToRot13"
+msgstr "편집: ROT13으로 변환"
+
+#. editor: convert to rot47
+msgctxt "action"
+msgid "editor::ConvertToRot47"
+msgstr "편집: ROT47로 변환"
+
+#. editor: convert to sentence case
+msgctxt "action"
+msgid "editor::ConvertToSentenceCase"
+msgstr "편집: 문장 케이스로 변환"
+
+#. editor: convert to snake case
+msgctxt "action"
+msgid "editor::ConvertToSnakeCase"
+msgstr "편집: 스네이크 케이스로 변환"
+
+#. editor: convert to title case
+msgctxt "action"
+msgid "editor::ConvertToTitleCase"
+msgstr "편집: 타이틀 케이스로 변환"
+
+#. editor: convert to upper camel case
+msgctxt "action"
+msgid "editor::ConvertToUpperCamelCase"
+msgstr "편집: 어퍼 카멜 케이스로 변환"
+
+#. editor: convert to upper case
+msgctxt "action"
+msgid "editor::ConvertToUpperCase"
+msgstr "편집: 대문자로 변환"
+
+#. editor: copy
+msgctxt "action"
+msgid "editor::Copy"
+msgstr "편집: 복사"
+
+#. editor: copy and trim
+msgctxt "action"
+msgid "editor::CopyAndTrim"
+msgstr "편집: 여백을 제거하고 복사"
+
+#. editor: copy file location
+msgctxt "action"
+msgid "editor::CopyFileLocation"
+msgstr "파일 위치 복사"
+
+#. editor: copy file name
+msgctxt "action"
+msgid "editor::CopyFileName"
+msgstr "파일 이름 복사"
+
+#. editor: copy file name without extension
+msgctxt "action"
+msgid "editor::CopyFileNameWithoutExtension"
+msgstr "확장자 없이 파일 이름 복사"
+
+#. editor: copy highlight json
+msgctxt "action"
+msgid "editor::CopyHighlightJson"
+msgstr "강조 표시 정보를 JSON으로 복사"
+
+#. editor: copy permalink to line
+msgctxt "action"
+msgid "editor::CopyPermalinkToLine"
+msgstr "이 줄의 고유 링크 복사"
+
+#. editor: cut
+msgctxt "action"
+msgid "editor::Cut"
+msgstr "편집: 잘라내기"
+
+#. editor: cut to end of line
+msgctxt "action"
+msgid "editor::CutToEndOfLine"
+msgstr "편집: 줄 끝까지 잘라내기"
+
+#. editor: delete
+msgctxt "action"
+msgid "editor::Delete"
+msgstr "편집: 다음 문자 삭제"
+
+#. editor: delete line
+msgctxt "action"
+msgid "editor::DeleteLine"
+msgstr "편집: 줄 삭제"
+
+#. editor: delete review comment
+msgctxt "action"
+msgid "editor::DeleteReviewComment"
+msgstr "Diff 검토: 주석 삭제"
+
+#. editor: delete to beginning of line
+msgctxt "action"
+msgid "editor::DeleteToBeginningOfLine"
+msgstr "편집: 줄 시작까지 삭제"
+
+#. editor: delete to end of line
+msgctxt "action"
+msgid "editor::DeleteToEndOfLine"
+msgstr "편집: 줄 끝까지 삭제"
+
+#. editor: delete to next subword end
+msgctxt "action"
+msgid "editor::DeleteToNextSubwordEnd"
+msgstr "편집: 다음 하위 단어 끝까지 삭제"
+
+#. editor: delete to next word end
+msgctxt "action"
+msgid "editor::DeleteToNextWordEnd"
+msgstr "편집: 다음 단어 끝까지 삭제"
+
+#. editor: delete to previous subword start
+msgctxt "action"
+msgid "editor::DeleteToPreviousSubwordStart"
+msgstr "편집: 이전 하위 단어 시작까지 삭제"
+
+#. editor: delete to previous word start
+msgctxt "action"
+msgid "editor::DeleteToPreviousWordStart"
+msgstr "편집: 이전 단어 시작까지 삭제"
+
+#. editor: diff clipboard with selection
+msgctxt "action"
+msgid "editor::DiffClipboardWithSelection"
+msgstr "편집: 클립보드와 선택 영역 비교"
+
+#. editor: disable breakpoint
+msgctxt "action"
+msgid "editor::DisableBreakpoint"
+msgstr "디버그: 중단점 비활성화"
+
+#. editor: display cursor names
+msgctxt "action"
+msgid "editor::DisplayCursorNames"
+msgstr "보기: 커서 이름 표시"
+
+#. editor: duplicate line down
+msgctxt "action"
+msgid "editor::DuplicateLineDown"
+msgstr "편집: 줄을 아래로 복제"
+
+#. editor: duplicate line up
+msgctxt "action"
+msgid "editor::DuplicateLineUp"
+msgstr "편집: 줄을 위로 복제"
+
+#. editor: duplicate selection
+msgctxt "action"
+msgid "editor::DuplicateSelection"
+msgstr "편집: 선택 영역 복제"
+
+#. editor: edit bookmark
+msgctxt "action"
+msgid "editor::EditBookmark"
+msgstr "북마크 편집"
+
+#. editor: edit log breakpoint
+msgctxt "action"
+msgid "editor::EditLogBreakpoint"
+msgstr "로그 지점 편집"
+
+#. editor: edit review comment
+msgctxt "action"
+msgid "editor::EditReviewComment"
+msgstr "Diff 검토: 주석 편집"
+
+#. editor: enable breakpoint
+msgctxt "action"
+msgid "editor::EnableBreakpoint"
+msgstr "디버그: 중단점 활성화"
+
+#. editor: expand all diff hunks
+msgctxt "action"
+msgid "editor::ExpandAllDiffHunks"
+msgstr "모든 Diff 변경 단위 펼치기"
+
+#. editor: expand excerpts
+msgctxt "action"
+msgid "editor::ExpandExcerpts"
+msgstr "발췌 확장"
+
+#. editor: expand excerpts down
+msgctxt "action"
+msgid "editor::ExpandExcerptsDown"
+msgstr "발췌를 아래로 확장"
+
+#. editor: expand excerpts up
+msgctxt "action"
+msgid "editor::ExpandExcerptsUp"
+msgstr "발췌를 위로 확장"
+
+#. editor: expand macro recursively
+msgctxt "action"
+msgid "editor::ExpandMacroRecursively"
+msgstr "매크로 재귀적으로 확장"
+
+#. editor: find all references
+msgctxt "action"
+msgid "editor::FindAllReferences"
+msgstr "모든 참조 찾기"
+
+#. editor: find next match
+msgctxt "action"
+msgid "editor::FindNextMatch"
+msgstr "검색: 다음 일치 항목 찾기"
+
+#. editor: find previous match
+msgctxt "action"
+msgid "editor::FindPreviousMatch"
+msgstr "검색: 이전 일치 항목 찾기"
+
+#. editor: fold
+msgctxt "action"
+msgid "editor::Fold"
+msgstr "접기"
+
+#. editor: fold all
+msgctxt "action"
+msgid "editor::FoldAll"
+msgstr "모두 접기"
+
+#. editor: fold at level
+msgctxt "action"
+msgid "editor::FoldAtLevel"
+msgstr "접기: 지정한 수준에서 접기"
+
+#. editor: fold at level 1
+msgctxt "action"
+msgid "editor::FoldAtLevel_1"
+msgstr "접기: 수준 1에서 접기"
+
+#. editor: fold at level 2
+msgctxt "action"
+msgid "editor::FoldAtLevel_2"
+msgstr "접기: 수준 2에서 접기"
+
+#. editor: fold at level 3
+msgctxt "action"
+msgid "editor::FoldAtLevel_3"
+msgstr "접기: 수준 3에서 접기"
+
+#. editor: fold at level 4
+msgctxt "action"
+msgid "editor::FoldAtLevel_4"
+msgstr "접기: 수준 4에서 접기"
+
+#. editor: fold at level 5
+msgctxt "action"
+msgid "editor::FoldAtLevel_5"
+msgstr "접기: 수준 5에서 접기"
+
+#. editor: fold at level 6
+msgctxt "action"
+msgid "editor::FoldAtLevel_6"
+msgstr "접기: 수준 6에서 접기"
+
+#. editor: fold at level 7
+msgctxt "action"
+msgid "editor::FoldAtLevel_7"
+msgstr "접기: 수준 7에서 접기"
+
+#. editor: fold at level 8
+msgctxt "action"
+msgid "editor::FoldAtLevel_8"
+msgstr "접기: 수준 8에서 접기"
+
+#. editor: fold at level 9
+msgctxt "action"
+msgid "editor::FoldAtLevel_9"
+msgstr "접기: 수준 9에서 접기"
+
+#. editor: fold function bodies
+msgctxt "action"
+msgid "editor::FoldFunctionBodies"
+msgstr "함수 본문 접기"
+
+#. editor: fold recursive
+msgctxt "action"
+msgid "editor::FoldRecursive"
+msgstr "재귀적으로 접기"
+
+#. editor: fold selected ranges
+msgctxt "action"
+msgid "editor::FoldSelectedRanges"
+msgstr "선택한 범위 접기"
+
+#. editor: format
+msgctxt "action"
+msgid "editor::Format"
+msgstr "포맷: 문서 포맷"
+
+#. editor: format selections
+msgctxt "action"
+msgid "editor::FormatSelections"
+msgstr "포맷: 선택 영역 포맷"
+
+#. editor: go to declaration
+msgctxt "action"
+msgid "editor::GoToDeclaration"
+msgstr "선언으로 이동"
+
+#. editor: go to declaration split
+msgctxt "action"
+msgid "editor::GoToDeclarationSplit"
+msgstr "선언으로 이동(분할하여 열기)"
+
+#. editor: go to definition
+msgctxt "action"
+msgid "editor::GoToDefinition"
+msgstr "정의로 이동"
+
+#. editor: go to definition split
+msgctxt "action"
+msgid "editor::GoToDefinitionSplit"
+msgstr "정의로 이동(분할하여 열기)"
+
+#. editor: go to diagnostic
+msgctxt "action"
+msgid "editor::GoToDiagnostic"
+msgstr "이동: 다음 문제"
+
+#. editor: go to hunk
+msgctxt "action"
+msgid "editor::GoToHunk"
+msgstr "이동: 다음 변경 단위"
+
+#. editor: go to implementation
+msgctxt "action"
+msgid "editor::GoToImplementation"
+msgstr "구현으로 이동"
+
+#. editor: go to implementation split
+msgctxt "action"
+msgid "editor::GoToImplementationSplit"
+msgstr "구현으로 이동(분할하여 열기)"
+
+#. editor: go to next bookmark
+msgctxt "action"
+msgid "editor::GoToNextBookmark"
+msgstr "북마크: 다음 북마크로 이동"
+
+#. editor: go to next change
+msgctxt "action"
+msgid "editor::GoToNextChange"
+msgstr "이동: 다음 변경"
+
+#. editor: go to next document highlight
+msgctxt "action"
+msgid "editor::GoToNextDocumentHighlight"
+msgstr "이동: 다음 문서 강조 표시"
+
+#. editor: go to next reference
+msgctxt "action"
+msgid "editor::GoToNextReference"
+msgstr "이동: 다음 참조"
+
+#. editor: go to next symbol
+msgctxt "action"
+msgid "editor::GoToNextSymbol"
+msgstr "이동: 다음 심볼"
+
+#. editor: go to parent module
+msgctxt "action"
+msgid "editor::GoToParentModule"
+msgstr "이동: 상위 모듈"
+
+#. editor: go to previous bookmark
+msgctxt "action"
+msgid "editor::GoToPreviousBookmark"
+msgstr "북마크: 이전 북마크로 이동"
+
+#. editor: go to previous change
+msgctxt "action"
+msgid "editor::GoToPreviousChange"
+msgstr "이동: 이전 변경"
+
+#. editor: go to previous diagnostic
+msgctxt "action"
+msgid "editor::GoToPreviousDiagnostic"
+msgstr "이동: 이전 문제"
+
+#. editor: go to previous document highlight
+msgctxt "action"
+msgid "editor::GoToPreviousDocumentHighlight"
+msgstr "이동: 이전 문서 강조 표시"
+
+#. editor: go to previous hunk
+msgctxt "action"
+msgid "editor::GoToPreviousHunk"
+msgstr "이동: 이전 변경 단위"
+
+#. editor: go to previous reference
+msgctxt "action"
+msgid "editor::GoToPreviousReference"
+msgstr "이동: 이전 참조"
+
+#. editor: go to previous symbol
+msgctxt "action"
+msgid "editor::GoToPreviousSymbol"
+msgstr "이동: 이전 심볼"
+
+#. editor: go to type definition
+msgctxt "action"
+msgid "editor::GoToTypeDefinition"
+msgstr "타입 정의로 이동"
+
+#. editor: go to type definition split
+msgctxt "action"
+msgid "editor::GoToTypeDefinitionSplit"
+msgstr "타입 정의로 이동(분할하여 열기)"
+
+#. editor: half page down
+msgctxt "action"
+msgid "editor::HalfPageDown"
+msgstr "스크롤: 반 페이지 아래로"
+
+#. editor: half page up
+msgctxt "action"
+msgid "editor::HalfPageUp"
+msgstr "스크롤: 반 페이지 위로"
+
+#. editor: handle input
+msgctxt "action"
+msgid "editor::HandleInput"
+msgstr "편집: 입력 처리"
+
+#. editor: hover
+msgctxt "action"
+msgid "editor::Hover"
+msgstr "호버 정보 표시"
+
+#. editor: indent
+msgctxt "action"
+msgid "editor::Indent"
+msgstr "편집: 들여쓰기"
+
+#. editor: insert snippet
+msgctxt "action"
+msgid "editor::InsertSnippet"
+msgstr "편집: 스니펫 삽입"
+
+#. editor: insert uuid v4
+msgctxt "action"
+msgid "editor::InsertUuidV4"
+msgstr "편집: UUID v4 삽입"
+
+#. editor: insert uuid v7
+msgctxt "action"
+msgid "editor::InsertUuidV7"
+msgstr "편집: UUID v7 삽입"
+
+#. editor: join lines
+msgctxt "action"
+msgid "editor::JoinLines"
+msgstr "편집: 줄 연결"
+
+#. editor: kill ring cut
+msgctxt "action"
+msgid "editor::KillRingCut"
+msgstr "편집: 킬 링으로 잘라내기"
+
+#. editor: kill ring yank
+msgctxt "action"
+msgid "editor::KillRingYank"
+msgstr "편집: 킬 링에서 붙여넣기"
+
+#. editor: kill ring yank pop
+msgctxt "action"
+msgid "editor::KillRingYankPop"
+msgstr "편집: 킬 링의 이전 항목으로 바꾸기"
+
+#. editor: line down
+msgctxt "action"
+msgid "editor::LineDown"
+msgstr "스크롤: 한 줄 아래로"
+
+#. editor: line up
+msgctxt "action"
+msgid "editor::LineUp"
+msgstr "스크롤: 한 줄 위로"
+
+#. editor: move down
+msgctxt "action"
+msgid "editor::MoveDown"
+msgstr "이동: 아래로"
+
+#. editor: move down by lines
+msgctxt "action"
+msgid "editor::MoveDownByLines"
+msgstr "이동: 지정한 줄 수만큼 아래로"
+
+#. editor: move left
+msgctxt "action"
+msgid "editor::MoveLeft"
+msgstr "이동: 왼쪽으로"
+
+#. editor: move line down
+msgctxt "action"
+msgid "editor::MoveLineDown"
+msgstr "편집: 줄 아래로 이동"
+
+#. editor: move line up
+msgctxt "action"
+msgid "editor::MoveLineUp"
+msgstr "편집: 줄 위로 이동"
+
+#. editor: move page down
+msgctxt "action"
+msgid "editor::MovePageDown"
+msgstr "이동: 커서를 한 페이지 아래로"
+
+#. editor: move page up
+msgctxt "action"
+msgid "editor::MovePageUp"
+msgstr "이동: 커서를 한 페이지 위로"
+
+#. editor: move right
+msgctxt "action"
+msgid "editor::MoveRight"
+msgstr "이동: 오른쪽으로"
+
+#. editor: move to beginning
+msgctxt "action"
+msgid "editor::MoveToBeginning"
+msgstr "이동: 처음으로"
+
+#. editor: move to beginning of line
+msgctxt "action"
+msgid "editor::MoveToBeginningOfLine"
+msgstr "이동: 줄 시작으로"
+
+#. editor: move to enclosing bracket
+msgctxt "action"
+msgid "editor::MoveToEnclosingBracket"
+msgstr "이동: 둘러싼 괄호로"
+
+#. editor: move to end
+msgctxt "action"
+msgid "editor::MoveToEnd"
+msgstr "이동: 끝으로"
+
+#. editor: move to end of excerpt
+msgctxt "action"
+msgid "editor::MoveToEndOfExcerpt"
+msgstr "이동: 발췌 끝으로"
+
+#. editor: move to end of larger syntax node
+msgctxt "action"
+msgid "editor::MoveToEndOfLargerSyntaxNode"
+msgstr "이동: 상위 구문 노드 끝으로"
+
+#. editor: move to end of line
+msgctxt "action"
+msgid "editor::MoveToEndOfLine"
+msgstr "이동: 줄 끝으로"
+
+#. editor: move to end of paragraph
+msgctxt "action"
+msgid "editor::MoveToEndOfParagraph"
+msgstr "이동: 단락 끝으로"
+
+#. editor: move to end of previous excerpt
+msgctxt "action"
+msgid "editor::MoveToEndOfPreviousExcerpt"
+msgstr "이동: 이전 발췌 끝으로"
+
+#. editor: move to next comment paragraph
+msgctxt "action"
+msgid "editor::MoveToNextCommentParagraph"
+msgstr "이동: 다음 주석 단락으로"
+
+#. editor: move to next subword end
+msgctxt "action"
+msgid "editor::MoveToNextSubwordEnd"
+msgstr "이동: 다음 하위 단어 끝으로"
+
+#. editor: move to next word end
+msgctxt "action"
+msgid "editor::MoveToNextWordEnd"
+msgstr "이동: 다음 단어 끝으로"
+
+#. editor: move to previous comment paragraph
+msgctxt "action"
+msgid "editor::MoveToPreviousCommentParagraph"
+msgstr "이동: 이전 주석 단락으로"
+
+#. editor: move to previous subword start
+msgctxt "action"
+msgid "editor::MoveToPreviousSubwordStart"
+msgstr "이동: 이전 하위 단어 시작으로"
+
+#. editor: move to previous word start
+msgctxt "action"
+msgid "editor::MoveToPreviousWordStart"
+msgstr "이동: 이전 단어 시작으로"
+
+#. editor: move to start of excerpt
+msgctxt "action"
+msgid "editor::MoveToStartOfExcerpt"
+msgstr "이동: 발췌 시작으로"
+
+#. editor: move to start of larger syntax node
+msgctxt "action"
+msgid "editor::MoveToStartOfLargerSyntaxNode"
+msgstr "이동: 상위 구문 노드 시작으로"
+
+#. editor: move to start of next excerpt
+msgctxt "action"
+msgid "editor::MoveToStartOfNextExcerpt"
+msgstr "이동: 다음 발췌 시작으로"
+
+#. editor: move to start of paragraph
+msgctxt "action"
+msgid "editor::MoveToStartOfParagraph"
+msgstr "이동: 단락 시작으로"
+
+#. editor: move up
+msgctxt "action"
+msgid "editor::MoveUp"
+msgstr "이동: 위로"
+
+#. editor: move up by lines
+msgctxt "action"
+msgid "editor::MoveUpByLines"
+msgstr "이동: 지정한 줄 수만큼 위로"
+
+#. editor: newline
+msgctxt "action"
+msgid "editor::Newline"
+msgstr "편집: 줄 바꿈 삽입"
+
+#. editor: newline above
+msgctxt "action"
+msgid "editor::NewlineAbove"
+msgstr "편집: 위에 줄 삽입"
+
+#. editor: newline below
+msgctxt "action"
+msgid "editor::NewlineBelow"
+msgstr "편집: 아래에 줄 삽입"
+
+#. editor: next edit prediction
+msgctxt "action"
+msgid "editor::NextEditPrediction"
+msgstr "편집 예측: 다음 예측"
+
+#. editor: next screen
+msgctxt "action"
+msgid "editor::NextScreen"
+msgstr "스크롤: 다음 화면"
+
+#. editor: next snippet tabstop
+msgctxt "action"
+msgid "editor::NextSnippetTabstop"
+msgstr "스니펫: 다음 탭 정지"
+
+#. editor: open context menu
+msgctxt "action"
+msgid "editor::OpenContextMenu"
+msgstr "컨텍스트 메뉴 열기"
+
+#. editor: open docs
+msgctxt "action"
+msgid "editor::OpenDocs"
+msgstr "문서 열기"
+
+#. editor: open excerpts
+msgctxt "action"
+msgid "editor::OpenExcerpts"
+msgstr "발췌 열기"
+
+#. editor: open excerpts split
+msgctxt "action"
+msgid "editor::OpenExcerptsSplit"
+msgstr "발췌를 분할하여 열기"
+
+#. editor: open git blame commit
+msgctxt "action"
+msgid "editor::OpenGitBlameCommit"
+msgstr "Git: 이 줄의 Blame 커밋 열기"
+
+#. editor: open permalink to line
+msgctxt "action"
+msgid "editor::OpenPermalinkToLine"
+msgstr "이 줄의 고유 링크 열기"
+
+#. editor: open proposed changes editor
+msgctxt "action"
+msgid "editor::OpenProposedChangesEditor"
+msgstr "제안된 변경 사항 편집기 열기"
+
+#. editor: open selected filename
+msgctxt "action"
+msgid "editor::OpenSelectedFilename"
+msgstr "선택한 파일 이름 열기"
+
+#. editor: open selections in multibuffer
+msgctxt "action"
+msgid "editor::OpenSelectionsInMultibuffer"
+msgstr "선택 영역을 멀티버퍼에서 열기"
+
+#. editor: open url
+msgctxt "action"
+msgid "editor::OpenUrl"
+msgstr "URL 열기"
+
+#. editor: organize imports
+msgctxt "action"
+msgid "editor::OrganizeImports"
+msgstr "가져오기 정리"
+
+#. editor: outdent
+msgctxt "action"
+msgid "editor::Outdent"
+msgstr "편집: 내어쓰기"
+
+#. editor: page down
+msgctxt "action"
+msgid "editor::PageDown"
+msgstr "이동: 한 페이지 아래로"
+
+#. editor: page up
+msgctxt "action"
+msgid "editor::PageUp"
+msgstr "이동: 한 페이지 위로"
+
+#. editor: paste
+msgctxt "action"
+msgid "editor::Paste"
+msgstr "편집: 붙여넣기"
+
+#. editor: previous edit prediction
+msgctxt "action"
+msgid "editor::PreviousEditPrediction"
+msgstr "편집 예측: 이전 예측"
+
+#. editor: previous snippet tabstop
+msgctxt "action"
+msgid "editor::PreviousSnippetTabstop"
+msgstr "스니펫: 이전 탭 정지"
+
+#. editor: redo
+msgctxt "action"
+msgid "editor::Redo"
+msgstr "편집: 다시 실행"
+
+#. editor: redo selection
+msgctxt "action"
+msgid "editor::RedoSelection"
+msgstr "선택: 선택 다시 실행"
+
+#. editor: reload file
+msgctxt "action"
+msgid "editor::ReloadFile"
+msgstr "파일 다시 로드"
+
+#. editor: rename
+msgctxt "action"
+msgid "editor::Rename"
+msgstr "심볼 이름 변경"
+
+#. editor: restart language server
+msgctxt "action"
+msgid "editor::RestartLanguageServer"
+msgstr "언어 서버 다시 시작"
+
+#. editor: reveal in file manager
+msgctxt "action"
+msgid "editor::RevealInFileManager"
+msgstr "파일 관리자에서 보기"
+
+#. editor: reverse lines
+msgctxt "action"
+msgid "editor::ReverseLines"
+msgstr "편집: 줄 순서 뒤집기"
+
+#. editor: rewrap
+msgctxt "action"
+msgid "editor::Rewrap"
+msgstr "편집: 다시 줄 바꿈"
+
+#. editor: rotate selections backward
+msgctxt "action"
+msgid "editor::RotateSelectionsBackward"
+msgstr "선택: 선택 영역 내용을 뒤로 회전"
+
+#. editor: rotate selections forward
+msgctxt "action"
+msgid "editor::RotateSelectionsForward"
+msgstr "선택: 선택 영역 내용을 앞으로 회전"
+
+#. editor: run flycheck
+msgctxt "action"
+msgid "editor::RunFlycheck"
+msgstr "flycheck 실행"
+
+#. editor: save location
+msgctxt "action"
+msgid "editor::SaveLocation"
+msgstr "현재 위치 저장"
+
+#. editor: scroll cursor bottom
+msgctxt "action"
+msgid "editor::ScrollCursorBottom"
+msgstr "스크롤: 커서를 아래쪽 끝으로"
+
+#. editor: scroll cursor center
+msgctxt "action"
+msgid "editor::ScrollCursorCenter"
+msgstr "스크롤: 커서를 가운데로"
+
+#. editor: scroll cursor center top bottom
+msgctxt "action"
+msgid "editor::ScrollCursorCenterTopBottom"
+msgstr "스크롤: 커서를 가운데/위쪽/아래쪽으로"
+
+#. editor: scroll cursor top
+msgctxt "action"
+msgid "editor::ScrollCursorTop"
+msgstr "스크롤: 커서를 위쪽 끝으로"
+
+#. editor: select all
+msgctxt "action"
+msgid "editor::SelectAll"
+msgstr "선택: 모두 선택"
+
+#. editor: select all matches
+msgctxt "action"
+msgid "editor::SelectAllMatches"
+msgstr "선택: 일치 항목 모두 선택"
+
+#. editor: select around delimiters
+msgctxt "action"
+msgid "editor::SelectAroundDelimiters"
+msgstr "선택: 구분 기호 포함하여 선택"
+
+#. editor: select down
+msgctxt "action"
+msgid "editor::SelectDown"
+msgstr "선택: 아래로 확장"
+
+#. editor: select down by lines
+msgctxt "action"
+msgid "editor::SelectDownByLines"
+msgstr "선택: 지정한 줄 수만큼 아래로 확장"
+
+#. editor: select enclosing symbol
+msgctxt "action"
+msgid "editor::SelectEnclosingSymbol"
+msgstr "선택: 둘러싼 심볼 선택"
+
+#. editor: select inside delimiters
+msgctxt "action"
+msgid "editor::SelectInsideDelimiters"
+msgstr "선택: 구분 기호 안쪽 선택"
+
+#. editor: select larger syntax node
+msgctxt "action"
+msgid "editor::SelectLargerSyntaxNode"
+msgstr "선택: 상위 구문 노드 선택"
+
+#. editor: select left
+msgctxt "action"
+msgid "editor::SelectLeft"
+msgstr "선택: 왼쪽으로 확장"
+
+#. editor: select line
+msgctxt "action"
+msgid "editor::SelectLine"
+msgstr "선택: 줄 선택"
+
+#. editor: select next
+msgctxt "action"
+msgid "editor::SelectNext"
+msgstr "선택: 다음 항목 선택"
+
+#. editor: select next syntax node
+msgctxt "action"
+msgid "editor::SelectNextSyntaxNode"
+msgstr "선택: 다음 구문 노드 선택"
+
+#. editor: select page down
+msgctxt "action"
+msgid "editor::SelectPageDown"
+msgstr "선택: 한 페이지 아래로 확장"
+
+#. editor: select page up
+msgctxt "action"
+msgid "editor::SelectPageUp"
+msgstr "선택: 한 페이지 위로 확장"
+
+#. editor: select previous
+msgctxt "action"
+msgid "editor::SelectPrevious"
+msgstr "선택: 이전 항목 선택"
+
+#. editor: select previous syntax node
+msgctxt "action"
+msgid "editor::SelectPreviousSyntaxNode"
+msgstr "선택: 이전 구문 노드 선택"
+
+#. editor: select right
+msgctxt "action"
+msgid "editor::SelectRight"
+msgstr "선택: 오른쪽으로 확장"
+
+#. editor: select smaller syntax node
+msgctxt "action"
+msgid "editor::SelectSmallerSyntaxNode"
+msgstr "선택: 하위 구문 노드 선택"
+
+#. editor: select to beginning
+msgctxt "action"
+msgid "editor::SelectToBeginning"
+msgstr "선택: 처음까지 확장"
+
+#. editor: select to beginning of line
+msgctxt "action"
+msgid "editor::SelectToBeginningOfLine"
+msgstr "선택: 줄 시작까지 확장"
+
+#. editor: select to end
+msgctxt "action"
+msgid "editor::SelectToEnd"
+msgstr "선택: 끝까지 확장"
+
+#. editor: select to end of excerpt
+msgctxt "action"
+msgid "editor::SelectToEndOfExcerpt"
+msgstr "선택: 발췌 끝까지 확장"
+
+#. editor: select to end of larger syntax node
+msgctxt "action"
+msgid "editor::SelectToEndOfLargerSyntaxNode"
+msgstr "선택: 상위 구문 노드 끝까지 확장"
+
+#. editor: select to end of line
+msgctxt "action"
+msgid "editor::SelectToEndOfLine"
+msgstr "선택: 줄 끝까지 확장"
+
+#. editor: select to end of paragraph
+msgctxt "action"
+msgid "editor::SelectToEndOfParagraph"
+msgstr "선택: 단락 끝까지 확장"
+
+#. editor: select to end of previous excerpt
+msgctxt "action"
+msgid "editor::SelectToEndOfPreviousExcerpt"
+msgstr "선택: 이전 발췌 끝까지 확장"
+
+#. editor: select to next subword end
+msgctxt "action"
+msgid "editor::SelectToNextSubwordEnd"
+msgstr "선택: 다음 하위 단어 끝까지 확장"
+
+#. editor: select to next word end
+msgctxt "action"
+msgid "editor::SelectToNextWordEnd"
+msgstr "선택: 다음 단어 끝까지 확장"
+
+#. editor: select to previous subword start
+msgctxt "action"
+msgid "editor::SelectToPreviousSubwordStart"
+msgstr "선택: 이전 하위 단어 시작까지 확장"
+
+#. editor: select to previous word start
+msgctxt "action"
+msgid "editor::SelectToPreviousWordStart"
+msgstr "선택: 이전 단어 시작까지 확장"
+
+#. editor: select to start of excerpt
+msgctxt "action"
+msgid "editor::SelectToStartOfExcerpt"
+msgstr "선택: 발췌 시작까지 확장"
+
+#. editor: select to start of larger syntax node
+msgctxt "action"
+msgid "editor::SelectToStartOfLargerSyntaxNode"
+msgstr "선택: 상위 구문 노드 시작까지 확장"
+
+#. editor: select to start of next excerpt
+msgctxt "action"
+msgid "editor::SelectToStartOfNextExcerpt"
+msgstr "선택: 다음 발췌 시작까지 확장"
+
+#. editor: select to start of paragraph
+msgctxt "action"
+msgid "editor::SelectToStartOfParagraph"
+msgstr "선택: 단락 시작까지 확장"
+
+#. editor: select up
+msgctxt "action"
+msgid "editor::SelectUp"
+msgstr "선택: 위로 확장"
+
+#. editor: select up by lines
+msgctxt "action"
+msgid "editor::SelectUpByLines"
+msgstr "선택: 지정한 줄 수만큼 위로 확장"
+
+#. editor: send review to agent
+msgctxt "action"
+msgid "editor::SendReviewToAgent"
+msgstr "Diff 검토: 에이전트에 검토 보내기"
+
+#. editor: set mark
+msgctxt "action"
+msgid "editor::SetMark"
+msgstr "편집: 마크 설정"
+
+#. editor: show character palette
+msgctxt "action"
+msgid "editor::ShowCharacterPalette"
+msgstr "편집: 문자표 표시"
+
+#. editor: show completions
+msgctxt "action"
+msgid "editor::ShowCompletions"
+msgstr "자동 완성 표시"
+
+#. editor: show edit prediction
+msgctxt "action"
+msgid "editor::ShowEditPrediction"
+msgstr "편집 예측 표시"
+
+#. editor: show signature help
+msgctxt "action"
+msgid "editor::ShowSignatureHelp"
+msgstr "시그니처 도움말 표시"
+
+#. editor: show word completions
+msgctxt "action"
+msgid "editor::ShowWordCompletions"
+msgstr "단어 자동 완성 표시"
+
+#. editor: shuffle lines
+msgctxt "action"
+msgid "editor::ShuffleLines"
+msgstr "편집: 줄 순서 섞기"
+
+#. editor: signature help next
+msgctxt "action"
+msgid "editor::SignatureHelpNext"
+msgstr "시그니처 도움말: 다음 시그니처"
+
+#. editor: signature help previous
+msgctxt "action"
+msgid "editor::SignatureHelpPrevious"
+msgstr "시그니처 도움말: 이전 시그니처"
+
+#. editor: sort lines by length
+msgctxt "action"
+msgid "editor::SortLinesByLength"
+msgstr "편집: 길이순으로 줄 정렬"
+
+#. editor: sort lines case insensitive
+msgctxt "action"
+msgid "editor::SortLinesCaseInsensitive"
+msgstr "편집: 줄 정렬(대소문자 구분 안 함)"
+
+#. editor: sort lines case sensitive
+msgctxt "action"
+msgid "editor::SortLinesCaseSensitive"
+msgstr "편집: 줄 정렬(대소문자 구분)"
+
+#. editor: spawn nearest task
+msgctxt "action"
+msgid "editor::SpawnNearestTask"
+msgstr "작업: 가장 가까운 작업 실행"
+
+#. editor: split selection into lines
+msgctxt "action"
+msgid "editor::SplitSelectionIntoLines"
+msgstr "선택: 선택 영역을 줄 단위로 분할"
+
+#. editor: stop language server
+msgctxt "action"
+msgid "editor::StopLanguageServer"
+msgstr "언어 서버 중지"
+
+#. editor: submit diff review comment
+msgctxt "action"
+msgid "editor::SubmitDiffReviewComment"
+msgstr "Diff 검토: 주석 제출"
+
+#. editor: swap selection ends
+msgctxt "action"
+msgid "editor::SwapSelectionEnds"
+msgstr "선택: 선택 영역 양 끝 바꾸기"
+
+#. editor: switch source header
+msgctxt "action"
+msgid "editor::SwitchSourceHeader"
+msgstr "소스/헤더 전환"
+
+#. editor: tab
+msgctxt "action"
+msgid "editor::Tab"
+msgstr "편집: 탭 삽입"
+
+#. editor: toggle all diff hunks
+msgctxt "action"
+msgid "editor::ToggleAllDiffHunks"
+msgstr "모든 Diff 변경 단위 전환"
+
+#. editor: toggle auto signature help
+msgctxt "action"
+msgid "editor::ToggleAutoSignatureHelp"
+msgstr "시그니처 도움말 자동 표시 전환"
+
+#. editor: toggle block comments
+msgctxt "action"
+msgid "editor::ToggleBlockComments"
+msgstr "편집: 블록 주석 전환"
+
+#. editor: toggle bookmark
+msgctxt "action"
+msgid "editor::ToggleBookmark"
+msgstr "북마크: 전환"
+
+#. editor: toggle bookmark with label
+msgctxt "action"
+msgid "editor::ToggleBookmarkWithLabel"
+msgstr "북마크: 레이블과 함께 전환"
+
+#. editor: toggle breadcrumb
+msgctxt "action"
+msgid "editor::ToggleBreadcrumb"
+msgstr "보기: 이동 경로 전환"
+
+#. editor: toggle breakpoint
+msgctxt "action"
+msgid "editor::ToggleBreakpoint"
+msgstr "디버그: 중단점 전환"
+
+#. editor: toggle case
+msgctxt "action"
+msgid "editor::ToggleCase"
+msgstr "편집: 대소문자 전환"
+
+#. editor: toggle code actions
+msgctxt "action"
+msgid "editor::ToggleCodeActions"
+msgstr "코드 액션 전환"
+
+#. editor: toggle code lens
+msgctxt "action"
+msgid "editor::ToggleCodeLens"
+msgstr "보기: 코드 렌즈 전환"
+
+#. editor: toggle comments
+msgctxt "action"
+msgid "editor::ToggleComments"
+msgstr "편집: 주석 전환"
+
+#. editor: toggle diagnostics
+msgctxt "action"
+msgid "editor::ToggleDiagnostics"
+msgstr "보기: 진단 전환"
+
+#. editor: toggle edit prediction
+msgctxt "action"
+msgid "editor::ToggleEditPrediction"
+msgstr "편집 예측 전환"
+
+#. editor: toggle focus
+msgctxt "action"
+msgid "editor::ToggleFocus"
+msgstr "편집기 포커스 전환"
+
+#. editor: toggle fold
+msgctxt "action"
+msgid "editor::ToggleFold"
+msgstr "접기 전환"
+
+#. editor: toggle fold all
+msgctxt "action"
+msgid "editor::ToggleFoldAll"
+msgstr "모두 접기 전환"
+
+#. editor: toggle fold recursive
+msgctxt "action"
+msgid "editor::ToggleFoldRecursive"
+msgstr "접기: 재귀적으로 전환"
+
+#. editor: toggle git blame inline
+msgctxt "action"
+msgid "editor::ToggleGitBlameInline"
+msgstr "Git: 인라인 Git Blame 전환"
+
+#. editor: toggle indent guides
+msgctxt "action"
+msgid "editor::ToggleIndentGuides"
+msgstr "보기: 들여쓰기 가이드 전환"
+
+#. editor: toggle inlay hints
+msgctxt "action"
+msgid "editor::ToggleInlayHints"
+msgstr "보기: 인레이 힌트 전환"
+
+#. editor: toggle inline diagnostics
+msgctxt "action"
+msgid "editor::ToggleInlineDiagnostics"
+msgstr "보기: 인라인 진단 전환"
+
+#. editor: toggle inline values
+msgctxt "action"
+msgid "editor::ToggleInlineValues"
+msgstr "인라인 값 전환"
+
+#. editor: toggle line numbers
+msgctxt "action"
+msgid "editor::ToggleLineNumbers"
+msgstr "보기: 줄 번호 전환"
+
+#. editor: toggle minimap
+msgctxt "action"
+msgid "editor::ToggleMinimap"
+msgstr "보기: 미니맵 전환"
+
+#. editor: toggle relative line numbers
+msgctxt "action"
+msgid "editor::ToggleRelativeLineNumbers"
+msgstr "보기: 상대 줄 번호 전환"
+
+#. editor: toggle review comments expanded
+msgctxt "action"
+msgid "editor::ToggleReviewCommentsExpanded"
+msgstr "Diff 검토: 주석 펼치기/접기 전환"
+
+#. editor: toggle selected diff hunks
+msgctxt "action"
+msgid "editor::ToggleSelectedDiffHunks"
+msgstr "선택한 Diff 변경 단위 전환"
+
+#. editor: toggle selection menu
+msgctxt "action"
+msgid "editor::ToggleSelectionMenu"
+msgstr "선택 영역 메뉴 전환"
+
+#. editor: toggle semantic highlights
+msgctxt "action"
+msgid "editor::ToggleSemanticHighlights"
+msgstr "보기: 의미 기반 강조 표시 전환"
+
+#. editor: toggle soft wrap
+msgctxt "action"
+msgid "editor::ToggleSoftWrap"
+msgstr "보기: 소프트 줄 바꿈 전환"
+
+#. editor: toggle split diff
+msgctxt "action"
+msgid "editor::ToggleSplitDiff"
+msgstr "분할 Diff 전환"
+
+#. editor: toggle tab bar
+msgctxt "action"
+msgid "editor::ToggleTabBar"
+msgstr "보기: 탭 표시줄 전환"
+
+#. editor: transpose
+msgctxt "action"
+msgid "editor::Transpose"
+msgstr "편집: 문자 바꾸기"
+
+#. editor: undo
+msgctxt "action"
+msgid "editor::Undo"
+msgstr "편집: 실행 취소"
+
+#. editor: undo selection
+msgctxt "action"
+msgid "editor::UndoSelection"
+msgstr "선택: 선택 실행 취소"
+
+#. editor: unfold all
+msgctxt "action"
+msgid "editor::UnfoldAll"
+msgstr "모두 펼치기"
+
+#. editor: unfold lines
+msgctxt "action"
+msgid "editor::UnfoldLines"
+msgstr "줄 펼치기"
+
+#. editor: unfold recursive
+msgctxt "action"
+msgid "editor::UnfoldRecursive"
+msgstr "재귀적으로 펼치기"
+
+#. editor: unique lines case insensitive
+msgctxt "action"
+msgid "editor::UniqueLinesCaseInsensitive"
+msgstr "편집: 중복 줄 제거(대소문자 구분 안 함)"
+
+#. editor: unique lines case sensitive
+msgctxt "action"
+msgid "editor::UniqueLinesCaseSensitive"
+msgstr "편집: 중복 줄 제거(대소문자 구분)"
+
+#. editor: unwrap syntax node
+msgctxt "action"
+msgid "editor::UnwrapSyntaxNode"
+msgstr "편집: 구문 노드 감싸기 해제"
+
+#. editor: view bookmarks
+msgctxt "action"
+msgid "editor::ViewBookmarks"
+msgstr "북마크: 목록 보기"
+
+#. editor: wrap selections in tag
+msgctxt "action"
+msgid "editor::WrapSelectionsInTag"
+msgstr "편집: 선택 영역을 태그로 감싸기"
+
+#. editor: wrap with abbreviation
+msgctxt "action"
+msgid "editor::WrapWithAbbreviation"
+msgstr "편집: Emmet 약어로 감싸기"
+
+#. encoding selector: toggle
+msgctxt "action"
+msgid "encoding_selector::Toggle"
+msgstr "인코딩 선택"
+
+#. feedback: email zed
+msgctxt "action"
+msgid "feedback::EmailZed"
+msgstr "Zed에 이메일 보내기"
+
+#. feedback: file bug report
+msgctxt "action"
+msgid "feedback::FileBugReport"
+msgstr "버그 보고"
+
+#. feedback: request feature
+msgctxt "action"
+msgid "feedback::RequestFeature"
+msgstr "기능 요청"
+
+#. file finder: open without dismiss
+msgctxt "action"
+msgid "file_finder::OpenWithoutDismiss"
+msgstr "파일 찾기: 닫지 않고 열기"
+
+#. file finder: select previous
+msgctxt "action"
+msgid "file_finder::SelectPrevious"
+msgstr "파일 찾기: 이전 항목 선택"
+
+#. file finder: toggle
+msgctxt "action"
+msgid "file_finder::Toggle"
+msgstr "파일 찾기"
+
+#. file transfer: focus next field
+msgctxt "action"
+msgid "file_transfer::FocusNextField"
+msgstr "파일 전송: 다음 입력란으로 이동"
+
+#. file transfer: focus previous field
+msgctxt "action"
+msgid "file_transfer::FocusPreviousField"
+msgstr "파일 전송: 이전 입력란으로 이동"
+
+#. git: add
+msgctxt "action"
+msgid "git::Add"
+msgstr "Git: 스테이징"
+
+#. git: add to git info exclude
+msgctxt "action"
+msgid "git::AddToGitInfoExclude"
+msgstr "Git: .git/info/exclude에 추가"
+
+#. git: add to gitignore
+msgctxt "action"
+msgid "git::AddToGitignore"
+msgstr "Git: .gitignore에 추가"
+
+#. git: amend
+msgctxt "action"
+msgid "git::Amend"
+msgstr "Git: 마지막 커밋 수정"
+
+#. git: apply current stash
+msgctxt "action"
+msgid "git::ApplyCurrentStash"
+msgstr "Git: 현재 스태시 적용"
+
+#. git: apply patch
+msgctxt "action"
+msgid "git::ApplyPatch"
+msgstr "Git: 패치 파일 적용"
+
+#. git: blame
+msgctxt "action"
+msgid "git::Blame"
+msgstr "Git: Blame"
+
+#. git: branch
+msgctxt "action"
+msgid "git::Branch"
+msgstr "Git: 브랜치"
+
+#. git: cancel
+msgctxt "action"
+msgid "git::Cancel"
+msgstr "Git: 작업 취소"
+
+#. git: checkout branch
+msgctxt "action"
+msgid "git::CheckoutBranch"
+msgstr "Git: 브랜치 체크아웃"
+
+#. git: checkout commit
+msgctxt "action"
+msgid "git::CheckoutCommit"
+msgstr "Git: 이 커밋 체크아웃(Detached HEAD)"
+
+#. git: cherry pick commit
+msgctxt "action"
+msgid "git::CherryPickCommit"
+msgstr "Git: 이 커밋 체리픽"
+
+#. git: choose fixup commit
+msgctxt "action"
+msgid "git::ChooseFixupCommit"
+msgstr "Git: fixup할 커밋 선택"
+
+#. git: clone
+msgctxt "action"
+msgid "git::Clone"
+msgstr "Git: 저장소 복제"
+
+#. git: commit
+msgctxt "action"
+msgid "git::Commit"
+msgstr "Git: 커밋"
+
+#. git: compare refs
+msgctxt "action"
+msgid "git::CompareRefs"
+msgstr "Git: 두 브랜치/태그 비교"
+
+#. git: compare with branch
+msgctxt "action"
+msgid "git::CompareWithBranch"
+msgstr "Git: 브랜치와 비교"
+
+#. git: confirm force push
+msgctxt "action"
+msgid "git::ConfirmForcePush"
+msgstr "Git: 확인 후 강제 푸시(lease 사용)"
+
+#. git: copy branch name
+msgctxt "action"
+msgid "git::CopyBranchName"
+msgstr "Git: 브랜치 이름 복사"
+
+#. git: copy file permalink
+msgctxt "action"
+msgid "git::CopyFilePermalink"
+msgstr "Git: 파일 고유 링크 복사"
+
+#. git: copy tag distance
+msgctxt "action"
+msgid "git::CopyTagDistance"
+msgstr "Git: 최신 태그로부터의 거리 복사"
+
+#. git: create branch from
+msgctxt "action"
+msgid "git::CreateBranchFrom"
+msgstr "Git: 이 커밋에서 브랜치 만들기"
+
+#. git: create patch
+msgctxt "action"
+msgid "git::CreatePatch"
+msgstr "Git: 패치 파일 만들기"
+
+#. git: create pull request
+msgctxt "action"
+msgid "git::CreatePullRequest"
+msgstr "Git: 풀 리퀘스트 만들기"
+
+#. git: create remote
+msgctxt "action"
+msgid "git::CreateRemote"
+msgstr "Git: 원격 추가"
+
+#. git: create tag at
+msgctxt "action"
+msgid "git::CreateTagAt"
+msgstr "Git: 이 커밋에 태그 만들기"
+
+#. git: create worktree
+msgctxt "action"
+msgid "git::CreateWorktree"
+msgstr "Git: 워크트리 만들기"
+
+#. git: diff
+msgctxt "action"
+msgid "git::Diff"
+msgstr "Git: Diff"
+
+#. git: diff branch
+msgctxt "action"
+msgid "git::DiffBranch"
+msgstr "Git: 브랜치와의 Diff"
+
+#. git: diff head
+msgctxt "action"
+msgid "git::DiffHead"
+msgstr "Git: HEAD와의 Diff"
+
+#. git: drop commit
+msgctxt "action"
+msgid "git::DropCommit"
+msgstr "Git: 이 커밋을 기록에서 제거"
+
+#. git: drop current stash
+msgctxt "action"
+msgid "git::DropCurrentStash"
+msgstr "Git: 현재 스태시 삭제"
+
+#. git: expand commit editor
+msgctxt "action"
+msgid "git::ExpandCommitEditor"
+msgstr "Git: 커밋 편집기 확장"
+
+#. git: fetch
+msgctxt "action"
+msgid "git::Fetch"
+msgstr "Git: 페치"
+
+#. git: fetch from
+msgctxt "action"
+msgid "git::FetchFrom"
+msgstr "Git: 원격을 지정하여 페치"
+
+#. git: file history
+msgctxt "action"
+msgid "git::FileHistory"
+msgstr "Git: 파일 기록"
+
+#. git: filter remotes
+msgctxt "action"
+msgid "git::FilterRemotes"
+msgstr "Git: 원격 필터링"
+
+#. git: fixup commit
+msgctxt "action"
+msgid "git::FixupCommit"
+msgstr "Git: 현재 변경 사항을 이 커밋에 넣기(fixup)"
+
+#. git: force push
+msgctxt "action"
+msgid "git::ForcePush"
+msgstr "Git: 강제 푸시"
+
+#. git: force push without lease
+msgctxt "action"
+msgid "git::ForcePushWithoutLease"
+msgstr "Git: 강제 푸시(lease 없음)"
+
+#. git: generate commit message
+msgctxt "action"
+msgid "git::GenerateCommitMessage"
+msgstr "Git: 커밋 메시지 생성"
+
+#. git: init
+msgctxt "action"
+msgid "git::Init"
+msgstr "Git: 저장소 초기화"
+
+#. git: leader and follower
+msgctxt "action"
+msgid "git::LeaderAndFollower"
+msgstr "Git: 리더와 팔로워"
+
+#. git: merge
+msgctxt "action"
+msgid "git::Merge"
+msgstr "Git: 브랜치 병합"
+
+#. git: open file at head
+msgctxt "action"
+msgid "git::OpenFileAtHead"
+msgstr "Git: HEAD의 파일 열기"
+
+#. git: open file diff
+msgctxt "action"
+msgid "git::OpenFileDiff"
+msgstr "Git: 파일 Diff 열기"
+
+#. git: open file permalink
+msgctxt "action"
+msgid "git::OpenFilePermalink"
+msgstr "Git: 파일 고유 링크 열기"
+
+#. git: open merge request box
+msgctxt "action"
+msgid "git::OpenMergeRequestBox"
+msgstr "Git: MR 상자 열기"
+
+#. git: open modified files
+msgctxt "action"
+msgid "git::OpenModifiedFiles"
+msgstr "Git: 수정된 파일 열기"
+
+#. git: open worktree in new window
+msgctxt "action"
+msgid "git::OpenWorktreeInNewWindow"
+msgstr "Git: 워크트리를 새 창에서 열기"
+
+#. git: pack refs
+msgctxt "action"
+msgid "git::PackRefs"
+msgstr "Git: ref 묶기(pack-refs)"
+
+#. git: pop current stash
+msgctxt "action"
+msgid "git::PopCurrentStash"
+msgstr "Git: 현재 스태시 꺼내기"
+
+#. git: pull
+msgctxt "action"
+msgid "git::Pull"
+msgstr "Git: 풀"
+
+#. git: pull rebase
+msgctxt "action"
+msgid "git::PullRebase"
+msgstr "Git: 리베이스하여 풀"
+
+#. git: push
+msgctxt "action"
+msgid "git::Push"
+msgstr "Git: 푸시"
+
+#. git: push to
+msgctxt "action"
+msgid "git::PushTo"
+msgstr "Git: 원격을 지정하여 푸시"
+
+#. git: remove remote
+msgctxt "action"
+msgid "git::RemoveRemote"
+msgstr "Git: 원격 제거"
+
+#. git: rename branch
+msgctxt "action"
+msgid "git::RenameBranch"
+msgstr "Git: 브랜치 이름 변경"
+
+#. git: reset to commit
+msgctxt "action"
+msgid "git::ResetToCommit"
+msgstr "Git: 이 커밋으로 재설정"
+
+#. git: reset to remote
+msgctxt "action"
+msgid "git::ResetToRemote"
+msgstr "Git: 원격과 강제로 일치"
+
+#. git: restore
+msgctxt "action"
+msgid "git::Restore"
+msgstr "Git: 복원"
+
+#. git: restore and next
+msgctxt "action"
+msgid "git::RestoreAndNext"
+msgstr "Git: 복원하고 다음으로"
+
+#. git: restore file
+msgctxt "action"
+msgid "git::RestoreFile"
+msgstr "Git: 파일 복원"
+
+#. git: restore tracked files
+msgctxt "action"
+msgid "git::RestoreTrackedFiles"
+msgstr "Git: 추적된 파일 복원"
+
+#. git: revert commit
+msgctxt "action"
+msgid "git::RevertCommit"
+msgstr "Git: 이 커밋 되돌리기"
+
+#. git: review diff
+msgctxt "action"
+msgid "git::ReviewDiff"
+msgstr "Git: 에이전트로 Diff 검토"
+
+#. git: reword commit
+msgctxt "action"
+msgid "git::RewordCommit"
+msgstr "Git: 커밋 메시지 수정"
+
+#. git: select repo
+msgctxt "action"
+msgid "git::SelectRepo"
+msgstr "Git: 저장소 선택"
+
+#. git: show guide
+msgctxt "action"
+msgid "git::ShowGuide"
+msgstr "Git: 가이드 열기"
+
+#. git: signoff
+msgctxt "action"
+msgid "git::Signoff"
+msgstr "Git: 사인오프"
+
+#. git: skip hooks
+msgctxt "action"
+msgid "git::SkipHooks"
+msgstr "Git: 훅 건너뛰기"
+
+#. git: stage all
+msgctxt "action"
+msgid "git::StageAll"
+msgstr "Git: 모두 스테이징"
+
+#. git: stage and next
+msgctxt "action"
+msgid "git::StageAndNext"
+msgstr "Git: 스테이징하고 다음으로"
+
+#. git: stage file
+msgctxt "action"
+msgid "git::StageFile"
+msgstr "Git: 파일 스테이징"
+
+#. git: stage range
+msgctxt "action"
+msgid "git::StageRange"
+msgstr "Git: 범위 스테이징"
+
+#. git: stage section
+msgctxt "action"
+msgid "git::StageSection"
+msgstr "Git: 이 섹션 스테이징"
+
+#. git: start amend
+msgctxt "action"
+msgid "git::StartAmend"
+msgstr "Git: 마지막 커밋 수정 시작"
+
+#. git: stash all
+msgctxt "action"
+msgid "git::StashAll"
+msgstr "Git: 모두 스태시"
+
+#. git: stash apply
+msgctxt "action"
+msgid "git::StashApply"
+msgstr "Git: 스태시 적용"
+
+#. git: stash pop
+msgctxt "action"
+msgid "git::StashPop"
+msgstr "Git: 스태시 꺼내기"
+
+#. git: stash staged
+msgctxt "action"
+msgid "git::StashStaged"
+msgstr "Git: 스테이징된 항목 스태시"
+
+#. git: stash tracked
+msgctxt "action"
+msgid "git::StashTracked"
+msgstr "Git: 추적된 파일 스태시"
+
+#. git: switch
+msgctxt "action"
+msgid "git::Switch"
+msgstr "Git: 브랜치 전환"
+
+#. git: switch worktree
+msgctxt "action"
+msgid "git::SwitchWorktree"
+msgstr "Git: 워크트리 전환"
+
+#. git: toggle diff base
+msgctxt "action"
+msgid "git::ToggleDiffBase"
+msgstr "Git: Diff 기준 전환(HEAD/기본 브랜치)"
+
+#. git: toggle fill commit editor
+msgctxt "action"
+msgid "git::ToggleFillCommitEditor"
+msgstr "Git: 커밋 편집기 최대화 전환"
+
+#. git: toggle merge request box
+msgctxt "action"
+msgid "git::ToggleMergeRequestBox"
+msgstr "Git: MR 상자 열기/닫기"
+
+#. git: toggle staged
+msgctxt "action"
+msgid "git::ToggleStaged"
+msgstr "Git: 스테이징 상태 전환"
+
+#. git: trash untracked files
+msgctxt "action"
+msgid "git::TrashUntrackedFiles"
+msgstr "Git: 추적되지 않은 파일을 휴지통으로 이동"
+
+#. git: uncommit
+msgctxt "action"
+msgid "git::Uncommit"
+msgstr "Git: 커밋 취소"
+
+#. git: unstage all
+msgctxt "action"
+msgid "git::UnstageAll"
+msgstr "Git: 모두 스테이징 해제"
+
+#. git: unstage and next
+msgctxt "action"
+msgid "git::UnstageAndNext"
+msgstr "Git: 스테이징 해제하고 다음으로"
+
+#. git: unstage file
+msgctxt "action"
+msgid "git::UnstageFile"
+msgstr "Git: 파일 스테이징 해제"
+
+#. git: unstage section
+msgctxt "action"
+msgid "git::UnstageSection"
+msgstr "Git: 이 섹션 스테이징 해제"
+
+#. git: view commit
+msgctxt "action"
+msgid "git::ViewCommit"
+msgstr "Git: 커밋 보기"
+
+#. git: view file
+msgctxt "action"
+msgid "git::ViewFile"
+msgstr "Git: 파일 보기(Diff 없음)"
+
+#. git: view staged changes
+msgctxt "action"
+msgid "git::ViewStagedChanges"
+msgstr "Git: 스테이징된 변경 사항 보기"
+
+#. git: view stash
+msgctxt "action"
+msgid "git::ViewStash"
+msgstr "Git: 스태시 보기"
+
+#. git: view uncommitted changes
+msgctxt "action"
+msgid "git::ViewUncommittedChanges"
+msgstr "Git: 커밋되지 않은 변경 사항 보기"
+
+#. git: view unstaged changes
+msgctxt "action"
+msgid "git::ViewUnstagedChanges"
+msgstr "Git: 스테이징되지 않은 변경 사항 보기"
+
+#. git: worktree
+msgctxt "action"
+msgid "git::Worktree"
+msgstr "Git: 워크트리"
+
+#. git graph: copy commit sha
+msgctxt "action"
+msgid "git_graph::CopyCommitSha"
+msgstr "Git: 커밋 SHA 복사"
+
+#. git graph: copy commit tag
+msgctxt "action"
+msgid "git_graph::CopyCommitTag"
+msgstr "Git: 커밋 태그 복사"
+
+#. git graph: edit selected commits
+msgctxt "action"
+msgid "git_graph::EditSelectedCommits"
+msgstr "Git: 선택한 커밋 순서 변경/스쿼시/삭제"
+
+#. git graph: focus next tab stop
+msgctxt "action"
+msgid "git_graph::FocusNextTabStop"
+msgstr "Git: 커밋 그래프의 다음 항목에 포커스"
+
+#. git graph: focus previous tab stop
+msgctxt "action"
+msgid "git_graph::FocusPreviousTabStop"
+msgstr "Git: 커밋 그래프의 이전 항목에 포커스"
+
+#. git graph: focus search
+msgctxt "action"
+msgid "git_graph::FocusSearch"
+msgstr "Git: 커밋 그래프 검색에 포커스"
+
+#. git graph: open
+msgctxt "action"
+msgid "git_graph::Open"
+msgstr "Git: 커밋 그래프 열기"
+
+#. git graph: open at commit
+msgctxt "action"
+msgid "git_graph::OpenAtCommit"
+msgstr "Git: 이 커밋에서 커밋 그래프 열기"
+
+#. git graph: open commit view
+msgctxt "action"
+msgid "git_graph::OpenCommitView"
+msgstr "Git: 선택한 커밋 열기"
+
+#. git graph: scroll down
+msgctxt "action"
+msgid "git_graph::ScrollDown"
+msgstr "Git: 커밋 그래프에서 반 페이지 아래로"
+
+#. git graph: scroll up
+msgctxt "action"
+msgid "git_graph::ScrollUp"
+msgstr "Git: 커밋 그래프에서 반 페이지 위로"
+
+#. git graph: toggle changed files view
+msgctxt "action"
+msgid "git_graph::ToggleChangedFilesView"
+msgstr "Git: 변경된 파일 목록/트리 보기 전환"
+
+#. git onboarding: open git integration onboarding
+msgctxt "action"
+msgid "git_onboarding::OpenGitIntegrationOnboarding"
+msgstr "Git: Git 연동 안내 열기"
+
+#. git panel: activate changes tab
+msgctxt "action"
+msgid "git_panel::ActivateChangesTab"
+msgstr "Git: 변경 사항 탭 표시"
+
+#. git panel: activate history tab
+msgctxt "action"
+msgid "git_panel::ActivateHistoryTab"
+msgstr "Git: 기록 탭 표시"
+
+#. git panel: close
+msgctxt "action"
+msgid "git_panel::Close"
+msgstr "Git: 패널 닫기"
+
+#. git panel: collapse selected entry
+msgctxt "action"
+msgid "git_panel::CollapseSelectedEntry"
+msgstr "Git: 선택 항목 접기"
+
+#. git panel: expand selected entry
+msgctxt "action"
+msgid "git_panel::ExpandSelectedEntry"
+msgstr "Git: 선택 항목 펼치기"
+
+#. git panel: first entry
+msgctxt "action"
+msgid "git_panel::FirstEntry"
+msgstr "Git: 첫 번째 항목"
+
+#. git panel: focus changes
+msgctxt "action"
+msgid "git_panel::FocusChanges"
+msgstr "Git: 변경 사항 목록에 포커스"
+
+#. git panel: focus editor
+msgctxt "action"
+msgid "git_panel::FocusEditor"
+msgstr "Git: 커밋 메시지 입력란에 포커스"
+
+#. git panel: last entry
+msgctxt "action"
+msgid "git_panel::LastEntry"
+msgstr "Git: 마지막 항목"
+
+#. git panel: next entry
+msgctxt "action"
+msgid "git_panel::NextEntry"
+msgstr "Git: 다음 항목"
+
+#. git panel: open menu
+msgctxt "action"
+msgid "git_panel::OpenMenu"
+msgstr "Git: 패널 메뉴 열기"
+
+#. git panel: previous entry
+msgctxt "action"
+msgid "git_panel::PreviousEntry"
+msgstr "Git: 이전 항목"
+
+#. git panel: set group by none
+msgctxt "action"
+msgid "git_panel::SetGroupByNone"
+msgstr "Git: 그룹화 안 함"
+
+#. git panel: set group by staging
+msgctxt "action"
+msgid "git_panel::SetGroupByStaging"
+msgstr "Git: 스테이징 상태로 그룹화"
+
+#. git panel: set group by status
+msgctxt "action"
+msgid "git_panel::SetGroupByStatus"
+msgstr "Git: 상태로 그룹화"
+
+#. git panel: set sort by name
+msgctxt "action"
+msgid "git_panel::SetSortByName"
+msgstr "Git: 이름으로 정렬"
+
+#. git panel: set sort by path
+msgctxt "action"
+msgid "git_panel::SetSortByPath"
+msgstr "Git: 경로로 정렬"
+
+#. git panel: toggle
+msgctxt "action"
+msgid "git_panel::Toggle"
+msgstr "Git: 패널 전환"
+
+#. git panel: toggle fill co authors
+msgctxt "action"
+msgid "git_panel::ToggleFillCoAuthors"
+msgstr "Git: 공동 작성자 자동 입력 전환"
+
+#. git panel: toggle focus
+msgctxt "action"
+msgid "git_panel::ToggleFocus"
+msgstr "Git: 패널 포커스 전환"
+
+#. git panel: toggle tree view
+msgctxt "action"
+msgid "git_panel::ToggleTreeView"
+msgstr "Git: 트리 보기 전환"
+
+#. git panel: view staged changes
+msgctxt "action"
+msgid "git_panel::ViewStagedChanges"
+msgstr "Git: 패널에서 스테이징된 변경 사항 보기"
+
+#. git panel: view unstaged changes
+msgctxt "action"
+msgid "git_panel::ViewUnstagedChanges"
+msgstr "Git: 패널에서 스테이징되지 않은 변경 사항 보기"
+
+#. git picker: activate branches tab
+msgctxt "action"
+msgid "git_picker::ActivateBranchesTab"
+msgstr "Git: 브랜치 탭 표시"
+
+#. git picker: activate stash tab
+msgctxt "action"
+msgid "git_picker::ActivateStashTab"
+msgstr "Git: 스태시 탭 표시"
+
+#. go to line: toggle
+msgctxt "action"
+msgid "go_to_line::Toggle"
+msgstr "줄/열로 이동"
+
+#. highlights tree view: toggle semantic tokens
+msgctxt "action"
+msgid "highlights_tree_view::ToggleSemanticTokens"
+msgstr "강조 표시 트리: 의미 기반 토큰 표시 전환"
+
+#. highlights tree view: toggle syntax tokens
+msgctxt "action"
+msgid "highlights_tree_view::ToggleSyntaxTokens"
+msgstr "강조 표시 트리: 구문 토큰 표시 전환"
+
+#. highlights tree view: toggle text highlights
+msgctxt "action"
+msgid "highlights_tree_view::ToggleTextHighlights"
+msgstr "강조 표시 트리: 텍스트 강조 표시 전환"
+
+#. icon theme selector: toggle
+msgctxt "action"
+msgid "icon_theme_selector::Toggle"
+msgstr "아이콘 테마 선택"
+
+#. ide assist: end tour
+msgctxt "action"
+msgid "ide_assist::EndTour"
+msgstr "투어: 종료"
+
+#. ide assist: next tour step
+msgctxt "action"
+msgid "ide_assist::NextTourStep"
+msgstr "투어: 다음 단계"
+
+#. ide assist: previous tour step
+msgctxt "action"
+msgid "ide_assist::PreviousTourStep"
+msgstr "투어: 이전 단계"
+
+#. ide server: copy mcp configuration
+msgctxt "action"
+msgid "ide_server::CopyMcpConfiguration"
+msgstr "IDE 서버: MCP 구성 복사"
+
+#. ide server: reveal lock file
+msgctxt "action"
+msgid "ide_server::RevealLockFile"
+msgstr "IDE 서버: 잠금 파일 위치 열기"
+
+#. ide server: send selection to claude code
+msgctxt "action"
+msgid "ide_server::SendSelectionToClaudeCode"
+msgstr "IDE 서버: 선택 영역을 Claude Code로 보내기"
+
+#. ide server: toggle ide server
+msgctxt "action"
+msgid "ide_server::ToggleIdeServer"
+msgstr "IDE 서버: 켜기/끄기 전환"
+
+#. image viewer: fit to view
+msgctxt "action"
+msgid "image_viewer::FitToView"
+msgstr "이미지: 보기에 맞춤"
+
+#. image viewer: reset zoom
+msgctxt "action"
+msgid "image_viewer::ResetZoom"
+msgstr "이미지: 확대/축소 초기화"
+
+#. image viewer: zoom in
+msgctxt "action"
+msgid "image_viewer::ZoomIn"
+msgstr "이미지: 확대"
+
+#. image viewer: zoom out
+msgctxt "action"
+msgid "image_viewer::ZoomOut"
+msgstr "이미지: 축소"
+
+#. image viewer: zoom to actual size
+msgctxt "action"
+msgid "image_viewer::ZoomToActualSize"
+msgstr "이미지: 실제 크기"
+
+#. inline assistant: thumbs down result
+msgctxt "action"
+msgid "inline_assistant::ThumbsDownResult"
+msgstr "인라인 어시스트: 결과에 싫어요"
+
+#. inline assistant: thumbs up result
+msgctxt "action"
+msgid "inline_assistant::ThumbsUpResult"
+msgstr "인라인 어시스트: 결과에 좋아요"
+
+#. journal: new journal entry
+msgctxt "action"
+msgid "journal::NewJournalEntry"
+msgstr "새 저널 항목"
+
+#. keymap editor: copy action
+msgctxt "action"
+msgid "keymap_editor::CopyAction"
+msgstr "키맵: 작업 이름 복사"
+
+#. keymap editor: copy context
+msgctxt "action"
+msgid "keymap_editor::CopyContext"
+msgstr "키맵: 컨텍스트 복사"
+
+#. keymap editor: create binding
+msgctxt "action"
+msgid "keymap_editor::CreateBinding"
+msgstr "키맵: 키 바인딩 추가"
+
+#. keymap editor: delete binding
+msgctxt "action"
+msgid "keymap_editor::DeleteBinding"
+msgstr "키맵: 키 바인딩 삭제"
+
+#. keymap editor: edit binding
+msgctxt "action"
+msgid "keymap_editor::EditBinding"
+msgstr "키맵: 키 바인딩 편집"
+
+#. keymap editor: open create keybinding modal
+msgctxt "action"
+msgid "keymap_editor::OpenCreateKeybindingModal"
+msgstr "키맵: 키 바인딩 추가 대화 상자 열기"
+
+#. keymap editor: show matching keybinds
+msgctxt "action"
+msgid "keymap_editor::ShowMatchingKeybinds"
+msgstr "키맵: 일치하는 키 바인딩 표시"
+
+#. keymap editor: toggle conflict filter
+msgctxt "action"
+msgid "keymap_editor::ToggleConflictFilter"
+msgstr "키맵: 충돌 필터 전환"
+
+#. keymap editor: toggle exact keystroke matching
+msgctxt "action"
+msgid "keymap_editor::ToggleExactKeystrokeMatching"
+msgstr "키맵: 키 입력 정확히 일치 전환"
+
+#. keymap editor: toggle keystroke search
+msgctxt "action"
+msgid "keymap_editor::ToggleKeystrokeSearch"
+msgstr "키맵: 키 입력 검색 전환"
+
+#. keymap editor: toggle no action bindings
+msgctxt "action"
+msgid "keymap_editor::ToggleNoActionBindings"
+msgstr "키맵: 작업 없는 바인딩 표시 전환"
+
+#. keystroke input: clear keystrokes
+msgctxt "action"
+msgid "keystroke_input::ClearKeystrokes"
+msgstr "키 입력: 기록 지우기"
+
+#. keystroke input: start recording
+msgctxt "action"
+msgid "keystroke_input::StartRecording"
+msgstr "키 입력: 기록 시작"
+
+#. keystroke input: stop recording
+msgctxt "action"
+msgid "keystroke_input::StopRecording"
+msgstr "키 입력: 기록 중지"
+
+#. language selector: toggle
+msgctxt "action"
+msgid "language_selector::Toggle"
+msgstr "언어 모드 선택"
+
+#. line ending selector: toggle
+msgctxt "action"
+msgid "line_ending_selector::Toggle"
+msgstr "줄 끝 문자 선택"
+
+#. lsp command selector: toggle
+msgctxt "action"
+msgid "lsp_command_selector::Toggle"
+msgstr "언어 서버 명령 선택"
+
+#. lsp command selector: toggle arguments focus
+msgctxt "action"
+msgid "lsp_command_selector::ToggleArgumentsFocus"
+msgstr "언어 서버 명령: 인수 입력란 포커스 전환"
+
+#. lsp tool: review paused worktree code
+msgctxt "action"
+msgid "lsp_tool::ReviewPausedWorktreeCode"
+msgstr "일시 중지된 폴더의 코드 검토"
+
+#. lsp tool: toggle menu
+msgctxt "action"
+msgid "lsp_tool::ToggleMenu"
+msgstr "언어 서버 메뉴 전환"
+
+#. markdown: close and return to editor
+msgctxt "action"
+msgid "markdown::CloseAndReturnToEditor"
+msgstr "Markdown 미리 보기: 닫고 편집기로 돌아가기"
+
+#. markdown: copy
+msgctxt "action"
+msgid "markdown::Copy"
+msgstr "Markdown: 복사"
+
+#. markdown: copy as markdown
+msgctxt "action"
+msgid "markdown::CopyAsMarkdown"
+msgstr "Markdown: Markdown으로 복사"
+
+#. markdown: edit mermaid
+msgctxt "action"
+msgid "markdown::EditMermaid"
+msgstr "Markdown: Mermaid 다이어그램 편집…"
+
+#. markdown: edit table
+msgctxt "action"
+msgid "markdown::EditTable"
+msgstr "Markdown: 표 편집…"
+
+#. markdown: export to pdf
+msgctxt "action"
+msgid "markdown::ExportToPdf"
+msgstr "Markdown: PDF로 내보내기"
+
+#. markdown: fold all headings
+msgctxt "action"
+msgid "markdown::FoldAllHeadings"
+msgstr "Markdown: 모든 제목 접기"
+
+#. markdown: fold headings
+msgctxt "action"
+msgid "markdown::FoldHeadings"
+msgstr "Markdown: 지정한 수준의 제목 접기"
+
+#. markdown: fold headings picker
+msgctxt "action"
+msgid "markdown::FoldHeadingsPicker"
+msgstr "Markdown: 제목 접기(수준 선택)"
+
+#. markdown: insert details
+msgctxt "action"
+msgid "markdown::InsertDetails"
+msgstr "Markdown: 세부 정보(details) 삽입"
+
+#. markdown: insert horizontal rule
+msgctxt "action"
+msgid "markdown::InsertHorizontalRule"
+msgstr "Markdown: 가로줄 삽입"
+
+#. markdown: insert image
+msgctxt "action"
+msgid "markdown::InsertImage"
+msgstr "Markdown: 이미지 삽입/편집…"
+
+#. markdown: insert link
+msgctxt "action"
+msgid "markdown::InsertLink"
+msgstr "Markdown: 링크 삽입"
+
+#. markdown: insert mermaid diagram
+msgctxt "action"
+msgid "markdown::InsertMermaidDiagram"
+msgstr "Markdown: Mermaid 다이어그램 삽입"
+
+#. markdown: insert mermaid diagram picker
+msgctxt "action"
+msgid "markdown::InsertMermaidDiagramPicker"
+msgstr "Markdown: Mermaid 다이어그램 삽입(종류 선택)"
+
+#. markdown: newline invert hard break
+msgctxt "action"
+msgid "markdown::NewlineInvertHardBreak"
+msgstr "Markdown: 줄 바꿈(줄 끝 공백 동작 반전)"
+
+#. markdown: open following preview
+msgctxt "action"
+msgid "markdown::OpenFollowingPreview"
+msgstr "Markdown: 따라가는 미리 보기 열기"
+
+#. markdown: open preview
+msgctxt "action"
+msgid "markdown::OpenPreview"
+msgstr "Markdown: 미리 보기 열기"
+
+#. markdown: open preview to the side
+msgctxt "action"
+msgid "markdown::OpenPreviewToTheSide"
+msgstr "Markdown: 측면에 미리 보기 열기"
+
+#. markdown: remove marker
+msgctxt "action"
+msgid "markdown::RemoveMarker"
+msgstr "Markdown: 마커 제거"
+
+#. markdown: remove text color
+msgctxt "action"
+msgid "markdown::RemoveTextColor"
+msgstr "Markdown: 글자 색 제거"
+
+#. markdown: reset text size
+msgctxt "action"
+msgid "markdown::ResetTextSize"
+msgstr "Markdown: 단락 글자 크기 초기화"
+
+#. markdown: scroll down
+msgctxt "action"
+msgid "markdown::ScrollDown"
+msgstr "Markdown 미리 보기: 아래로 스크롤"
+
+#. markdown: scroll down by item
+msgctxt "action"
+msgid "markdown::ScrollDownByItem"
+msgstr "Markdown 미리 보기: 한 항목 아래로 스크롤"
+
+#. markdown: scroll page down
+msgctxt "action"
+msgid "markdown::ScrollPageDown"
+msgstr "Markdown 미리 보기: 한 페이지 아래로 스크롤"
+
+#. markdown: scroll page up
+msgctxt "action"
+msgid "markdown::ScrollPageUp"
+msgstr "Markdown 미리 보기: 한 페이지 위로 스크롤"
+
+#. markdown: scroll to bottom
+msgctxt "action"
+msgid "markdown::ScrollToBottom"
+msgstr "Markdown 미리 보기: 맨 아래로 스크롤"
+
+#. markdown: scroll to top
+msgctxt "action"
+msgid "markdown::ScrollToTop"
+msgstr "Markdown 미리 보기: 맨 위로 스크롤"
+
+#. markdown: scroll up
+msgctxt "action"
+msgid "markdown::ScrollUp"
+msgstr "Markdown 미리 보기: 위로 스크롤"
+
+#. markdown: scroll up by item
+msgctxt "action"
+msgid "markdown::ScrollUpByItem"
+msgstr "Markdown 미리 보기: 한 항목 위로 스크롤"
+
+#. markdown: set marker
+msgctxt "action"
+msgid "markdown::SetMarker"
+msgstr "Markdown: 마커 설정"
+
+#. markdown: set text color
+msgctxt "action"
+msgid "markdown::SetTextColor"
+msgstr "Markdown: 글자 색 설정"
+
+#. markdown: set text size
+msgctxt "action"
+msgid "markdown::SetTextSize"
+msgstr "Markdown: 단락 글자 크기 설정"
+
+#. markdown: toggle block quote
+msgctxt "action"
+msgid "markdown::ToggleBlockQuote"
+msgstr "Markdown: 인용 전환"
+
+#. markdown: toggle bold
+msgctxt "action"
+msgid "markdown::ToggleBold"
+msgstr "Markdown: 굵게 전환"
+
+#. markdown: toggle bullet list
+msgctxt "action"
+msgid "markdown::ToggleBulletList"
+msgstr "Markdown: 글머리 기호 목록 전환"
+
+#. markdown: toggle heading1
+msgctxt "action"
+msgid "markdown::ToggleHeading1"
+msgstr "Markdown: 제목 1 전환"
+
+#. markdown: toggle heading2
+msgctxt "action"
+msgid "markdown::ToggleHeading2"
+msgstr "Markdown: 제목 2 전환"
+
+#. markdown: toggle heading3
+msgctxt "action"
+msgid "markdown::ToggleHeading3"
+msgstr "Markdown: 제목 3 전환"
+
+#. markdown: toggle inline code
+msgctxt "action"
+msgid "markdown::ToggleInlineCode"
+msgstr "Markdown: 인라인 코드 전환"
+
+#. markdown: toggle italic
+msgctxt "action"
+msgid "markdown::ToggleItalic"
+msgstr "Markdown: 기울임꼴 전환"
+
+#. markdown: toggle marker
+msgctxt "action"
+msgid "markdown::ToggleMarker"
+msgstr "Markdown: 마커(노란색) 전환"
+
+#. markdown: toggle numbered list
+msgctxt "action"
+msgid "markdown::ToggleNumberedList"
+msgstr "Markdown: 번호 매기기 목록 전환"
+
+#. markdown: toggle strikethrough
+msgctxt "action"
+msgid "markdown::ToggleStrikethrough"
+msgstr "Markdown: 취소선 전환"
+
+#. markdown: toggle task list
+msgctxt "action"
+msgid "markdown::ToggleTaskList"
+msgstr "Markdown: 작업 목록 전환"
+
+#. markdown: unfold all headings
+msgctxt "action"
+msgid "markdown::UnfoldAllHeadings"
+msgstr "Markdown: 모든 제목 펼치기"
+
+#. markdown: wrap in code block
+msgctxt "action"
+msgid "markdown::WrapInCodeBlock"
+msgstr "Markdown: 코드 블록으로 감싸기"
+
+#. menu: cancel
+msgctxt "action"
+msgid "menu::Cancel"
+msgstr "메뉴: 취소"
+
+#. menu: confirm
+msgctxt "action"
+msgid "menu::Confirm"
+msgstr "메뉴: 확인"
+
+#. menu: end slot
+msgctxt "action"
+msgid "menu::EndSlot"
+msgstr "메뉴: 끝 슬롯"
+
+#. menu: restart
+msgctxt "action"
+msgid "menu::Restart"
+msgstr "메뉴: 처음부터 다시 시작"
+
+#. menu: secondary confirm
+msgctxt "action"
+msgid "menu::SecondaryConfirm"
+msgstr "메뉴: 보조 확인"
+
+#. menu: select child
+msgctxt "action"
+msgid "menu::SelectChild"
+msgstr "메뉴: 하위 메뉴 선택"
+
+#. menu: select first
+msgctxt "action"
+msgid "menu::SelectFirst"
+msgstr "메뉴: 첫 번째 항목 선택"
+
+#. menu: select last
+msgctxt "action"
+msgid "menu::SelectLast"
+msgstr "메뉴: 마지막 항목 선택"
+
+#. menu: select next
+msgctxt "action"
+msgid "menu::SelectNext"
+msgstr "메뉴: 다음 항목 선택"
+
+#. menu: select parent
+msgctxt "action"
+msgid "menu::SelectParent"
+msgstr "메뉴: 상위 메뉴 선택"
+
+#. menu: select previous
+msgctxt "action"
+msgid "menu::SelectPrevious"
+msgstr "메뉴: 이전 항목 선택"
+
+#. multi workspace: close workspace sidebar
+msgctxt "action"
+msgid "multi_workspace::CloseWorkspaceSidebar"
+msgstr "보기: 스레드 사이드바 닫기"
+
+#. multi workspace: focus workspace sidebar
+msgctxt "action"
+msgid "multi_workspace::FocusWorkspaceSidebar"
+msgstr "보기: 스레드 사이드바에 포커스"
+
+#. multi workspace: move project down
+msgctxt "action"
+msgid "multi_workspace::MoveProjectDown"
+msgstr "사이드바에서 프로젝트를 아래로 이동"
+
+#. multi workspace: move project to new window
+msgctxt "action"
+msgid "multi_workspace::MoveProjectToNewWindow"
+msgstr "프로젝트를 새 창으로 이동"
+
+#. multi workspace: move project up
+msgctxt "action"
+msgid "multi_workspace::MoveProjectUp"
+msgstr "사이드바에서 프로젝트를 위로 이동"
+
+#. multi workspace: new thread
+msgctxt "action"
+msgid "multi_workspace::NewThread"
+msgstr "에이전트: 이 작업 영역에 새 스레드"
+
+#. multi workspace: next project
+msgctxt "action"
+msgid "multi_workspace::NextProject"
+msgstr "다음 프로젝트"
+
+#. multi workspace: next thread
+msgctxt "action"
+msgid "multi_workspace::NextThread"
+msgstr "다음 스레드"
+
+#. multi workspace: previous project
+msgctxt "action"
+msgid "multi_workspace::PreviousProject"
+msgstr "이전 프로젝트"
+
+#. multi workspace: previous thread
+msgctxt "action"
+msgid "multi_workspace::PreviousThread"
+msgstr "이전 스레드"
+
+#. multi workspace: toggle workspace sidebar
+msgctxt "action"
+msgid "multi_workspace::ToggleWorkspaceSidebar"
+msgstr "보기: 스레드 사이드바 전환"
+
+#. new process modal: activate attach tab
+msgctxt "action"
+msgid "new_process_modal::ActivateAttachTab"
+msgstr "디버그: 새 프로세스 - 연결 탭"
+
+#. new process modal: activate debug tab
+msgctxt "action"
+msgid "new_process_modal::ActivateDebugTab"
+msgstr "디버그: 새 프로세스 - 디버그 탭"
+
+#. new process modal: activate launch tab
+msgctxt "action"
+msgid "new_process_modal::ActivateLaunchTab"
+msgstr "디버그: 새 프로세스 - 시작 탭"
+
+#. new process modal: activate task tab
+msgctxt "action"
+msgid "new_process_modal::ActivateTaskTab"
+msgstr "디버그: 새 프로세스 - 작업 탭"
+
+#. notebook: add code block
+msgctxt "action"
+msgid "notebook::AddCodeBlock"
+msgstr "노트북: 코드 셀 추가"
+
+#. notebook: add markdown block
+msgctxt "action"
+msgid "notebook::AddMarkdownBlock"
+msgstr "노트북: Markdown 셀 추가"
+
+#. notebook: clear outputs
+msgctxt "action"
+msgid "notebook::ClearOutputs"
+msgstr "노트북: 출력 모두 지우기"
+
+#. notebook: delete cell
+msgctxt "action"
+msgid "notebook::DeleteCell"
+msgstr "노트북: 셀 삭제"
+
+#. notebook: enter command mode
+msgctxt "action"
+msgid "notebook::EnterCommandMode"
+msgstr "노트북: 명령 모드로 전환"
+
+#. notebook: enter edit mode
+msgctxt "action"
+msgid "notebook::EnterEditMode"
+msgstr "노트북: 편집 모드로 전환"
+
+#. notebook: interrupt kernel
+msgctxt "action"
+msgid "notebook::InterruptKernel"
+msgstr "노트북: 커널 중단"
+
+#. notebook: move cell down
+msgctxt "action"
+msgid "notebook::MoveCellDown"
+msgstr "노트북: 셀을 아래로 이동"
+
+#. notebook: move cell up
+msgctxt "action"
+msgid "notebook::MoveCellUp"
+msgstr "노트북: 셀을 위로 이동"
+
+#. notebook: notebook move down
+msgctxt "action"
+msgid "notebook::NotebookMoveDown"
+msgstr "노트북: 아래 셀로 이동"
+
+#. notebook: notebook move up
+msgctxt "action"
+msgid "notebook::NotebookMoveUp"
+msgstr "노트북: 위 셀로 이동"
+
+#. notebook: open notebook
+msgctxt "action"
+msgid "notebook::OpenNotebook"
+msgstr "노트북: Jupyter 노트북 열기"
+
+#. notebook: restart kernel
+msgctxt "action"
+msgid "notebook::RestartKernel"
+msgstr "노트북: 커널 다시 시작"
+
+#. notebook: run
+msgctxt "action"
+msgid "notebook::Run"
+msgstr "노트북: 셀 실행"
+
+#. notebook: run all
+msgctxt "action"
+msgid "notebook::RunAll"
+msgstr "노트북: 모든 셀 실행"
+
+#. notebook: run and advance
+msgctxt "action"
+msgid "notebook::RunAndAdvance"
+msgstr "노트북: 셀 실행 후 다음으로"
+
+#. onboarding: finish
+msgctxt "action"
+msgid "onboarding::Finish"
+msgstr "온보딩: 완료"
+
+#. onboarding: open account
+msgctxt "action"
+msgid "onboarding::OpenAccount"
+msgstr "온보딩: 계정 열기"
+
+#. onboarding: reset hints
+msgctxt "action"
+msgid "onboarding::ResetHints"
+msgstr "온보딩: 시작 페이지 힌트 초기화"
+
+#. onboarding: sign in
+msgctxt "action"
+msgid "onboarding::SignIn"
+msgstr "온보딩: 로그인"
+
+#. outline: toggle
+msgctxt "action"
+msgid "outline::Toggle"
+msgstr "아웃라인: 심볼로 이동"
+
+#. outline panel: collapse all entries
+msgctxt "action"
+msgid "outline_panel::CollapseAllEntries"
+msgstr "아웃라인 패널: 모두 접기"
+
+#. outline panel: collapse selected entry
+msgctxt "action"
+msgid "outline_panel::CollapseSelectedEntry"
+msgstr "아웃라인 패널: 선택 항목 접기"
+
+#. outline panel: expand all entries
+msgctxt "action"
+msgid "outline_panel::ExpandAllEntries"
+msgstr "아웃라인 패널: 모두 펼치기"
+
+#. outline panel: expand selected entry
+msgctxt "action"
+msgid "outline_panel::ExpandSelectedEntry"
+msgstr "아웃라인 패널: 선택 항목 펼치기"
+
+#. outline panel: fold directory
+msgctxt "action"
+msgid "outline_panel::FoldDirectory"
+msgstr "아웃라인 패널: 디렉터리 묶어서 표시"
+
+#. outline panel: open selected entry
+msgctxt "action"
+msgid "outline_panel::OpenSelectedEntry"
+msgstr "아웃라인 패널: 선택 항목 열기"
+
+#. outline panel: reveal in file manager
+msgctxt "action"
+msgid "outline_panel::RevealInFileManager"
+msgstr "아웃라인 패널: 파일 관리자에서 보기"
+
+#. outline panel: scroll cursor bottom
+msgctxt "action"
+msgid "outline_panel::ScrollCursorBottom"
+msgstr "아웃라인 패널: 커서를 아래쪽 끝으로"
+
+#. outline panel: scroll cursor center
+msgctxt "action"
+msgid "outline_panel::ScrollCursorCenter"
+msgstr "아웃라인 패널: 커서를 가운데로"
+
+#. outline panel: scroll cursor top
+msgctxt "action"
+msgid "outline_panel::ScrollCursorTop"
+msgstr "아웃라인 패널: 커서를 위쪽 끝으로"
+
+#. outline panel: scroll down
+msgctxt "action"
+msgid "outline_panel::ScrollDown"
+msgstr "아웃라인 패널: 반 페이지 아래로 스크롤"
+
+#. outline panel: scroll up
+msgctxt "action"
+msgid "outline_panel::ScrollUp"
+msgstr "아웃라인 패널: 반 페이지 위로 스크롤"
+
+#. outline panel: select parent
+msgctxt "action"
+msgid "outline_panel::SelectParent"
+msgstr "아웃라인 패널: 상위 항목 선택"
+
+#. outline panel: toggle
+msgctxt "action"
+msgid "outline_panel::Toggle"
+msgstr "아웃라인 패널: 전환"
+
+#. outline panel: toggle active editor pin
+msgctxt "action"
+msgid "outline_panel::ToggleActiveEditorPin"
+msgstr "아웃라인 패널: 활성 편집기 고정 전환"
+
+#. outline panel: toggle focus
+msgctxt "action"
+msgid "outline_panel::ToggleFocus"
+msgstr "아웃라인 패널: 포커스 전환"
+
+#. outline panel: toggle symbols
+msgctxt "action"
+msgid "outline_panel::ToggleSymbols"
+msgstr "아웃라인 패널: 심볼 표시 전환"
+
+#. outline panel: unfold directory
+msgctxt "action"
+msgid "outline_panel::UnfoldDirectory"
+msgstr "아웃라인 패널: 디렉터리 펼쳐서 표시"
+
+#. pane: activate item
+msgctxt "action"
+msgid "pane::ActivateItem"
+msgstr "탭: 지정한 번호의 탭 활성화"
+
+#. pane: activate last item
+msgctxt "action"
+msgid "pane::ActivateLastItem"
+msgstr "탭: 마지막 탭 활성화"
+
+#. pane: activate next item
+msgctxt "action"
+msgid "pane::ActivateNextItem"
+msgstr "탭: 다음 탭 활성화"
+
+#. pane: activate previous item
+msgctxt "action"
+msgid "pane::ActivatePreviousItem"
+msgstr "탭: 이전 탭 활성화"
+
+#. pane: alternate file
+msgctxt "action"
+msgid "pane::AlternateFile"
+msgstr "파일: 직전 파일로 전환"
+
+#. pane: close active item
+msgctxt "action"
+msgid "pane::CloseActiveItem"
+msgstr "탭: 탭 닫기"
+
+#. pane: close all items
+msgctxt "action"
+msgid "pane::CloseAllItems"
+msgstr "탭: 모든 탭 닫기"
+
+#. pane: close clean items
+msgctxt "action"
+msgid "pane::CloseCleanItems"
+msgstr "탭: 수정되지 않은 탭 닫기"
+
+#. pane: close items to the left
+msgctxt "action"
+msgid "pane::CloseItemsToTheLeft"
+msgstr "탭: 왼쪽 탭 닫기"
+
+#. pane: close items to the right
+msgctxt "action"
+msgid "pane::CloseItemsToTheRight"
+msgstr "탭: 오른쪽 탭 닫기"
+
+#. pane: close multibuffer items
+msgctxt "action"
+msgid "pane::CloseMultibufferItems"
+msgstr "탭: 멀티버퍼 탭 닫기"
+
+#. pane: close other items
+msgctxt "action"
+msgid "pane::CloseOtherItems"
+msgstr "탭: 다른 탭 닫기"
+
+#. pane: deploy search
+msgctxt "action"
+msgid "pane::DeploySearch"
+msgstr "검색: 프로젝트 검색 열기"
+
+#. pane: go back
+msgctxt "action"
+msgid "pane::GoBack"
+msgstr "이동: 뒤로"
+
+#. pane: go forward
+msgctxt "action"
+msgid "pane::GoForward"
+msgstr "이동: 앞으로"
+
+#. pane: go to newer tag
+msgctxt "action"
+msgid "pane::GoToNewerTag"
+msgstr "이동: 태그 스택에서 앞으로"
+
+#. pane: go to older tag
+msgctxt "action"
+msgid "pane::GoToOlderTag"
+msgstr "이동: 태그 스택에서 뒤로"
+
+#. pane: join all
+msgctxt "action"
+msgid "pane::JoinAll"
+msgstr "분할 영역: 모두 합치기"
+
+#. pane: join into next
+msgctxt "action"
+msgid "pane::JoinIntoNext"
+msgstr "분할 영역: 다음 분할 영역에 합치기"
+
+#. pane: reopen closed item
+msgctxt "action"
+msgid "pane::ReopenClosedItem"
+msgstr "탭: 닫은 항목 다시 열기"
+
+#. pane: reveal in project panel
+msgctxt "action"
+msgid "pane::RevealInProjectPanel"
+msgstr "프로젝트 패널에서 보기"
+
+#. pane: split and move down
+msgctxt "action"
+msgid "pane::SplitAndMoveDown"
+msgstr "분할 영역: 아래로 분할하여 이동"
+
+#. pane: split and move left
+msgctxt "action"
+msgid "pane::SplitAndMoveLeft"
+msgstr "분할 영역: 왼쪽으로 분할하여 이동"
+
+#. pane: split and move right
+msgctxt "action"
+msgid "pane::SplitAndMoveRight"
+msgstr "분할 영역: 오른쪽으로 분할하여 이동"
+
+#. pane: split and move up
+msgctxt "action"
+msgid "pane::SplitAndMoveUp"
+msgstr "분할 영역: 위로 분할하여 이동"
+
+#. pane: split down
+msgctxt "action"
+msgid "pane::SplitDown"
+msgstr "분할 영역: 아래로 분할"
+
+#. pane: split horizontal
+msgctxt "action"
+msgid "pane::SplitHorizontal"
+msgstr "분할 영역: 가로로 분할"
+
+#. pane: split left
+msgctxt "action"
+msgid "pane::SplitLeft"
+msgstr "분할 영역: 왼쪽으로 분할"
+
+#. pane: split right
+msgctxt "action"
+msgid "pane::SplitRight"
+msgstr "분할 영역: 오른쪽으로 분할"
+
+#. pane: split up
+msgctxt "action"
+msgid "pane::SplitUp"
+msgstr "분할 영역: 위로 분할"
+
+#. pane: split vertical
+msgctxt "action"
+msgid "pane::SplitVertical"
+msgstr "분할 영역: 세로로 분할"
+
+#. pane: swap item left
+msgctxt "action"
+msgid "pane::SwapItemLeft"
+msgstr "탭: 왼쪽으로 이동"
+
+#. pane: swap item right
+msgctxt "action"
+msgid "pane::SwapItemRight"
+msgstr "탭: 오른쪽으로 이동"
+
+#. pane: toggle pin tab
+msgctxt "action"
+msgid "pane::TogglePinTab"
+msgstr "탭: 탭 고정 전환"
+
+#. pane: toggle preview tab
+msgctxt "action"
+msgid "pane::TogglePreviewTab"
+msgstr "탭: 미리 보기 탭 전환"
+
+#. pane: unpin all tabs
+msgctxt "action"
+msgid "pane::UnpinAllTabs"
+msgstr "탭: 모든 탭 고정 해제"
+
+#. picker: confirm completion
+msgctxt "action"
+msgid "picker::ConfirmCompletion"
+msgstr "선택기: 자동 완성 확인"
+
+#. picker: confirm input
+msgctxt "action"
+msgid "picker::ConfirmInput"
+msgstr "선택기: 입력한 내용으로 확인"
+
+#. picker: multi select next
+msgctxt "action"
+msgid "picker::MultiSelectNext"
+msgstr "선택기: 선택하고 다음으로"
+
+#. picker: set preview below
+msgctxt "action"
+msgid "picker::SetPreviewBelow"
+msgstr "선택기: 미리 보기를 아래에 표시"
+
+#. picker: set preview hidden
+msgctxt "action"
+msgid "picker::SetPreviewHidden"
+msgstr "선택기: 미리 보기 숨기기"
+
+#. picker: set preview right
+msgctxt "action"
+msgid "picker::SetPreviewRight"
+msgstr "선택기: 미리 보기를 오른쪽에 표시"
+
+#. picker: toggle actions menu
+msgctxt "action"
+msgid "picker::ToggleActionsMenu"
+msgstr "선택기: 작업 메뉴 전환"
+
+#. picker: toggle multi select
+msgctxt "action"
+msgid "picker::ToggleMultiSelect"
+msgstr "선택기: 다중 선택 전환"
+
+#. picker: toggle preview
+msgctxt "action"
+msgid "picker::TogglePreview"
+msgstr "선택기: 미리 보기 전환"
+
+#. project panel: collapse all entries
+msgctxt "action"
+msgid "project_panel::CollapseAllEntries"
+msgstr "프로젝트 패널: 모두 접기"
+
+#. project panel: collapse selected entry
+msgctxt "action"
+msgid "project_panel::CollapseSelectedEntry"
+msgstr "프로젝트 패널: 선택 항목 접기"
+
+#. project panel: collapse selected entry and children
+msgctxt "action"
+msgid "project_panel::CollapseSelectedEntryAndChildren"
+msgstr "프로젝트 패널: 선택 항목과 하위 항목 접기"
+
+#. project panel: compare marked files
+msgctxt "action"
+msgid "project_panel::CompareMarkedFiles"
+msgstr "프로젝트 패널: 표시한 파일 비교"
+
+#. project panel: copy
+msgctxt "action"
+msgid "project_panel::Copy"
+msgstr "프로젝트 패널: 복사"
+
+#. project panel: cut
+msgctxt "action"
+msgid "project_panel::Cut"
+msgstr "프로젝트 패널: 잘라내기"
+
+#. project panel: delete
+msgctxt "action"
+msgid "project_panel::Delete"
+msgstr "프로젝트 패널: 삭제"
+
+#. project panel: download from remote
+msgctxt "action"
+msgid "project_panel::DownloadFromRemote"
+msgstr "프로젝트 패널: 원격에서 다운로드"
+
+#. project panel: duplicate
+msgctxt "action"
+msgid "project_panel::Duplicate"
+msgstr "프로젝트 패널: 복제"
+
+#. project panel: expand all entries
+msgctxt "action"
+msgid "project_panel::ExpandAllEntries"
+msgstr "프로젝트 패널: 모두 펼치기"
+
+#. project panel: expand selected entry
+msgctxt "action"
+msgid "project_panel::ExpandSelectedEntry"
+msgstr "프로젝트 패널: 선택 항목 펼치기"
+
+#. project panel: expand selected entry and children
+msgctxt "action"
+msgid "project_panel::ExpandSelectedEntryAndChildren"
+msgstr "프로젝트 패널: 선택 항목과 하위 항목 펼치기"
+
+#. project panel: fold directory
+msgctxt "action"
+msgid "project_panel::FoldDirectory"
+msgstr "프로젝트 패널: 디렉터리 묶어서 표시"
+
+#. project panel: new directory
+msgctxt "action"
+msgid "project_panel::NewDirectory"
+msgstr "프로젝트 패널: 새 디렉터리"
+
+#. project panel: new file
+msgctxt "action"
+msgid "project_panel::NewFile"
+msgstr "프로젝트 패널: 새 파일"
+
+#. project panel: new search in directory
+msgctxt "action"
+msgid "project_panel::NewSearchInDirectory"
+msgstr "프로젝트 패널: 이 디렉터리에서 검색"
+
+#. project panel: open
+msgctxt "action"
+msgid "project_panel::Open"
+msgstr "프로젝트 패널: 열기"
+
+#. project panel: open context menu
+msgctxt "action"
+msgid "project_panel::OpenContextMenu"
+msgstr "프로젝트 패널: 컨텍스트 메뉴 열기"
+
+#. project panel: open markdown preview
+msgctxt "action"
+msgid "project_panel::OpenMarkdownPreview"
+msgstr "프로젝트 패널: Markdown 미리 보기 열기"
+
+#. project panel: open permanent
+msgctxt "action"
+msgid "project_panel::OpenPermanent"
+msgstr "프로젝트 패널: 고정 탭으로 열기"
+
+#. project panel: open split horizontal
+msgctxt "action"
+msgid "project_panel::OpenSplitHorizontal"
+msgstr "프로젝트 패널: 가로로 분할하여 열기"
+
+#. project panel: open split vertical
+msgctxt "action"
+msgid "project_panel::OpenSplitVertical"
+msgstr "프로젝트 패널: 세로로 분할하여 열기"
+
+#. project panel: paste
+msgctxt "action"
+msgid "project_panel::Paste"
+msgstr "프로젝트 패널: 붙여넣기"
+
+#. project panel: redo
+msgctxt "action"
+msgid "project_panel::Redo"
+msgstr "프로젝트 패널: 파일 작업 다시 실행"
+
+#. project panel: refresh
+msgctxt "action"
+msgid "project_panel::Refresh"
+msgstr "프로젝트 패널: 새로 고침"
+
+#. project panel: remove from project
+msgctxt "action"
+msgid "project_panel::RemoveFromProject"
+msgstr "프로젝트 패널: 프로젝트에서 제거"
+
+#. project panel: rename
+msgctxt "action"
+msgid "project_panel::Rename"
+msgstr "프로젝트 패널: 이름 변경"
+
+#. project panel: reveal in file manager
+msgctxt "action"
+msgid "project_panel::RevealInFileManager"
+msgstr "프로젝트 패널: 파일 관리자에서 보기"
+
+#. project panel: scroll cursor bottom
+msgctxt "action"
+msgid "project_panel::ScrollCursorBottom"
+msgstr "프로젝트 패널: 커서를 아래쪽 끝으로"
+
+#. project panel: scroll cursor center
+msgctxt "action"
+msgid "project_panel::ScrollCursorCenter"
+msgstr "프로젝트 패널: 커서를 가운데로"
+
+#. project panel: scroll cursor top
+msgctxt "action"
+msgid "project_panel::ScrollCursorTop"
+msgstr "프로젝트 패널: 커서를 위쪽 끝으로"
+
+#. project panel: scroll down
+msgctxt "action"
+msgid "project_panel::ScrollDown"
+msgstr "프로젝트 패널: 반 페이지 아래로 스크롤"
+
+#. project panel: scroll up
+msgctxt "action"
+msgid "project_panel::ScrollUp"
+msgstr "프로젝트 패널: 반 페이지 위로 스크롤"
+
+#. project panel: select next diagnostic
+msgctxt "action"
+msgid "project_panel::SelectNextDiagnostic"
+msgstr "프로젝트 패널: 다음 문제 선택"
+
+#. project panel: select next directory
+msgctxt "action"
+msgid "project_panel::SelectNextDirectory"
+msgstr "프로젝트 패널: 다음 디렉터리 선택"
+
+#. project panel: select next git entry
+msgctxt "action"
+msgid "project_panel::SelectNextGitEntry"
+msgstr "프로젝트 패널: 다음 Git 변경 항목 선택"
+
+#. project panel: select parent
+msgctxt "action"
+msgid "project_panel::SelectParent"
+msgstr "프로젝트 패널: 상위 항목 선택"
+
+#. project panel: select prev diagnostic
+msgctxt "action"
+msgid "project_panel::SelectPrevDiagnostic"
+msgstr "프로젝트 패널: 이전 문제 선택"
+
+#. project panel: select prev directory
+msgctxt "action"
+msgid "project_panel::SelectPrevDirectory"
+msgstr "프로젝트 패널: 이전 디렉터리 선택"
+
+#. project panel: select prev git entry
+msgctxt "action"
+msgid "project_panel::SelectPrevGitEntry"
+msgstr "프로젝트 패널: 이전 Git 변경 항목 선택"
+
+#. project panel: toggle
+msgctxt "action"
+msgid "project_panel::Toggle"
+msgstr "프로젝트 패널: 전환"
+
+#. project panel: toggle focus
+msgctxt "action"
+msgid "project_panel::ToggleFocus"
+msgstr "프로젝트 패널: 포커스 전환"
+
+#. project panel: toggle hide git ignore
+msgctxt "action"
+msgid "project_panel::ToggleHideGitIgnore"
+msgstr "프로젝트 패널: Git 무시 파일 숨기기 전환"
+
+#. project panel: toggle hide hidden
+msgctxt "action"
+msgid "project_panel::ToggleHideHidden"
+msgstr "프로젝트 패널: 숨김 파일 숨기기 전환"
+
+#. project panel: trash
+msgctxt "action"
+msgid "project_panel::Trash"
+msgstr "프로젝트 패널: 휴지통으로 이동"
+
+#. project panel: undo
+msgctxt "action"
+msgid "project_panel::Undo"
+msgstr "프로젝트 패널: 파일 작업 실행 취소"
+
+#. project panel: unfold directory
+msgctxt "action"
+msgid "project_panel::UnfoldDirectory"
+msgstr "프로젝트 패널: 디렉터리 펼쳐서 표시"
+
+#. project search: next field
+msgctxt "action"
+msgid "project_search::NextField"
+msgstr "검색: 다음 입력란"
+
+#. project search: open text finder
+msgctxt "action"
+msgid "project_search::OpenTextFinder"
+msgstr "검색: 텍스트 찾기 열기"
+
+#. project search: search in new
+msgctxt "action"
+msgid "project_search::SearchInNew"
+msgstr "검색: 새 탭에서 검색"
+
+#. project search: toggle all search results
+msgctxt "action"
+msgid "project_search::ToggleAllSearchResults"
+msgstr "검색: 모든 검색 결과 펼치기/접기 전환"
+
+#. project search: toggle filters
+msgctxt "action"
+msgid "project_search::ToggleFilters"
+msgstr "검색: 필터 전환"
+
+#. project search: toggle focus
+msgctxt "action"
+msgid "project_search::ToggleFocus"
+msgstr "검색: 프로젝트 검색 포커스 전환"
+
+#. project symbols: toggle
+msgctxt "action"
+msgid "project_symbols::Toggle"
+msgstr "프로젝트 심볼로 이동"
+
+#. projects: initialize dev container
+msgctxt "action"
+msgid "projects::InitializeDevContainer"
+msgstr "Dev Container 초기화"
+
+#. projects: open dev container
+msgctxt "action"
+msgid "projects::OpenDevContainer"
+msgstr "Dev Container 열기"
+
+#. projects: open folder in wsl
+msgctxt "action"
+msgid "projects::OpenFolderInWsl"
+msgstr "WSL에서 폴더 열기"
+
+#. projects: open recent
+msgctxt "action"
+msgid "projects::OpenRecent"
+msgstr "최근 프로젝트 열기"
+
+#. projects: open remote
+msgctxt "action"
+msgid "projects::OpenRemote"
+msgstr "원격 프로젝트 열기"
+
+#. projects: open wsl
+msgctxt "action"
+msgid "projects::OpenWsl"
+msgstr "WSL 프로젝트 열기"
+
+#. recent projects: add to workspace
+msgctxt "action"
+msgid "recent_projects::AddToWorkspace"
+msgstr "작업 영역에 추가"
+
+#. recent projects: remove selected
+msgctxt "action"
+msgid "recent_projects::RemoveSelected"
+msgstr "최근 프로젝트: 선택 항목 제거"
+
+#. recent projects: toggle actions menu
+msgctxt "action"
+msgid "recent_projects::ToggleActionsMenu"
+msgstr "최근 프로젝트: 작업 메뉴 전환"
+
+#. remote debug: simulate disconnect
+msgctxt "action"
+msgid "remote_debug::SimulateDisconnect"
+msgstr "개발: 원격 연결 끊김 시뮬레이션"
+
+#. remote debug: simulate timeout
+msgctxt "action"
+msgid "remote_debug::SimulateTimeout"
+msgstr "개발: 원격 시간 초과 시뮬레이션"
+
+#. remote debug: simulate timeout exhausted
+msgctxt "action"
+msgid "remote_debug::SimulateTimeoutExhausted"
+msgstr "개발: 원격 다시 시도 소진 시뮬레이션"
+
+#. repl: clear current output
+msgctxt "action"
+msgid "repl::ClearCurrentOutput"
+msgstr "REPL: 현재 출력 지우기"
+
+#. repl: clear outputs
+msgctxt "action"
+msgid "repl::ClearOutputs"
+msgstr "REPL: 출력 지우기"
+
+#. repl: interrupt
+msgctxt "action"
+msgid "repl::Interrupt"
+msgstr "REPL: 중단"
+
+#. repl: refresh kernelspecs
+msgctxt "action"
+msgid "repl::RefreshKernelspecs"
+msgstr "REPL: 커널 목록 새로 고침"
+
+#. repl: restart
+msgctxt "action"
+msgid "repl::Restart"
+msgstr "REPL: 다시 시작"
+
+#. repl: run
+msgctxt "action"
+msgid "repl::Run"
+msgstr "REPL: 실행"
+
+#. repl: run in place
+msgctxt "action"
+msgid "repl::RunInPlace"
+msgstr "REPL: 제자리에서 실행"
+
+#. repl: sessions
+msgctxt "action"
+msgid "repl::Sessions"
+msgstr "REPL: 세션"
+
+#. repl: shutdown
+msgctxt "action"
+msgid "repl::Shutdown"
+msgstr "REPL: 종료"
+
+#. search: cycle mode
+msgctxt "action"
+msgid "search::CycleMode"
+msgstr "검색: 검색 모드 순환"
+
+#. search: focus search
+msgctxt "action"
+msgid "search::FocusSearch"
+msgstr "검색: 검색 상자에 포커스"
+
+#. search: new search in directory
+msgctxt "action"
+msgid "search::NewSearchInDirectory"
+msgstr "검색: 이 디렉터리에서 검색"
+
+#. search: next history query
+msgctxt "action"
+msgid "search::NextHistoryQuery"
+msgstr "검색: 다음 검색 기록"
+
+#. search: previous history query
+msgctxt "action"
+msgid "search::PreviousHistoryQuery"
+msgstr "검색: 이전 검색 기록"
+
+#. search: replace all
+msgctxt "action"
+msgid "search::ReplaceAll"
+msgstr "검색: 모두 바꾸기"
+
+#. search: replace next
+msgctxt "action"
+msgid "search::ReplaceNext"
+msgstr "검색: 다음 바꾸기"
+
+#. search: select all matches
+msgctxt "action"
+msgid "search::SelectAllMatches"
+msgstr "검색: 모든 일치 항목 선택"
+
+#. search: select next match
+msgctxt "action"
+msgid "search::SelectNextMatch"
+msgstr "검색: 다음 일치 항목 선택"
+
+#. search: select previous match
+msgctxt "action"
+msgid "search::SelectPreviousMatch"
+msgstr "검색: 이전 일치 항목 선택"
+
+#. search: toggle case sensitive
+msgctxt "action"
+msgid "search::ToggleCaseSensitive"
+msgstr "검색: 대소문자 구분 전환"
+
+#. search: toggle include ignored
+msgctxt "action"
+msgid "search::ToggleIncludeIgnored"
+msgstr "검색: 무시된 파일 포함 전환"
+
+#. search: toggle regex
+msgctxt "action"
+msgid "search::ToggleRegex"
+msgstr "검색: 정규식 전환"
+
+#. search: toggle replace
+msgctxt "action"
+msgid "search::ToggleReplace"
+msgstr "검색: 바꾸기 전환"
+
+#. search: toggle selection
+msgctxt "action"
+msgid "search::ToggleSelection"
+msgstr "검색: 선택 영역에서 검색 전환"
+
+#. search: toggle whole word
+msgctxt "action"
+msgid "search::ToggleWholeWord"
+msgstr "검색: 단어 단위로 일치 전환"
+
+#. settings editor: collapse nav entry
+msgctxt "action"
+msgid "settings_editor::CollapseNavEntry"
+msgstr "설정: 탐색 항목 접기"
+
+#. settings editor: expand nav entry
+msgctxt "action"
+msgid "settings_editor::ExpandNavEntry"
+msgstr "설정: 탐색 항목 펼치기"
+
+#. settings editor: focus file
+msgctxt "action"
+msgid "settings_editor::FocusFile"
+msgstr "설정: 지정한 설정 파일에 포커스"
+
+#. settings editor: focus first nav entry
+msgctxt "action"
+msgid "settings_editor::FocusFirstNavEntry"
+msgstr "설정: 첫 번째 탐색 항목에 포커스"
+
+#. settings editor: focus last nav entry
+msgctxt "action"
+msgid "settings_editor::FocusLastNavEntry"
+msgstr "설정: 마지막 탐색 항목에 포커스"
+
+#. settings editor: focus next file
+msgctxt "action"
+msgid "settings_editor::FocusNextFile"
+msgstr "설정: 다음 설정 파일에 포커스"
+
+#. settings editor: focus next nav entry
+msgctxt "action"
+msgid "settings_editor::FocusNextNavEntry"
+msgstr "설정: 다음 탐색 항목에 포커스"
+
+#. settings editor: focus next root nav entry
+msgctxt "action"
+msgid "settings_editor::FocusNextRootNavEntry"
+msgstr "설정: 다음 최상위 탐색 항목에 포커스"
+
+#. settings editor: focus previous file
+msgctxt "action"
+msgid "settings_editor::FocusPreviousFile"
+msgstr "설정: 이전 설정 파일에 포커스"
+
+#. settings editor: focus previous nav entry
+msgctxt "action"
+msgid "settings_editor::FocusPreviousNavEntry"
+msgstr "설정: 이전 탐색 항목에 포커스"
+
+#. settings editor: focus previous root nav entry
+msgctxt "action"
+msgid "settings_editor::FocusPreviousRootNavEntry"
+msgstr "설정: 이전 최상위 탐색 항목에 포커스"
+
+#. settings editor: minimize
+msgctxt "action"
+msgid "settings_editor::Minimize"
+msgstr "설정: 창 최소화"
+
+#. settings editor: open current file
+msgctxt "action"
+msgid "settings_editor::OpenCurrentFile"
+msgstr "설정: 현재 설정 파일 열기"
+
+#. settings editor: toggle focus nav
+msgctxt "action"
+msgid "settings_editor::ToggleFocusNav"
+msgstr "설정: 탐색 모음/내용 포커스 전환"
+
+#. settings profile selector: toggle
+msgctxt "action"
+msgid "settings_profile_selector::Toggle"
+msgstr "설정 프로필 선택"
+
+#. skill creator: cancel
+msgctxt "action"
+msgid "skill_creator::Cancel"
+msgstr "스킬 만들기: 취소"
+
+#. skill creator: focus next field
+msgctxt "action"
+msgid "skill_creator::FocusNextField"
+msgstr "스킬 만들기: 다음 입력란으로 이동"
+
+#. skill creator: focus previous field
+msgctxt "action"
+msgid "skill_creator::FocusPreviousField"
+msgstr "스킬 만들기: 이전 입력란으로 이동"
+
+#. skill creator: save skill
+msgctxt "action"
+msgid "skill_creator::SaveSkill"
+msgstr "스킬 만들기: 스킬 저장"
+
+#. snippets: configure snippets
+msgctxt "action"
+msgid "snippets::ConfigureSnippets"
+msgstr "스니펫 구성"
+
+#. snippets: open folder
+msgctxt "action"
+msgid "snippets::OpenFolder"
+msgstr "스니펫 폴더 열기"
+
+#. stash picker: drop stash item
+msgctxt "action"
+msgid "stash_picker::DropStashItem"
+msgstr "Git: 스태시 삭제"
+
+#. stash picker: show stash item
+msgctxt "action"
+msgid "stash_picker::ShowStashItem"
+msgstr "Git: 스태시 Diff 보기"
+
+#. svg: open following preview
+msgctxt "action"
+msgid "svg::OpenFollowingPreview"
+msgstr "SVG: 따라가는 미리 보기 열기"
+
+#. svg: open preview
+msgctxt "action"
+msgid "svg::OpenPreview"
+msgstr "SVG: 미리 보기 열기"
+
+#. svg: open preview to the side
+msgctxt "action"
+msgid "svg::OpenPreviewToTheSide"
+msgstr "SVG: 측면에 미리 보기 열기"
+
+#. syntax tree view: use active editor
+msgctxt "action"
+msgid "syntax_tree_view::UseActiveEditor"
+msgstr "구문 트리: 활성 편집기 사용"
+
+#. tab switcher: close selected item
+msgctxt "action"
+msgid "tab_switcher::CloseSelectedItem"
+msgstr "선택한 탭 닫기"
+
+#. tab switcher: open in active pane
+msgctxt "action"
+msgid "tab_switcher::OpenInActivePane"
+msgstr "모든 분할 영역의 탭 전환(활성 분할 영역에서 열기)"
+
+#. tab switcher: toggle
+msgctxt "action"
+msgid "tab_switcher::Toggle"
+msgstr "탭 전환"
+
+#. tab switcher: toggle all
+msgctxt "action"
+msgid "tab_switcher::ToggleAll"
+msgstr "모든 탭 전환"
+
+#. tabular data: append column
+msgctxt "action"
+msgid "tabular_data::AppendColumn"
+msgstr "표(CSV/TSV): 끝에 열 추가"
+
+#. tabular data: append row
+msgctxt "action"
+msgid "tabular_data::AppendRow"
+msgstr "표(CSV/TSV): 끝에 행 추가"
+
+#. tabular data: cancel editing
+msgctxt "action"
+msgid "tabular_data::CancelEditing"
+msgstr "표(CSV/TSV): 편집 취소"
+
+#. tabular data: clear all filters
+msgctxt "action"
+msgid "tabular_data::ClearAllFilters"
+msgstr "표(CSV/TSV): 모든 필터 지우기"
+
+#. tabular data: clear cell colors
+msgctxt "action"
+msgid "tabular_data::ClearCellColors"
+msgstr "표(CSV/TSV): 셀 색 지우기"
+
+#. tabular data: clear cells
+msgctxt "action"
+msgid "tabular_data::ClearCells"
+msgstr "표(CSV/TSV): 셀 내용 지우기"
+
+#. tabular data: commit and move down
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveDown"
+msgstr "표(CSV/TSV): 확인하고 아래 셀로 이동"
+
+#. tabular data: commit and move left
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveLeft"
+msgstr "표(CSV/TSV): 확인하고 왼쪽 셀로 이동"
+
+#. tabular data: commit and move right
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveRight"
+msgstr "표(CSV/TSV): 확인하고 오른쪽 셀로 이동"
+
+#. tabular data: commit and move up
+msgctxt "action"
+msgid "tabular_data::CommitAndMoveUp"
+msgstr "표(CSV/TSV): 확인하고 위 셀로 이동"
+
+#. tabular data: commit editing
+msgctxt "action"
+msgid "tabular_data::CommitEditing"
+msgstr "표(CSV/TSV): 편집 확인"
+
+#. tabular data: copy cells
+msgctxt "action"
+msgid "tabular_data::CopyCells"
+msgstr "표(CSV/TSV): 셀 복사"
+
+#. tabular data: cut cells
+msgctxt "action"
+msgid "tabular_data::CutCells"
+msgstr "표(CSV/TSV): 셀 잘라내기"
+
+#. tabular data: delete columns
+msgctxt "action"
+msgid "tabular_data::DeleteColumns"
+msgstr "표(CSV/TSV): 열 삭제"
+
+#. tabular data: delete rows
+msgctxt "action"
+msgid "tabular_data::DeleteRows"
+msgstr "표(CSV/TSV): 행 삭제"
+
+#. tabular data: delete rows or columns
+msgctxt "action"
+msgid "tabular_data::DeleteRowsOrColumns"
+msgstr "표(CSV/TSV): 선택한 행 또는 열 삭제"
+
+#. tabular data: diff selected cells
+msgctxt "action"
+msgid "tabular_data::DiffSelectedCells"
+msgstr "표(CSV/TSV): 선택한 셀 비교"
+
+#. tabular data: diff with file
+msgctxt "action"
+msgid "tabular_data::DiffWithFile"
+msgstr "표(CSV/TSV): 파일과 비교"
+
+#. tabular data: diff with head
+msgctxt "action"
+msgid "tabular_data::DiffWithHead"
+msgstr "표(CSV/TSV): HEAD와 비교"
+
+#. tabular data: fill down
+msgctxt "action"
+msgid "tabular_data::FillDown"
+msgstr "표(CSV/TSV): 아래로 채우기"
+
+#. tabular data: fill right
+msgctxt "action"
+msgid "tabular_data::FillRight"
+msgstr "표(CSV/TSV): 오른쪽으로 채우기"
+
+#. tabular data: insert column left
+msgctxt "action"
+msgid "tabular_data::InsertColumnLeft"
+msgstr "표(CSV/TSV): 왼쪽에 열 삽입"
+
+#. tabular data: insert column right
+msgctxt "action"
+msgid "tabular_data::InsertColumnRight"
+msgstr "표(CSV/TSV): 오른쪽에 열 삽입"
+
+#. tabular data: insert line break
+msgctxt "action"
+msgid "tabular_data::InsertLineBreak"
+msgstr "표(CSV/TSV): 셀 안에서 줄 바꿈"
+
+#. tabular data: insert row above
+msgctxt "action"
+msgid "tabular_data::InsertRowAbove"
+msgstr "표(CSV/TSV): 위에 행 삽입"
+
+#. tabular data: insert row below
+msgctxt "action"
+msgid "tabular_data::InsertRowBelow"
+msgstr "표(CSV/TSV): 아래에 행 삽입"
+
+#. tabular data: insert rows or columns
+msgctxt "action"
+msgid "tabular_data::InsertRowsOrColumns"
+msgstr "표(CSV/TSV): 선택에 맞춰 행 또는 열 삽입"
+
+#. tabular data: open as text
+msgctxt "action"
+msgid "tabular_data::OpenAsText"
+msgstr "CSV/TSV: 텍스트로 열기"
+
+#. tabular data: open preview
+msgctxt "action"
+msgid "tabular_data::OpenPreview"
+msgstr "CSV/TSV: 표로 열기"
+
+#. tabular data: open preview to the side
+msgctxt "action"
+msgid "tabular_data::OpenPreviewToTheSide"
+msgstr "CSV/TSV: 측면에 표로 열기"
+
+#. tabular data: paste cells
+msgctxt "action"
+msgid "tabular_data::PasteCells"
+msgstr "표(CSV/TSV): 셀 붙여넣기"
+
+#. tabular data: recompute diff
+msgctxt "action"
+msgid "tabular_data::RecomputeDiff"
+msgstr "표(CSV/TSV): Diff 다시 계산"
+
+#. tabular data: select all cells
+msgctxt "action"
+msgid "tabular_data::SelectAllCells"
+msgstr "표(CSV/TSV): 모든 셀 선택"
+
+#. tabular data: select column
+msgctxt "action"
+msgid "tabular_data::SelectColumn"
+msgstr "표(CSV/TSV): 열 선택"
+
+#. tabular data: select row
+msgctxt "action"
+msgid "tabular_data::SelectRow"
+msgstr "표(CSV/TSV): 행 선택"
+
+#. tabular data: set fill color
+msgctxt "action"
+msgid "tabular_data::SetFillColor"
+msgstr "표(CSV/TSV): 채우기 색 설정"
+
+#. tabular data: set text color
+msgctxt "action"
+msgid "tabular_data::SetTextColor"
+msgstr "표(CSV/TSV): 글자 색 설정"
+
+#. tabular data: start editing
+msgctxt "action"
+msgid "tabular_data::StartEditing"
+msgstr "표(CSV/TSV): 셀 편집"
+
+#. tabular data: toggle filter menu
+msgctxt "action"
+msgid "tabular_data::ToggleFilterMenu"
+msgstr "표(CSV/TSV): 필터 메뉴 전환"
+
+#. tabular data: toggle header row
+msgctxt "action"
+msgid "tabular_data::ToggleHeaderRow"
+msgstr "표(CSV/TSV): 머리글 행 전환"
+
+#. task: rerun
+msgctxt "action"
+msgid "task::Rerun"
+msgstr "작업: 마지막 작업 다시 실행"
+
+#. task: spawn
+msgctxt "action"
+msgid "task::Spawn"
+msgstr "작업: 작업 실행"
+
+#. terminal: cancel macro
+msgctxt "action"
+msgid "terminal::CancelMacro"
+msgstr "터미널: 매크로 취소"
+
+#. terminal: clear
+msgctxt "action"
+msgid "terminal::Clear"
+msgstr "터미널: 화면 지우기"
+
+#. terminal: copy
+msgctxt "action"
+msgid "terminal::Copy"
+msgstr "터미널: 복사"
+
+#. terminal: edit macros
+msgctxt "action"
+msgid "terminal::EditMacros"
+msgstr "터미널: 매크로 편집…"
+
+#. terminal: install claude code
+msgctxt "action"
+msgid "terminal::InstallClaudeCode"
+msgstr "터미널: Claude Code 설치(공식 명령)"
+
+#. terminal: launch claude code
+msgctxt "action"
+msgid "terminal::LaunchClaudeCode"
+msgstr "터미널: Claude Code 실행"
+
+#. terminal: launch claude code outside sandbox
+msgctxt "action"
+msgid "terminal::LaunchClaudeCodeOutsideSandbox"
+msgstr "터미널: 샌드박스 외부에서 Claude Code 실행"
+
+#. terminal: open file transfer
+msgctxt "action"
+msgid "terminal::OpenFileTransfer"
+msgstr "터미널: 파일 전송…"
+
+#. terminal: open session log
+msgctxt "action"
+msgid "terminal::OpenSessionLog"
+msgstr "터미널: 로그 파일 위치 열기"
+
+#. terminal: paste
+msgctxt "action"
+msgid "terminal::Paste"
+msgstr "터미널: 붙여넣기"
+
+#. terminal: paste text
+msgctxt "action"
+msgid "terminal::PasteText"
+msgstr "터미널: 텍스트 붙여넣기"
+
+#. terminal: quick connect
+msgctxt "action"
+msgid "terminal::QuickConnect"
+msgstr "터미널: 빠른 연결…"
+
+#. terminal: rename terminal
+msgctxt "action"
+msgid "terminal::RenameTerminal"
+msgstr "터미널: 이름 변경"
+
+#. terminal: rerun task
+msgctxt "action"
+msgid "terminal::RerunTask"
+msgstr "터미널: 작업 다시 실행"
+
+#. terminal: restart terminal
+msgctxt "action"
+msgid "terminal::RestartTerminal"
+msgstr "터미널: 다시 시작"
+
+#. terminal: run macro
+msgctxt "action"
+msgid "terminal::RunMacro"
+msgstr "터미널: 매크로 실행…"
+
+#. terminal: scroll half page down
+msgctxt "action"
+msgid "terminal::ScrollHalfPageDown"
+msgstr "터미널: 반 페이지 아래로 스크롤"
+
+#. terminal: scroll half page up
+msgctxt "action"
+msgid "terminal::ScrollHalfPageUp"
+msgstr "터미널: 반 페이지 위로 스크롤"
+
+#. terminal: scroll line down
+msgctxt "action"
+msgid "terminal::ScrollLineDown"
+msgstr "터미널: 한 줄 아래로 스크롤"
+
+#. terminal: scroll line up
+msgctxt "action"
+msgid "terminal::ScrollLineUp"
+msgstr "터미널: 한 줄 위로 스크롤"
+
+#. terminal: scroll page down
+msgctxt "action"
+msgid "terminal::ScrollPageDown"
+msgstr "터미널: 한 페이지 아래로 스크롤"
+
+#. terminal: scroll page up
+msgctxt "action"
+msgid "terminal::ScrollPageUp"
+msgstr "터미널: 한 페이지 위로 스크롤"
+
+#. terminal: scroll to bottom
+msgctxt "action"
+msgid "terminal::ScrollToBottom"
+msgstr "터미널: 맨 아래로 스크롤"
+
+#. terminal: scroll to top
+msgctxt "action"
+msgid "terminal::ScrollToTop"
+msgstr "터미널: 맨 위로 스크롤"
+
+#. terminal: search test
+msgctxt "action"
+msgid "terminal::SearchTest"
+msgstr "터미널: 텍스트 검색"
+
+#. terminal: select all
+msgctxt "action"
+msgid "terminal::SelectAll"
+msgstr "터미널: 모두 선택"
+
+#. terminal: send keystroke
+msgctxt "action"
+msgid "terminal::SendKeystroke"
+msgstr "터미널: 키 입력 보내기"
+
+#. terminal: send text
+msgctxt "action"
+msgid "terminal::SendText"
+msgstr "터미널: 텍스트 보내기"
+
+#. terminal: show character palette
+msgctxt "action"
+msgid "terminal::ShowCharacterPalette"
+msgstr "터미널: 문자표 표시"
+
+#. terminal: split grid
+msgctxt "action"
+msgid "terminal::SplitGrid"
+msgstr "터미널: 격자로 분할"
+
+#. terminal: start session log
+msgctxt "action"
+msgid "terminal::StartSessionLog"
+msgstr "터미널: 로그 기록 시작(저장 위치 선택)…"
+
+#. terminal: stop session log
+msgctxt "action"
+msgid "terminal::StopSessionLog"
+msgstr "터미널: 로그 기록 중지"
+
+#. terminal: tail session log
+msgctxt "action"
+msgid "terminal::TailSessionLog"
+msgstr "터미널: 편집기에서 로그 열기"
+
+#. terminal: toggle broadcast input
+msgctxt "action"
+msgid "terminal::ToggleBroadcastInput"
+msgstr "터미널: 모든 분할 영역에 동시 입력 전환"
+
+#. terminal: toggle session log
+msgctxt "action"
+msgid "terminal::ToggleSessionLog"
+msgstr "터미널: 로그 기록 시작/중지"
+
+#. terminal: toggle vi mode
+msgctxt "action"
+msgid "terminal::ToggleViMode"
+msgstr "터미널: Vi 모드 전환"
+
+#. terminal panel: toggle
+msgctxt "action"
+msgid "terminal_panel::Toggle"
+msgstr "터미널: 패널 전환"
+
+#. terminal panel: toggle focus
+msgctxt "action"
+msgid "terminal_panel::ToggleFocus"
+msgstr "터미널: 패널 포커스 전환"
+
+#. text finder: fold
+msgctxt "action"
+msgid "text_finder::Fold"
+msgstr "텍스트 찾기: 접기"
+
+#. text finder: to project search
+msgctxt "action"
+msgid "text_finder::ToProjectSearch"
+msgstr "텍스트 찾기: 프로젝트 검색 탭으로 전환"
+
+#. text finder: toggle
+msgctxt "action"
+msgid "text_finder::Toggle"
+msgstr "텍스트 찾기"
+
+#. text finder: toggle fold all
+msgctxt "action"
+msgid "text_finder::ToggleFoldAll"
+msgstr "텍스트 찾기: 모두 접기 전환"
+
+#. text finder: unfold
+msgctxt "action"
+msgid "text_finder::Unfold"
+msgstr "텍스트 찾기: 펼치기"
+
+#. theme: toggle mode
+msgctxt "action"
+msgid "theme::ToggleMode"
+msgstr "테마: 라이트/다크 모드 전환"
+
+#. theme selector: reload
+msgctxt "action"
+msgid "theme_selector::Reload"
+msgstr "테마 다시 로드"
+
+#. theme selector: toggle
+msgctxt "action"
+msgid "theme_selector::Toggle"
+msgstr "테마 선택"
+
+#. toast: run action
+msgctxt "action"
+msgid "toast::RunAction"
+msgstr "알림: 작업 실행"
+
+#. toolchain: add toolchain
+msgctxt "action"
+msgid "toolchain::AddToolchain"
+msgstr "툴체인 추가"
+
+#. toolchain: select
+msgctxt "action"
+msgid "toolchain::Select"
+msgstr "툴체인 선택"
+
+#. variable list: add watch
+msgctxt "action"
+msgid "variable_list::AddWatch"
+msgstr "디버그: 변수를 조사식에 추가"
+
+#. variable list: collapse selected entry
+msgctxt "action"
+msgid "variable_list::CollapseSelectedEntry"
+msgstr "디버그: 선택 항목 접기"
+
+#. variable list: copy variable name
+msgctxt "action"
+msgid "variable_list::CopyVariableName"
+msgstr "디버그: 변수 이름 복사"
+
+#. variable list: copy variable value
+msgctxt "action"
+msgid "variable_list::CopyVariableValue"
+msgstr "디버그: 변수 값 복사"
+
+#. variable list: edit variable
+msgctxt "action"
+msgid "variable_list::EditVariable"
+msgstr "디버그: 변수 편집"
+
+#. variable list: expand selected entry
+msgctxt "action"
+msgid "variable_list::ExpandSelectedEntry"
+msgstr "디버그: 선택 항목 펼치기"
+
+#. variable list: go to memory
+msgctxt "action"
+msgid "variable_list::GoToMemory"
+msgstr "디버그: 메모리로 이동"
+
+#. variable list: remove watch
+msgctxt "action"
+msgid "variable_list::RemoveWatch"
+msgstr "디버그: 조사식 제거"
+
+#. vim: angle brackets
+msgctxt "action"
+msgid "vim::AngleBrackets"
+msgstr "Vim: 꺾쇠 괄호 <> 텍스트 개체"
+
+#. vim: any brackets
+msgctxt "action"
+msgid "vim::AnyBrackets"
+msgstr "Vim: 모든 괄호 텍스트 개체"
+
+#. vim: any pair
+msgctxt "action"
+msgid "vim::AnyPair"
+msgstr "Vim: 모든 쌍 텍스트 개체"
+
+#. vim: any quotes
+msgctxt "action"
+msgid "vim::AnyQuotes"
+msgstr "Vim: 모든 따옴표 텍스트 개체"
+
+#. vim: argument
+msgctxt "action"
+msgid "vim::Argument"
+msgstr "Vim: 함수 인수 텍스트 개체"
+
+#. vim: argument required
+msgctxt "action"
+msgid "vim::ArgumentRequired"
+msgstr "Vim: 인수 필요"
+
+#. vim: auto indent
+msgctxt "action"
+msgid "vim::AutoIndent"
+msgstr "Vim: 자동 들여쓰기"
+
+#. vim: back quotes
+msgctxt "action"
+msgid "vim::BackQuotes"
+msgstr "Vim: 백틱 텍스트 개체"
+
+#. vim: change case
+msgctxt "action"
+msgid "vim::ChangeCase"
+msgstr "Vim: 대소문자 전환"
+
+#. vim: change list newer
+msgctxt "action"
+msgid "vim::ChangeListNewer"
+msgstr "Vim: 변경 목록의 최신 위치로"
+
+#. vim: change list older
+msgctxt "action"
+msgid "vim::ChangeListOlder"
+msgstr "Vim: 변경 목록의 이전 위치로"
+
+#. vim: change to end of line
+msgctxt "action"
+msgid "vim::ChangeToEndOfLine"
+msgstr "Vim: 줄 끝까지 변경"
+
+#. vim: class
+msgctxt "action"
+msgid "vim::Class"
+msgstr "Vim: 클래스 텍스트 개체"
+
+#. vim: clear exchange
+msgctxt "action"
+msgid "vim::ClearExchange"
+msgstr "Vim: 교환 기록 지우기"
+
+#. vim: clear operators
+msgctxt "action"
+msgid "vim::ClearOperators"
+msgstr "Vim: 입력 중인 연산자 지우기"
+
+#. vim: column left
+msgctxt "action"
+msgid "vim::ColumnLeft"
+msgstr "Vim: 한 열 왼쪽으로 스크롤"
+
+#. vim: column right
+msgctxt "action"
+msgid "vim::ColumnRight"
+msgstr "Vim: 한 열 오른쪽으로 스크롤"
+
+#. vim: comment
+msgctxt "action"
+msgid "vim::Comment"
+msgstr "Vim: 주석 텍스트 개체"
+
+#. vim: convert to lower case
+msgctxt "action"
+msgid "vim::ConvertToLowerCase"
+msgstr "Vim: 소문자로 변환"
+
+#. vim: convert to rot13
+msgctxt "action"
+msgid "vim::ConvertToRot13"
+msgstr "Vim: ROT13으로 변환"
+
+#. vim: convert to rot47
+msgctxt "action"
+msgid "vim::ConvertToRot47"
+msgstr "Vim: ROT47로 변환"
+
+#. vim: convert to upper case
+msgctxt "action"
+msgid "vim::ConvertToUpperCase"
+msgstr "Vim: 대문자로 변환"
+
+#. vim: count command
+msgctxt "action"
+msgid "vim::CountCommand"
+msgstr "Vim: 명령줄 열기(횟수를 범위로)"
+
+#. vim: curly brackets
+msgctxt "action"
+msgid "vim::CurlyBrackets"
+msgstr "Vim: 중괄호 텍스트 개체"
+
+#. vim: current line
+msgctxt "action"
+msgid "vim::CurrentLine"
+msgstr "Vim: 현재 줄 텍스트 개체"
+
+#. vim: decrement
+msgctxt "action"
+msgid "vim::Decrement"
+msgstr "Vim: 커서 위치의 숫자 감소"
+
+#. vim: delete left
+msgctxt "action"
+msgid "vim::DeleteLeft"
+msgstr "Vim: 왼쪽 문자 삭제"
+
+#. vim: delete right
+msgctxt "action"
+msgid "vim::DeleteRight"
+msgstr "Vim: 오른쪽 문자 삭제"
+
+#. vim: delete to end of line
+msgctxt "action"
+msgid "vim::DeleteToEndOfLine"
+msgstr "Vim: 줄 끝까지 삭제"
+
+#. vim: double quotes
+msgctxt "action"
+msgid "vim::DoubleQuotes"
+msgstr "Vim: 큰따옴표 텍스트 개체"
+
+#. vim: down
+msgctxt "action"
+msgid "vim::Down"
+msgstr "Vim: 아래로"
+
+#. vim: end of document
+msgctxt "action"
+msgid "vim::EndOfDocument"
+msgstr "Vim: 문서 끝으로"
+
+#. vim: end of line
+msgctxt "action"
+msgid "vim::EndOfLine"
+msgstr "Vim: 줄 끝으로"
+
+#. vim: end of line downward
+msgctxt "action"
+msgid "vim::EndOfLineDownward"
+msgstr "Vim: 줄의 마지막 공백 아닌 문자로(횟수만큼 아래 줄)"
+
+#. vim: end of paragraph
+msgctxt "action"
+msgid "vim::EndOfParagraph"
+msgstr "Vim: 단락 끝으로"
+
+#. vim: end repeat
+msgctxt "action"
+msgid "vim::EndRepeat"
+msgstr "Vim: 반복 기록 종료"
+
+#. vim: enter
+msgctxt "action"
+msgid "vim::Enter"
+msgstr "Vim: 줄 바꿈 삽입"
+
+#. vim: entire file
+msgctxt "action"
+msgid "vim::EntireFile"
+msgstr "Vim: 파일 전체 텍스트 개체"
+
+#. vim: exchange
+msgctxt "action"
+msgid "vim::Exchange"
+msgstr "Vim: 범위 교환"
+
+#. vim: find command
+msgctxt "action"
+msgid "vim::FindCommand"
+msgstr "Vim: 찾기 명령 실행"
+
+#. vim: first non whitespace
+msgctxt "action"
+msgid "vim::FirstNonWhitespace"
+msgstr "Vim: 줄의 첫 번째 공백 아닌 문자로"
+
+#. vim: go to column
+msgctxt "action"
+msgid "vim::GoToColumn"
+msgstr "Vim: 지정한 열로 이동"
+
+#. vim: go to next reference
+msgctxt "action"
+msgid "vim::GoToNextReference"
+msgstr "Vim: 다음 참조로 이동"
+
+#. vim: go to percentage
+msgctxt "action"
+msgid "vim::GoToPercentage"
+msgstr "Vim: 파일의 지정한 비율 위치로 이동"
+
+#. vim: go to previous reference
+msgctxt "action"
+msgid "vim::GoToPreviousReference"
+msgstr "Vim: 이전 참조로 이동"
+
+#. vim: go to previous tab
+msgctxt "action"
+msgid "vim::GoToPreviousTab"
+msgstr "Vim: 이전 탭으로 이동"
+
+#. vim: go to tab
+msgctxt "action"
+msgid "vim::GoToTab"
+msgstr "Vim: 다음 탭으로 이동(횟수 지정 시 해당 번호의 탭)"
+
+#. vim: half page left
+msgctxt "action"
+msgid "vim::HalfPageLeft"
+msgstr "Vim: 반 페이지 왼쪽으로 스크롤"
+
+#. vim: half page right
+msgctxt "action"
+msgid "vim::HalfPageRight"
+msgstr "Vim: 반 페이지 오른쪽으로 스크롤"
+
+#. vim: helix append
+msgctxt "action"
+msgid "vim::HelixAppend"
+msgstr "Helix: 선택 영역 끝에 추가"
+
+#. vim: helix collapse selection
+msgctxt "action"
+msgid "vim::HelixCollapseSelection"
+msgstr "Helix: 선택 영역을 커서로 축소"
+
+#. vim: helix delete
+msgctxt "action"
+msgid "vim::HelixDelete"
+msgstr "Helix: 삭제"
+
+#. vim: helix duplicate above
+msgctxt "action"
+msgid "vim::HelixDuplicateAbove"
+msgstr "Helix: 선택 영역을 위로 복제"
+
+#. vim: helix duplicate below
+msgctxt "action"
+msgid "vim::HelixDuplicateBelow"
+msgstr "Helix: 선택 영역을 아래로 복제"
+
+#. vim: helix goto last modification
+msgctxt "action"
+msgid "vim::HelixGotoLastModification"
+msgstr "Helix: 마지막 수정 위치로 이동"
+
+#. vim: helix goto line
+msgctxt "action"
+msgid "vim::HelixGotoLine"
+msgstr "Helix: 지정한 줄로 이동"
+
+#. vim: helix insert
+msgctxt "action"
+msgid "vim::HelixInsert"
+msgstr "Helix: 선택 영역 앞에 삽입"
+
+#. vim: helix insert end of line
+msgctxt "action"
+msgid "vim::HelixInsertEndOfLine"
+msgstr "Helix: 줄 끝에 삽입"
+
+#. vim: helix jump to word
+msgctxt "action"
+msgid "vim::HelixJumpToWord"
+msgstr "Helix: 레이블로 단어에 점프"
+
+#. vim: helix keep newest selection
+msgctxt "action"
+msgid "vim::HelixKeepNewestSelection"
+msgstr "Helix: 가장 최근 선택 영역만 유지"
+
+#. vim: helix paste
+msgctxt "action"
+msgid "vim::HelixPaste"
+msgstr "Helix: 레지스터에서 붙여넣기"
+
+#. vim: helix select line
+msgctxt "action"
+msgid "vim::HelixSelectLine"
+msgstr "Helix: 줄 선택"
+
+#. vim: helix select next
+msgctxt "action"
+msgid "vim::HelixSelectNext"
+msgstr "Helix: 다음 일치 항목 선택"
+
+#. vim: helix select previous
+msgctxt "action"
+msgid "vim::HelixSelectPrevious"
+msgstr "Helix: 이전 일치 항목 선택"
+
+#. vim: helix select regex
+msgctxt "action"
+msgid "vim::HelixSelectRegex"
+msgstr "Helix: 선택 영역에서 패턴과 일치하는 항목 모두 선택"
+
+#. vim: helix substitute
+msgctxt "action"
+msgid "vim::HelixSubstitute"
+msgstr "Helix: 선택 영역을 삭제하고 삽입"
+
+#. vim: helix substitute no yank
+msgctxt "action"
+msgid "vim::HelixSubstituteNoYank"
+msgstr "Helix: 선택 영역을 yank 없이 삭제하고 삽입"
+
+#. vim: helix trim selections
+msgctxt "action"
+msgid "vim::HelixTrimSelections"
+msgstr "Helix: 선택 영역 앞뒤 공백 제거"
+
+#. vim: helix yank
+msgctxt "action"
+msgid "vim::HelixYank"
+msgstr "Helix: yank"
+
+#. vim: increment
+msgctxt "action"
+msgid "vim::Increment"
+msgstr "Vim: 커서 위치의 숫자 증가"
+
+#. vim: indent
+msgctxt "action"
+msgid "vim::Indent"
+msgstr "Vim: 들여쓰기"
+
+#. vim: indent obj
+msgctxt "action"
+msgid "vim::IndentObj"
+msgstr "Vim: 같은 들여쓰기 텍스트 개체"
+
+#. vim: inner object
+msgctxt "action"
+msgid "vim::InnerObject"
+msgstr "Vim: 안쪽 텍스트 개체"
+
+#. vim: insert after
+msgctxt "action"
+msgid "vim::InsertAfter"
+msgstr "Vim: 커서 뒤에 삽입"
+
+#. vim: insert at previous
+msgctxt "action"
+msgid "vim::InsertAtPrevious"
+msgstr "Vim: 이전 삽입 위치에 삽입"
+
+#. vim: insert before
+msgctxt "action"
+msgid "vim::InsertBefore"
+msgstr "Vim: 커서 앞에 삽입"
+
+#. vim: insert empty line above
+msgctxt "action"
+msgid "vim::InsertEmptyLineAbove"
+msgstr "Vim: 위에 빈 줄 삽입"
+
+#. vim: insert empty line below
+msgctxt "action"
+msgid "vim::InsertEmptyLineBelow"
+msgstr "Vim: 아래에 빈 줄 삽입"
+
+#. vim: insert end of line
+msgctxt "action"
+msgid "vim::InsertEndOfLine"
+msgstr "Vim: 줄 끝에 삽입"
+
+#. vim: insert first non whitespace
+msgctxt "action"
+msgid "vim::InsertFirstNonWhitespace"
+msgstr "Vim: 줄의 첫 번째 공백 아닌 문자 앞에 삽입"
+
+#. vim: insert from above
+msgctxt "action"
+msgid "vim::InsertFromAbove"
+msgstr "Vim: 위 줄의 문자 삽입"
+
+#. vim: insert from below
+msgctxt "action"
+msgid "vim::InsertFromBelow"
+msgstr "Vim: 아래 줄의 문자 삽입"
+
+#. vim: insert line above
+msgctxt "action"
+msgid "vim::InsertLineAbove"
+msgstr "Vim: 위에 줄 삽입"
+
+#. vim: insert line below
+msgctxt "action"
+msgid "vim::InsertLineBelow"
+msgstr "Vim: 아래에 줄 삽입"
+
+#. vim: join lines
+msgctxt "action"
+msgid "vim::JoinLines"
+msgstr "Vim: 줄 연결"
+
+#. vim: join lines no whitespace
+msgctxt "action"
+msgid "vim::JoinLinesNoWhitespace"
+msgstr "Vim: 공백 없이 줄 연결"
+
+#. vim: left
+msgctxt "action"
+msgid "vim::Left"
+msgstr "Vim: 왼쪽으로"
+
+#. vim: line down
+msgctxt "action"
+msgid "vim::LineDown"
+msgstr "Vim: 한 줄 아래로 스크롤"
+
+#. vim: line up
+msgctxt "action"
+msgid "vim::LineUp"
+msgstr "Vim: 한 줄 위로 스크롤"
+
+#. vim: literal
+msgctxt "action"
+msgid "vim::Literal"
+msgstr "Vim: 문자 그대로 삽입"
+
+#. vim: matching
+msgctxt "action"
+msgid "vim::Matching"
+msgstr "Vim: 짝이 맞는 괄호로"
+
+#. vim: maximize pane
+msgctxt "action"
+msgid "vim::MaximizePane"
+msgstr "Vim: 분할 영역 높이 최대화"
+
+#. vim: menu select next
+msgctxt "action"
+msgid "vim::MenuSelectNext"
+msgstr "Vim: 메뉴의 다음 항목 선택"
+
+#. vim: menu select previous
+msgctxt "action"
+msgid "vim::MenuSelectPrevious"
+msgstr "Vim: 메뉴의 이전 항목 선택"
+
+#. vim: method
+msgctxt "action"
+msgid "vim::Method"
+msgstr "Vim: 메서드 텍스트 개체"
+
+#. vim: middle of line
+msgctxt "action"
+msgid "vim::MiddleOfLine"
+msgstr "Vim: 줄 가운데로"
+
+#. vim: mini brackets
+msgctxt "action"
+msgid "vim::MiniBrackets"
+msgstr "Vim: 가장 가까운 괄호 텍스트 개체"
+
+#. vim: mini quotes
+msgctxt "action"
+msgid "vim::MiniQuotes"
+msgstr "Vim: 가장 가까운 따옴표 텍스트 개체"
+
+#. vim: move to next
+msgctxt "action"
+msgid "vim::MoveToNext"
+msgstr "Vim: 커서 위치 단어의 다음 항목으로"
+
+#. vim: move to next match
+msgctxt "action"
+msgid "vim::MoveToNextMatch"
+msgstr "Vim: 다음 일치 항목으로"
+
+#. vim: move to previous
+msgctxt "action"
+msgid "vim::MoveToPrevious"
+msgstr "Vim: 커서 위치 단어의 이전 항목으로"
+
+#. vim: move to previous match
+msgctxt "action"
+msgid "vim::MoveToPreviousMatch"
+msgstr "Vim: 이전 일치 항목으로"
+
+#. vim: next comment
+msgctxt "action"
+msgid "vim::NextComment"
+msgstr "Vim: 다음 주석으로"
+
+#. vim: next greater indent
+msgctxt "action"
+msgid "vim::NextGreaterIndent"
+msgstr "Vim: 들여쓰기가 더 깊은 다음 줄로"
+
+#. vim: next lesser indent
+msgctxt "action"
+msgid "vim::NextLesserIndent"
+msgstr "Vim: 들여쓰기가 더 얕은 다음 줄로"
+
+#. vim: next line start
+msgctxt "action"
+msgid "vim::NextLineStart"
+msgstr "Vim: 다음 줄의 첫 번째 공백 아닌 문자로"
+
+#. vim: next method end
+msgctxt "action"
+msgid "vim::NextMethodEnd"
+msgstr "Vim: 다음 메서드 끝으로"
+
+#. vim: next method start
+msgctxt "action"
+msgid "vim::NextMethodStart"
+msgstr "Vim: 다음 메서드 시작으로"
+
+#. vim: next same indent
+msgctxt "action"
+msgid "vim::NextSameIndent"
+msgstr "Vim: 들여쓰기가 같은 다음 줄로"
+
+#. vim: next section end
+msgctxt "action"
+msgid "vim::NextSectionEnd"
+msgstr "Vim: 다음 섹션 끝으로"
+
+#. vim: next section start
+msgctxt "action"
+msgid "vim::NextSectionStart"
+msgstr "Vim: 다음 섹션 시작으로"
+
+#. vim: next subword end
+msgctxt "action"
+msgid "vim::NextSubwordEnd"
+msgstr "Vim: 다음 하위 단어 끝으로"
+
+#. vim: next subword start
+msgctxt "action"
+msgid "vim::NextSubwordStart"
+msgstr "Vim: 다음 하위 단어 시작으로"
+
+#. vim: next word end
+msgctxt "action"
+msgid "vim::NextWordEnd"
+msgstr "Vim: 다음 단어 끝으로"
+
+#. vim: next word start
+msgctxt "action"
+msgid "vim::NextWordStart"
+msgstr "Vim: 다음 단어 시작으로"
+
+#. vim: normal before
+msgctxt "action"
+msgid "vim::NormalBefore"
+msgstr "Vim: 커서를 한 문자 앞으로 옮기고 노멀 모드로"
+
+#. vim: number
+msgctxt "action"
+msgid "vim::Number"
+msgstr "Vim: 횟수 입력"
+
+#. vim: open default keymap
+msgctxt "action"
+msgid "vim::OpenDefaultKeymap"
+msgstr "Vim: 기본 키맵 열기"
+
+#. vim: other end
+msgctxt "action"
+msgid "vim::OtherEnd"
+msgstr "Vim: 선택 영역의 반대쪽 끝으로"
+
+#. vim: other end row aware
+msgctxt "action"
+msgid "vim::OtherEndRowAware"
+msgstr "Vim: 선택 영역의 반대쪽 끝으로(행 고려)"
+
+#. vim: outdent
+msgctxt "action"
+msgid "vim::Outdent"
+msgstr "Vim: 내어쓰기"
+
+#. vim: page down
+msgctxt "action"
+msgid "vim::PageDown"
+msgstr "Vim: 한 페이지 아래로 스크롤"
+
+#. vim: page up
+msgctxt "action"
+msgid "vim::PageUp"
+msgstr "Vim: 한 페이지 위로 스크롤"
+
+#. vim: paragraph
+msgctxt "action"
+msgid "vim::Paragraph"
+msgstr "Vim: 단락 텍스트 개체"
+
+#. vim: parentheses
+msgctxt "action"
+msgid "vim::Parentheses"
+msgstr "Vim: 소괄호 () 텍스트 개체"
+
+#. vim: paste
+msgctxt "action"
+msgid "vim::Paste"
+msgstr "Vim: 레지스터에서 붙여넣기"
+
+#. vim: previous comment
+msgctxt "action"
+msgid "vim::PreviousComment"
+msgstr "Vim: 이전 주석으로"
+
+#. vim: previous greater indent
+msgctxt "action"
+msgid "vim::PreviousGreaterIndent"
+msgstr "Vim: 들여쓰기가 더 깊은 이전 줄로"
+
+#. vim: previous lesser indent
+msgctxt "action"
+msgid "vim::PreviousLesserIndent"
+msgstr "Vim: 들여쓰기가 더 얕은 이전 줄로"
+
+#. vim: previous line start
+msgctxt "action"
+msgid "vim::PreviousLineStart"
+msgstr "Vim: 이전 줄의 첫 번째 공백 아닌 문자로"
+
+#. vim: previous method end
+msgctxt "action"
+msgid "vim::PreviousMethodEnd"
+msgstr "Vim: 이전 메서드 끝으로"
+
+#. vim: previous method start
+msgctxt "action"
+msgid "vim::PreviousMethodStart"
+msgstr "Vim: 이전 메서드 시작으로"
+
+#. vim: previous same indent
+msgctxt "action"
+msgid "vim::PreviousSameIndent"
+msgstr "Vim: 들여쓰기가 같은 이전 줄로"
+
+#. vim: previous section end
+msgctxt "action"
+msgid "vim::PreviousSectionEnd"
+msgstr "Vim: 이전 섹션 끝으로"
+
+#. vim: previous section start
+msgctxt "action"
+msgid "vim::PreviousSectionStart"
+msgstr "Vim: 이전 섹션 시작으로"
+
+#. vim: previous subword end
+msgctxt "action"
+msgid "vim::PreviousSubwordEnd"
+msgstr "Vim: 이전 하위 단어 끝으로"
+
+#. vim: previous subword start
+msgctxt "action"
+msgid "vim::PreviousSubwordStart"
+msgstr "Vim: 이전 하위 단어 시작으로"
+
+#. vim: previous word end
+msgctxt "action"
+msgid "vim::PreviousWordEnd"
+msgstr "Vim: 이전 단어 끝으로"
+
+#. vim: previous word start
+msgctxt "action"
+msgid "vim::PreviousWordStart"
+msgstr "Vim: 이전 단어 시작으로"
+
+#. vim: push add surrounds
+msgctxt "action"
+msgid "vim::PushAddSurrounds"
+msgstr "Vim: 감싸는 문자 추가"
+
+#. vim: push auto indent
+msgctxt "action"
+msgid "vim::PushAutoIndent"
+msgstr "Vim: 자동 들여쓰기 연산 시작"
+
+#. vim: push change
+msgctxt "action"
+msgid "vim::PushChange"
+msgstr "Vim: 변경 연산 시작"
+
+#. vim: push change surrounds
+msgctxt "action"
+msgid "vim::PushChangeSurrounds"
+msgstr "Vim: 감싸는 문자 변경"
+
+#. vim: push delete
+msgctxt "action"
+msgid "vim::PushDelete"
+msgstr "Vim: 삭제 연산 시작"
+
+#. vim: push delete surrounds
+msgctxt "action"
+msgid "vim::PushDeleteSurrounds"
+msgstr "Vim: 감싸는 문자 삭제"
+
+#. vim: push digraph
+msgctxt "action"
+msgid "vim::PushDigraph"
+msgstr "Vim: 다이그래프 입력"
+
+#. vim: push find backward
+msgctxt "action"
+msgid "vim::PushFindBackward"
+msgstr "Vim: 문자를 뒤쪽으로 찾기"
+
+#. vim: push find forward
+msgctxt "action"
+msgid "vim::PushFindForward"
+msgstr "Vim: 문자를 앞쪽으로 찾기"
+
+#. vim: push forced motion
+msgctxt "action"
+msgid "vim::PushForcedMotion"
+msgstr "Vim: 모션 종류 강제"
+
+#. vim: push helix match
+msgctxt "action"
+msgid "vim::PushHelixMatch"
+msgstr "Helix: 일치 모드 시작"
+
+#. vim: push helix next
+msgctxt "action"
+msgid "vim::PushHelixNext"
+msgstr "Helix: 다음 개체 선택"
+
+#. vim: push helix previous
+msgctxt "action"
+msgid "vim::PushHelixPrevious"
+msgstr "Helix: 이전 개체 선택"
+
+#. vim: push helix surround add
+msgctxt "action"
+msgid "vim::PushHelixSurroundAdd"
+msgstr "Helix: 감싸는 문자 추가"
+
+#. vim: push helix surround delete
+msgctxt "action"
+msgid "vim::PushHelixSurroundDelete"
+msgstr "Helix: 감싸는 문자 삭제"
+
+#. vim: push helix surround replace
+msgctxt "action"
+msgid "vim::PushHelixSurroundReplace"
+msgstr "Helix: 감싸는 문자 바꾸기"
+
+#. vim: push indent
+msgctxt "action"
+msgid "vim::PushIndent"
+msgstr "Vim: 들여쓰기 연산 시작"
+
+#. vim: push jump
+msgctxt "action"
+msgid "vim::PushJump"
+msgstr "Vim: 마크로 점프"
+
+#. vim: push literal
+msgctxt "action"
+msgid "vim::PushLiteral"
+msgstr "Vim: 문자 그대로 입력"
+
+#. vim: push lowercase
+msgctxt "action"
+msgid "vim::PushLowercase"
+msgstr "Vim: 소문자 변환 연산 시작"
+
+#. vim: push mark
+msgctxt "action"
+msgid "vim::PushMark"
+msgstr "Vim: 현재 위치에 마크 설정"
+
+#. vim: push object
+msgctxt "action"
+msgid "vim::PushObject"
+msgstr "Vim: 텍스트 개체 선택"
+
+#. vim: push opposite case
+msgctxt "action"
+msgid "vim::PushOppositeCase"
+msgstr "Vim: 대소문자 반전 연산 시작"
+
+#. vim: push outdent
+msgctxt "action"
+msgid "vim::PushOutdent"
+msgstr "Vim: 내어쓰기 연산 시작"
+
+#. vim: push record register
+msgctxt "action"
+msgid "vim::PushRecordRegister"
+msgstr "Vim: 레지스터에 매크로 기록 시작"
+
+#. vim: push register
+msgctxt "action"
+msgid "vim::PushRegister"
+msgstr "Vim: 레지스터 선택"
+
+#. vim: push replace
+msgctxt "action"
+msgid "vim::PushReplace"
+msgstr "Vim: 한 문자 바꾸기"
+
+#. vim: push replace with register
+msgctxt "action"
+msgid "vim::PushReplaceWithRegister"
+msgstr "Vim: 레지스터 내용으로 바꾸기"
+
+#. vim: push replay register
+msgctxt "action"
+msgid "vim::PushReplayRegister"
+msgstr "Vim: 레지스터의 매크로 재생"
+
+#. vim: push rewrap
+msgctxt "action"
+msgid "vim::PushRewrap"
+msgstr "Vim: 다시 줄 바꿈 연산 시작"
+
+#. vim: push rot13
+msgctxt "action"
+msgid "vim::PushRot13"
+msgstr "Vim: ROT13 변환 연산 시작"
+
+#. vim: push rot47
+msgctxt "action"
+msgid "vim::PushRot47"
+msgstr "Vim: ROT47 변환 연산 시작"
+
+#. vim: push shell command
+msgctxt "action"
+msgid "vim::PushShellCommand"
+msgstr "Vim: 셸 명령 필터 연산 시작"
+
+#. vim: push sneak
+msgctxt "action"
+msgid "vim::PushSneak"
+msgstr "Vim: Sneak로 앞으로 이동"
+
+#. vim: push sneak backward
+msgctxt "action"
+msgid "vim::PushSneakBackward"
+msgstr "Vim: Sneak로 뒤로 이동"
+
+#. vim: push toggle block comments
+msgctxt "action"
+msgid "vim::PushToggleBlockComments"
+msgstr "Vim: 블록 주석 전환 연산 시작"
+
+#. vim: push toggle comments
+msgctxt "action"
+msgid "vim::PushToggleComments"
+msgstr "Vim: 주석 전환 연산 시작"
+
+#. vim: push uppercase
+msgctxt "action"
+msgid "vim::PushUppercase"
+msgstr "Vim: 대문자 변환 연산 시작"
+
+#. vim: push yank
+msgctxt "action"
+msgid "vim::PushYank"
+msgstr "Vim: yank 연산 시작"
+
+#. vim: quotes
+msgctxt "action"
+msgid "vim::Quotes"
+msgstr "Vim: 작은따옴표 텍스트 개체"
+
+#. vim: redo
+msgctxt "action"
+msgid "vim::Redo"
+msgstr "Vim: 다시 실행"
+
+#. vim: repeat
+msgctxt "action"
+msgid "vim::Repeat"
+msgstr "Vim: 마지막 변경 반복"
+
+#. vim: repeat find
+msgctxt "action"
+msgid "vim::RepeatFind"
+msgstr "Vim: 마지막 문자 찾기 반복"
+
+#. vim: repeat find reversed
+msgctxt "action"
+msgid "vim::RepeatFindReversed"
+msgstr "Vim: 마지막 문자 찾기를 반대 방향으로 반복"
+
+#. vim: replay last recording
+msgctxt "action"
+msgid "vim::ReplayLastRecording"
+msgstr "Vim: 마지막으로 기록한 매크로 재생"
+
+#. vim: reset pane sizes
+msgctxt "action"
+msgid "vim::ResetPaneSizes"
+msgstr "Vim: 분할 영역 크기 초기화"
+
+#. vim: resize pane down
+msgctxt "action"
+msgid "vim::ResizePaneDown"
+msgstr "Vim: 분할 영역 높이 줄이기"
+
+#. vim: resize pane left
+msgctxt "action"
+msgid "vim::ResizePaneLeft"
+msgstr "Vim: 분할 영역 너비 줄이기"
+
+#. vim: resize pane right
+msgctxt "action"
+msgid "vim::ResizePaneRight"
+msgstr "Vim: 분할 영역 너비 늘리기"
+
+#. vim: resize pane up
+msgctxt "action"
+msgid "vim::ResizePaneUp"
+msgstr "Vim: 분할 영역 높이 늘리기"
+
+#. vim: restore visual selection
+msgctxt "action"
+msgid "vim::RestoreVisualSelection"
+msgstr "Vim: 이전 비주얼 선택 복원"
+
+#. vim: rewrap
+msgctxt "action"
+msgid "vim::Rewrap"
+msgstr "Vim: 다시 줄 바꿈"
+
+#. vim: right
+msgctxt "action"
+msgid "vim::Right"
+msgstr "Vim: 오른쪽으로"
+
+#. vim: scroll down
+msgctxt "action"
+msgid "vim::ScrollDown"
+msgstr "Vim: 반 페이지 아래로 스크롤"
+
+#. vim: scroll up
+msgctxt "action"
+msgid "vim::ScrollUp"
+msgstr "Vim: 반 페이지 위로 스크롤"
+
+#. vim: search
+msgctxt "action"
+msgid "vim::Search"
+msgstr "Vim: 검색"
+
+#. vim: search submit
+msgctxt "action"
+msgid "vim::SearchSubmit"
+msgstr "Vim: 검색 실행"
+
+#. vim: search under cursor
+msgctxt "action"
+msgid "vim::SearchUnderCursor"
+msgstr "Vim: 커서 위치의 단어 검색(이동 안 함)"
+
+#. vim: search under cursor previous
+msgctxt "action"
+msgid "vim::SearchUnderCursorPrevious"
+msgstr "Vim: 커서 위치의 단어를 뒤쪽으로 검색(이동 안 함)"
+
+#. vim: select larger syntax node
+msgctxt "action"
+msgid "vim::SelectLargerSyntaxNode"
+msgstr "Vim: 상위 구문 노드 선택"
+
+#. vim: select next
+msgctxt "action"
+msgid "vim::SelectNext"
+msgstr "Vim: 다음 항목 선택"
+
+#. vim: select next match
+msgctxt "action"
+msgid "vim::SelectNextMatch"
+msgstr "Vim: 다음 검색 일치 항목 선택"
+
+#. vim: select next syntax node
+msgctxt "action"
+msgid "vim::SelectNextSyntaxNode"
+msgstr "Vim: 다음 구문 노드 선택"
+
+#. vim: select previous
+msgctxt "action"
+msgid "vim::SelectPrevious"
+msgstr "Vim: 이전 항목 선택"
+
+#. vim: select previous match
+msgctxt "action"
+msgid "vim::SelectPreviousMatch"
+msgstr "Vim: 이전 검색 일치 항목 선택"
+
+#. vim: select previous syntax node
+msgctxt "action"
+msgid "vim::SelectPreviousSyntaxNode"
+msgstr "Vim: 이전 구문 노드 선택"
+
+#. vim: select register
+msgctxt "action"
+msgid "vim::SelectRegister"
+msgstr "Vim: 레지스터 지정"
+
+#. vim: select smaller syntax node
+msgctxt "action"
+msgid "vim::SelectSmallerSyntaxNode"
+msgstr "Vim: 하위 구문 노드 선택"
+
+#. vim: sentence
+msgctxt "action"
+msgid "vim::Sentence"
+msgstr "Vim: 문장 텍스트 개체"
+
+#. vim: sentence backward
+msgctxt "action"
+msgid "vim::SentenceBackward"
+msgstr "Vim: 이전 문장 시작으로"
+
+#. vim: sentence forward
+msgctxt "action"
+msgid "vim::SentenceForward"
+msgstr "Vim: 다음 문장 시작으로"
+
+#. vim: shell command
+msgctxt "action"
+msgid "vim::ShellCommand"
+msgstr "Vim: 선택 영역에 대해 셸 명령 입력"
+
+#. vim: show location
+msgctxt "action"
+msgid "vim::ShowLocation"
+msgstr "Vim: 파일 내 현재 위치 표시"
+
+#. vim: square brackets
+msgctxt "action"
+msgid "vim::SquareBrackets"
+msgstr "Vim: 대괄호 [] 텍스트 개체"
+
+#. vim: start of document
+msgctxt "action"
+msgid "vim::StartOfDocument"
+msgstr "Vim: 문서 시작으로"
+
+#. vim: start of line
+msgctxt "action"
+msgid "vim::StartOfLine"
+msgstr "Vim: 줄 시작으로"
+
+#. vim: start of line downward
+msgctxt "action"
+msgid "vim::StartOfLineDownward"
+msgstr "Vim: 줄의 첫 번째 공백 아닌 문자로(횟수만큼 아래 줄)"
+
+#. vim: start of paragraph
+msgctxt "action"
+msgid "vim::StartOfParagraph"
+msgstr "Vim: 단락 시작으로"
+
+#. vim: substitute
+msgctxt "action"
+msgid "vim::Substitute"
+msgstr "Vim: 문자 삭제 후 삽입"
+
+#. vim: substitute line
+msgctxt "action"
+msgid "vim::SubstituteLine"
+msgstr "Vim: 줄 삭제 후 삽입"
+
+#. vim: subword
+msgctxt "action"
+msgid "vim::Subword"
+msgstr "Vim: 하위 단어 텍스트 개체"
+
+#. vim: switch to helix normal mode
+msgctxt "action"
+msgid "vim::SwitchToHelixNormalMode"
+msgstr "Helix: 노멀 모드로 전환"
+
+#. vim: switch to insert mode
+msgctxt "action"
+msgid "vim::SwitchToInsertMode"
+msgstr "Vim: 삽입 모드로 전환"
+
+#. vim: switch to normal mode
+msgctxt "action"
+msgid "vim::SwitchToNormalMode"
+msgstr "Vim: 노멀 모드로 전환"
+
+#. vim: switch to replace mode
+msgctxt "action"
+msgid "vim::SwitchToReplaceMode"
+msgstr "Vim: 바꾸기 모드로 전환"
+
+#. vim: switch to visual block mode
+msgctxt "action"
+msgid "vim::SwitchToVisualBlockMode"
+msgstr "Vim: 비주얼 블록 모드로 전환"
+
+#. vim: switch to visual line mode
+msgctxt "action"
+msgid "vim::SwitchToVisualLineMode"
+msgstr "Vim: 비주얼 줄 모드로 전환"
+
+#. vim: switch to visual mode
+msgctxt "action"
+msgid "vim::SwitchToVisualMode"
+msgstr "Vim: 비주얼 모드로 전환"
+
+#. vim: tab
+msgctxt "action"
+msgid "vim::Tab"
+msgstr "Vim: 탭 삽입"
+
+#. vim: tag
+msgctxt "action"
+msgid "vim::Tag"
+msgstr "Vim: HTML/XML 태그 텍스트 개체"
+
+#. vim: temporary normal
+msgctxt "action"
+msgid "vim::TemporaryNormal"
+msgstr "Vim: 명령 하나만 노멀 모드"
+
+#. vim: toggle block comments
+msgctxt "action"
+msgid "vim::ToggleBlockComments"
+msgstr "Vim: 블록 주석 전환"
+
+#. vim: toggle comments
+msgctxt "action"
+msgid "vim::ToggleComments"
+msgstr "Vim: 주석 전환"
+
+#. vim: toggle marks view
+msgctxt "action"
+msgid "vim::ToggleMarksView"
+msgstr "Vim: 마크 목록 보기 전환"
+
+#. vim: toggle project panel focus
+msgctxt "action"
+msgid "vim::ToggleProjectPanelFocus"
+msgstr "Vim: 프로젝트 패널 포커스 전환"
+
+#. vim: toggle record
+msgctxt "action"
+msgid "vim::ToggleRecord"
+msgstr "Vim: 매크로 기록 전환"
+
+#. vim: toggle registers view
+msgctxt "action"
+msgid "vim::ToggleRegistersView"
+msgstr "Vim: 레지스터 목록 보기 전환"
+
+#. vim: toggle replace
+msgctxt "action"
+msgid "vim::ToggleReplace"
+msgstr "Vim: 바꾸기 모드 전환"
+
+#. vim: toggle visual
+msgctxt "action"
+msgid "vim::ToggleVisual"
+msgstr "Vim: 비주얼 모드 전환"
+
+#. vim: toggle visual block
+msgctxt "action"
+msgid "vim::ToggleVisualBlock"
+msgstr "Vim: 비주얼 블록 모드 전환"
+
+#. vim: toggle visual line
+msgctxt "action"
+msgid "vim::ToggleVisualLine"
+msgstr "Vim: 비주얼 줄 모드 전환"
+
+#. vim: undo
+msgctxt "action"
+msgid "vim::Undo"
+msgstr "Vim: 실행 취소"
+
+#. vim: undo last line
+msgctxt "action"
+msgid "vim::UndoLastLine"
+msgstr "Vim: 마지막으로 변경한 줄 실행 취소"
+
+#. vim: undo replace
+msgctxt "action"
+msgid "vim::UndoReplace"
+msgstr "Vim: 마지막 바꾸기 실행 취소"
+
+#. vim: unmatched backward
+msgctxt "action"
+msgid "vim::UnmatchedBackward"
+msgstr "Vim: 짝이 없는 이전 괄호로"
+
+#. vim: unmatched forward
+msgctxt "action"
+msgid "vim::UnmatchedForward"
+msgstr "Vim: 짝이 없는 다음 괄호로"
+
+#. vim: up
+msgctxt "action"
+msgid "vim::Up"
+msgstr "Vim: 위로"
+
+#. vim: vertical bars
+msgctxt "action"
+msgid "vim::VerticalBars"
+msgstr "Vim: 세로 막대 | 텍스트 개체"
+
+#. vim: visual command
+msgctxt "action"
+msgid "vim::VisualCommand"
+msgstr "Vim: 선택 영역에 대해 명령줄 열기"
+
+#. vim: visual delete
+msgctxt "action"
+msgid "vim::VisualDelete"
+msgstr "Vim: 선택 영역 삭제"
+
+#. vim: visual delete line
+msgctxt "action"
+msgid "vim::VisualDeleteLine"
+msgstr "Vim: 선택한 줄 삭제"
+
+#. vim: visual insert end of line
+msgctxt "action"
+msgid "vim::VisualInsertEndOfLine"
+msgstr "Vim: 선택한 각 줄의 끝에 삽입"
+
+#. vim: visual insert first non white space
+msgctxt "action"
+msgid "vim::VisualInsertFirstNonWhiteSpace"
+msgstr "Vim: 선택한 각 줄의 첫 번째 공백 아닌 문자 앞에 삽입"
+
+#. vim: visual yank
+msgctxt "action"
+msgid "vim::VisualYank"
+msgstr "Vim: 선택 영역 yank"
+
+#. vim: visual yank line
+msgctxt "action"
+msgid "vim::VisualYankLine"
+msgstr "Vim: 선택한 줄 yank"
+
+#. vim: window bottom
+msgctxt "action"
+msgid "vim::WindowBottom"
+msgstr "Vim: 화면 맨 아래 줄로"
+
+#. vim: window middle
+msgctxt "action"
+msgid "vim::WindowMiddle"
+msgstr "Vim: 화면 가운데 줄로"
+
+#. vim: window top
+msgctxt "action"
+msgid "vim::WindowTop"
+msgstr "Vim: 화면 맨 위 줄로"
+
+#. vim: word
+msgctxt "action"
+msgid "vim::Word"
+msgstr "Vim: 단어 텍스트 개체"
+
+#. vim: wrapping left
+msgctxt "action"
+msgid "vim::WrappingLeft"
+msgstr "Vim: 왼쪽으로(이전 줄로 넘어감)"
+
+#. vim: wrapping right
+msgctxt "action"
+msgid "vim::WrappingRight"
+msgstr "Vim: 오른쪽으로(다음 줄로 넘어감)"
+
+#. vim: yank
+msgctxt "action"
+msgid "vim::Yank"
+msgstr "Vim: yank"
+
+#. vim: yank line
+msgctxt "action"
+msgid "vim::YankLine"
+msgstr "Vim: 줄 yank"
+
+#. vim: yank to end of line
+msgctxt "action"
+msgid "vim::YankToEndOfLine"
+msgstr "Vim: 줄 끝까지 yank"
+
+#. welcome: open recent project
+msgctxt "action"
+msgid "welcome::OpenRecentProject"
+msgstr "시작: 최근 프로젝트 열기"
+
+#. window: merge all windows
+msgctxt "action"
+msgid "window::MergeAllWindows"
+msgstr "창: 모든 창 병합"
+
+#. window: move tab to new window
+msgctxt "action"
+msgid "window::MoveTabToNewWindow"
+msgstr "창: 탭을 새 창으로 이동"
+
+#. window: show next window tab
+msgctxt "action"
+msgid "window::ShowNextWindowTab"
+msgstr "창: 다음 창 탭 표시"
+
+#. window: show previous window tab
+msgctxt "action"
+msgid "window::ShowPreviousWindowTab"
+msgstr "창: 이전 창 탭 표시"
+
+#. workspace: activate last pane
+msgctxt "action"
+msgid "workspace::ActivateLastPane"
+msgstr "분할 영역: 마지막 분할 영역 활성화"
+
+#. workspace: activate next pane
+msgctxt "action"
+msgid "workspace::ActivateNextPane"
+msgstr "분할 영역: 다음 분할 영역 활성화"
+
+#. workspace: activate next window
+msgctxt "action"
+msgid "workspace::ActivateNextWindow"
+msgstr "창: 다음 창 활성화"
+
+#. workspace: activate pane
+msgctxt "action"
+msgid "workspace::ActivatePane"
+msgstr "분할 영역: 지정한 번호의 분할 영역 활성화"
+
+#. workspace: activate pane down
+msgctxt "action"
+msgid "workspace::ActivatePaneDown"
+msgstr "분할 영역: 아래 분할 영역 활성화"
+
+#. workspace: activate pane left
+msgctxt "action"
+msgid "workspace::ActivatePaneLeft"
+msgstr "분할 영역: 왼쪽 분할 영역 활성화"
+
+#. workspace: activate pane right
+msgctxt "action"
+msgid "workspace::ActivatePaneRight"
+msgstr "분할 영역: 오른쪽 분할 영역 활성화"
+
+#. workspace: activate pane up
+msgctxt "action"
+msgid "workspace::ActivatePaneUp"
+msgstr "분할 영역: 위 분할 영역 활성화"
+
+#. workspace: activate previous pane
+msgctxt "action"
+msgid "workspace::ActivatePreviousPane"
+msgstr "분할 영역: 이전 분할 영역 활성화"
+
+#. workspace: activate previous window
+msgctxt "action"
+msgid "workspace::ActivatePreviousWindow"
+msgstr "창: 이전 창 활성화"
+
+#. workspace: add folder to project
+msgctxt "action"
+msgid "workspace::AddFolderToProject"
+msgstr "프로젝트에 폴더 추가"
+
+#. workspace: change project folder
+msgctxt "action"
+msgid "workspace::ChangeProjectFolder"
+msgstr "프로젝트 폴더 변경"
+
+#. workspace: clear all notifications
+msgctxt "action"
+msgid "workspace::ClearAllNotifications"
+msgstr "모든 알림 지우기"
+
+#. workspace: clear bookmarks
+msgctxt "action"
+msgid "workspace::ClearBookmarks"
+msgstr "북마크: 모두 지우기"
+
+#. workspace: clear navigation history
+msgctxt "action"
+msgid "workspace::ClearNavigationHistory"
+msgstr "이동: 탐색 기록 지우기"
+
+#. workspace: clear trusted worktrees
+msgctxt "action"
+msgid "workspace::ClearTrustedWorktrees"
+msgstr "신뢰된 워크트리 지우기"
+
+#. workspace: close active dock
+msgctxt "action"
+msgid "workspace::CloseActiveDock"
+msgstr "보기: 활성 도크 닫기"
+
+#. workspace: close all docks
+msgctxt "action"
+msgid "workspace::CloseAllDocks"
+msgstr "보기: 모든 도크 닫기"
+
+#. workspace: close all items and panes
+msgctxt "action"
+msgid "workspace::CloseAllItemsAndPanes"
+msgstr "탭: 모든 탭과 분할 영역 닫기"
+
+#. workspace: close inactive tabs and panes
+msgctxt "action"
+msgid "workspace::CloseInactiveTabsAndPanes"
+msgstr "탭: 비활성 탭과 분할 영역 닫기"
+
+#. workspace: close item in all panes
+msgctxt "action"
+msgid "workspace::CloseItemInAllPanes"
+msgstr "탭: 모든 분할 영역에서 이 항목 닫기"
+
+#. workspace: close project
+msgctxt "action"
+msgid "workspace::CloseProject"
+msgstr "프로젝트 닫기"
+
+#. workspace: close window
+msgctxt "action"
+msgid "workspace::CloseWindow"
+msgstr "창: 창 닫기"
+
+#. workspace: copy path
+msgctxt "action"
+msgid "workspace::CopyPath"
+msgstr "경로 복사"
+
+#. workspace: copy relative path
+msgctxt "action"
+msgid "workspace::CopyRelativePath"
+msgstr "상대 경로 복사"
+
+#. workspace: decrease active dock size
+msgctxt "action"
+msgid "workspace::DecreaseActiveDockSize"
+msgstr "보기: 활성 도크 크기 줄이기"
+
+#. workspace: decrease open docks size
+msgctxt "action"
+msgid "workspace::DecreaseOpenDocksSize"
+msgstr "보기: 열린 도크 크기 모두 줄이기"
+
+#. workspace: feedback
+msgctxt "action"
+msgid "workspace::Feedback"
+msgstr "피드백 보내기"
+
+#. workspace: focus center pane
+msgctxt "action"
+msgid "workspace::FocusCenterPane"
+msgstr "분할 영역: 가운데 분할 영역에 포커스"
+
+#. workspace: focus next part
+msgctxt "action"
+msgid "workspace::FocusNextPart"
+msgstr "보기: 다음 영역에 포커스"
+
+#. workspace: focus previous part
+msgctxt "action"
+msgid "workspace::FocusPreviousPart"
+msgstr "보기: 이전 영역에 포커스"
+
+#. workspace: follow next collaborator
+msgctxt "action"
+msgid "workspace::FollowNextCollaborator"
+msgstr "협업: 다음 공동 작업자 따라가기"
+
+#. workspace: format and save
+msgctxt "action"
+msgid "workspace::FormatAndSave"
+msgstr "파일: 포맷 후 저장"
+
+#. workspace: increase active dock size
+msgctxt "action"
+msgid "workspace::IncreaseActiveDockSize"
+msgstr "보기: 활성 도크 크기 늘리기"
+
+#. workspace: increase open docks size
+msgctxt "action"
+msgid "workspace::IncreaseOpenDocksSize"
+msgstr "보기: 열린 도크 크기 모두 늘리기"
+
+#. workspace: move focused panel to next position
+msgctxt "action"
+msgid "workspace::MoveFocusedPanelToNextPosition"
+msgstr "보기: 패널을 다음 위치로 이동"
+
+#. workspace: move item to new window
+msgctxt "action"
+msgid "workspace::MoveItemToNewWindow"
+msgstr "탭: 새 창으로 이동"
+
+#. workspace: move item to pane
+msgctxt "action"
+msgid "workspace::MoveItemToPane"
+msgstr "탭: 지정한 번호의 분할 영역으로 이동"
+
+#. workspace: move item to pane in direction
+msgctxt "action"
+msgid "workspace::MoveItemToPaneInDirection"
+msgstr "탭: 지정한 방향의 분할 영역으로 이동"
+
+#. workspace: move pane down
+msgctxt "action"
+msgid "workspace::MovePaneDown"
+msgstr "분할 영역: 아래로 이동"
+
+#. workspace: move pane left
+msgctxt "action"
+msgid "workspace::MovePaneLeft"
+msgstr "분할 영역: 왼쪽으로 이동"
+
+#. workspace: move pane right
+msgctxt "action"
+msgid "workspace::MovePaneRight"
+msgstr "분할 영역: 오른쪽으로 이동"
+
+#. workspace: move pane up
+msgctxt "action"
+msgid "workspace::MovePaneUp"
+msgstr "분할 영역: 위로 이동"
+
+#. workspace: new center terminal
+msgctxt "action"
+msgid "workspace::NewCenterTerminal"
+msgstr "터미널: 가운데 분할 영역에 새 터미널"
+
+#. workspace: new file
+msgctxt "action"
+msgid "workspace::NewFile"
+msgstr "파일: 새 파일"
+
+#. workspace: new file split
+msgctxt "action"
+msgid "workspace::NewFileSplit"
+msgstr "파일: 새 파일(지정한 방향으로 분할)"
+
+#. workspace: new file split horizontal
+msgctxt "action"
+msgid "workspace::NewFileSplitHorizontal"
+msgstr "파일: 새 파일(가로 분할)"
+
+#. workspace: new file split vertical
+msgctxt "action"
+msgid "workspace::NewFileSplitVertical"
+msgstr "파일: 새 파일(세로 분할)"
+
+#. workspace: new search
+msgctxt "action"
+msgid "workspace::NewSearch"
+msgstr "검색: 프로젝트 검색"
+
+#. workspace: new terminal
+msgctxt "action"
+msgid "workspace::NewTerminal"
+msgstr "터미널: 새 터미널"
+
+#. workspace: new window
+msgctxt "action"
+msgid "workspace::NewWindow"
+msgstr "창: 새 창"
+
+#. workspace: open
+msgctxt "action"
+msgid "workspace::Open"
+msgstr "파일: 폴더 또는 파일 열기"
+
+#. workspace: open component preview
+msgctxt "action"
+msgid "workspace::OpenComponentPreview"
+msgstr "개발: 구성 요소 미리 보기 열기"
+
+#. workspace: open files
+msgctxt "action"
+msgid "workspace::OpenFiles"
+msgstr "파일: 파일 열기"
+
+#. workspace: open in terminal
+msgctxt "action"
+msgid "workspace::OpenInTerminal"
+msgstr "터미널: 여기에서 터미널 열기"
+
+#. workspace: open terminal
+msgctxt "action"
+msgid "workspace::OpenTerminal"
+msgstr "터미널: 터미널 열기"
+
+#. workspace: open with system
+msgctxt "action"
+msgid "workspace::OpenWithSystem"
+msgstr "파일: 시스템 기본 앱으로 열기"
+
+#. workspace: reload
+msgctxt "action"
+msgid "workspace::Reload"
+msgstr "창: 다시 로드"
+
+#. workspace: reload active item
+msgctxt "action"
+msgid "workspace::ReloadActiveItem"
+msgstr "파일: 현재 파일 다시 로드"
+
+#. workspace: reopen last picker
+msgctxt "action"
+msgid "workspace::ReopenLastPicker"
+msgstr "마지막 선택기 다시 열기"
+
+#. workspace: reset active dock size
+msgctxt "action"
+msgid "workspace::ResetActiveDockSize"
+msgstr "보기: 활성 도크 크기 초기화"
+
+#. workspace: reset open docks size
+msgctxt "action"
+msgid "workspace::ResetOpenDocksSize"
+msgstr "보기: 열린 도크 크기 초기화"
+
+#. workspace: reset pane sizes
+msgctxt "action"
+msgid "workspace::ResetPaneSizes"
+msgstr "분할 영역: 크기 초기화"
+
+#. workspace: restore banner
+msgctxt "action"
+msgid "workspace::RestoreBanner"
+msgstr "배너 다시 표시"
+
+#. workspace: save
+msgctxt "action"
+msgid "workspace::Save"
+msgstr "파일: 저장"
+
+#. workspace: save all
+msgctxt "action"
+msgid "workspace::SaveAll"
+msgstr "파일: 모두 저장"
+
+#. workspace: save as
+msgctxt "action"
+msgid "workspace::SaveAs"
+msgstr "파일: 다른 이름으로 저장"
+
+#. workspace: save without format
+msgctxt "action"
+msgid "workspace::SaveWithoutFormat"
+msgstr "파일: 포맷하지 않고 저장"
+
+#. workspace: send keystrokes
+msgctxt "action"
+msgid "workspace::SendKeystrokes"
+msgstr "키 입력 보내기"
+
+#. workspace: shutdown debug adapters
+msgctxt "action"
+msgid "workspace::ShutdownDebugAdapters"
+msgstr "디버그: 디버그 어댑터 종료"
+
+#. workspace: suppress notification
+msgctxt "action"
+msgid "workspace::SuppressNotification"
+msgstr "이 알림 다시 표시 안 함"
+
+#. workspace: swap pane adjacent
+msgctxt "action"
+msgid "workspace::SwapPaneAdjacent"
+msgstr "분할 영역: 인접한 분할 영역과 바꾸기"
+
+#. workspace: swap pane down
+msgctxt "action"
+msgid "workspace::SwapPaneDown"
+msgstr "분할 영역: 아래 분할 영역과 바꾸기"
+
+#. workspace: swap pane left
+msgctxt "action"
+msgid "workspace::SwapPaneLeft"
+msgstr "분할 영역: 왼쪽 분할 영역과 바꾸기"
+
+#. workspace: swap pane right
+msgctxt "action"
+msgid "workspace::SwapPaneRight"
+msgstr "분할 영역: 오른쪽 분할 영역과 바꾸기"
+
+#. workspace: swap pane up
+msgctxt "action"
+msgid "workspace::SwapPaneUp"
+msgstr "분할 영역: 위 분할 영역과 바꾸기"
+
+#. workspace: toggle all docks
+msgctxt "action"
+msgid "workspace::ToggleAllDocks"
+msgstr "보기: 모든 도크 전환"
+
+#. workspace: toggle bottom dock
+msgctxt "action"
+msgid "workspace::ToggleBottomDock"
+msgstr "보기: 하단 도크 전환"
+
+#. workspace: toggle centered layout
+msgctxt "action"
+msgid "workspace::ToggleCenteredLayout"
+msgstr "보기: 가운데 정렬 레이아웃 전환"
+
+#. workspace: toggle edit prediction
+msgctxt "action"
+msgid "workspace::ToggleEditPrediction"
+msgstr "편집 예측 전환"
+
+#. workspace: toggle editor zoom
+msgctxt "action"
+msgid "workspace::ToggleEditorZoom"
+msgstr "보기: 편집기 확대 전환"
+
+#. workspace: toggle expand item
+msgctxt "action"
+msgid "workspace::ToggleExpandItem"
+msgstr "보기: 항목 펼치기/접기 전환"
+
+#. workspace: toggle helix mode
+msgctxt "action"
+msgid "workspace::ToggleHelixMode"
+msgstr "Helix 모드 전환"
+
+#. workspace: toggle left dock
+msgctxt "action"
+msgid "workspace::ToggleLeftDock"
+msgstr "보기: 왼쪽 도크 전환"
+
+#. workspace: toggle read only file
+msgctxt "action"
+msgid "workspace::ToggleReadOnlyFile"
+msgstr "파일: 읽기 전용 전환"
+
+#. workspace: toggle right dock
+msgctxt "action"
+msgid "workspace::ToggleRightDock"
+msgstr "보기: 오른쪽 도크 전환"
+
+#. workspace: toggle vim mode
+msgctxt "action"
+msgid "workspace::ToggleVimMode"
+msgstr "Vim 모드 전환"
+
+#. workspace: toggle worktree security
+msgctxt "action"
+msgid "workspace::ToggleWorktreeSecurity"
+msgstr "워크트리 신뢰 설정 전환"
+
+#. workspace: toggle zoom
+msgctxt "action"
+msgid "workspace::ToggleZoom"
+msgstr "보기: 확대 전환"
+
+#. workspace: unfollow
+msgctxt "action"
+msgid "workspace::Unfollow"
+msgstr "협업: 따라가기 중지"
+
+#. workspace: use agentic layout
+msgctxt "action"
+msgid "workspace::UseAgenticLayout"
+msgstr "보기: 에이전트 레이아웃 사용"
+
+#. workspace: use classic layout
+msgctxt "action"
+msgid "workspace::UseClassicLayout"
+msgstr "보기: 클래식 레이아웃 사용"
+
+#. workspace: zoom in
+msgctxt "action"
+msgid "workspace::ZoomIn"
+msgstr "보기: 확대"
+
+#. workspace: zoom out
+msgctxt "action"
+msgid "workspace::ZoomOut"
+msgstr "보기: 축소"
+
+#. worktree picker: delete worktree
+msgctxt "action"
+msgid "worktree_picker::DeleteWorktree"
+msgstr "Git: 워크트리 삭제"
+
+#. worktree picker: force delete worktree
+msgctxt "action"
+msgid "worktree_picker::ForceDeleteWorktree"
+msgstr "Git: 워크트리 강제 삭제"
+
+#. zed: about
+msgctxt "action"
+msgid "zed::About"
+msgstr "ForgeKairos 정보"
+
+#. zed: acp registry
+msgctxt "action"
+msgid "zed::AcpRegistry"
+msgstr "ACP 레지스트리 열기"
+
+#. zed: cancel etw trace
+msgctxt "action"
+msgid "zed::CancelEtwTrace"
+msgstr "개발: ETW 추적을 저장하지 않고 취소"
+
+#. zed: change keybinding
+msgctxt "action"
+msgid "zed::ChangeKeybinding"
+msgstr "기본 설정: 키 바인딩 변경"
+
+#. zed: copy installed extensions into clipboard
+msgctxt "action"
+msgid "zed::CopyInstalledExtensionsIntoClipboard"
+msgstr "설치된 확장 프로그램을 클립보드에 복사"
+
+#. zed: copy system specs into clipboard
+msgctxt "action"
+msgid "zed::CopySystemSpecsIntoClipboard"
+msgstr "시스템 사양을 클립보드에 복사"
+
+#. zed: debug elements
+msgctxt "action"
+msgid "zed::DebugElements"
+msgstr "개발: 요소 디버그"
+
+#. zed: decrease buffer font size
+msgctxt "action"
+msgid "zed::DecreaseBufferFontSize"
+msgstr "편집기: 버퍼 글꼴 크기 줄이기"
+
+#. zed: decrease ui font size
+msgctxt "action"
+msgid "zed::DecreaseUiFontSize"
+msgstr "보기: UI 글꼴 크기 줄이기"
+
+#. zed: extensions
+msgctxt "action"
+msgid "zed::Extensions"
+msgstr "확장 프로그램"
+
+#. zed: get merch
+msgctxt "action"
+msgid "zed::GetMerch"
+msgstr "Zed 굿즈 스토어 열기"
+
+#. zed: hide
+msgctxt "action"
+msgid "zed::Hide"
+msgstr "창: 숨기기"
+
+#. zed: hide others
+msgctxt "action"
+msgid "zed::HideOthers"
+msgstr "창: 기타 숨기기"
+
+#. zed: import cursor settings
+msgctxt "action"
+msgid "zed::ImportCursorSettings"
+msgstr "Cursor 설정 가져오기"
+
+#. zed: import vs code settings
+msgctxt "action"
+msgid "zed::ImportVsCodeSettings"
+msgstr "VS Code 설정 가져오기"
+
+#. zed: increase buffer font size
+msgctxt "action"
+msgid "zed::IncreaseBufferFontSize"
+msgstr "편집기: 버퍼 글꼴 크기 늘리기"
+
+#. zed: increase ui font size
+msgctxt "action"
+msgid "zed::IncreaseUiFontSize"
+msgstr "보기: UI 글꼴 크기 늘리기"
+
+#. zed: install dev extension
+msgctxt "action"
+msgid "zed::InstallDevExtension"
+msgstr "개발 확장 프로그램 설치"
+
+#. zed: minimize
+msgctxt "action"
+msgid "zed::Minimize"
+msgstr "창: 최소화"
+
+#. zed: no action
+msgctxt "action"
+msgid "zed::NoAction"
+msgstr "키 바인딩 비활성화(NoAction)"
+
+#. zed: open account settings
+msgctxt "action"
+msgid "zed::OpenAccountSettings"
+msgstr "기본 설정: 계정 설정 열기"
+
+#. zed: open browser
+msgctxt "action"
+msgid "zed::OpenBrowser"
+msgstr "브라우저에서 URL 열기"
+
+#. zed: open debug tasks
+msgctxt "action"
+msgid "zed::OpenDebugTasks"
+msgstr "작업: 디버그 작업 열기"
+
+#. zed: open default keymap
+msgctxt "action"
+msgid "zed::OpenDefaultKeymap"
+msgstr "기본 설정: 기본 키맵 열기"
+
+#. zed: open default settings
+msgctxt "action"
+msgid "zed::OpenDefaultSettings"
+msgstr "기본 설정: 기본 설정값 열기"
+
+#. zed: open docs
+msgctxt "action"
+msgid "zed::OpenDocs"
+msgstr "문서 열기"
+
+#. zed: open keymap
+msgctxt "action"
+msgid "zed::OpenKeymap"
+msgstr "기본 설정: 키맵 열기"
+
+#. zed: open keymap file
+msgctxt "action"
+msgid "zed::OpenKeymapFile"
+msgstr "기본 설정: keymap.json 열기"
+
+#. zed: open licenses
+msgctxt "action"
+msgid "zed::OpenLicenses"
+msgstr "라이선스 열기"
+
+#. zed: open log
+msgctxt "action"
+msgid "zed::OpenLog"
+msgstr "로그 열기"
+
+#. zed: open onboarding
+msgctxt "action"
+msgid "zed::OpenOnboarding"
+msgstr "온보딩 열기"
+
+#. zed: open performance profiler
+msgctxt "action"
+msgid "zed::OpenPerformanceProfiler"
+msgstr "성능 프로파일러 열기"
+
+#. zed: open project settings
+msgctxt "action"
+msgid "zed::OpenProjectSettings"
+msgstr "기본 설정: 프로젝트 설정 열기"
+
+#. zed: open project settings file
+msgctxt "action"
+msgid "zed::OpenProjectSettingsFile"
+msgstr "기본 설정: 프로젝트 settings.json 열기"
+
+#. zed: open project tasks
+msgctxt "action"
+msgid "zed::OpenProjectTasks"
+msgstr "작업: 프로젝트 작업 열기"
+
+#. zed: open server settings
+msgctxt "action"
+msgid "zed::OpenServerSettings"
+msgstr "기본 설정: 서버 설정 열기"
+
+#. zed: open settings
+msgctxt "action"
+msgid "zed::OpenSettings"
+msgstr "기본 설정: 설정 열기"
+
+#. zed: open settings at
+msgctxt "action"
+msgid "zed::OpenSettingsAt"
+msgstr "기본 설정: 지정한 설정 열기"
+
+#. zed: open settings file
+msgctxt "action"
+msgid "zed::OpenSettingsFile"
+msgstr "기본 설정: settings.json 열기"
+
+#. zed: open settings page
+msgctxt "action"
+msgid "zed::OpenSettingsPage"
+msgstr "기본 설정: 설정 페이지 열기"
+
+#. zed: open status page
+msgctxt "action"
+msgid "zed::OpenStatusPage"
+msgstr "상태 페이지 열기"
+
+#. zed: open tasks
+msgctxt "action"
+msgid "zed::OpenTasks"
+msgstr "작업: tasks.json 열기"
+
+#. zed: open telemetry log
+msgctxt "action"
+msgid "zed::OpenTelemetryLog"
+msgstr "원격 분석 로그 열기"
+
+#. zed: open worktree setup tasks
+msgctxt "action"
+msgid "zed::OpenWorktreeSetupTasks"
+msgstr "작업: 워크트리 설정 작업 열기"
+
+#. zed: open zed repo
+msgctxt "action"
+msgid "zed::OpenZedRepo"
+msgstr "Zed 저장소 열기"
+
+#. zed: open zed url
+msgctxt "action"
+msgid "zed::OpenZedUrl"
+msgstr "zed:// URL 열기"
+
+#. zed: quit
+msgctxt "action"
+msgid "zed::Quit"
+msgstr "ForgeKairos 종료"
+
+#. zed: rebuild dev extension
+msgctxt "action"
+msgid "zed::RebuildDevExtension"
+msgstr "개발 확장 프로그램 다시 빌드"
+
+#. zed: record etw trace
+msgctxt "action"
+msgid "zed::RecordEtwTrace"
+msgstr "개발: ETW 추적 기록 시작"
+
+#. zed: record etw trace with heap tracing
+msgctxt "action"
+msgid "zed::RecordEtwTraceWithHeapTracing"
+msgstr "개발: 힙 추적과 함께 ETW 추적 기록 시작"
+
+#. zed: reload extensions
+msgctxt "action"
+msgid "zed::ReloadExtensions"
+msgstr "확장 프로그램 다시 로드"
+
+#. zed: reset all zoom
+msgctxt "action"
+msgid "zed::ResetAllZoom"
+msgstr "보기: 모든 확대/축소 초기화"
+
+#. zed: reset buffer font size
+msgctxt "action"
+msgid "zed::ResetBufferFontSize"
+msgstr "편집기: 버퍼 글꼴 크기 초기화"
+
+#. zed: reset database
+msgctxt "action"
+msgid "zed::ResetDatabase"
+msgstr "데이터베이스 초기화"
+
+#. zed: reset ui font size
+msgctxt "action"
+msgid "zed::ResetUiFontSize"
+msgstr "보기: UI 글꼴 크기 초기화"
+
+#. zed: reveal log in file manager
+msgctxt "action"
+msgid "zed::RevealLogInFileManager"
+msgstr "파일 관리자에서 로그 보기"
+
+#. zed: save etw trace
+msgctxt "action"
+msgid "zed::SaveEtwTrace"
+msgstr "개발: ETW 추적 저장"
+
+#. zed: show all
+msgctxt "action"
+msgid "zed::ShowAll"
+msgstr "창: 모두 표시"
+
+#. zed: show default semantic token rules
+msgctxt "action"
+msgid "zed::ShowDefaultSemanticTokenRules"
+msgstr "기본 설정: 기본 의미 기반 토큰 규칙 표시"
+
+#. zed: show update notification
+msgctxt "action"
+msgid "zed::ShowUpdateNotification"
+msgstr "개발: 업데이트 알림 표시"
+
+#. zed: show welcome
+msgctxt "action"
+msgid "zed::ShowWelcome"
+msgstr "시작 페이지 열기"
+
+#. zed: test crash
+msgctxt "action"
+msgid "zed::TestCrash"
+msgstr "개발: 크래시 테스트"
+
+#. zed: test panic
+msgctxt "action"
+msgid "zed::TestPanic"
+msgstr "개발: 패닉 테스트"
+
+#. zed: toggle base keymap selector
+msgctxt "action"
+msgid "zed::ToggleBaseKeymapSelector"
+msgstr "기본 설정: 기본 키맵 선택"
+
+#. zed: toggle full screen
+msgctxt "action"
+msgid "zed::ToggleFullScreen"
+msgstr "보기: 전체 화면 전환"
+
+#. zed: unbind
+msgctxt "action"
+msgid "zed::Unbind"
+msgstr "키 바인딩 해제(Unbind)"
+
+#. zed: zoom
+msgctxt "action"
+msgid "zed::Zoom"
+msgstr "창: 확대/축소"
+
+#. zed predict onboarding: open zed predict onboarding
+msgctxt "action"
+msgid "zed_predict_onboarding::OpenZedPredictOnboarding"
+msgstr "편집 예측: 온보딩 열기"
+
+#. zeta: focus predictions
+msgctxt "action"
+msgid "zeta::FocusPredictions"
+msgstr "편집 예측: 예측에 포커스"
+
+#. zeta: next edit
+msgctxt "action"
+msgid "zeta::NextEdit"
+msgstr "편집 예측: 다음 편집"
+
+#. zeta: preview prediction
+msgctxt "action"
+msgid "zeta::PreviewPrediction"
+msgstr "편집 예측: 예측 미리 보기"
+
+#. zeta: previous edit
+msgctxt "action"
+msgid "zeta::PreviousEdit"
+msgstr "편집 예측: 이전 편집"
+
+#. zeta: thumbs down active prediction
+msgctxt "action"
+msgid "zeta::ThumbsDownActivePrediction"
+msgstr "편집 예측: 예측에 싫어요"
+
+#. zeta: thumbs up active prediction
+msgctxt "action"
+msgid "zeta::ThumbsUpActivePrediction"
+msgstr "편집 예측: 예측에 좋아요"

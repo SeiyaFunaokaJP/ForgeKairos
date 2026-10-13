@@ -1,0 +1,722 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid " (environment variables: {names})"
+msgstr " (variables d'environnement : {names})"
+
+msgid " (headers: {names})"
+msgstr " (en-têtes : {names})"
+
+msgid "(the language server's default executable)"
+msgstr "(l'exécutable par défaut du serveur de langage)"
+
+msgid "A commit that is not in the history of the current branch cannot be rewritten. Switch to a branch that has it, then try again."
+msgstr "Une validation absente de l'historique de la branche actuelle ne peut pas être réécrite. Passez à une branche qui la contient, puis réessayez."
+
+msgid "A detached HEAD cannot be reordered. Switch to a branch first."
+msgstr "Un HEAD détaché ne peut pas être réordonné. Passez d'abord à une branche."
+
+msgid "A git account named \"{id}\" already exists"
+msgstr "Un compte Git nommé \"{id}\" existe déjà"
+
+msgid "A launch of language server \"{name}\", which this IDE does not know, cannot be approved"
+msgstr "Le lancement du serveur de langage \"{name}\", inconnu de cet IDE, ne peut pas être approuvé"
+
+msgid "A launch request from the remote host does not say where it is defined"
+msgstr "Une demande de lancement provenant de l'hôte distant n'indique pas où elle est définie"
+
+msgid "A launch request from the remote host has no name or program"
+msgstr "Une demande de lancement provenant de l'hôte distant n'a ni nom ni programme"
+
+msgid "A merge commit is among the commits newer than the chosen range, so it cannot be rewritten (rewriting would break that merge). Choose only commits newer than the merge."
+msgstr "Une validation de fusion figure parmi les validations plus récentes que la plage choisie : elle ne peut donc pas être réécrite (la réécriture casserait cette fusion). Choisissez uniquement des validations plus récentes que la fusion."
+
+msgid "A merge is in progress. Finish or abort the merge, then try again."
+msgstr "Une fusion est en cours. Terminez ou abandonnez la fusion, puis réessayez."
+
+msgid "A merge stopped partway. Finish or abort the merge first."
+msgstr "Une fusion s'est arrêtée en cours de route. Terminez ou abandonnez d'abord la fusion."
+
+msgid "A range with a merge commit cannot be rewritten. Choose a range without merges."
+msgstr "Une plage contenant une validation de fusion ne peut pas être réécrite. Choisissez une plage sans fusion."
+
+msgid "A range with the first commit cannot be reordered. Choose again from the commit after it."
+msgstr "Une plage contenant la première validation ne peut pas être réordonnée. Choisissez à nouveau à partir de la validation suivante."
+
+msgid "A warning from the remote host has no program name"
+msgstr "Un avertissement provenant de l'hôte distant n'a pas de nom de programme"
+
+msgid "Agents can't be started in a sandbox in a project that has no folder open."
+msgstr "Les agents ne peuvent pas être démarrés dans un bac à sable dans un projet sans dossier ouvert."
+
+msgid "An account name may use only letters, digits, '-', '_' and '.'"
+msgstr "Un nom de compte ne peut contenir que des lettres, des chiffres, '-', '_' et '.'"
+
+msgid "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch} (needs a force push)\"."
+msgstr "La branche \"{merge_request_branch}\" existe déjà. Pour la recréer, cochez \"Recréer la branche existante {merge_request_branch} (nécessite un envoi forcé)\"."
+
+msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+msgstr "Impossible de créer une branche MR sur un HEAD détaché. Passez d'abord à une branche."
+
+msgid "Cannot interpret the push option {option}."
+msgstr "Impossible d'interpréter l'option d'envoi (push) {option}."
+
+msgid "Cannot read the merge filter ({merges})."
+msgstr "Impossible de lire le filtre de fusion ({merges})."
+
+msgid "Cannot read this as a commit SHA: {sha}"
+msgstr "Impossible de lire ceci comme un SHA de validation : {sha}"
+
+msgid "Cannot start in folders that span several WSL distributions ({existing}, {root_distro})."
+msgstr "Impossible de démarrer dans des dossiers répartis sur plusieurs distributions WSL ({existing}, {root_distro})."
+
+msgid "Commit {sha} was not found."
+msgstr "La validation {sha} est introuvable."
+
+msgid "Commit {short} is included twice. Check the list."
+msgstr "La validation {short} est incluse deux fois. Vérifiez la liste."
+
+msgid "Commit {short} is not in the range to rewrite. Choose the range again."
+msgstr "La validation {short} ne fait pas partie de la plage à réécrire. Choisissez à nouveau la plage."
+
+msgid "Could not build the commands for the rewrite."
+msgstr "Impossible de construire les commandes de la réécriture."
+
+msgid "Could not check the created MR branch \"{merge_request_branch}\"."
+msgstr "Impossible de vérifier la branche MR créée \"{merge_request_branch}\"."
+
+msgid "Could not check the current branch: {error}"
+msgstr "Impossible de vérifier la branche actuelle : {error}"
+
+msgid "Could not check whether the commit is on the current branch: {error}"
+msgstr "Impossible de vérifier si la validation se trouve sur la branche actuelle : {error}"
+
+msgid "Could not check {path}."
+msgstr "Impossible de vérifier {path}."
+
+msgid "Could not confirm the launch approval with the IDE"
+msgstr "Impossible de confirmer l'approbation du lancement auprès de l'IDE"
+
+msgid "Could not create the directory to install tools in: {path}"
+msgstr "Impossible de créer le répertoire d'installation des outils : {path}"
+
+msgid "Could not create the download location for language servers (check the free disk space and permissions): {path}: {error}"
+msgstr "Impossible de créer l'emplacement de téléchargement des serveurs de langage (vérifiez l'espace disque disponible et les autorisations) : {path} : {error}"
+
+msgid "Could not create the working directory {directory} of the MCP server"
+msgstr "Impossible de créer le répertoire de travail {directory} du serveur MCP"
+
+msgid "Could not create {path}."
+msgstr "Impossible de créer {path}."
+
+msgid "Could not download Node.js for Linux ({url}). Check that the editor's allowlist of connections includes `nodejs.org`."
+msgstr "Impossible de télécharger Node.js pour Linux ({url}). Vérifiez que la liste d'autorisation des connexions de l'éditeur inclut `nodejs.org`."
+
+msgid "Could not download {archive_url}."
+msgstr "Impossible de télécharger {archive_url}."
+
+msgid "Could not download {tool}"
+msgstr "Impossible de télécharger {tool}"
+
+msgid "Could not examine the changes to fold in: {error}"
+msgstr "Impossible d'examiner les modifications à intégrer : {error}"
+
+msgid "Could not examine the commits after the range to rewrite: {error}"
+msgstr "Impossible d'examiner les validations postérieures à la plage à réécrire : {error}"
+
+msgid "Could not examine the files the rewrite changes: {error}"
+msgstr "Impossible d'examiner les fichiers modifiés par la réécriture : {error}"
+
+msgid "Could not examine the ignored local files: {error}"
+msgstr "Impossible d'examiner les fichiers locaux ignorés : {error}"
+
+msgid "Could not examine the range to rewrite: {error}"
+msgstr "Impossible d'examiner la plage à réécrire : {error}"
+
+msgid "Could not examine the rewritten range: {error}"
+msgstr "Impossible d'examiner la plage réécrite : {error}"
+
+msgid "Could not examine the state of the working tree: {error}"
+msgstr "Impossible d'examiner l'état de la copie de travail : {error}"
+
+msgid "Could not fetch the release information of {project} {version}"
+msgstr "Impossible de récupérer les informations de version de {project} {version}"
+
+msgid "Could not fetch the release information of {project} {version} (HTTP {status})"
+msgstr "Impossible de récupérer les informations de version de {project} {version} (HTTP {status})"
+
+msgid "Could not get the author of the original commit: cannot interpret the output of git log."
+msgstr "Impossible d'obtenir l'auteur de la validation d'origine : impossible d'interpréter la sortie de git log."
+
+msgid "Could not get the author of the original commit: {error}"
+msgstr "Impossible d'obtenir l'auteur de la validation d'origine : {error}"
+
+msgid "Could not get the commits in the range to rewrite: {error}"
+msgstr "Impossible d'obtenir les validations de la plage à réécrire : {error}"
+
+msgid "Could not get the list of tags: {error}"
+msgstr "Impossible d'obtenir la liste des étiquettes : {error}"
+
+msgid "Could not install `{package_spec}` inside the WSL sandbox. Check that the editor's allowlist of connections includes `{NPM_REGISTRY_HOST}`."
+msgstr "Impossible d'installer `{package_spec}` dans le bac à sable WSL. Vérifiez que la liste d'autorisation des connexions de l'éditeur inclut `{NPM_REGISTRY_HOST}`."
+
+msgid "Could not interpret the output of git describe: {described}"
+msgstr "Impossible d'interpréter la sortie de git describe : {described}"
+
+msgid "Could not look up the default branch"
+msgstr "Impossible de déterminer la branche par défaut"
+
+msgid "Could not make {destination} executable"
+msgstr "Impossible de rendre {destination} exécutable"
+
+msgid "Could not move {file_name} to {destination}"
+msgstr "Impossible de déplacer {file_name} vers {destination}"
+
+msgid "Could not open {path} (it has to be a real folder, not a link)."
+msgstr "Impossible d'ouvrir {path} (il doit s'agir d'un vrai dossier, et non d'un lien)."
+
+msgid "Could not open {path}."
+msgstr "Impossible d'ouvrir {path}."
+
+msgid "Could not parse the release information of {project} {version}"
+msgstr "Impossible d'analyser les informations de version de {project} {version}"
+
+msgid "Could not prepare the agent's settings folder on the remote host: {error}"
+msgstr "Impossible de préparer le dossier des paramètres de l'agent sur l'hôte distant : {error}"
+
+msgid "Could not prepare the commands that build the MR branch."
+msgstr "Impossible de préparer les commandes qui construisent la branche MR."
+
+msgid "Could not read the commit subject: {error}"
+msgstr "Impossible de lire l'objet de la validation : {error}"
+
+msgid "Could not read the release information of {project} {version}"
+msgstr "Impossible de lire les informations de version de {project} {version}"
+
+msgid "Could not resolve HEAD: {error}"
+msgstr "Impossible de résoudre HEAD : {error}"
+
+msgid "Could not revoke the launch approval"
+msgstr "Impossible de retirer l'approbation du lancement"
+
+msgid "Could not save the launch approval"
+msgstr "Impossible d'enregistrer l'approbation du lancement"
+
+msgid "Couldn't find any locator for task `{}`. Specify the `attach` or `launch` arguments in your debug scenario definition"
+msgstr "Aucun localisateur trouvé pour la tâche `{}`. Spécifiez les arguments `attach` ou `launch` dans la définition de votre scénario de débogage"
+
+msgid "Couldn't remove the token from the credential store"
+msgstr "Impossible de supprimer le jeton du magasin d'identifiants"
+
+msgid "Couldn't write the token to the credential store"
+msgstr "Impossible d'écrire le jeton dans le magasin d'identifiants"
+
+msgid "Debugging is not yet supported via collab"
+msgstr "Le débogage n'est pas encore pris en charge via la collaboration"
+
+msgid "Distributions for the WSL architecture `{other}` are not supported, so the agent cannot start inside the sandbox."
+msgstr "Les distributions pour l'architecture WSL `{other}` ne sont pas prises en charge : l'agent ne peut donc pas démarrer dans le bac à sable."
+
+msgid "Downloading Node.js for Linux…"
+msgstr "Téléchargement de Node.js pour Linux…"
+
+msgid "Downloading the agent for Linux…"
+msgstr "Téléchargement de l'agent pour Linux…"
+
+msgid "Failed to exchange authorization code for tokens"
+msgstr "Impossible d'échanger le code d'autorisation contre des jetons"
+
+msgid "Failed to parse tasks file content as a JSON array: {e}"
+msgstr "Impossible d'analyser le contenu du fichier de tâches en tant que tableau JSON : {e}"
+
+msgid "Failed to persist OAuth session in keychain"
+msgstr "Impossible de conserver la session OAuth dans le trousseau"
+
+msgid "Failed to resolve OAuth client registration"
+msgstr "Impossible de résoudre l'enregistrement du client OAuth"
+
+msgid "Failed to set breakpoints for {failed_path}"
+msgstr "Impossible de définir les points d'arrêt pour {failed_path}"
+
+msgid "Failed to set breakpoints for {failed_path} and {count} other path"
+msgid_plural "Failed to set breakpoints for {failed_path} and {count} other paths"
+msgstr[0] "Impossible de définir les points d'arrêt pour {failed_path} et {count} autre chemin"
+msgstr[1] "Impossible de définir les points d'arrêt pour {failed_path} et {count} autres chemins"
+
+msgid "Failed to set local debug scenarios in {path}:\n{message}"
+msgstr "Impossible de définir les scénarios de débogage locaux dans {path} :\n{message}"
+
+msgid "Failed to set local settings in {path}:\n{message}"
+msgstr "Impossible d'appliquer les paramètres locaux dans {path} :\n{message}"
+
+msgid "Failed to set local tasks in {path}:\n{message}"
+msgstr "Impossible de définir les tâches locales dans {path} :\n{message}"
+
+msgid "Failed to start OAuth callback server"
+msgstr "Impossible de démarrer le serveur de rappel OAuth"
+
+msgid "Formatter `{command}` failed with exit code {code}"
+msgstr "Le formateur `{command}` a échoué avec le code de sortie {code}"
+
+msgid "Formatter `{command}` failed with exit code {code}."
+msgstr "Le formateur `{command}` a échoué avec le code de sortie {code}."
+
+msgid "Formatter `{command}` terminated abnormally"
+msgstr "Le formateur `{command}` s'est arrêté anormalement"
+
+msgid "Formatter `{command}` terminated abnormally."
+msgstr "Le formateur `{command}` s'est arrêté anormalement."
+
+msgid "Formatter `{command}` was not found"
+msgstr "Formateur `{command}` introuvable"
+
+msgid "Formatter `{command}` was not found. It is not installed on the remote host ({host}). \"Install on Remote\" in the notification installs it in the remote home directory without administrator rights."
+msgstr "Formateur `{command}` introuvable. Il n'est pas installé sur l'hôte distant ({host}). \"Installer sur l'hôte distant\" dans la notification l'installe dans le répertoire personnel distant sans droits d'administrateur."
+
+msgid "Formatter `{command}` was not found. It is not installed on the remote host ({host}). Put `{command}` in a directory on PATH on the remote host."
+msgstr "Formateur `{command}` introuvable. Il n'est pas installé sur l'hôte distant ({host}). Placez `{command}` dans un répertoire du PATH sur l'hôte distant."
+
+msgid "Formatter `{command}` was not found. It is not on PATH."
+msgstr "Formateur `{command}` introuvable. Il ne se trouve pas dans le PATH."
+
+msgid "Formatter `{command}` was not found. Searched these places and PATH: {places}."
+msgstr "Formateur `{command}` introuvable. Emplacements recherchés, en plus du PATH : {places}."
+
+msgid "Formatter `{missing_command}` was not found, so the language server ({server_name}) formatted the file."
+msgstr "Le formateur `{missing_command}` est introuvable : le fichier a donc été mis en forme par le serveur de langage ({server_name})."
+
+msgid "Formatting failed: {error}"
+msgstr "Échec de la mise en forme : {error}"
+
+msgid "Go toolchain"
+msgstr "Chaîne d'outils Go"
+
+msgid "Ignored while \"Allow Running Outside the Sandbox\" is off (Settings > AI > Sandbox)."
+msgstr "Ignoré tant que \"Autoriser l'exécution hors du bac à sable\" est désactivé (Paramètres > IA > Bac à sable)."
+
+msgid "Language server `{name}` cannot format"
+msgstr "Le serveur de langage `{name}` ne peut pas mettre en forme"
+
+msgid "Language server `{name}` is not running or does not support formatting."
+msgstr "Le serveur de langage `{name}` n'est pas en cours d'exécution ou ne prend pas en charge la mise en forme."
+
+msgid "Loading the launch approvals"
+msgstr "Chargement des approbations de lancement"
+
+msgid "MCP server \"{id}\" has no project definition that an approval could apply to"
+msgstr "Le serveur MCP \"{id}\" n'a aucune définition de projet à laquelle une approbation pourrait s'appliquer"
+
+msgid "MCP server \"{id}\" is defined in the project settings, and this definition has not been approved yet"
+msgstr "Le serveur MCP \"{id}\" est défini dans les paramètres du projet, et cette définition n'a pas encore été approuvée"
+
+msgid "MCP server \"{id}\" is waiting for approval. A server defined in the project settings does not start until what it runs is checked and allowed on the \"MCP Servers\" page of the settings."
+msgstr "Le serveur MCP \"{id}\" attend une approbation. Un serveur défini dans les paramètres du projet ne démarre pas tant que ce qu'il exécute n'a pas été vérifié et autorisé dans la page \"Serveurs MCP\" des paramètres."
+
+msgid "No download location is set for language servers"
+msgstr "Aucun emplacement de téléchargement n'est défini pour les serveurs de langage"
+
+msgid "No language server can format a selection"
+msgstr "Aucun serveur de langage ne peut mettre en forme une sélection"
+
+msgid "No language server can format this file"
+msgstr "Aucun serveur de langage ne peut mettre en forme ce fichier"
+
+msgid "No language server can format this file."
+msgstr "Aucun serveur de langage ne peut mettre en forme ce fichier."
+
+msgid "No language server can format this file. Install a language server on the remote host ({host})."
+msgstr "Aucun serveur de langage ne peut mettre en forme ce fichier. Installez un serveur de langage sur l'hôte distant ({host})."
+
+msgid "No open file uses the restarted language servers, so they will start when you open a file."
+msgstr "Aucun fichier ouvert n'utilise les serveurs de langage redémarrés : ils démarreront lorsque vous ouvrirez un fichier."
+
+msgid "No running language server can format a selection in this file. The whole file can be formatted."
+msgstr "Aucun serveur de langage en cours d'exécution ne peut mettre en forme une sélection dans ce fichier. Le fichier entier peut être mis en forme."
+
+msgid "Node.js for Linux is a zip archive (unexpected)."
+msgstr "Node.js pour Linux est une archive zip (inattendu)."
+
+msgid "Node.js is not distributed for the WSL architecture `{other}`, so the agent cannot start inside the sandbox."
+msgstr "Node.js n'est pas distribué pour l'architecture WSL `{other}` : l'agent ne peut donc pas démarrer dans le bac à sable."
+
+msgid "None of the locators for task `{}` completed successfully"
+msgstr "Aucun des localisateurs de la tâche `{}` ne s'est terminé avec succès"
+
+msgid "Not available on a detached HEAD. Switch to a branch first."
+msgstr "Non disponible sur un HEAD détaché. Passez d'abord à une branche."
+
+msgid "OAuth callback server received an invalid request"
+msgstr "Le serveur de rappel OAuth a reçu une requête invalide"
+
+msgid "On this OS, the agent's settings folder cannot be created for the sandbox."
+msgstr "Sur ce système d'exploitation, le dossier des paramètres de l'agent ne peut pas être créé pour le bac à sable."
+
+msgid "Open Tasks Documentation"
+msgstr "Ouvrir la documentation des tâches"
+
+msgid "Placing Node.js for Linux in WSL…"
+msgstr "Mise en place de Node.js pour Linux dans WSL…"
+
+msgid "Placing the agent for Linux in WSL…"
+msgstr "Mise en place de l'agent pour Linux dans WSL…"
+
+msgid "Running npm install inside the sandbox…"
+msgstr "Exécution de npm install dans le bac à sable…"
+
+msgid "Server returned 401 Unauthorized on a non-HTTP transport"
+msgstr "Le serveur a renvoyé 401 Unauthorized sur un transport non HTTP"
+
+msgid "Server returned 401 Unauthorized. Check your configured Authorization header."
+msgstr "Le serveur a renvoyé 401 Unauthorized. Vérifiez l'en-tête Authorization configuré."
+
+msgid "Some changes could not be put back, so they were kept in the stash (stash@{{0}}). Restore them from the stash in the Git panel."
+msgstr "Certaines modifications n'ont pas pu être rétablies : elles ont donc été conservées dans la remise (stash@{{0}}). Restaurez-les depuis la remise dans le panneau Git."
+
+msgid "Some files have conflicts. Resolve them, then try again."
+msgstr "Certains fichiers présentent des conflits. Résolvez-les, puis réessayez."
+
+msgid "Some files have unresolved conflicts. Resolve them first."
+msgstr "Certains fichiers présentent des conflits non résolus. Résolvez-les d'abord."
+
+msgid "Starting MCP server `{id}` timed out. See the Zed log for details."
+msgstr "Le démarrage du serveur MCP `{id}` a expiré. Consultez le journal de ForgeKairos pour plus de détails."
+
+msgid "Starting language server \"{server_name}\" was called off, so the approval of its executable is not awaited"
+msgstr "Le démarrage du serveur de langage \"{server_name}\" a été annulé : l'approbation de son exécutable n'est donc pas attendue"
+
+msgid "Starting this MCP server needs approval"
+msgstr "Le démarrage de ce serveur MCP nécessite une approbation"
+
+msgid "The IDE cannot approve launches"
+msgstr "L'IDE ne peut pas approuver les lancements"
+
+msgid "The IDE cannot check the launch approval, so the external formatter \"{command}\" was not run ({reason})"
+msgstr "L'IDE ne peut pas vérifier l'approbation du lancement ; le formateur externe \"{command}\" n'a donc pas été exécuté ({reason})"
+
+msgid "The IDE did not answer within {seconds} seconds"
+msgstr "L'IDE n'a pas répondu dans un délai de {seconds} secondes"
+
+msgid "The IDE is not answering launch requests (asked again once the IDE answers or reconnects)"
+msgstr "L'IDE ne répond pas aux demandes de lancement (la demande sera renvoyée dès que l'IDE répondra ou se reconnectera)"
+
+msgid "The IDE is not responding, so the approval of the executable of language server \"{server_name}\" cannot be checked. It starts once the IDE responds ({reason})"
+msgstr "L'IDE ne répond pas ; l'approbation de l'exécutable du serveur de langage \"{server_name}\" ne peut donc pas être vérifiée. Il démarrera dès que l'IDE répondra ({reason})"
+
+msgid "The MCP server command the remote host returned does not match the approved definition"
+msgstr "La commande du serveur MCP renvoyée par l'hôte distant ne correspond pas à la définition approuvée"
+
+msgid "The MCP server stopped"
+msgstr "Le serveur MCP s'est arrêté"
+
+msgid "The MCP server store was dropped"
+msgstr "Le magasin des serveurs MCP a été libéré"
+
+msgid "The Windows program `{path}` cannot run inside the WSL sandbox. Set the absolute path of a Linux program (such as `/usr/local/bin/...`) in the agent's settings, or start it outside the sandbox."
+msgstr "Le programme Windows `{path}` ne peut pas s'exécuter dans le bac à sable WSL. Indiquez le chemin absolu d'un programme Linux (p. ex. `/usr/local/bin/...`) dans les paramètres de l'agent, ou démarrez-le hors du bac à sable."
+
+msgid "The Zed server on the remote host is too old for this rewrite. Update Zed on the remote host."
+msgstr "Le serveur ForgeKairos de l'hôte distant est trop ancien pour cette réécriture. Mettez à jour ForgeKairos sur l'hôte distant."
+
+msgid "The Zed server on the remote host is too old to search with these conditions. Update Zed on the remote host."
+msgstr "Le serveur ForgeKairos de l'hôte distant est trop ancien pour rechercher avec ces conditions. Mettez à jour ForgeKairos sur l'hôte distant."
+
+msgid "The agent sandbox the remote host prepared does not fit this editor's policy: {error}"
+msgstr "Le bac à sable de l'agent préparé par l'hôte distant n'est pas conforme à la politique de cet éditeur : {error}"
+
+msgid "The agent's executable `{command}` has to be a relative path starting with `./`."
+msgstr "L'exécutable de l'agent `{command}` doit être un chemin relatif commençant par `./`."
+
+msgid "The approval of the executable of language server \"{server_name}\" was revoked, so it is not started"
+msgstr "L'approbation de l'exécutable du serveur de langage \"{server_name}\" a été retirée ; il n'est donc pas démarré"
+
+msgid "The base \"{base}\" was not found."
+msgstr "La base \"{base}\" est introuvable."
+
+msgid "The base already has every change of the commits in the MR box. There is no difference to make an MR of."
+msgstr "La base contient déjà toutes les modifications des validations de la boîte MR. Il n'y a aucune différence à partir de laquelle créer une MR."
+
+msgid "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
+msgstr "La branche de base \"{merge_request_branch}\" ne peut pas être la branche MR. Utilisez un autre nom."
+
+msgid "The checked-out branch has changed to \"{current}\" (expected \"{branch}\"). Try again."
+msgstr "La branche extraite est maintenant \"{current}\" (attendu : \"{branch}\"). Réessayez."
+
+msgid "The chosen files have no changes."
+msgstr "Les fichiers choisis ne comportent aucune modification."
+
+msgid "The connected remote host does not support file transfer. Update the Zed server on the remote host."
+msgstr "L'hôte distant connecté ne prend pas en charge le transfert de fichiers. Mettez à jour le serveur ForgeKairos sur l'hôte distant."
+
+msgid "The connection to the remote host is closed"
+msgstr "La connexion à l'hôte distant est fermée"
+
+msgid "The content has changed. Check it again"
+msgstr "Le contenu a changé. Vérifiez-le à nouveau"
+
+msgid "The database that records launch approvals is not open"
+msgstr "La base de données qui enregistre les approbations de lancement n'est pas ouverte"
+
+msgid "The download of language server {name} did not finish within {seconds} seconds. The download continues, so wait a while and then restart the language server."
+msgstr "Le téléchargement du serveur de langage {name} ne s'est pas terminé dans un délai de {seconds} secondes. Le téléchargement se poursuit : patientez un moment, puis redémarrez le serveur de langage."
+
+msgid "The downloaded distribution did not contain {file_name} ({archive})"
+msgstr "La distribution téléchargée ne contenait pas {file_name} ({archive})"
+
+msgid "The executable of language server \"{server_name}\" from the project settings is not allowed, so it is not started"
+msgstr "L'exécutable du serveur de langage \"{server_name}\" défini dans les paramètres du projet n'est pas autorisé ; il n'est donc pas démarré"
+
+msgid "The first commit cannot be dropped. The repository's first commit has no parent."
+msgstr "La première validation ne peut pas être supprimée. La première validation du dépôt n'a pas de parent."
+
+msgid "The git account picked for this repository is not in effect on the remote host ({reason}), so nothing was done. Update the remote server, or pick \"Git's Own Configuration\" for this repository."
+msgstr "Le compte Git choisi pour ce dépôt n'est pas actif sur l'hôte distant ({reason}) ; aucune action n'a donc été effectuée. Mettez à jour le serveur distant, ou choisissez \"Configuration propre à Git\" pour ce dépôt."
+
+msgid "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started"
+msgstr "L'approbation du lancement ne peut pas être vérifiée ; l'exécutable du serveur de langage \"{server_name}\" défini dans les paramètres du projet n'est donc pas démarré"
+
+msgid "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started ({reason})"
+msgstr "L'approbation du lancement ne peut pas être vérifiée ; l'exécutable du serveur de langage \"{server_name}\" défini dans les paramètres du projet n'est donc pas démarré ({reason})"
+
+msgid "The launch approval key from the remote host is malformed"
+msgstr "La clé d'approbation de lancement reçue de l'hôte distant est mal formée"
+
+msgid "The launch definition has a string longer than {MAX_STRING_BYTES} bytes"
+msgstr "La définition de lancement contient une chaîne de plus de {MAX_STRING_BYTES} octets"
+
+msgid "The launch definition has too many arguments ({count}, at most {MAX_ARGUMENTS})"
+msgstr "La définition de lancement contient trop d'arguments ({count}, au maximum {MAX_ARGUMENTS})"
+
+msgid "The launch definition has too many entries (at most {MAX_LIST_ENTRIES})"
+msgstr "La définition de lancement contient trop d'entrées (au maximum {MAX_LIST_ENTRIES})"
+
+msgid "The launch definition is too large ({total_bytes} bytes, at most {MAX_TOTAL_BYTES} bytes)"
+msgstr "La définition de lancement est trop volumineuse ({total_bytes} octets, au maximum {MAX_TOTAL_BYTES} octets)"
+
+msgid "The listed commits do not match the actual range (the git history). Commits may have been added to or removed from the range. Refresh the graph and choose again."
+msgstr "Les validations listées ne correspondent pas à la plage réelle (l'historique Git). Des validations ont peut-être été ajoutées à la plage ou retirées de celle-ci. Actualisez le graphe et choisissez à nouveau."
+
+msgid "The oldest commit of the chosen range is not in the history of the newest one. Choose the range again."
+msgstr "La validation la plus ancienne de la plage choisie ne figure pas dans l'historique de la plus récente. Choisissez à nouveau la plage."
+
+msgid "The project identifier {project_key} is invalid."
+msgstr "L'identifiant de projet {project_key} n'est pas valide."
+
+msgid "The project is closed"
+msgstr "Le projet est fermé"
+
+msgid "The range to rewrite has \"{subject}\". This operation would fold fixup! / squash! commits in along with it, so deal with them first, then try again."
+msgstr "La plage à réécrire contient \"{subject}\". Cette opération y intégrerait aussi les validations fixup! / squash! : traitez-les d'abord, puis réessayez."
+
+msgid "The remote host asked about a kind of launch this IDE does not know"
+msgstr "L'hôte distant a demandé un type de lancement que cet IDE ne connaît pas"
+
+msgid "The remote host does not ask about connecting to URLs"
+msgstr "L'hôte distant ne demande pas d'approbation pour la connexion à des URL"
+
+msgid "The remote host does not ask about launching MCP servers"
+msgstr "L'hôte distant ne demande pas d'approbation pour le lancement de serveurs MCP"
+
+msgid "The remote host is disconnected, so the revocation reaches it when it reconnects"
+msgstr "L'hôte distant est déconnecté ; le retrait lui sera transmis lors de sa reconnexion"
+
+msgid "The remote host is not responding."
+msgstr "L'hôte distant ne répond pas."
+
+msgid "The remote host sent a kind of warning this IDE cannot show"
+msgstr "L'hôte distant a envoyé un type d'avertissement que cet IDE ne peut pas afficher"
+
+msgid "The remote server did not answer"
+msgstr "Le serveur distant n'a pas répondu"
+
+msgid "The remote server is too old to run git with hooks turned off, so the AI cannot run git commands there. Update the remote server to let it."
+msgstr "Le serveur distant est trop ancien pour exécuter Git avec les hooks désactivés ; l'IA ne peut donc pas y exécuter de commandes Git. Mettez à jour le serveur distant pour l'autoriser."
+
+msgid "The scratch branch \"{scratch_branch}\" does not start at the base, so it cannot go into the MR branch."
+msgstr "La branche temporaire \"{scratch_branch}\" ne part pas de la base ; elle ne peut donc pas être intégrée à la branche MR."
+
+msgid "The scratch branch \"{scratch_branch}\" has unstaged changes. Stage or discard them, then try again."
+msgstr "La branche temporaire \"{scratch_branch}\" contient des modifications non indexées. Indexez-les ou abandonnez-les, puis réessayez."
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
+msgstr "La branche temporaire \"{scratch_branch}\" de la tentative précédente existe toujours. Vérifiez son contenu et supprimez-la, puis réessayez."
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous rewrite is still there. Check its contents and delete it, then try again."
+msgstr "La branche temporaire \"{scratch_branch}\" de la réécriture précédente existe toujours. Vérifiez son contenu et supprimez-la, puis réessayez."
+
+msgid "The token contains a line break or a control character"
+msgstr "Le jeton contient un saut de ligne ou un caractère de contrôle"
+
+msgid "The token is empty"
+msgstr "Le jeton est vide"
+
+msgid "The working directory of the launch the remote host asked about ({working_directory}) is not where the worktree ({known}) is"
+msgstr "Le répertoire de travail du lancement demandé par l'hôte distant ({working_directory}) ne correspond pas à l'emplacement de l'arborescence de travail ({known})"
+
+msgid "The worktree the remote host asked about (ID {id}) is not in this project"
+msgstr "L'arborescence de travail demandée par l'hôte distant (ID {id}) ne fait pas partie de ce projet"
+
+msgid "The worktree the remote host asked about ({requested}) does not match the worktree this IDE has open under the same ID ({known})"
+msgstr "L'arborescence de travail demandée par l'hôte distant ({requested}) ne correspond pas à celle que cet IDE a ouverte sous le même ID ({known})"
+
+msgid "The {kind} stopped partway. Continue or abort it in the Git panel's banner first."
+msgstr "L'opération {kind} s'est arrêtée en cours de route. Continuez-la ou abandonnez-la d'abord dans la bannière du panneau Git."
+
+msgid "The {kind} stopped partway. Continue or abort it in the Git panel, then try again."
+msgstr "L'opération {kind} s'est arrêtée en cours de route. Continuez-la ou abandonnez-la dans le panneau Git, puis réessayez."
+
+msgid "There are no changes to put in the commit (untracked files go in only once staged)."
+msgstr "Aucune modification à inclure dans la validation (les fichiers non suivis ne sont inclus qu'une fois indexés)."
+
+msgid "There are no staged changes."
+msgstr "Aucune modification indexée."
+
+msgid "There are uncommitted changes. Commit or stash them before creating the MR branch."
+msgstr "Il y a des modifications non validées. Validez-les ou remisez-les avant de créer la branche MR."
+
+msgid "There is no download information for Node.js for Linux ({architecture})."
+msgstr "Aucune information de téléchargement de Node.js pour Linux ({architecture})."
+
+msgid "There is no folder to open."
+msgstr "Aucun dossier à ouvrir."
+
+msgid "There is no git account named \"{id}\" any more"
+msgstr "Le compte Git \"{id}\" n'existe plus"
+
+msgid "This agent has no distribution for {platform_key}, so it cannot start inside the WSL sandbox (available: {available})."
+msgstr "Cet agent n'a pas de distribution pour {platform_key} ; il ne peut donc pas démarrer dans le bac à sable WSL (disponibles : {available})."
+
+msgid "This distribution is a zip archive, so it cannot be unpacked in the WSL sandbox (the WSL distribution has no `unzip`). Choose an agent with a tar.gz distribution for Linux, or start it outside the sandbox."
+msgstr "Cette distribution est une archive zip ; elle ne peut donc pas être décompressée dans le bac à sable WSL (la distribution WSL ne dispose pas de `unzip`). Choisissez un agent proposant une distribution tar.gz pour Linux, ou démarrez-le hors du bac à sable."
+
+msgid "This distribution's format cannot be unpacked in the WSL sandbox. Choose an agent with a tar.gz distribution for Linux, or start it outside the sandbox."
+msgstr "Le format de cette distribution ne peut pas être décompressé dans le bac à sable WSL. Choisissez un agent proposant une distribution tar.gz pour Linux, ou démarrez-le hors du bac à sable."
+
+msgid "This project is not connected to a remote host."
+msgstr "Ce projet n'est pas connecté à un hôte distant."
+
+msgid "Too many approved launches were asked about by the remote host (at most {MAX_REMEMBERED_LAUNCHES})"
+msgstr "L'hôte distant a demandé trop de lancements approuvés (au maximum {MAX_REMEMBERED_LAUNCHES})"
+
+msgid "Too many launches are waiting for approval in the IDE"
+msgstr "Trop de lancements sont en attente d'approbation dans l'IDE"
+
+msgid "Too many launches are waiting for approval in the IDE, so the approval of the executable of language server \"{server_name}\" cannot be asked for yet. It is asked for once fewer are waiting ({reason})"
+msgstr "Trop de lancements sont en attente d'approbation dans l'IDE ; l'approbation de l'exécutable du serveur de langage \"{server_name}\" ne peut donc pas encore être demandée. Elle le sera dès que moins de lancements seront en attente ({reason})"
+
+msgid "Too many launches from the remote host are waiting for approval (at most {MAX_PENDING_LAUNCHES})"
+msgstr "Trop de lancements de l'hôte distant sont en attente d'approbation (au maximum {MAX_PENDING_LAUNCHES})"
+
+msgid "`{package_name}` is not installed in WSL."
+msgstr "`{package_name}` n'est pas installé dans WSL."
+
+msgid "git commit-tree did not return a new commit."
+msgstr "git commit-tree n'a pas renvoyé de nouvelle validation."
+
+msgid "gopls (the Go language server) is built with the Go toolchain, so go is needed first. Ask an administrator, or unpack the official distribution and put it on PATH."
+msgstr "gopls (le serveur de langage Go) est compilé avec la chaîne d'outils Go ; go est donc nécessaire au préalable. Adressez-vous à un administrateur, ou décompressez la distribution officielle et ajoutez-la au PATH."
+
+msgid "{path} belongs to another account."
+msgstr "{path} appartient à un autre compte."
+
+msgid "{path} can be modified by other accounts."
+msgstr "{path} peut être modifié par d'autres comptes."
+
+msgid "{path} contains a NUL byte."
+msgstr "{path} contient un octet NUL."
+
+msgid "{path} has an unexpected path component."
+msgstr "{path} contient un composant de chemin inattendu."
+
+msgid "{path} is not a folder."
+msgstr "{path} n'est pas un dossier."
+
+msgid "{path} is not a regular file (it must not be a link)."
+msgstr "{path} n'est pas un fichier ordinaire (il ne doit pas s'agir d'un lien)."
+
+msgid "{path} is not below the settings folder."
+msgstr "{path} ne se trouve pas sous le dossier des paramètres."
+
+msgid "{path} is not below {base}."
+msgstr "{path} ne se trouve pas sous {base}."
+
+msgid "{project} {version} has no distribution for this environment ({os} {arch})"
+msgstr "{project} {version} n'a pas de distribution pour cet environnement ({os} {arch})"
+
+msgid "{tool_id} is not in the list of tools that can be installed"
+msgstr "{tool_id} ne figure pas dans la liste des outils installables"
+
+msgid "{tool} can only be installed by the machine that has the files"
+msgstr "{tool} ne peut être installé que par la machine qui possède les fichiers"
+
+msgid "{tool} is not a tool that can be downloaded and installed"
+msgstr "{tool} n'est pas un outil qui peut être téléchargé et installé"
+
+msgid "{what} did not finish within {seconds} seconds. Wait a while and try again, and if that does not help, restart WSL with `wsl --shutdown`."
+msgstr "Étape \"{what}\" : non terminée dans un délai de {seconds} secondes. Patientez un moment et réessayez ; si le problème persiste, redémarrez WSL avec `wsl --shutdown`."
+
+msgctxt "dev tool purpose"
+msgid "Diagnostics"
+msgstr "Diagnostics"
+
+msgctxt "dev tool purpose"
+msgid "Formatting"
+msgstr "Mise en forme"
+
+msgctxt "dev tool purpose"
+msgid "Type Checking"
+msgstr "Vérification des types"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "wsl sandbox step"
+msgid "Checking Node.js in WSL"
+msgstr "Vérification de Node.js dans WSL"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the WSL architecture"
+msgstr "Vérification de l'architecture WSL"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the agent's executable"
+msgstr "Vérification de l'exécutable de l'agent"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the agent's runtime in WSL"
+msgstr "Vérification de l'environnement d'exécution de l'agent dans WSL"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the data folder in WSL"
+msgstr "Vérification du dossier de données dans WSL"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the installed npm package"
+msgstr "Vérification du paquet npm installé"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the npm package"
+msgstr "Vérification du paquet npm"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the npm package's executable"
+msgstr "Vérification de l'exécutable du paquet npm"
+
+msgctxt "wsl sandbox step"
+msgid "Placing Node.js for Linux in WSL"
+msgstr "Mise en place de Node.js pour Linux dans WSL"
+
+msgctxt "wsl sandbox step"
+msgid "Placing the agent for Linux in WSL"
+msgstr "Mise en place de l'agent pour Linux dans WSL"
+
+msgctxt "wsl sandbox step"
+msgid "npm install inside the sandbox"
+msgstr "npm install dans le bac à sable"

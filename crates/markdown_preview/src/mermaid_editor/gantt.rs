@@ -1050,7 +1050,7 @@ impl MermaidEditor {
                 h_flex()
                     .w_full()
                     .gap_1()
-                    .child(section_title(i18n::t!("Start")))
+                    .child(section_title(i18n::tc!("mermaid gantt task", "Start")))
                     .child(self.render_gantt_start_menu(section, index, task, window, cx))
                     .children(start_field)
                     .child(section_title(i18n::t!("End")))

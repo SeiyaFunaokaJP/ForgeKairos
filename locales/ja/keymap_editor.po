@@ -35,9 +35,6 @@ msgstr "存在しないキーバインドは削除できません。"
 msgid "Clear Keystrokes"
 msgstr "キーストロークを消去"
 
-msgid "Context"
-msgstr "コンテキスト"
-
 msgid "Copy Action"
 msgstr "アクション名をコピー"
 
@@ -226,6 +223,10 @@ msgstr "カテゴリ"
 msgctxt "keybinding"
 msgid "Conflicts"
 msgstr "競合"
+
+msgctxt "keybinding"
+msgid "Context"
+msgstr "コンテキスト"
 
 msgctxt "keybinding"
 msgid "Create"

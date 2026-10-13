@@ -1,0 +1,36 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Actions…"
+msgstr "Actions…"
+
+msgid "No matches"
+msgstr "Aucun résultat"
+
+msgid "Open"
+msgstr "Ouvrir"
+
+msgid "Preview"
+msgstr "Aperçu"
+
+msgid "Preview Below"
+msgstr "Aperçu en dessous"
+
+msgid "Preview to the Right"
+msgstr "Aperçu à droite"
+
+msgid "Project Scan in Progress…"
+msgstr "Analyse du projet en cours…"
+
+msgid "Select"
+msgstr "Sélectionner"
+
+msgid "Toggle Multi Select"
+msgstr "Activer/désactiver la sélection multiple"

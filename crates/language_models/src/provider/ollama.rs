@@ -165,7 +165,7 @@ impl State {
                             |error| {
                                 ollama::Model::new_disabled(
                                     name,
-                                    format!("Failed to fetch model from API: {error}",),
+                                    i18n::t!("Failed to fetch model from API: {error}"),
                                 )
                             },
                             |model| {

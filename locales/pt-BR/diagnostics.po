@@ -1,0 +1,87 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Buffer Diagnostics"
+msgstr "Diagnósticos do buffer"
+
+msgid "Buffer Diagnostics - {}"
+msgstr "Diagnósticos do buffer - {}"
+
+msgid "Buffer Search"
+msgstr "Pesquisa no buffer"
+
+msgid "Copy Diagnostic"
+msgstr "Copiar diagnóstico"
+
+msgid "Diagnostics"
+msgstr "Diagnósticos"
+
+msgid "Exclude Warnings"
+msgstr "Excluir avisos"
+
+msgid "Expand Diagnostics"
+msgstr "Expandir diagnósticos"
+
+msgid "Include Warnings"
+msgstr "Incluir avisos"
+
+msgid "Inline Assist"
+msgstr "Assistência embutida"
+
+msgid "Next Diagnostic"
+msgstr "Próximo diagnóstico"
+
+msgid "No errors in workspace"
+msgstr "Nenhum erro no espaço de trabalho"
+
+msgid "No errors in {file}"
+msgstr "Nenhum erro em {file}"
+
+msgid "No problems"
+msgstr "Nenhum problema"
+
+msgid "No problems in workspace"
+msgstr "Nenhum problema no espaço de trabalho"
+
+msgid "No problems in {file}"
+msgstr "Nenhum problema em {file}"
+
+msgid "Open File"
+msgstr "Abrir arquivo"
+
+msgid "Project Diagnostics"
+msgstr "Diagnósticos do projeto"
+
+msgid "Project diagnostics: no problems"
+msgstr "Diagnósticos do projeto: nenhum problema"
+
+msgid "Project diagnostics: {}"
+msgstr "Diagnósticos do projeto: {}"
+
+msgid "Refresh Diagnostics"
+msgstr "Atualizar diagnósticos"
+
+msgid "Show {count} warning"
+msgid_plural "Show {count} warnings"
+msgstr[0] "Mostrar {count} aviso"
+msgstr[1] "Mostrar {count} avisos"
+
+msgid "Stop Diagnostics Update"
+msgstr "Parar atualização de diagnósticos"
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "{count} erro"
+msgstr[1] "{count} erros"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "{count} aviso"
+msgstr[1] "{count} avisos"

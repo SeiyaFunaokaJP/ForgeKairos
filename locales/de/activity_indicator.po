@@ -1,0 +1,132 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid " + {} more"
+msgstr " + {} weitere"
+
+msgid "({server_name}) Error: "
+msgstr "({server_name}) Fehler: "
+
+msgid "({server_name}) Warning: "
+msgstr "({server_name}) Warnung: "
+
+msgid "Add to Allowlist and Retry"
+msgstr "Zur Zulassungsliste hinzufügen und erneut versuchen"
+
+msgid "Building the symbol index ({done} / {total})"
+msgstr "Symbolindex wird erstellt ({done} / {total})"
+
+msgid "Cancel {title}"
+msgstr "{title} abbrechen"
+
+msgid "Checking for updates to {}..."
+msgstr "Es wird nach Updates für {} gesucht..."
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "Die Hosts konnten nicht zur Zulassungsliste hinzugefügt werden: {error}"
+
+msgid "Couldn't download the {display_name} language server"
+msgstr "Der Sprachserver für {display_name} konnte nicht heruntergeladen werden"
+
+msgid "Couldn't download {}. Click to show error."
+msgstr "{} konnte nicht heruntergeladen werden. Klicken, um den Fehler anzuzeigen."
+
+msgid "Couldn't install {display_name}: {error}"
+msgstr "{display_name} konnte nicht installiert werden: {error}"
+
+msgid "Debug: {}"
+msgstr "Debuggen: {}"
+
+msgid "Directories outside of git repositories and deeper than the `file_scan_depth` setting will be indexed on demand."
+msgstr "Verzeichnisse, die außerhalb von Git-Repositorys liegen und tiefer als die Einstellung `file_scan_depth` verschachtelt sind, werden bei Bedarf indiziert."
+
+msgid "Don't Allow This Time"
+msgstr "Dieses Mal nicht zulassen"
+
+msgid "Don't Show This Again"
+msgstr "Nicht mehr anzeigen"
+
+msgid "Downloading the {language} language server"
+msgstr "Sprachserver für {language} wird heruntergeladen"
+
+msgid "Downloading {display_name} needs the following hosts, but the network allowlist denied them."
+msgstr "Zum Herunterladen von {display_name} werden die folgenden Hosts benötigt, aber die Netzwerk-Zulassungsliste hat sie abgelehnt."
+
+msgid "Downloading {} was blocked by the egress control. Click to show the hosts it needs."
+msgstr "Das Herunterladen von {} wurde durch die Kontrolle ausgehender Verbindungen blockiert. Klicken, um die benötigten Hosts anzuzeigen."
+
+msgid "Downloading {}..."
+msgstr "{} wird heruntergeladen..."
+
+msgid "Failed to run {}. Click to show error."
+msgstr "{} konnte nicht ausgeführt werden. Klicken, um den Fehler anzuzeigen."
+
+msgid "Formatting failed: {failure}. Click to see logs."
+msgstr "Formatierung fehlgeschlagen: {failure}. Zum Anzeigen der Protokolle klicken."
+
+msgid "If you'd rather not allow them: {}"
+msgstr "Wenn Sie sie lieber nicht zulassen möchten: {}"
+
+msgid "Install"
+msgstr "Installieren"
+
+msgid "Install on Remote"
+msgstr "Auf dem Remote-Host installieren"
+
+msgid "Installed {}"
+msgstr "{} installiert"
+
+msgid "Installing {display_name}"
+msgstr "{display_name} wird installiert"
+
+msgid "Installing {extension_id} extension…"
+msgstr "Erweiterung {extension_id} wird installiert…"
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this (e.g. {command})."
+msgstr "Sie können dies auch beheben, indem Sie {server_name} auf diesem Computer (bei einer Remote-Verbindung auf dem Remote-Host) installieren und zum PATH hinzufügen (z. B. {command})."
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this."
+msgstr "Sie können dies auch beheben, indem Sie {server_name} auf diesem Computer (bei einer Remote-Verbindung auf dem Remote-Host) installieren und zum PATH hinzufügen."
+
+msgid "Language server {server_name}:\n\n{status}"
+msgstr "Sprachserver {server_name}:\n\n{status}"
+
+msgid "Partial file index"
+msgstr "Partieller Dateiindex"
+
+msgid "Removing {extension_id} extension…"
+msgstr "Erweiterung {extension_id} wird entfernt…"
+
+msgid "The following hosts needed for the download were denied by the network allowlist:\n{}\n\n{}\n\n{error}"
+msgstr "Die folgenden für den Download benötigten Hosts wurden von der Netzwerk-Zulassungsliste abgelehnt:\n{}\n\n{}\n\n{error}"
+
+msgid "The following hosts needed to download {display_name} were denied by the network allowlist:\n{}"
+msgstr "Die folgenden zum Herunterladen von {display_name} benötigten Hosts wurden von der Netzwerk-Zulassungsliste abgelehnt:\n{}"
+
+msgid "They're downloaded over this computer's network and placed only in {host}'s home directory (no administrator rights needed; other users aren't affected)."
+msgstr "Sie werden über das Netzwerk dieses Computers heruntergeladen und nur im Basisverzeichnis von {host} abgelegt (keine Administratorrechte nötig; andere Benutzer sind nicht betroffen)."
+
+msgid "They're placed only in this user's data directory."
+msgstr "Sie werden nur im Datenverzeichnis dieses Benutzers abgelegt."
+
+msgid "Updating {extension_id} extension…"
+msgstr "Erweiterung {extension_id} wird aktualisiert…"
+
+msgid "{language} tools are missing"
+msgstr "Tools für {language} fehlen"
+
+msgid "{language} tools are missing on the remote host ({host})"
+msgstr "Tools für {language} fehlen auf dem Remote-Host ({host})"
+
+msgid "• {host}"
+msgstr "• {host}"
+
+msgid "• {label}"
+msgstr "• {label}"

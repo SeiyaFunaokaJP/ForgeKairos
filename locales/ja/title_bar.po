@@ -53,6 +53,9 @@ msgstr "使用中: {}"
 msgid "Custom"
 msgstr "カスタム"
 
+msgid "Detached HEAD: {}"
+msgstr "detached HEAD: {}"
+
 msgid "Dev Container"
 msgstr "開発コンテナー"
 

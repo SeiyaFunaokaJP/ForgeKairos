@@ -1,0 +1,2303 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"Sandbox\" on the \"AI\" page is a separate setting that isolates the commands agents run (restricting which domains they can reach and where they can write). However, domains allowed there take effect only within this list. Think of the sandbox as narrowing this scope further rather than widening what is allowed."
+msgstr "\"AI\" 페이지의 \"샌드박스\"는 에이전트가 실행하는 명령을 격리하는(접근할 수 있는 도메인과 쓸 수 있는 위치를 제한하는) 별도의 설정입니다. 다만 그곳에서 허용한 도메인은 이 목록 범위 안에서만 적용됩니다. 샌드박스는 허용 범위를 넓히는 것이 아니라 이 범위를 더 좁히는 것으로 생각하세요."
+
+msgid "\"{label}\": \"{name}\" in `{key}` must be a string."
+msgstr "\"{label}\": `{key}`의 \"{name}\"은(는) 문자열이어야 합니다."
+
+msgid "\"{label}\": `args` must be an array of strings."
+msgstr "\"{label}\": `args`는 문자열 배열이어야 합니다."
+
+msgid "\"{label}\": `command.path` must be a string."
+msgstr "\"{label}\": `command.path`는 문자열이어야 합니다."
+
+msgid "\"{label}\": `command` is empty."
+msgstr "\"{label}\": `command`가 비어 있습니다."
+
+msgid "\"{label}\": `command` must be a string."
+msgstr "\"{label}\": `command`는 문자열이어야 합니다."
+
+msgid "\"{label}\": `enabled` must be true or false."
+msgstr "\"{label}\": `enabled`는 true 또는 false여야 합니다."
+
+msgid "\"{label}\": `oauth` must look like {{ \"client_id\": \"…\" }}."
+msgstr "\"{label}\": `oauth`는 {{ \"client_id\": \"…\" }} 형식이어야 합니다."
+
+msgid "\"{label}\": `remote` must be true or false."
+msgstr "\"{label}\": `remote`는 true 또는 false여야 합니다."
+
+msgid "\"{label}\": `timeout` must be a positive whole number of seconds."
+msgstr "\"{label}\": `timeout`은 양의 정수(초)여야 합니다."
+
+msgid "\"{label}\": `type` \"{kind}\" is not supported. Use `stdio`, `http`, or `sse`."
+msgstr "\"{label}\": `type` \"{kind}\"은(는) 지원되지 않습니다. `stdio`, `http` 또는 `sse`를 사용하세요."
+
+msgid "\"{label}\": `type` must be a string."
+msgstr "\"{label}\": `type`은 문자열이어야 합니다."
+
+msgid "\"{label}\": `url` is not set."
+msgstr "\"{label}\": `url`이 설정되지 않았습니다."
+
+msgid "\"{label}\": `{key}` must be a URL string."
+msgstr "\"{label}\": `{key}`은(는) URL 문자열이어야 합니다."
+
+msgid "\"{label}\": `{key}` must be an object ({{ … }})."
+msgstr "\"{label}\": `{key}`은(는) 객체({{ … }})여야 합니다."
+
+msgid "\"{label}\": neither `command` nor `url` is set."
+msgstr "\"{label}\": `command`와 `url`이 모두 설정되지 않았습니다."
+
+msgid "\"{name}\": the value is not an object ({{ … }})."
+msgstr "\"{name}\": 값이 객체({{ … }})가 아닙니다."
+
+msgid "\"{name}\": {error}"
+msgstr "\"{name}\": {error}"
+
+msgid "(added)"
+msgstr "(추가됨)"
+
+msgid "(loading the allowlist)"
+msgstr "(허용 목록 로드 중)"
+
+msgid "(not added)"
+msgstr "(추가 안 됨)"
+
+msgid "(optional)"
+msgstr "(선택 사항)"
+
+msgid "(unnamed)"
+msgstr "(이름 없음)"
+
+msgid "// Zed egress allowlist\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// ForgeKairos 외부 통신 허용 목록\n//\n// AI가 시작하는 외부 통신(AI 프로바이더, 에이전트 도구, MCP 서버,\n// 외부 에이전트 프로세스)은 여기에 적은 호스트로만 허용됩니다.\n// 언어 서버, 확장 프로그램 등 IDE 자체 도구의 통신은 대상이 아닙니다.\n// 127.0.0.1 / ::1 / localhost는 여기에 적지 않아도 항상 허용됩니다.\n// // 주석과 후행 쉼표를 사용할 수 있습니다. 변경 사항은 저장하면 적용됩니다.\n"
+
+msgid "127.0.0.1 / ::1 / localhost are always allowed without being registered, so local LLM servers (such as Ollama) work even with an empty allowlist. A small number of hosts, such as the external agent (ACP) registry, are allowed by built-in rules. Every redirect target is checked the same way, one hop at a time."
+msgstr "127.0.0.1 / ::1 / localhost는 등록하지 않아도 항상 허용되므로 로컬 LLM 서버(Ollama 등)는 허용 목록이 비어 있어도 작동합니다. 외부 에이전트(ACP) 레지스트리 등 일부 호스트는 내장 규칙으로 허용됩니다. 모든 리디렉션 대상도 한 단계씩 같은 방식으로 검사합니다."
+
+msgid "A client secret is required to connect this server"
+msgstr "이 서버에 연결하려면 클라이언트 시크릿이 필요합니다"
+
+msgid "A client secret is required to connect."
+msgstr "연결하려면 클라이언트 시크릿이 필요합니다."
+
+msgid "A command server: Zed starts the executable and talks to it over standard input and output."
+msgstr "명령 서버: ForgeKairos가 실행 파일을 시작하고 표준 입출력으로 통신합니다."
+
+msgid "A file (not a skill directory) already exists at {}. Delete it or pick a different skill name."
+msgstr "{}에 파일(스킬 디렉터리가 아님)이 이미 있습니다. 삭제하거나 다른 스킬 이름을 선택하세요."
+
+msgid "A pattern with that name already exists in this rule list."
+msgstr "이 규칙 목록에 같은 이름의 패턴이 이미 있습니다."
+
+msgid "A personal access token for the login. Without one, git asks for the password as usual."
+msgstr "로그인에 사용할 개인 액세스 토큰입니다. 없으면 Git이 평소처럼 비밀번호를 묻습니다."
+
+msgid "A project window is needed to install agents"
+msgstr "에이전트를 설치하려면 프로젝트 창이 필요합니다"
+
+msgid "A project window is needed to run this in the terminal"
+msgstr "터미널에서 실행하려면 프로젝트 창이 필요합니다"
+
+msgid "A server defined in the project settings starts in the project's folder once you allow it."
+msgstr "프로젝트 설정에 정의된 서버는 허용하면 프로젝트 폴더에서 시작됩니다."
+
+msgid "A server named \"{name}\" already exists. Open it in the form and rename it before adding it."
+msgstr "\"{name}\"(이)라는 서버가 이미 있습니다. 양식에서 열어 이름을 변경한 후 추가하세요."
+
+msgid "A server named \"{}\" already exists."
+msgstr "이름이 \"{}\"인 서버가 이미 있습니다."
+
+msgid "A server with this name already exists"
+msgstr "같은 이름의 서버가 이미 있습니다"
+
+msgid "A skill named \"{name}\" already exists at {}. Pick a different name."
+msgstr "이름이 \"{name}\"인 스킬이 이미 {}에 있습니다. 다른 이름을 선택하세요."
+
+msgid "A small, fast model is enough (for example, an 8B-class model on Ollama). When none is set, the fast model is used, then the default model. To judge an action, the tool name, command, and paths are sent to that model's provider, so a local model is recommended. If no answer comes back within 10 seconds, no model is available, or the answer can't be read, a confirmation is shown."
+msgstr "작고 빠른 모델이면 충분합니다(예: Ollama의 8B급 모델). 설정하지 않으면 빠른 모델을, 그다음 기본 모델을 사용합니다. 작업을 판단하기 위해 도구 이름, 명령, 경로가 해당 모델의 프로바이더로 전송되므로 로컬 모델을 권장합니다. 10초 안에 응답이 없거나, 사용할 수 있는 모델이 없거나, 응답을 읽을 수 없으면 확인을 표시합니다."
+
+msgid "A token is stored. Leave this empty to keep it."
+msgstr "토큰이 저장되어 있습니다. 유지하려면 비워 두세요."
+
+msgid "A token needs a host and a login to sign in with."
+msgstr "토큰을 사용하려면 로그인할 호스트와 로그인 이름이 필요합니다."
+
+msgid "A unique name used to identify this provider."
+msgstr "이 프로바이더를 식별하는 데 사용되는 고유한 이름입니다."
+
+msgid "A wildcard is allowed only as a leading `*.` (for example, *.corp.example)."
+msgstr "와일드카드는 앞부분의 `*.`로만 사용할 수 있습니다 (예: *.corp.example)."
+
+msgid "ACP Agent"
+msgstr "ACP 에이전트"
+
+msgid "ACP Docs"
+msgstr "ACP 문서"
+
+msgid "AI Connections"
+msgstr "AI 연결"
+
+msgid "AI features are off. Turn on \"Enable Agent\" on the AI page to use them."
+msgstr "AI 기능이 꺼져 있습니다. 사용하려면 AI 페이지에서 \"에이전트 활성화\"를 켜세요."
+
+msgid "API Key"
+msgstr "API 키"
+
+msgid "API Key Configured"
+msgstr "API 키 구성됨"
+
+msgid "API Key Set in Environment Variable"
+msgstr "환경 변수에 API 키 설정됨"
+
+msgid "API Key cannot be empty"
+msgstr "API 키는 비워 둘 수 없습니다"
+
+msgid "API URL"
+msgstr "API URL"
+
+msgid "API URL cannot be empty"
+msgstr "API URL은 비워 둘 수 없습니다"
+
+msgid "Accept the external AI warning to list models from this server."
+msgstr "이 서버의 모델 목록을 가져오려면 외부 AI 경고에 동의하세요."
+
+msgid "Account"
+msgstr "계정"
+
+msgid "Account Name"
+msgstr "계정 이름"
+
+msgid "Accounts a repository can commit and push as. Pick one for each repository with the account button next to Commit in the Git panel; a repository without one follows git's own configuration. Tokens are kept in {store}, never in settings.json."
+msgstr "저장소가 커밋하고 푸시할 때 사용할 수 있는 계정입니다. Git 패널의 커밋 옆에 있는 계정 버튼으로 저장소마다 하나를 선택합니다. 선택하지 않은 저장소는 Git 자체 구성을 따릅니다. 토큰은 settings.json이 아니라 {store}에 보관됩니다."
+
+msgid "Action to take when no patterns match."
+msgstr "일치하는 패턴이 없을 때 수행할 동작입니다."
+
+msgid "Active Provider"
+msgstr "활성 프로바이더"
+
+msgid "Add"
+msgstr "추가"
+
+msgid "Add Account"
+msgstr "계정 추가"
+
+msgid "Add Agent"
+msgstr "에이전트 추가"
+
+msgid "Add All"
+msgstr "모두 추가"
+
+msgid "Add Custom Agent"
+msgstr "사용자 지정 에이전트 추가"
+
+msgid "Add Git Account"
+msgstr "Git 계정 추가"
+
+msgid "Add Local MCP Server"
+msgstr "로컬 MCP 서버 추가"
+
+msgid "Add Local Server"
+msgstr "로컬 서버 추가"
+
+msgid "Add MCP Server from Template"
+msgstr "템플릿에서 MCP 서버 추가"
+
+msgid "Add MCP Servers from JSON"
+msgstr "JSON에서 MCP 서버 추가"
+
+msgid "Add Model"
+msgstr "모델 추가"
+
+msgid "Add Provider"
+msgstr "프로바이더 추가"
+
+msgid "Add Remote MCP Server"
+msgstr "원격 MCP 서버 추가"
+
+msgid "Add Remote Server"
+msgstr "원격 서버 추가"
+
+msgid "Add Server"
+msgstr "서버 추가"
+
+msgid "Add a host (for example, api.anthropic.com, *.corp.example)…"
+msgstr "호스트 추가 (예: api.anthropic.com, *.corp.example)…"
+
+msgid "Add an absolute path (e.g. /path/to/directory)…"
+msgstr "절대 경로 추가(예: /path/to/directory)…"
+
+msgid "Add an entry"
+msgstr "항목 추가"
+
+msgid "Add domain (e.g. github.com or *.npmjs.org)…"
+msgstr "도메인 추가(예: github.com 또는 *.npmjs.org)…"
+
+msgid "Add from Template"
+msgstr "템플릿에서 추가"
+
+msgid "Add regex pattern…"
+msgstr "정규식 패턴 추가…"
+
+msgid "Add skill content…"
+msgstr "스킬 콘텐츠 추가…"
+
+msgid "Add to Allowlist"
+msgstr "허용 목록에 추가"
+
+msgid "Add {count} Server"
+msgid_plural "Add All {count} Servers"
+msgstr[0] "서버 {count}개 모두 추가"
+
+msgid "Add {count} server to your user settings?"
+msgid_plural "Add all {count} servers to your user settings?"
+msgstr[0] "서버 {count}개를 모두 사용자 설정에 추가하시겠습니까?"
+
+msgid "Add {}-Compatible Provider"
+msgstr "{} 호환 프로바이더 추가"
+
+msgid "Added {count} model"
+msgid_plural "Added {count} models"
+msgstr[0] "모델 {count}개를 추가했습니다"
+
+msgid "Adds the hosts to network_allowlist.json. Unless they are added, downloading or connecting to this server stays refused"
+msgstr "network_allowlist.json에 호스트를 추가합니다. 추가하지 않으면 이 서버의 다운로드나 연결은 계속 거부됩니다"
+
+msgid "Adds them to network_allowlist.json. If you don't add them, traffic to this provider stays denied"
+msgstr "network_allowlist.json에 추가합니다. 추가하지 않으면 이 프로바이더로의 통신은 계속 거부됩니다"
+
+msgid "Agent name is required."
+msgstr "에이전트 이름은 필수입니다."
+
+msgid "Agents connected through the Agent Client Protocol."
+msgstr "Agent Client Protocol을 통해 연결된 에이전트입니다."
+
+msgid "Allow All Domains"
+msgstr "모든 도메인 허용"
+
+msgid "Allow All File System Writes"
+msgstr "모든 파일 시스템 쓰기 허용"
+
+msgid "Allow Running Outside the Sandbox"
+msgstr "샌드박스 외부에서 실행 허용"
+
+msgid "Allow and Start"
+msgstr "허용하고 시작"
+
+msgid "Allowed"
+msgstr "허용됨"
+
+msgid "Allowed Domains"
+msgstr "허용된 도메인"
+
+msgid "Allowed Hosts"
+msgstr "허용된 호스트"
+
+msgid "Allowed host"
+msgstr "허용된 호스트"
+
+msgid "Always Allow"
+msgstr "항상 허용"
+
+msgid "Always Confirm"
+msgstr "항상 확인"
+
+msgid "Always Deny"
+msgstr "항상 거부"
+
+msgid "Always Launch Outside the Sandbox"
+msgstr "항상 샌드박스 외부에서 시작"
+
+msgid "An HTTP server: Zed connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
+msgstr "HTTP 서버: ForgeKairos가 URL에 연결하여 HTTP로 통신합니다. 연결 대상 호스트는 네트워크 허용 목록의 적용을 받습니다."
+
+msgid "An agent named \"{}\" already exists."
+msgstr "이름이 \"{}\"인 에이전트가 이미 있습니다."
+
+msgid "Apply the Proxy to AI Agent Child Processes"
+msgstr "AI 에이전트 자식 프로세스에 프록시 적용"
+
+msgid "Applying language server code actions"
+msgstr "언어 서버 코드 액션 적용"
+
+msgid "Argument"
+msgstr "인수"
+
+msgid "Arguments"
+msgstr "인수"
+
+msgid "Arguments passed to the command, one per row (an argument containing spaces is passed as it is). Rows added and left empty are ignored."
+msgstr "명령에 전달할 인수이며, 한 행에 하나씩 입력합니다 (공백이 포함된 인수도 그대로 전달됩니다). 추가한 후 비워 둔 행은 무시됩니다."
+
+msgid "Audio Test"
+msgstr "오디오 테스트"
+
+msgid "Authenticate"
+msgstr "인증"
+
+msgid "Authenticate to connect this server"
+msgstr "이 서버에 연결하려면 인증하세요"
+
+msgid "Authenticating…"
+msgstr "인증 중…"
+
+msgid "Authentication failed ({status}). Check the API key. If the server needs no authentication, check \"Connect without an API key\"."
+msgstr "인증에 실패했습니다 ({status}). API 키를 확인하세요. 서버에 인증이 필요하지 않으면 \"API 키 없이 연결\"을 선택하세요."
+
+msgid "Authentication is required to connect."
+msgstr "연결하려면 인증이 필요합니다."
+
+msgid "Binary for language server \"{name}\""
+msgstr "언어 서버 \"{name}\"의 바이너리"
+
+msgid "Body is required."
+msgstr "본문은 필수입니다."
+
+msgid "Browse…"
+msgstr "찾아보기…"
+
+msgid "Can't save to the project settings file because no project is open."
+msgstr "열려 있는 프로젝트가 없으므로 프로젝트 설정 파일에 저장할 수 없습니다."
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Cannot add {host}: {reason}"
+msgstr "{host}을(를) 추가할 수 없습니다: {reason}"
+
+msgid "Change Scope"
+msgstr "범위 변경"
+
+msgid "Changes take effect from the next child process that starts (no restart needed). Processes that ignore proxy settings cannot be controlled even when this is enabled. Child processes unrelated to AI, such as npm used by language servers or extensions, are not covered even when this is enabled."
+msgstr "변경 사항은 다음에 시작되는 자식 프로세스부터 적용됩니다 (다시 시작할 필요 없음). 프록시 설정을 무시하는 프로세스는 이 옵션을 활성화해도 통제할 수 없습니다. 언어 서버나 확장 프로그램이 사용하는 npm 등 AI와 관계없는 자식 프로세스는 이 옵션을 활성화해도 대상이 아닙니다."
+
+msgid "Checking PATH on this PC…"
+msgstr "이 PC의 PATH 확인 중…"
+
+msgid "Checking…"
+msgstr "확인 중…"
+
+msgid "Choose File"
+msgstr "파일 선택"
+
+msgid "Claude (Anthropic)"
+msgstr "Claude (Anthropic)"
+
+msgid "Claude Code Thinking Effort (--effort)"
+msgstr "Claude Code 사고 강도 (--effort)"
+
+msgid "Claude Pro / Max subscriptions can't be used here (pay-as-you-go with an API key only). See \"Claude Subscription\" below."
+msgstr "Claude Pro / Max 구독은 여기서 사용할 수 없습니다 (API 키를 사용한 종량제만 가능). 아래의 \"Claude 구독\"을 참조하세요."
+
+msgid "Claude Subscription"
+msgstr "Claude 구독"
+
+msgid "Clear"
+msgstr "지우기"
+
+msgid "Clicking on pages in the built-in browser"
+msgstr "내장 브라우저의 페이지 클릭"
+
+msgid "Client secret (leave empty for a public client)"
+msgstr "클라이언트 시크릿 (공개 클라이언트인 경우 비워 두세요)"
+
+msgid "Closes the settings window and launches Claude Code in a tab of the agent panel. For a local project on Windows it runs inside the sandbox (WSL); on a Linux host connected over SSH it runs inside that host's sandbox."
+msgstr "설정 창을 닫고 에이전트 패널의 탭에서 Claude Code를 시작합니다. Windows의 로컬 프로젝트에서는 샌드박스(WSL) 내부에서 실행되고, SSH로 연결한 Linux 호스트에서는 해당 호스트의 샌드박스 내부에서 실행됩니다."
+
+msgid "Closes the settings window and launches `claude` on this PC (on the SSH host, when connected over SSH) outside the sandbox. Asks for confirmation every time (unless \"Always Launch Outside the Sandbox\" below is on)."
+msgstr "설정 창을 닫고 이 PC(SSH로 연결한 경우 SSH 호스트)에서 샌드박스 외부로 `claude`를 시작합니다. 매번 확인을 요청합니다 (아래의 \"항상 샌드박스 외부에서 시작\"이 켜져 있으면 제외)."
+
+msgid "Closes the settings window and opens the file in the editor. Creates the file if it does not exist"
+msgstr "설정 창을 닫고 편집기에서 파일을 엽니다. 파일이 없으면 만듭니다"
+
+msgid "Closes the settings window and runs the official install command `npm install -g @anthropic-ai/claude-code` in the integrated terminal. Requires Node.js (npm)."
+msgstr "설정 창을 닫고 통합 터미널에서 공식 설치 명령 `npm install -g @anthropic-ai/claude-code`를 실행합니다. Node.js(npm)가 필요합니다."
+
+msgid "Closing AI tabs in the built-in browser"
+msgstr "내장 브라우저의 AI 탭 닫기"
+
+msgid "Command"
+msgstr "명령"
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). To save anyway, press \"Save\" again."
+msgstr "명령 \"{program}\"을(를) 찾을 수 없습니다 (PATH에도, 지정한 위치에도 없습니다. 명령은 실행하지 않았습니다). 그래도 저장하려면 \"저장\"을 다시 누르세요."
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). {hint} To save anyway, press \"Save\" again."
+msgstr "명령 \"{program}\"을(를) 찾을 수 없습니다 (PATH에도, 지정한 위치에도 없습니다. 명령은 실행하지 않았습니다). {hint} 그래도 저장하려면 \"저장\"을 다시 누르세요."
+
+msgid "Command chosen by an extension on the remote host (no settings file)"
+msgstr "원격 호스트의 확장 프로그램이 선택한 명령 (설정 파일 없음)"
+
+msgid "Command chosen by an extension on {display_name} (no settings file)"
+msgstr "{display_name}의 확장 프로그램이 선택한 명령 (설정 파일 없음)"
+
+msgid "Command is required."
+msgstr "명령은 필수입니다."
+
+msgid "Command: starts an executable and talks to it over standard input and output."
+msgstr "명령: 실행 파일을 시작하고 표준 입출력으로 통신합니다."
+
+msgid "Commands executed in the terminal"
+msgstr "터미널에서 실행되는 명령"
+
+msgid "Compatible APIs"
+msgstr "호환 API"
+
+msgid "Configure"
+msgstr "구성"
+
+msgid "Configure Agent"
+msgstr "에이전트 구성"
+
+msgid "Configure External Agent"
+msgstr "외부 에이전트 구성"
+
+msgid "Configure MCP Server"
+msgstr "MCP 서버 구성"
+
+msgid "Configure Provider"
+msgstr "프로바이더 구성"
+
+msgid "Configure {}"
+msgstr "{} 구성"
+
+msgid "Configured Servers"
+msgstr "구성된 서버"
+
+msgid "Confirm"
+msgstr "확인"
+
+msgid "Connect without an API key (server needs no authentication)"
+msgstr "API 키 없이 연결 (인증이 필요 없는 서버)"
+
+msgid "Connection test: connected."
+msgstr "연결 테스트: 연결되었습니다."
+
+msgid "Connection test: {message}"
+msgstr "연결 테스트: {message}"
+
+msgid "Contact your organization admins to adjust this setting."
+msgstr "이 설정을 조정하려면 조직 관리자에게 문의하세요."
+
+msgid "Controls only outbound traffic that AI initiates. All such traffic is denied by default, and only the hosts registered here are allowed."
+msgstr "AI가 시작하는 외부 통신만 통제합니다. 이러한 통신은 기본적으로 모두 거부되며, 여기에 등록한 호스트만 허용됩니다."
+
+msgid "Controls the default behavior for all tool actions. Per-tool rules and patterns can override this. \"Allow\" is the same setting as \"Auto-Approve (In Sandbox)\" in the agent panel. \"AI Judge\" runs automatically only the actions that a separate model judges not dangerous, and asks for confirmation for everything else. In either case, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files all still apply. File operations outside the project (worktree) are always confirmed, whatever this is set to, unless you wrote an \"Always Allow\" pattern for that path yourself. Terminal commands that run outside the sandbox (when the sandbox is disabled, or in a project without one) are confirmed every time, regardless of \"Allow\", \"AI Judge\", or \"Always Allow\". Which tools are available is chosen by the profile, not by this setting."
+msgstr "모든 도구 작업의 기본 동작을 제어합니다. 도구별 규칙과 패턴으로 재정의할 수 있습니다. \"허용\"은 에이전트 패널의 \"자동 승인 (샌드박스 내)\"과 같은 설정입니다. \"AI 판단\"은 별도의 모델이 위험하지 않다고 판단한 작업만 자동으로 실행하고, 그 밖의 작업은 확인을 요청합니다. 어느 경우든 내장 보안 규칙, 직접 지정한 거부 및 확인 패턴, 샌드박스, 설정 파일 쓰기 확인은 그대로 적용됩니다. 프로젝트(워크트리) 외부의 파일 작업은 이 설정과 관계없이 항상 확인합니다 (해당 경로에 대한 \"항상 허용\" 패턴을 직접 작성한 경우 제외). 샌드박스 외부에서 실행되는 터미널 명령(샌드박스가 비활성화되었거나 샌드박스가 없는 프로젝트)은 \"허용\", \"AI 판단\", \"항상 허용\"과 관계없이 매번 확인합니다. 사용할 수 있는 도구는 이 설정이 아니라 프로필에서 선택합니다."
+
+msgid "Copy Link"
+msgstr "링크 복사"
+
+msgid "Copy Share Link"
+msgstr "공유 링크 복사"
+
+msgid "Could not connect: {error}"
+msgstr "연결하지 못했습니다: {error}"
+
+msgid "Could not determine the range to rewrite"
+msgstr "다시 쓸 범위를 확인할 수 없습니다"
+
+msgid "Couldn't choose the file: {error}"
+msgstr "파일을 선택하지 못했습니다: {error}"
+
+msgid "Couldn't connect to the server: {error}"
+msgstr "서버에 연결하지 못했습니다: {error}"
+
+msgid "Couldn't create the request: {error}"
+msgstr "요청을 만들지 못했습니다: {error}"
+
+msgid "Couldn't fetch the tool list: {error}"
+msgstr "도구 목록을 가져오지 못했습니다: {error}"
+
+msgid "Couldn't get the approval details for this server."
+msgstr "이 서버의 승인 세부 정보를 가져오지 못했습니다."
+
+msgid "Couldn't load the template list: {error}"
+msgstr "템플릿 목록을 로드하지 못했습니다: {error}"
+
+msgid "Couldn't parse the model list response: {error}"
+msgstr "모델 목록 응답을 구문 분석하지 못했습니다: {error}"
+
+msgid "Couldn't read shared skill: {err}"
+msgstr "공유된 스킬을 읽지 못했습니다: {err}"
+
+msgid "Couldn't read this as JSON: {error}"
+msgstr "JSON으로 읽지 못했습니다: {error}"
+
+msgid "Couldn't revoke the approval: {error}"
+msgstr "승인을 철회하지 못했습니다: {error}"
+
+msgid "Couldn't revoke: {error}"
+msgstr "철회하지 못했습니다: {error}"
+
+msgid "Couldn't save \"Don't Allow\": {error}"
+msgstr "\"허용 안 함\"을 저장하지 못했습니다: {error}"
+
+msgid "Couldn't save because the project settings file can't be read. Fix the JSON errors in the file, then save again."
+msgstr "프로젝트 설정 파일을 읽을 수 없으므로 저장하지 못했습니다. 파일의 JSON 오류를 수정한 후 다시 저장하세요."
+
+msgid "Couldn't save the decision: {error}"
+msgstr "결정을 저장하지 못했습니다: {error}"
+
+msgid "Couldn't save the permission: {error}"
+msgstr "권한을 저장하지 못했습니다: {error}"
+
+msgid "Couldn't save to the project settings file: the save was cancelled."
+msgstr "프로젝트 설정 파일에 저장하지 못했습니다: 저장이 취소되었습니다."
+
+msgid "Couldn't save to the project settings file: {error}"
+msgstr "프로젝트 설정 파일에 저장하지 못했습니다: {error}"
+
+msgid "Couldn't submit the client secret: {error}"
+msgstr "클라이언트 시크릿을 제출하지 못했습니다: {error}"
+
+msgid "Create Skill"
+msgstr "스킬 만들기"
+
+msgid "Create a Skill"
+msgstr "스킬 만들기"
+
+msgid "Decision"
+msgstr "결정"
+
+msgid "Decrement"
+msgstr "감소"
+
+msgid "Default"
+msgstr "기본값"
+
+msgid "Default (Fast Model)"
+msgstr "기본값 (빠른 모델)"
+
+msgid "Default Action"
+msgstr "기본 동작"
+
+msgid "Default Permission"
+msgstr "기본 권한"
+
+msgid "Default reasoning effort"
+msgstr "기본 사고 강도"
+
+msgid "Defined in"
+msgstr "정의 위치"
+
+msgid "Delete"
+msgstr "삭제"
+
+msgid "Delete Invalid Pattern"
+msgstr "잘못된 패턴 삭제"
+
+msgid "Delete Pattern"
+msgstr "패턴 삭제"
+
+msgid "Delete Skill"
+msgstr "스킬 삭제"
+
+msgid "Delete the provider \"{name}\"?"
+msgstr "프로바이더 \"{name}\"을(를) 삭제하시겠습니까?"
+
+msgid "Delete the {skill_scope} skill \"{skill_name}\"?"
+msgstr "\"{skill_name}\" {skill_scope} 스킬을 삭제하시겠습니까?"
+
+msgid "Delete {name}"
+msgstr "{name} 삭제"
+
+msgid "Deletes the API key saved in the system keychain for {url}. A key set in an environment variable is not affected."
+msgstr "시스템 키체인에 {url}용으로 저장된 API 키를 삭제합니다. 환경 변수로 설정한 키에는 영향을 주지 않습니다."
+
+msgid "Denied: {}"
+msgstr "거부됨: {}"
+
+msgid "Description"
+msgstr "설명"
+
+msgid "Directory creation"
+msgstr "디렉터리 생성"
+
+msgid "Disable model invocation"
+msgstr "모델 호출 비활성화"
+
+msgid "Disabled"
+msgstr "비활성화됨"
+
+msgid "Disabled in the project settings."
+msgstr "프로젝트 설정에서 비활성화되었습니다."
+
+msgid "Dismiss"
+msgstr "닫기"
+
+msgid "Domain cannot be empty."
+msgstr "도메인은 비워 둘 수 없습니다."
+
+msgid "Don't Allow"
+msgstr "허용 안 함"
+
+msgid "Duplicate {label} \"{key}\"."
+msgstr "중복된 {label} \"{key}\"입니다."
+
+msgid "Each entry is an exact domain (github.com) or a leading-*. subdomain wildcard (*.npmjs.org). IP addresses and local domains are not allowed. An entry here only takes effect within the editor-wide network allowlist: a host that is not on that list stays unreachable even if you add it here."
+msgstr "각 항목은 정확한 도메인(github.com) 또는 앞에 *.을 붙인 하위 도메인 와일드카드(*.npmjs.org)입니다. IP 주소와 로컬 도메인은 허용되지 않습니다. 여기의 항목은 편집기 전체의 네트워크 허용 목록 범위 안에서만 적용됩니다. 그 목록에 없는 호스트는 여기에 추가해도 연결할 수 없습니다."
+
+msgid "Each entry is an exact host name (api.anthropic.com), a subdomain wildcard with a leading *. (*.corp.example, which does not match the parent domain itself), or an IP address (10.0.0.5 / [fd00::1]). Entries are case-insensitive and take no port."
+msgstr "각 항목은 정확한 호스트 이름(api.anthropic.com), 앞에 *.을 붙인 하위 도메인 와일드카드(*.corp.example, 상위 도메인 자체와는 일치하지 않음) 또는 IP 주소(10.0.0.5 / [fd00::1])입니다. 항목은 대소문자를 구분하지 않으며 포트를 지정하지 않습니다."
+
+msgid "Each entry must be an absolute path and grants write access to the whole subtree, except protected Git metadata."
+msgstr "각 항목은 절대 경로여야 하며, 보호된 Git 메타데이터를 제외한 하위 트리 전체에 쓰기 권한을 부여합니다."
+
+msgid "Edit"
+msgstr "편집"
+
+msgid "Edit Git Account"
+msgstr "Git 계정 편집"
+
+msgid "Edit in Form (saves to the project settings file that defines this server)"
+msgstr "양식에서 편집 (이 서버를 정의하는 프로젝트 설정 파일에 저장)"
+
+msgid "Edit in settings.json"
+msgstr "settings.json에서 편집"
+
+msgid "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from Zed itself."
+msgstr "편집 예측 통신은 Copilot 언어 서버(별도 프로세스)가 보내므로 외부 통신 허용 목록의 대상이 아닙니다. 호스트 등록은 ForgeKairos 자체에서 로그인할 때만 영향을 줍니다."
+
+msgid "Edit {entry}"
+msgstr "{entry} 편집"
+
+msgid "Edit {name}"
+msgstr "{name} 편집"
+
+msgid "Email"
+msgstr "이메일"
+
+msgid "Enable Sandbox"
+msgstr "샌드박스 활성화"
+
+msgid "Enter \"{prompt}\"."
+msgstr "\"{prompt}\"을(를) 입력하세요."
+
+msgid "Enter Secret"
+msgstr "시크릿 입력"
+
+msgid "Enter a host."
+msgstr "호스트를 입력하세요."
+
+msgid "Enter a tool input to test your rules…"
+msgstr "규칙을 테스트할 도구 입력값을 입력하세요…"
+
+msgid "Enter a valid GitHub URL"
+msgstr "유효한 GitHub URL을 입력하세요"
+
+msgid "Enter a value for the {label} \"{key}\"."
+msgstr "{label} \"{key}\"의 값을 입력하세요."
+
+msgid "Enter the API key."
+msgstr "API 키를 입력하세요."
+
+msgid "Enter to Confirm"
+msgstr "Enter로 확인"
+
+msgid "Enter: {prompt}"
+msgstr "입력: {prompt}"
+
+msgid "Environment"
+msgstr "환경"
+
+msgid "Environment Variables"
+msgstr "환경 변수"
+
+msgid "Environment variables provided to the server process. Enter the values the server's documentation asks for here, such as API keys or tokens."
+msgstr "서버 프로세스에 제공할 환경 변수입니다. API 키나 토큰 등 서버 문서에서 요구하는 값을 여기에 입력하세요."
+
+msgid "Environment variables to fill in: {inputs}"
+msgstr "입력해야 할 환경 변수: {inputs}"
+
+msgid "Environment variables: {names}"
+msgstr "환경 변수: {names}"
+
+msgid "Error: {}"
+msgstr "오류: {}"
+
+msgid "Escalation Prompts"
+msgstr "권한 상승 확인"
+
+msgid "Every AI you can use here, by whose AI it is. Each row shows how you sign in and what runs it. In the agent panel, the + menu lists the same AIs."
+msgstr "여기서 사용할 수 있는 모든 AI를 AI 제공 주체별로 나열합니다. 각 행에는 로그인 방법과 실행 주체가 표시됩니다. 에이전트 패널의 + 메뉴에도 같은 AI가 나열됩니다."
+
+msgid "Execution Host"
+msgstr "실행 호스트"
+
+msgid "Extension: the extension provides the command. Its settings are made in the extension's own form."
+msgstr "확장 프로그램: 확장 프로그램이 명령을 제공합니다. 설정은 확장 프로그램 자체의 양식에서 합니다."
+
+msgid "External Agents"
+msgstr "외부 에이전트"
+
+msgid "External formatter \"{name}\""
+msgstr "외부 포맷터 \"{name}\""
+
+msgid "Failed to add the hosts to the allowlist: {error}"
+msgstr "호스트를 허용 목록에 추가하지 못했습니다: {error}"
+
+msgid "Failed to load your settings. Some values may be incorrect and changes may be lost."
+msgstr "설정을 로드하지 못했습니다. 일부 값이 잘못되었을 수 있으며 변경 사항이 손실될 수 있습니다."
+
+msgid "Failed to parse network_allowlist.json"
+msgstr "network_allowlist.json을 구문 분석하지 못했습니다"
+
+msgid "Failed to parse network_allowlist.json: {error}"
+msgstr "network_allowlist.json을 구문 분석하지 못했습니다: {error}"
+
+msgid "Failed to read network_allowlist.json"
+msgstr "network_allowlist.json을 읽지 못했습니다"
+
+msgid "Failed to read network_allowlist.json: {error}"
+msgstr "network_allowlist.json을 읽지 못했습니다: {error}"
+
+msgid "Failed to read the response body: {error}"
+msgstr "응답 본문을 읽지 못했습니다: {error}"
+
+msgid "Failed to save the allowlist: {write_error}"
+msgstr "허용 목록을 저장하지 못했습니다: {write_error}"
+
+msgid "Failed to save the child process proxy setting: {write_error}"
+msgstr "자식 프로세스 프록시 설정을 저장하지 못했습니다: {write_error}"
+
+msgid "Failed to write network_allowlist.json"
+msgstr "network_allowlist.json에 쓰지 못했습니다"
+
+msgid "Fetch Models"
+msgstr "모델 목록 가져오기"
+
+msgid "Fetching and parsing…"
+msgstr "가져와서 구문 분석 중…"
+
+msgid "Fetching the tool list…"
+msgstr "도구 목록 가져오는 중…"
+
+msgid "Fetching…"
+msgstr "가져오는 중…"
+
+msgid "File System"
+msgstr "파일 시스템"
+
+msgid "File and directory copying"
+msgstr "파일 및 디렉터리 복사"
+
+msgid "File and directory deletion"
+msgstr "파일 및 디렉터리 삭제"
+
+msgid "File and directory moves/renames"
+msgstr "파일 및 디렉터리 이동/이름 변경"
+
+msgid "File creation and overwrite operations"
+msgstr "파일 생성 및 덮어쓰기 작업"
+
+msgid "File editing operations"
+msgstr "파일 편집 작업"
+
+msgid "Files whose contents are part of this approval: {files}. A change to their contents asks for confirmation again, but the command line alone doesn't show what they do, so review their contents too before allowing."
+msgstr "내용이 이 승인에 포함되는 파일: {files}. 내용이 바뀌면 다시 확인을 요청하지만, 명령줄만으로는 이 파일들이 무엇을 하는지 알 수 없으므로 허용하기 전에 내용도 검토하세요."
+
+msgid "Finish the steps below to start a thread with {name}."
+msgstr "아래 단계를 완료하면 {name}(으)로 스레드를 시작합니다."
+
+msgid "Fix in settings.json"
+msgstr "settings.json에서 수정"
+
+msgid "Focus Content"
+msgstr "내용에 포커스"
+
+msgid "Focus Navbar"
+msgstr "탐색 모음에 포커스"
+
+msgid "Folder"
+msgstr "폴더"
+
+msgid "For a public client, leave this empty and submit."
+msgstr "공개 클라이언트인 경우 비워 두고 제출하세요."
+
+msgid "Found {count} server. Open it in the form to review it, or add it right away."
+msgid_plural "Found {count} servers. Open each one in the form to review it, or add them all at once."
+msgstr[0] "서버 {count}개를 찾았습니다. 각각 양식에서 열어 검토하거나 한 번에 모두 추가하세요."
+
+msgid "Front-matter"
+msgstr "프런트 매터"
+
+msgid "Git Accounts"
+msgstr "Git 계정"
+
+msgid "Git commands run outside the sandbox with hooks turned off (commit, branch, merge, …)"
+msgstr "훅을 끈 상태로 샌드박스 외부에서 실행되는 Git 명령 (commit, branch, merge, …)"
+
+msgid "GitHub response was not valid UTF-8"
+msgstr "GitHub 응답이 유효한 UTF-8이 아닙니다"
+
+msgid "GitHub returned 404 while fetching the skill; no repository exists at this URL, or it is private"
+msgstr "스킬을 가져오는 동안 GitHub이 404를 반환했습니다. 이 URL에 저장소가 없거나 비공개입니다"
+
+msgid "GitHub returned an unexpected redirect ({}) for the authenticated request to {raw_url}"
+msgstr "GitHub이 {raw_url}에 대한 인증된 요청에 예기치 않은 리디렉션({})을 반환했습니다"
+
+msgid "GitHub returned {} while fetching the skill"
+msgstr "스킬을 가져오는 동안 GitHub이 {}을(를) 반환했습니다"
+
+msgid "GitHub skill URLs must use https://"
+msgstr "GitHub 스킬 URL은 반드시 https:// 형식이어야 합니다"
+
+msgid "Go to \"Enable Agent\""
+msgstr "\"에이전트 활성화\"로 이동"
+
+msgid "Google"
+msgstr "Google"
+
+msgid "HTTP headers sent with each request to the server. For a server that authenticates with a token, set Authorization to \"Bearer <token>\"."
+msgstr "서버에 대한 각 요청과 함께 보내는 HTTP 헤더입니다. 토큰으로 인증하는 서버의 경우 Authorization을 \"Bearer <token>\"으로 설정하세요."
+
+msgid "HTTP requests to URLs"
+msgstr "URL에 대한 HTTP 요청"
+
+msgid "HTTP: connects over HTTP to a server published at a URL."
+msgstr "HTTP: URL로 게시된 서버에 HTTP로 연결합니다."
+
+msgid "Headers"
+msgstr "헤더"
+
+msgid "Headers to fill in: {inputs}"
+msgstr "입력해야 할 헤더: {inputs}"
+
+msgid "Headers: {names}"
+msgstr "헤더: {names}"
+
+msgid "Hide this skill from the model's catalog. It can still be invoked via slash command."
+msgstr "모델 카탈로그에서 이 스킬을 숨깁니다. 슬래시 명령으로는 계속 호출할 수 있습니다."
+
+msgid "Host"
+msgstr "호스트"
+
+msgid "Hosts that need to be allowed:"
+msgstr "허용해야 하는 호스트:"
+
+msgid "How long to wait for the server to respond before timing out."
+msgstr "시간이 초과되기 전에 서버 응답을 기다리는 시간입니다."
+
+msgid "I understand the risks above and want to add this provider"
+msgstr "위의 위험을 이해했으며 이 프로바이더를 추가합니다"
+
+msgid "I understand the risks above and want to enable {name}"
+msgstr "위의 위험을 이해했으며 {name}을(를) 활성화합니다"
+
+msgid "I understand the risks above and want to save this provider"
+msgstr "위의 위험을 이해했으며 이 프로바이더를 저장합니다"
+
+msgid "IP addresses and local domains aren't allowed; enter a domain like github.com."
+msgstr "IP 주소와 로컬 도메인은 허용되지 않습니다. 도메인을 입력하세요. 예: github.com."
+
+msgid "If any of these regexes match, a confirmation will be shown unless an Always Deny regex matches."
+msgstr "항상 거부 정규식과 일치하지 않는 한, 이 정규식 중 하나라도 일치하면 확인 메시지가 표시됩니다."
+
+msgid "If any of these regexes match, the action will be approved—unless an Always Confirm or Always Deny matches."
+msgstr "항상 확인 또는 항상 거부 규칙과 일치하지 않는 한, 이 정규식 중 하나라도 일치하면 작업이 승인됩니다."
+
+msgid "If any of these regexes match, the tool action will be denied."
+msgstr "이 정규식 중 하나라도 일치하면 도구 작업이 거부됩니다."
+
+msgid "Import from URL"
+msgstr "URL에서 가져오기"
+
+msgid "In a project folder where the agent has written files, language servers and formatters do not run that folder's code (the project's Prettier and ESLint configuration, build scripts, and so on) until you press Resume. This setting is saved only in your user settings and cannot be changed by project settings."
+msgstr "에이전트가 파일을 쓴 프로젝트 폴더에서는 재개를 누를 때까지 언어 서버와 포맷터가 해당 폴더의 코드(프로젝트의 Prettier 및 ESLint 구성, 빌드 스크립트 등)를 실행하지 않습니다. 이 설정은 사용자 설정에만 저장되며 프로젝트 설정으로 변경할 수 없습니다."
+
+msgid "Increment"
+msgstr "증가"
+
+msgid "Input Device"
+msgstr "입력 장치"
+
+msgid "Install Claude Code (Official Command)"
+msgstr "Claude Code 설치 (공식 명령)"
+
+msgid "Install Docker to make it available."
+msgstr "사용하려면 Docker를 설치하세요."
+
+msgid "Install Node.js to make it available."
+msgstr "사용하려면 Node.js를 설치하세요."
+
+msgid "Install from Extensions"
+msgstr "확장 프로그램에서 설치"
+
+msgid "Install from Registry"
+msgstr "레지스트리에서 설치"
+
+msgid "Install uv to make it available."
+msgstr "사용하려면 uv를 설치하세요."
+
+msgid "Installed on this PC ({version})"
+msgstr "이 PC에 설치됨 ({version})"
+
+msgid "Installed on this PC."
+msgstr "이 PC에 설치되어 있습니다."
+
+msgid "Invalid Patterns"
+msgstr "잘못된 패턴"
+
+msgid "Invalid URL in settings."
+msgstr "설정에 잘못된 URL이 있습니다."
+
+msgid "Invalid URL: {error}"
+msgstr "잘못된 URL: {error}"
+
+msgid "Invalid regex: {err}. Pattern saved but will block this tool until fixed or removed."
+msgstr "잘못된 정규식: {err}. 패턴이 저장되었지만 수정하거나 제거할 때까지 이 도구가 차단됩니다."
+
+msgid "Judge Model"
+msgstr "판단 모델"
+
+msgid "Keeps the API key saved for {url}, because another provider uses the same URL."
+msgstr "다른 프로바이더가 같은 URL을 사용하므로 {url}용으로 저장된 API 키를 유지합니다."
+
+msgid "Kept these hosts because another provider you consented to uses them: {hosts}"
+msgstr "동의한 다른 프로바이더가 사용하므로 다음 호스트를 유지했습니다: {hosts}"
+
+msgid "Key"
+msgstr "키"
+
+msgid "LLM Providers"
+msgstr "LLM 프로바이더"
+
+msgid "Launch Claude Code in Terminal"
+msgstr "터미널에서 Claude Code 실행"
+
+msgid "Launch Outside the Sandbox"
+msgstr "샌드박스 외부에서 시작"
+
+msgid "Launches this agent outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Saved only in your user settings."
+msgstr "묻지 않고 매번 이 에이전트를 샌드박스 외부에서 시작합니다. 쓰기가 더 이상 제한되지 않으며, 네트워크 제한은 프록시 설정을 읽는 프로그램에만 적용됩니다 (SSH 호스트에서는 외부 통신 통제가 전혀 적용되지 않습니다). 사용자 설정에만 저장됩니다."
+
+msgid "Learn More"
+msgstr "자세히 알아보기"
+
+msgid "Learn more about sandboxing"
+msgstr "샌드박스에 대해 자세히 알아보기"
+
+msgid "Leave blank to keep the key saved in the system keychain, or enter a new key to replace it."
+msgstr "시스템 키체인에 저장된 키를 유지하려면 비워 두고, 바꾸려면 새 키를 입력하세요."
+
+msgid "Leave blank to keep the saved key"
+msgstr "저장된 키를 유지하려면 비워 두세요"
+
+msgid "Let sandboxed commands reach any domain over the network without prompting. This only lifts the sandbox's own restriction, so commands can still reach only the hosts within the editor-wide network allowlist (localhost is always reachable)."
+msgstr "샌드박스의 명령이 묻지 않고 네트워크를 통해 모든 도메인에 접근할 수 있게 합니다. 샌드박스 자체의 제한만 해제하므로 명령은 여전히 편집기 전체의 네트워크 허용 목록에 있는 호스트에만 접근할 수 있습니다 (localhost는 항상 접근 가능)."
+
+msgid "Let sandboxed commands write anywhere except protected paths (such as Git metadata). This is almost the same as running outside the sandbox, so while it is on, auto-approval does not apply and each command asks for confirmation."
+msgstr "샌드박스의 명령이 보호된 경로(Git 메타데이터 등)를 제외한 모든 위치에 쓸 수 있게 합니다. 이는 샌드박스 외부에서 실행하는 것과 거의 같으므로, 켜져 있는 동안에는 자동 승인이 적용되지 않고 명령마다 확인을 요청합니다."
+
+msgid "Load"
+msgstr "로드"
+
+msgid "Loaded the template \"{title}\". Fill in the fields that ask for a value before saving."
+msgstr "템플릿 \"{title}\"을(를) 로드했습니다. 저장하기 전에 값을 요구하는 필드를 채우세요."
+
+msgid "Loading agent skill instructions"
+msgstr "에이전트 스킬 지침 로드"
+
+msgid "Loading models…"
+msgstr "모델 로드 중…"
+
+msgid "Loading pages in AI tabs of the built-in browser"
+msgstr "내장 브라우저의 AI 탭에서 페이지 로드"
+
+msgid "Loading…"
+msgstr "로드 중…"
+
+msgid "Loads mcpServers JSON, such as the one in a server's README, into the form."
+msgstr "서버의 README에 있는 것 같은 mcpServers JSON을 양식에 로드합니다."
+
+msgid "Loads the settings of a commonly used MCP server into the form. Nothing is written to your settings until you click Save."
+msgstr "자주 사용하는 MCP 서버의 설정을 양식에 로드합니다. 저장을 클릭할 때까지 설정에는 아무것도 기록되지 않습니다."
+
+msgid "Loads the settings of a commonly used server, such as Filesystem or GitHub, into the form."
+msgstr "Filesystem이나 GitHub 같은 자주 사용하는 서버의 설정을 양식에 로드합니다."
+
+msgid "Local"
+msgstr "로컬"
+
+msgid "Local (command)"
+msgstr "로컬 (명령)"
+
+msgid "Local Model (Ollama, LM Studio, …)"
+msgstr "로컬 모델 (Ollama, LM Studio, …)"
+
+msgid "Local Models"
+msgstr "로컬 모델"
+
+msgid "Log Out"
+msgstr "로그아웃"
+
+msgid "Login"
+msgstr "로그인 이름"
+
+msgid "MCP server \"{name}\""
+msgstr "MCP 서버 \"{name}\""
+
+msgid "MCP server did not respond (timed out)"
+msgstr "MCP 서버가 응답하지 않았습니다 (시간 초과)"
+
+msgid "Makes \"Launch Claude Code\" start outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Sign-in is shared with your regular Claude Code. Saved only in your user settings."
+msgstr "\"Claude Code 실행\"이 묻지 않고 매번 샌드박스 외부에서 시작되게 합니다. 쓰기가 더 이상 제한되지 않으며, 네트워크 제한은 프록시 설정을 읽는 프로그램에만 적용됩니다 (SSH 호스트에서는 외부 통신 통제가 전혀 적용되지 않습니다). 로그인은 평소 사용하는 Claude Code와 공유됩니다. 사용자 설정에만 저장됩니다."
+
+msgid "Manage Trust"
+msgstr "신뢰 관리"
+
+msgid "Manage servers connected directly or via extensions."
+msgstr "직접 또는 확장 프로그램을 통해 연결된 서버를 관리합니다."
+
+msgid "Max Completion Tokens"
+msgstr "최대 생성 토큰"
+
+msgid "Max Output Tokens"
+msgstr "최대 출력 토큰"
+
+msgid "Max Tokens"
+msgstr "최대 토큰"
+
+msgid "Maximum completion tokens for OpenAI-compatible requests."
+msgstr "OpenAI 호환 요청의 최대 생성 토큰 수입니다."
+
+msgid "Model Name"
+msgstr "모델 이름"
+
+msgid "Model Name cannot be empty"
+msgstr "모델 이름은 비워 둘 수 없습니다"
+
+msgid "Model Names must be unique"
+msgstr "모델 이름은 고유해야 합니다"
+
+msgid "Models"
+msgstr "모델"
+
+msgid "Modified in {modified_in}"
+msgstr "{modified_in}에서 수정됨"
+
+msgid "Move Down"
+msgstr "아래로 이동"
+
+msgid "Move Up"
+msgstr "위로 이동"
+
+msgid "Moving the mouse over pages in the built-in browser"
+msgstr "내장 브라우저의 페이지 위에서 마우스 이동"
+
+msgid "Name"
+msgstr "이름"
+
+msgid "Network"
+msgstr "네트워크"
+
+msgid "No API key is sent, because this connects to a server that needs no authentication."
+msgstr "인증이 필요 없는 서버에 연결하므로 API 키를 보내지 않습니다."
+
+msgid "No MCP server settings were found. Paste JSON that contains `command` (local) or `url` (remote)."
+msgstr "MCP 서버 설정을 찾을 수 없습니다. `command`(로컬) 또는 `url`(원격)이 포함된 JSON을 붙여넣으세요."
+
+msgid "No MCP servers added yet. Click \"Add Server\" to get started."
+msgstr "아직 추가된 MCP 서버가 없습니다. 시작하려면 \"서버 추가\"를 클릭하세요."
+
+msgid "No Models"
+msgstr "모델 없음"
+
+msgid "No Results"
+msgstr "결과 없음"
+
+msgid "No active project found. Open a workspace to manage MCP servers."
+msgstr "활성 프로젝트를 찾을 수 없습니다. MCP 서버를 관리하려면 작업 영역을 여세요."
+
+msgid "No active project found. Open a workspace to manage external agents."
+msgstr "활성 프로젝트를 찾을 수 없습니다. 외부 에이전트를 관리하려면 작업 영역을 여세요."
+
+msgid "No authenticated models"
+msgstr "인증된 모델 없음"
+
+msgid "No decisions have been recorded yet."
+msgstr "아직 기록된 결정이 없습니다."
+
+msgid "No entries"
+msgstr "항목 없음"
+
+msgid "No external agents added yet. Click \"Add Agent\" to get started."
+msgstr "아직 추가된 외부 에이전트가 없습니다. 시작하려면 \"에이전트 추가\"를 클릭하세요."
+
+msgid "No git accounts yet."
+msgstr "아직 Git 계정이 없습니다."
+
+msgid "No global skills installed."
+msgstr "설치된 전역 스킬이 없습니다."
+
+msgid "No hosts configured (everything except loopback is denied)"
+msgstr "구성된 호스트 없음 (루프백을 제외한 모든 통신이 거부됨)"
+
+msgid "No models found. Check your Ollama server URL."
+msgstr "모델을 찾을 수 없습니다. Ollama 서버 URL을 확인하세요."
+
+msgid "No new models were found to add"
+msgstr "추가할 새 모델을 찾지 못했습니다"
+
+msgid "No patterns configured"
+msgstr "구성된 패턴 없음"
+
+msgid "No project skills found."
+msgstr "프로젝트 스킬을 찾을 수 없습니다."
+
+msgid "No regex matches, using the default action."
+msgstr "일치하는 정규식이 없어 기본 동작을 사용합니다."
+
+msgid "No settings match \"{}\""
+msgstr "\"{}\"와(과) 일치하는 설정 없음"
+
+msgid "No skills available for this context."
+msgstr "이 컨텍스트에서 사용 가능한 스킬이 없습니다."
+
+msgid "No token is stored. Without one, git asks for the password as usual."
+msgstr "저장된 토큰이 없습니다. 토큰이 없으면 Git이 평소처럼 비밀번호를 묻습니다."
+
+msgid "No tools"
+msgstr "도구 없음"
+
+msgid "None"
+msgstr "없음"
+
+msgid "None (disable edit predictions)"
+msgstr "없음 (편집 예측 비활성화)"
+
+msgid "Not Controlled"
+msgstr "통제 외"
+
+msgid "Not Controlled (Own Proxy)"
+msgstr "통제 외 (자체 프록시)"
+
+msgid "Not Installed"
+msgstr "설치되지 않음"
+
+msgid "Not Set Up"
+msgstr "설정 안 됨"
+
+msgid "Not a valid domain. Use a domain like github.com or *.npmjs.org."
+msgstr "유효한 도메인이 아닙니다. github.com 또는 *.npmjs.org와 같은 도메인을 사용하세요."
+
+msgid "Not a valid host name or IP address. Examples: api.anthropic.com, *.corp.example, 10.0.0.5"
+msgstr "올바른 호스트 이름 또는 IP 주소가 아닙니다. 예: api.anthropic.com, *.corp.example, 10.0.0.5"
+
+msgid "Not allowed"
+msgstr "허용 안 됨"
+
+msgid "Not installed on this PC (claude is not on PATH)."
+msgstr "이 PC에 설치되어 있지 않습니다 (PATH에 claude가 없음)."
+
+msgid "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
+msgstr "참고: 사용자 지정 도구 권한은 ForgeKairos 기본 에이전트에만 적용되며, Agent Client Protocol (ACP)을 통해 연결된 외부 에이전트에는 적용되지 않습니다."
+
+msgid "Nothing configured"
+msgstr "구성된 항목 없음"
+
+msgid "OAuth Client ID"
+msgstr "OAuth 클라이언트 ID"
+
+msgid "Official CLI Tab"
+msgstr "공식 CLI 탭"
+
+msgid "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
+msgstr "2026-06-15에 Anthropic은 구독(Claude Pro, Max 등)을 통한 사용이 이전과 같이 계속된다고 발표했습니다. 로그인은 Claude Code 자체 화면에서 이루어지며, ForgeKairos는 자격 증명을 보거나 저장하거나 중계하지 않습니다. 이 옵션을 끄면 인증 카드에서 로그인 버튼이 사라집니다 (API 키 사용은 계속 가능)."
+
+msgid "One of the {label} rows has no name. Enter a name or remove that row."
+msgstr "{label} 행 중 하나에 이름이 없습니다. 이름을 입력하거나 해당 행을 제거하세요."
+
+msgid "Open"
+msgstr "열기"
+
+msgid "Open Detailed Settings"
+msgstr "세부 설정 열기"
+
+msgid "Open in Form"
+msgstr "양식에서 열기"
+
+msgid "Open network_allowlist.json in Editor"
+msgstr "편집기에서 network_allowlist.json 열기"
+
+msgid "Open the project settings file that defines this server"
+msgstr "이 서버를 정의하는 프로젝트 설정 파일 열기"
+
+msgid "OpenAI"
+msgstr "OpenAI"
+
+msgid "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below."
+msgstr "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, Mercury는 아래의 각 섹션에서 자격 증명이나 엔드포인트 URL을 설정하면 선택할 수 있습니다. Zed는 아래의 \"Zed\" 섹션에서 동의하면 선택할 수 있습니다."
+
+msgid "Opening AI tabs in the built-in browser"
+msgstr "내장 브라우저에서 AI 탭 열기"
+
+msgid "Opens the official Claude Code in a tab of the agent panel. You sign in on Claude Code's own screen. The CLI is not bundled; it is installed with the official install command. For pay-as-you-go billing with an API key, use Anthropic above."
+msgstr "에이전트 패널의 탭에서 공식 Claude Code를 엽니다. 로그인은 Claude Code 자체 화면에서 합니다. CLI는 번들되어 있지 않으며 공식 설치 명령으로 설치합니다. API 키를 사용한 종량제 요금은 위의 Anthropic을 사용하세요."
+
+msgid "Opens {docs_url}"
+msgstr "{docs_url}을(를) 엽니다"
+
+msgid "Optional OAuth client ID"
+msgstr "선택적 OAuth 클라이언트 ID"
+
+msgid "Optional OAuth client ID used to authenticate with the server. Leave it empty if the server supports dynamic client registration: connecting then asks you to authenticate in the browser."
+msgstr "서버 인증에 사용하는 OAuth 클라이언트 ID입니다(선택 사항). 서버가 동적 클라이언트 등록을 지원하면 비워 두세요. 그러면 연결할 때 브라우저에서 인증하라는 요청이 표시됩니다."
+
+msgid "Optional. The HTTPS host the token signs in to, such as github.com. Remotes on other hosts and SSH remotes sign in as git is configured."
+msgstr "선택 사항입니다. 토큰으로 로그인할 HTTPS 호스트입니다(예: github.com). 다른 호스트의 원격과 SSH 원격은 Git 구성대로 로그인합니다."
+
+msgid "Optional. The key commits are signed with when signing is on (user.signingkey)."
+msgstr "선택 사항입니다. 서명이 켜져 있을 때 커밋 서명에 사용하는 키입니다(user.signingkey)."
+
+msgid "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set, which Git for Windows does in its system configuration when installed to use the external OpenSSH. A passphrase is asked for each time."
+msgstr "선택 사항입니다. SSH 원격에 푸시, 풀, 페치할 때 단독으로 사용하는 개인 키 파일입니다. 로컬 프로젝트에만 적용됩니다. GIT_SSH_COMMAND, GIT_SSH 또는 core.sshCommand가 설정되어 있으면 사용하지 않습니다(Git for Windows를 외부 OpenSSH를 사용하도록 설치하면 시스템 구성에 이 값이 설정됩니다). 암호 구문은 매번 묻습니다."
+
+msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
+msgstr "또는 {env_var_name} 환경 변수를 설정한 후 변경 사항을 적용하려면 ForgeKairos를 다시 시작하세요."
+
+msgid "Or set the {} env var and restart Zed."
+msgstr "또는 {} 환경 변수를 설정하고 ForgeKairos를 다시 시작하세요."
+
+msgid "Other"
+msgstr "기타"
+
+msgid "Outbound Traffic from Child Processes"
+msgstr "자식 프로세스의 외부 통신"
+
+msgid "Output Device"
+msgstr "출력 장치"
+
+msgid "Overridden by Organization"
+msgstr "조직에서 재정의함"
+
+msgid "Paste a GitHub .md URL"
+msgstr "GitHub .md URL을 붙여넣으세요"
+
+msgid "Paste a GitHub .md URL to fetch it and fill out the form. For private files, Zed retries using GITHUB_TOKEN, if set."
+msgstr "GitHub .md URL을 붙여넣으면 가져와서 양식을 채웁니다. 비공개 파일의 경우 GITHUB_TOKEN이 설정되어 있으면 ForgeKairos가 이를 사용하여 다시 시도합니다."
+
+msgid "Paste a GitHub URL that points to a .md file"
+msgstr ".md 파일을 가리키는 GitHub URL을 붙여넣으세요"
+
+msgid "Paste a GitHub blob URL that points to a .md file"
+msgstr ".md 파일을 가리키는 GitHub blob URL을 붙여넣으세요"
+
+msgid "Paste a JSON object ({{ … }})."
+msgstr "JSON 객체({{ … }})를 붙여넣으세요."
+
+msgid "Paste from JSON"
+msgstr "JSON에서 붙여넣기"
+
+msgid "Paste some JSON."
+msgstr "JSON을 붙여넣으세요."
+
+msgid "Paste the configuration JSON from an MCP server's README or similar, then press \"Load\". The mcpServers format of Claude Desktop and Cursor, the servers format of VS Code and Zed's context_servers format are supported. What is loaded goes into the form and isn't written to your settings until you press \"Save\"."
+msgstr "MCP 서버의 README 등에 있는 구성 JSON을 붙여넣은 후 \"로드\"를 누르세요. Claude Desktop 및 Cursor의 mcpServers 형식, VS Code의 servers 형식, Zed의 context_servers 형식을 지원합니다. 로드한 내용은 양식에 들어가며 \"저장\"을 누를 때까지 설정에 기록되지 않습니다."
+
+msgid "Pattern preview differs from engine — showing authoritative result."
+msgstr "패턴 미리 보기가 엔진과 다릅니다 — 엔진 기준 결과를 표시합니다."
+
+msgid "Patterns are matched against each command in the input. Commands chained with &&, ||, ;, or pipes are split and checked individually."
+msgstr "패턴은 입력의 각 명령과 비교됩니다. &&, ||, ;, 파이프로 연결된 명령은 개별적으로 분리하여 검사합니다."
+
+msgid "Patterns are matched against the JavaScript expression being run."
+msgstr "패턴은 실행되는 JavaScript 식과 비교됩니다."
+
+msgid "Patterns are matched against the URL being fetched."
+msgstr "패턴은 가져오는 URL과 비교됩니다."
+
+msgid "Patterns are matched against the URL being loaded, or against back, forward or reload."
+msgstr "패턴은 로드되는 URL 또는 back, forward, reload와 비교됩니다."
+
+msgid "Patterns are matched against the URL the new tab opens (about:blank for an empty tab)."
+msgstr "패턴은 새 탭이 여는 URL(빈 탭은 about:blank)과 비교됩니다."
+
+msgid "Patterns are matched against the absolute path to the skill's SKILL.md file."
+msgstr "패턴은 스킬의 SKILL.md 파일의 절대 경로와 비교됩니다."
+
+msgid "Patterns are matched against the direction: `up`, `down`, `left` or `right`."
+msgstr "패턴은 방향(`up`, `down`, `left`, `right`)과 비교됩니다."
+
+msgid "Patterns are matched against the directory path being created."
+msgstr "패턴은 생성되는 디렉터리 경로와 비교됩니다."
+
+msgid "Patterns are matched against the element's ref, such as `e12`, or against the point as `x,y`."
+msgstr "패턴은 `e12` 같은 요소의 ref 또는 `x,y` 형식의 위치와 비교됩니다."
+
+msgid "Patterns are matched against the file path being edited."
+msgstr "패턴은 편집 중인 파일 경로와 비교됩니다."
+
+msgid "Patterns are matched against the file path being written."
+msgstr "패턴은 쓰기 대상 파일 경로와 비교됩니다."
+
+msgid "Patterns are matched against the keys being pressed, such as `ctrl+a Backspace`."
+msgstr "패턴은 `ctrl+a Backspace` 같은 누르는 키와 비교됩니다."
+
+msgid "Patterns are matched against the name of the code action. Its edits are written straight into the buffer without going through diff review."
+msgstr "패턴은 코드 액션의 이름과 비교됩니다. 코드 액션의 편집 내용은 Diff 검토를 거치지 않고 버퍼에 바로 기록됩니다."
+
+msgid "Patterns are matched against the new value (an array or other non-text value as JSON)."
+msgstr "패턴은 새 값(배열 등 텍스트가 아닌 값은 JSON)과 비교됩니다."
+
+msgid "Patterns are matched against the path being deleted."
+msgstr "패턴은 삭제되는 경로와 비교됩니다."
+
+msgid "Patterns are matched against the search query."
+msgstr "패턴은 검색어와 비교됩니다."
+
+msgid "Patterns are matched against the symbol's name before the rename. The rename skips diff review, and every file that references the symbol is saved."
+msgstr "패턴은 이름 변경 전의 심볼 이름과 비교됩니다. 이름 변경은 Diff 검토를 건너뛰며, 심볼을 참조하는 모든 파일이 저장됩니다."
+
+msgid "Patterns are matched against the tab's id, such as `1`."
+msgstr "패턴은 `1` 같은 탭 ID와 비교됩니다."
+
+msgid "Patterns are matched against the text being typed."
+msgstr "패턴은 입력되는 텍스트와 비교됩니다."
+
+msgid "Patterns are matched against the whole command, starting with `git`, such as `git commit -m 'Fix the parser'`."
+msgstr "패턴은 `git commit -m 'Fix the parser'`처럼 `git`으로 시작하는 전체 명령과 비교됩니다."
+
+msgid "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
+msgstr "패턴은 원본 경로 및 대상 경로와 각각 따로 비교됩니다. 아래에 경로 중 하나를 입력하여 테스트하세요."
+
+msgid "Pause Folder Code After Agent Writes Until Resumed"
+msgstr "에이전트가 쓴 폴더의 코드를 재개할 때까지 일시 중지"
+
+msgid "Preserves thinking in chat history"
+msgstr "채팅 기록에 사고 과정 보존"
+
+msgid "Pressing keys in pages in the built-in browser"
+msgstr "내장 브라우저의 페이지에서 키 누르기"
+
+msgid "Project"
+msgstr "프로젝트"
+
+msgid "Project-wide symbol renames by the language server"
+msgstr "언어 서버를 통한 프로젝트 전체 심볼 이름 변경"
+
+msgid "Provider"
+msgstr "프로바이더"
+
+msgid "Provider Name"
+msgstr "프로바이더 이름"
+
+msgid "Provider Name cannot be empty"
+msgstr "프로바이더 이름은 비워 둘 수 없습니다"
+
+msgid "Provider Name is already taken by another provider"
+msgstr "프로바이더 이름이 이미 다른 프로바이더에서 사용 중입니다"
+
+msgid "Proxied"
+msgstr "프록시 경유"
+
+msgid "Proxying for child processes is turned off, so this server's outbound traffic is not controlled by the network allowlist."
+msgstr "자식 프로세스에 대한 프록시가 꺼져 있으므로 이 서버의 외부 통신은 네트워크 허용 목록으로 통제되지 않습니다."
+
+msgid "Read the file again"
+msgstr "파일 다시 읽기"
+
+msgid "Ready"
+msgstr "사용 가능"
+
+msgid "Reason: {}"
+msgstr "이유: {}"
+
+msgid "Reconnects the server to check whether it can be connected to."
+msgstr "서버에 다시 연결하여 연결할 수 있는지 확인합니다."
+
+msgid "Registered in the allowlist: {hosts}"
+msgstr "허용 목록에 등록됨: {hosts}"
+
+msgid "Reload"
+msgstr "다시 로드"
+
+msgid "Remote"
+msgstr "원격"
+
+msgid "Remote (HTTP)"
+msgstr "원격 (HTTP)"
+
+msgid "Remote host ({display_name})"
+msgstr "원격 호스트 ({display_name})"
+
+msgid "Remove"
+msgstr "제거"
+
+msgid "Remove Allowed Hosts"
+msgstr "허용된 호스트 제거"
+
+msgid "Remove Custom Agent"
+msgstr "사용자 지정 에이전트 제거"
+
+msgid "Remove Domain"
+msgstr "도메인 제거"
+
+msgid "Remove Host"
+msgstr "호스트 제거"
+
+msgid "Remove Model"
+msgstr "모델 제거"
+
+msgid "Remove Path"
+msgstr "경로 제거"
+
+msgid "Remove Registry Agent"
+msgstr "레지스트리 에이전트 제거"
+
+msgid "Remove Stored Token"
+msgstr "저장된 토큰 제거"
+
+msgid "Remove the account, its token if no other account uses it, and every repository's pick of it"
+msgstr "계정과, 다른 계정이 사용하지 않는 경우 해당 토큰, 그리고 이 계정을 선택한 모든 저장소의 선택을 제거합니다"
+
+msgid "Remove {entry}"
+msgstr "{entry} 제거"
+
+msgid "Removed from the allowlist: {removed}"
+msgstr "허용 목록에서 제거했습니다: {removed}"
+
+msgid "Removed from the allowlist: {removed}. {kept}"
+msgstr "허용 목록에서 제거했습니다: {removed}. {kept}"
+
+msgid "Removes its entry from language_models in settings.json."
+msgstr "settings.json의 language_models에서 해당 항목을 제거합니다."
+
+msgid "Removes the record of the denial. The next time the same launch is requested, you'll be asked again."
+msgstr "거부 기록을 제거합니다. 다음에 같은 실행이 요청되면 다시 묻습니다."
+
+msgid "Removes this provider's hosts from network_allowlist.json. Hosts that another provider you consented to needs, and separately written entries such as wildcards, are kept"
+msgstr "network_allowlist.json에서 이 프로바이더의 호스트를 제거합니다. 동의한 다른 프로바이더에 필요한 호스트와 와일드카드처럼 별도로 작성된 항목은 유지됩니다"
+
+msgid "Removes what refers to its models from these settings (a model chosen there goes back to the default): {settings}"
+msgstr "다음 설정에서 이 프로바이더의 모델을 가리키는 부분을 제거합니다 (그곳에서 선택한 모델은 기본값으로 돌아갑니다): {settings}"
+
+msgid "Renaming: the settings that choose this provider's models and your consent move to the new name. Saved threads keep the old name; to continue one, choose a model again."
+msgstr "이름 변경: 이 프로바이더의 모델을 선택하는 설정과 동의가 새 이름으로 옮겨집니다. 저장된 스레드는 이전 이름을 유지하므로 계속하려면 모델을 다시 선택하세요."
+
+msgid "Replaces the binary your user settings specify for the same language server"
+msgstr "사용자 설정에서 같은 언어 서버에 지정한 바이너리를 대체합니다"
+
+msgid "Replaces the formatter your user settings specify"
+msgstr "사용자 설정에서 지정한 포맷터를 대체합니다"
+
+msgid "Replaces the server of the same name in your user settings"
+msgstr "사용자 설정에 있는 같은 이름의 서버를 대체합니다"
+
+msgid "Required. A unique name used to identify this MCP server."
+msgstr "필수입니다. 이 MCP 서버를 식별하는 데 사용되는 고유한 이름입니다."
+
+msgid "Required. Path to the executable that launches the server, or the name of a command on the PATH (such as npx or uvx). Saving only checks that it can be found; it does not run it."
+msgstr "필수입니다. 서버를 시작하는 실행 파일의 경로 또는 PATH에 있는 명령의 이름(npx, uvx 등)입니다. 저장할 때는 찾을 수 있는지만 확인하며 실행하지는 않습니다."
+
+msgid "Required. The base URL of the remote MCP server, such as https://example.com/mcp."
+msgstr "필수입니다. 원격 MCP 서버의 기본 URL입니다(예: https://example.com/mcp)."
+
+msgid "Requires: {requires}"
+msgstr "필요: {requires}"
+
+msgid "Reset"
+msgstr "초기화"
+
+msgid "Reset Key"
+msgstr "키 초기화"
+
+msgid "Reset to Default"
+msgstr "기본값으로 초기화"
+
+msgid "Restricted Mode"
+msgstr "제한 모드"
+
+msgid "Result:"
+msgstr "결과:"
+
+msgid "Retry"
+msgstr "다시 시도"
+
+msgid "Revoke Approval"
+msgstr "승인 철회"
+
+msgid "Revoke Consent"
+msgstr "동의 철회"
+
+msgid "Revoke Denial"
+msgstr "거부 철회"
+
+msgid "Revokes the approval and stops the program if it is running. Starting it again will need your approval again."
+msgstr "승인을 철회하고 프로그램이 실행 중이면 중지합니다. 다시 시작하려면 다시 승인해야 합니다."
+
+msgid "Revokes the approval and stops the server. Starting it again requires allowing it again."
+msgstr "승인을 철회하고 서버를 중지합니다. 다시 시작하려면 다시 허용해야 합니다."
+
+msgid "Revoking consent shows the warning again, and the provider can no longer be configured. Also removes the hosts registered in the allowlist for this provider"
+msgstr "동의를 철회하면 경고가 다시 표시되고 더 이상 프로바이더를 구성할 수 없습니다. 이 프로바이더를 위해 허용 목록에 등록된 호스트도 제거합니다"
+
+msgid "Run on This Computer"
+msgstr "이 PC에서 실행"
+
+msgid "Run on the SSH Host"
+msgstr "SSH 호스트에서 실행"
+
+msgid "Running JavaScript in pages in the built-in browser"
+msgstr "내장 브라우저의 페이지에서 JavaScript 실행"
+
+msgid "Runs on"
+msgstr "실행 위치"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md 파일이 최대 크기 {}KB를 초과합니다"
+
+msgid "SSH Key"
+msgstr "SSH 키"
+
+msgid "Save"
+msgstr "저장"
+
+msgid "Save Provider"
+msgstr "프로바이더 저장"
+
+msgid "Save Skill"
+msgstr "스킬 저장"
+
+msgid "Save and Start"
+msgstr "저장하고 시작"
+
+msgid "Saved threads that used it stay in the history; to continue one, choose another model."
+msgstr "이 프로바이더를 사용한 저장된 스레드는 기록에 남습니다. 계속하려면 다른 모델을 선택하세요."
+
+msgid "Saving…"
+msgstr "저장 중…"
+
+msgid "Scope"
+msgstr "범위"
+
+msgid "Scrolling pages in the built-in browser"
+msgstr "내장 브라우저의 페이지 스크롤"
+
+msgid "Search Settings"
+msgstr "설정 검색"
+
+msgid "Search fonts…"
+msgstr "글꼴 검색…"
+
+msgid "Search icon themes…"
+msgstr "아이콘 테마 검색…"
+
+msgid "Search models…"
+msgstr "모델 검색…"
+
+msgid "Search settings…"
+msgstr "설정 검색…"
+
+msgid "Search theme…"
+msgstr "테마 검색…"
+
+msgid "Select"
+msgstr "선택"
+
+msgid "Select a model…"
+msgstr "모델 선택…"
+
+msgid "Select which provider to use for edit predictions."
+msgstr "편집 예측에 사용할 프로바이더를 선택합니다."
+
+msgid "Server Name"
+msgstr "서버 이름"
+
+msgid "Server name is required."
+msgstr "서버 이름은 필수입니다."
+
+msgid "Server settings on the remote host"
+msgstr "원격 호스트의 서버 설정"
+
+msgid "Server settings on {display_name}"
+msgstr "{display_name}의 서버 설정"
+
+msgid "Servers can't be added all at once while one has a name that is already taken. Open each server marked \"A server with this name already exists\" in the form and rename it before adding it."
+msgstr "이름이 이미 사용 중인 서버가 있으면 한 번에 모두 추가할 수 없습니다. \"같은 이름의 서버가 이미 있습니다\"로 표시된 각 서버를 양식에서 열어 이름을 변경한 후 추가하세요."
+
+msgid "Set Up {name}"
+msgstr "{name} 설정"
+
+msgid "Setting the values of form fields in the built-in browser"
+msgstr "내장 브라우저의 양식 필드 값 설정"
+
+msgid "Settings Content"
+msgstr "설정 콘텐츠"
+
+msgid "Settings File"
+msgstr "설정 파일"
+
+msgid "Settings Navigation"
+msgstr "설정 탐색"
+
+msgid "Signing Key"
+msgstr "서명 키"
+
+msgid "Signs in as git is configured"
+msgstr "Git 구성대로 로그인"
+
+msgid "Signs in to {host} as {login}"
+msgstr "{host}에 {login}(으)로 로그인"
+
+msgid "Skill Content"
+msgstr "스킬 콘텐츠"
+
+msgid "Start Testing"
+msgstr "테스트 시작"
+
+msgid "Start {name} on this computer. If it has no model yet, download one first (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "이 PC에서 {name}을(를) 시작하세요. 아직 모델이 없으면 먼저 다운로드한 후(예: Ollama의 경우 ollama pull qwen3:8b) \"다시 시도\"를 누르세요."
+
+msgid "Starting with these details is not allowed."
+msgstr "이 세부 정보로 시작하는 것은 허용되지 않았습니다."
+
+msgid "Stop Testing"
+msgstr "테스트 중지"
+
+msgid "Stored in the system keychain, not in settings.json."
+msgstr "settings.json이 아니라 시스템 키체인에 저장됩니다."
+
+msgid "Submit"
+msgstr "제출"
+
+msgid "Subscription"
+msgstr "구독"
+
+msgid "Subscription or API Key"
+msgstr "구독 또는 API 키"
+
+msgid "Supports /chat/completions"
+msgstr "/chat/completions 지원"
+
+msgid "Supports images"
+msgstr "이미지 지원"
+
+msgid "Supports parallel_tool_calls"
+msgstr "parallel_tool_calls 지원"
+
+msgid "Supports prompt_cache_key"
+msgstr "prompt_cache_key 지원"
+
+msgid "Supports thinking"
+msgstr "사고 과정 지원"
+
+msgid "Supports tools"
+msgstr "도구 지원"
+
+msgid "Switching the current AI tab in the built-in browser"
+msgstr "내장 브라우저에서 현재 AI 탭 전환"
+
+msgid "System Default"
+msgstr "시스템 기본값"
+
+msgid "Test Connection"
+msgstr "연결 테스트"
+
+msgid "Test Your Rules"
+msgstr "규칙 테스트"
+
+msgid "Testing the connection…"
+msgstr "연결 테스트 중…"
+
+msgid "Testing…"
+msgstr "테스트 중…"
+
+msgid "The API URL changed, so enter the API key for the new URL. The saved key is not sent to a different URL."
+msgstr "API URL이 변경되었으므로 새 URL에 대한 API 키를 입력하세요. 저장된 키는 다른 URL로 보내지 않습니다."
+
+msgid "The API key could not be saved: {error}"
+msgstr "API 키를 저장할 수 없습니다: {error}"
+
+msgid "The API key sent as Authorization: Bearer {{key}}."
+msgstr "API 키는 Authorization: Bearer {{key}}(으)로 전송됩니다."
+
+msgid "The approval records are unavailable, so the decision can't be revoked."
+msgstr "승인 기록을 사용할 수 없으므로 결정을 철회할 수 없습니다."
+
+msgid "The approval records are unavailable, so the decision can't be saved."
+msgstr "승인 기록을 사용할 수 없으므로 결정을 저장할 수 없습니다."
+
+msgid "The approval records are unavailable, so the list can't be shown."
+msgstr "승인 기록을 사용할 수 없으므로 목록을 표시할 수 없습니다."
+
+msgid "The approval records can't be read, so it won't be started: {error}"
+msgstr "승인 기록을 읽을 수 없으므로 시작하지 않습니다: {error}"
+
+msgid "The approval records can't be read, so no decision can be made."
+msgstr "승인 기록을 읽을 수 없으므로 결정할 수 없습니다."
+
+msgid "The author and committer email of commits (user.email)."
+msgstr "커밋의 작성자 및 커미터 이메일입니다(user.email)."
+
+msgid "The author and committer name of commits (user.name)."
+msgstr "커밋의 작성자 및 커미터 이름입니다(user.name)."
+
+msgid "The base URL for the compatible API."
+msgstr "호환 API의 기본 URL입니다."
+
+msgid "The connection can't be tested until the server is allowed to start."
+msgstr "서버 시작을 허용할 때까지 연결을 테스트할 수 없습니다."
+
+msgid "The contents of the argument file {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "인수 파일 {path}의 내용은 승인에 포함되지 않습니다. 나중에 내용이 바뀌어도 다시 묻지 않습니다."
+
+msgid "The contents of the folder {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "폴더 {path}의 내용은 승인에 포함되지 않습니다. 나중에 내용이 바뀌어도 다시 묻지 않습니다."
+
+msgid "The contents of the remote file {path} can't be checked from here, so they are not part of the approval. You won't be asked again if the contents change later."
+msgstr "원격 파일 {path}의 내용은 여기서 확인할 수 없으므로 승인에 포함되지 않습니다. 나중에 내용이 바뀌어도 다시 묻지 않습니다."
+
+msgid "The endpoint depends on the AWS region (for example, bedrock-runtime.us-east-1.amazonaws.com). Register the host for the region you actually use in the allowlist."
+msgstr "엔드포인트는 AWS 리전에 따라 다릅니다(예: bedrock-runtime.us-east-1.amazonaws.com). 실제로 사용하는 리전의 호스트를 허용 목록에 등록하세요."
+
+msgid "The key is kept in this computer's credential store, not in a settings file."
+msgstr "키는 설정 파일이 아니라 이 PC의 자격 증명 저장소에 보관됩니다."
+
+msgid "The maximum number of tokens the model can output."
+msgstr "모델이 출력할 수 있는 최대 토큰 수입니다."
+
+msgid "The model context window size."
+msgstr "모델의 컨텍스트 창 크기입니다."
+
+msgid "The model's name in the provider's API."
+msgstr "프로바이더 API에서 사용하는 모델 이름입니다."
+
+msgid "The name the account is picked by in the Git panel."
+msgstr "Git 패널에서 계정을 선택할 때 사용하는 이름입니다."
+
+msgid "The network allowlist blocked the connection to {host}. Add this host under \"Network Allowlist\" on the \"Network\" page."
+msgstr "네트워크 허용 목록이 {host}에 대한 연결을 차단했습니다. \"네트워크\" 페이지의 \"네트워크 허용 목록\"에서 이 호스트를 추가하세요."
+
+msgid "The sandbox is disabled, so terminal commands are confirmed every time, even with \"Allow\"."
+msgstr "샌드박스가 비활성화되어 있으므로 \"허용\"이어도 터미널 명령은 매번 확인합니다."
+
+msgid "The saved key belongs to the previous API URL and is not sent to the new one. Enter the key for this URL."
+msgstr "저장된 키는 이전 API URL용이므로 새 URL로 보내지 않습니다. 이 URL에 대한 키를 입력하세요."
+
+msgid "The server didn't become ready for connections."
+msgstr "서버가 연결을 받을 준비가 되지 않았습니다."
+
+msgid "The server returned HTTP {status}."
+msgstr "서버가 HTTP {status}을(를) 반환했습니다."
+
+msgid "The server returned HTTP {status}: {body}"
+msgstr "서버가 HTTP {status}을(를) 반환했습니다: {body}"
+
+msgid "The user name on the host that goes with the token."
+msgstr "토큰에 해당하는 호스트의 사용자 이름입니다."
+
+msgid "The value of `{key}` is not an object ({{ … }})."
+msgstr "`{key}`의 값이 객체({{ … }})가 아닙니다."
+
+msgid "These fields weren't loaded because Zed doesn't use them: {keys}"
+msgstr "ForgeKairos에서 사용하지 않으므로 다음 필드는 로드하지 않았습니다: {keys}"
+
+msgid "These patterns failed to compile as regular expressions. The tool will be blocked until they are fixed or removed."
+msgstr "이 패턴들을 정규식으로 컴파일하지 못했습니다. 수정되거나 제거될 때까지 도구가 차단됩니다."
+
+msgid "They can be automatically migrated to the latest version."
+msgstr "최신 버전으로 자동 마이그레이션할 수 있습니다."
+
+msgid "They must be manually migrated to the latest version."
+msgstr "최신 버전으로 수동 마이그레이션해야 합니다."
+
+msgid "Thinking Effort: {effort}"
+msgstr "사고 강도: {effort}"
+
+msgid "This approval lasts until Zed quits."
+msgstr "이 승인은 ForgeKairos를 종료할 때까지 유효합니다."
+
+msgid "This computer"
+msgstr "이 PC"
+
+msgid "This consent is shared with the \"Zed\" LLM provider on the AI page. Withdrawing it applies to both edit predictions and the agent."
+msgstr "이 동의는 AI 페이지의 \"Zed\" LLM 프로바이더와 공유됩니다. 철회하면 편집 예측과 에이전트 모두에 적용됩니다."
+
+msgid "This covers outbound traffic from AI providers (LLMs), agent tools (fetch / web search), MCP servers, external agent (ACP) processes, and commands that agents run in the sandbox. Traffic from the IDE's own tooling, such as language servers, formatters, debug adapters, extensions, app updates, remote development servers, Git, and the browser panel, is not covered and is not restricted."
+msgstr "AI 프로바이더(LLM), 에이전트 도구(fetch / 웹 검색), MCP 서버, 외부 에이전트(ACP) 프로세스, 에이전트가 샌드박스에서 실행하는 명령의 외부 통신이 대상입니다. 언어 서버, 포맷터, 디버그 어댑터, 확장 프로그램, 앱 업데이트, 원격 개발 서버, Git, 브라우저 패널 등 IDE 자체 도구의 통신은 대상이 아니며 제한되지 않습니다."
+
+msgid "This entry is ignored because its format is invalid."
+msgstr "형식이 잘못되었으므로 이 항목은 무시됩니다."
+
+msgid "This project is in restricted mode. Some project settings may not apply."
+msgstr "이 프로젝트는 제한 모드입니다. 일부 프로젝트 설정이 적용되지 않을 수 있습니다."
+
+msgid "This project's definition is not allowed to start."
+msgstr "이 프로젝트의 정의는 시작이 허용되지 않았습니다."
+
+msgid "This project's folder is no longer open."
+msgstr "이 프로젝트의 폴더가 더 이상 열려 있지 않습니다."
+
+msgid "This project's settings are trying to start a program as shown below. Review it before choosing."
+msgstr "이 프로젝트의 설정이 아래와 같이 프로그램을 시작하려고 합니다. 선택하기 전에 검토하세요."
+
+msgid "This project's settings want to start a program"
+msgstr "이 프로젝트의 설정이 프로그램을 시작하려고 합니다"
+
+msgid "This provider connects to an external service. Review the warning about training risks and check the box"
+msgstr "이 프로바이더는 외부 서비스에 연결합니다. 학습 위험에 대한 경고를 검토하고 확인란을 선택하세요"
+
+msgid "This provider is defined outside the top level of your settings.json (for example, in a release channel, OS or profile override), so it can't be edited or deleted here. Edit it in settings.json."
+msgstr "이 프로바이더는 settings.json의 최상위가 아닌 곳(예: 릴리스 채널, OS 또는 프로필별 재정의)에 정의되어 있으므로 여기서 편집하거나 삭제할 수 없습니다. settings.json에서 편집하세요."
+
+msgid "This provider is no longer in settings.json, so nothing was saved. Close the form and add it again."
+msgstr "이 프로바이더가 더 이상 settings.json에 없으므로 아무것도 저장하지 않았습니다. 양식을 닫고 다시 추가하세요."
+
+msgid "This provider will use an Anthropic Messages-compatible API."
+msgstr "이 프로바이더는 Anthropic Messages 호환 API를 사용합니다."
+
+msgid "This provider will use an OpenAI-compatible API."
+msgstr "이 프로바이더는 OpenAI 호환 API를 사용합니다."
+
+msgid "This provider's endpoint cannot be determined from settings. Verify where your data will be sent before enabling it."
+msgstr "설정에서 이 프로바이더의 엔드포인트를 확인할 수 없습니다. 활성화하기 전에 데이터가 전송될 위치를 확인하세요."
+
+msgid "This server hasn't been created yet. Check its settings and extension."
+msgstr "이 서버는 아직 생성되지 않았습니다. 설정과 확장 프로그램을 확인하세요."
+
+msgid "This server is defined in the project settings file {file_label}. Saving rewrites this file (not your user settings). Because the definition changes, the server must be allowed again before it starts."
+msgstr "이 서버는 프로젝트 설정 파일 {file_label}에 정의되어 있습니다. 저장하면 사용자 설정이 아니라 이 파일을 다시 씁니다. 정의가 바뀌므로 서버를 시작하려면 다시 허용해야 합니다."
+
+msgid "This server is disabled. Enable it before testing the connection."
+msgstr "이 서버는 비활성화되어 있습니다. 연결을 테스트하기 전에 활성화하세요."
+
+msgid "This server starts in an empty folder of Zed's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
+msgstr "이 서버는 프로젝트 폴더가 아니라 ForgeKairos 전용의 빈 폴더에서 시작됩니다. 프로젝트를 대상으로 작업하게 하려면 폴더의 절대 경로를 인수로 전달하세요."
+
+msgid "This server's child process goes through the loopback proxy, so its outbound traffic is controlled by the network allowlist."
+msgstr "이 서버의 자식 프로세스는 루프백 프록시를 거치므로 외부 통신이 네트워크 허용 목록으로 통제됩니다."
+
+msgid "This server's definition in the project settings file changed after the form was opened. Open the form again."
+msgstr "양식을 연 후에 프로젝트 설정 파일에서 이 서버의 정의가 변경되었습니다. 양식을 다시 여세요."
+
+msgid "This server's environment variables name a proxy, so the loopback proxy is not applied. Its outbound traffic is not controlled by the network allowlist."
+msgstr "이 서버의 환경 변수가 프록시를 지정하므로 루프백 프록시가 적용되지 않습니다. 외부 통신은 네트워크 허용 목록으로 통제되지 않습니다."
+
+msgid "This will move {} to the trash. This skill is shared with other agent tools {shared_scope}, so it will no longer be available to them either."
+msgstr "{}을(를) 휴지통으로 이동합니다. 이 스킬은 {shared_scope} 다른 에이전트 도구와 공유되므로 해당 도구에서도 더 이상 사용할 수 없습니다."
+
+msgid "Timeout (seconds)"
+msgstr "시간 제한(초)"
+
+msgid "Timeout must be a positive whole number of seconds."
+msgstr "시간 제한은 초 단위의 양의 정수여야 합니다."
+
+msgid "To find an API key, visit the {link}"
+msgstr "API 키를 찾으려면 {link}을(를) 방문하세요"
+
+msgid "To reset your API key, unset the {env_var_name} environment variable."
+msgstr "API 키를 초기화하려면 {env_var_name} 환경 변수를 해제하세요."
+
+msgid "To reset your API key, unset the {} environment variable."
+msgstr "API 키를 초기화하려면 {} 환경 변수를 해제하세요."
+
+msgid "Token"
+msgstr "토큰"
+
+msgid "Turning this off sets this project's definition to \"Don't Allow\" and stops the server."
+msgstr "이 옵션을 끄면 이 프로젝트의 정의를 \"허용 안 함\"으로 설정하고 서버를 중지합니다."
+
+msgid "Turning this on allows this project's definition and starts the server."
+msgstr "이 옵션을 켜면 이 프로젝트의 정의를 허용하고 서버를 시작합니다."
+
+msgid "Typing text into pages in the built-in browser"
+msgstr "내장 브라우저의 페이지에 텍스트 입력"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "URL is required."
+msgstr "URL은 필수입니다."
+
+msgid "Uninstall MCP Server"
+msgstr "MCP 서버 제거"
+
+msgid "Use Subscription Sign-In for Claude (ACP)"
+msgstr "Claude (ACP)에 구독 로그인 사용"
+
+msgid "Use This Template"
+msgstr "이 템플릿 사용"
+
+msgid "User"
+msgstr "사용자"
+
+msgid "User Name"
+msgstr "사용자 이름"
+
+msgid "Uses max_tokens for output limit"
+msgstr "출력 한도에 max_tokens 사용"
+
+msgid "Value"
+msgstr "값"
+
+msgid "View Other Projects"
+msgstr "다른 프로젝트 보기"
+
+msgid "Visit the {link} to generate an API key."
+msgstr "API 키를 생성하려면 {link}을(를) 방문하세요."
+
+msgid "Waiting for approval: this command was resolved on the remote host and needs your permission to start. Review the details before allowing it."
+msgstr "승인 대기 중: 이 명령은 원격 호스트에서 확인되었으며 시작하려면 권한이 필요합니다. 허용하기 전에 세부 정보를 검토하세요."
+
+msgid "Waiting for approval: this project's settings ask to start this server. Review the details before allowing it."
+msgstr "승인 대기 중: 이 프로젝트의 설정이 이 서버의 시작을 요청합니다. 허용하기 전에 세부 정보를 검토하세요."
+
+msgid "Warn About Confusable Unicode"
+msgstr "혼동되기 쉬운 유니코드 문자 경고"
+
+msgid "Warn About Windows-Drive Grants"
+msgstr "Windows 드라이브 권한 부여 경고"
+
+msgid "Warn when an approval prompt requests a domain or write path that contains potentially confusable Unicode characters, such as homoglyphs (i.e. two symbols that look similar, such as a Cyrillic `а`)"
+msgstr "승인 프롬프트가 요청하는 도메인 또는 쓰기 경로에 동형 문자(즉, 키릴 문자 `а`처럼 서로 비슷해 보이는 두 개의 기호)와 같이 혼동되기 쉬운 유니코드 문자가 포함된 경우 경고합니다"
+
+msgid "Web search queries"
+msgstr "웹 검색어"
+
+msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
+msgstr "활성화하면 ACP 에이전트, MCP 서버, AI 에이전트를 설치하는 npm의 각 자식 프로세스에 루프백 프록시가 제공되어, 해당 외부 통신도 위의 허용 목록으로 검사합니다. 기본적으로 활성화되어 있습니다. 비활성화하면 이러한 자식 프로세스의 외부 통신은 허용 목록의 통제를 벗어납니다 (IDE 자체의 AI 통신은 계속 통제됩니다)."
+
+msgid "When enabled, the code you enter and the content of your conversations are sent to {name}'s servers. Depending on the provider's policies, they may be stored and used to train models. If you use this for work, be sure to check your organization's policies."
+msgstr "활성화하면 입력한 코드와 대화 내용이 {name}의 서버로 전송됩니다. 프로바이더의 정책에 따라 저장되어 모델 학습에 사용될 수 있습니다. 업무에 사용하는 경우 소속 조직의 정책을 반드시 확인하세요."
+
+msgid "When it runs on the SSH host, the command is resolved there (a server provided by an extension needs the same extension installed there too). When it runs on this computer, the files the server reads and writes are the ones on this computer."
+msgstr "SSH 호스트에서 실행하면 명령은 그곳에서 확인됩니다 (확장 프로그램이 제공하는 서버는 그곳에도 같은 확장 프로그램이 설치되어 있어야 합니다). 이 PC에서 실행하면 서버가 읽고 쓰는 파일은 이 PC의 파일입니다."
+
+msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
+msgstr "꺼져 있는 동안(기본값)에는 에이전트 기능이 새로 시작하거나 실행하는 어떤 것도 샌드박스 외부에서 실행되지 않습니다. 샌드박스에서 실행할 수 없는 터미널 명령, 외부 에이전트나 Claude Code를 샌드박스 외부에서 시작하는 것, 샌드박스 외부에서 시작한 스레드를 재개하는 것은 모두 묻지 않고 거부되며, 항상 외부에서 시작하는 설정도 무시됩니다. 이미 샌드박스 외부에서 실행 중인 연결은 계속 실행됩니다. MCP 서버(컨텍스트 서버)는 이 설정의 대상이 아닙니다. 켜져 있는 동안에는 각각 먼저 묻거나 자체 설정을 따릅니다."
+
+msgid "When the server runs on the SSH host, type the path on the host directly."
+msgstr "서버가 SSH 호스트에서 실행되는 경우 호스트의 경로를 직접 입력하세요."
+
+msgid "Whether each program that a project's settings tried to start was allowed or denied. Revoking a decision stops the program if it is running, and you'll be asked again the next time it needs to start."
+msgstr "프로젝트 설정이 시작하려고 한 각 프로그램의 허용 또는 거부 여부입니다. 결정을 철회하면 실행 중인 프로그램이 중지되며, 다음에 시작해야 할 때 다시 묻습니다."
+
+msgid "While the file cannot be parsed, the allowlist is treated as empty (only loopback is allowed). Fix the file directly. Editing from this page is disabled."
+msgstr "파일을 구문 분석할 수 없는 동안에는 허용 목록이 비어 있는 것으로 처리됩니다(루프백만 허용). 파일을 직접 수정하세요. 이 페이지에서의 편집은 비활성화됩니다."
+
+msgid "Wildcards are only allowed as a leading label, e.g. *.github.com."
+msgstr "와일드카드는 앞쪽 레이블로만 허용됩니다(예: *.github.com)."
+
+msgid "Windows Credential Manager"
+msgstr "Windows 자격 증명 관리자"
+
+msgid "Windows only: warn when a sandbox grant targets a file on a Windows drive (accessed inside WSL via DrvFs). Such grants are enforced through a translated path and their sandbox-integrity guarantees are weaker than files on the Linux distro's own filesystem."
+msgstr "Windows 전용: 샌드박스 권한 부여가 Windows 드라이브의 파일을 대상으로 하는 경우(WSL 내에서 DrvFs를 통해 접근) 경고합니다. 이러한 권한 부여는 변환된 경로를 통해 적용되며, 샌드박스 무결성 보장 수준이 Linux 배포판 자체 파일 시스템의 파일보다 낮습니다."
+
+msgid "Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above."
+msgstr "동의를 철회해도 선택된 프로바이더인 Zed는 중지되지 않습니다 (경고가 다시 표시되고 위의 \"프로바이더\" 목록에서 Zed가 사라집니다). 중지하려면 위의 \"프로바이더\"에서 \"없음\"을 선택하세요."
+
+msgid "Withdraws your consent to sending data to it, and removes its host from the allowlist unless another provider you consented to needs it."
+msgstr "이 프로바이더로 데이터를 보내는 데 대한 동의를 철회하고, 동의한 다른 프로바이더에 필요하지 않으면 해당 호스트를 허용 목록에서 제거합니다."
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. It can only be turned off while running outside the sandbox is allowed (above)."
+msgstr "에이전트가 실행하는 터미널 명령을 OS 수준 샌드박스로 감쌉니다. 샌드박스 외부 실행이 허용된 동안(위)에만 끌 수 있습니다."
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
+msgstr "에이전트가 실행하는 터미널 명령을 OS 수준 샌드박스로 감쌉니다. 꺼져 있으면 명령이 ForgeKairos 자체 권한으로 실행되므로 자동 승인이 적용되지 않고 명령마다 확인을 요청합니다. 외부 에이전트 자체나 Claude Code의 시작 방식에는 영향을 주지 않습니다 (해당 설정은 AI 페이지에 있습니다)."
+
+msgid "Writable Paths"
+msgstr "쓰기 가능한 경로"
+
+msgid "You have consented to using this as an external AI service."
+msgstr "이 항목을 외부 AI 서비스로 사용하는 데 동의했습니다."
+
+msgid "You have not consented to any providers."
+msgstr "동의한 프로바이더가 없습니다."
+
+msgid "You have not given consent, but the hosts above are still in the allowlist."
+msgstr "동의하지 않았지만 위의 호스트가 아직 허용 목록에 있습니다."
+
+msgid "Your settings are out of date, and need to be updated."
+msgstr "설정이 오래되어 업데이트가 필요합니다."
+
+msgid "Your settings file is out of date, automatic migration failed"
+msgstr "설정 파일이 오래되었으며 자동 마이그레이션에 실패했습니다"
+
+msgid "Zed — Settings"
+msgstr "ForgeKairos — 설정"
+
+msgid "Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev."
+msgstr "Zed의 클라우드 편집 예측(Zeta)입니다. 편집 중인 코드와 그 주변 코드가 cloud.zed.dev로 전송됩니다."
+
+msgid "`*.` cannot be used with an IP address."
+msgstr "`*.`은 IP 주소와 함께 사용할 수 없습니다."
+
+msgid "`rm -rf` commands are always blocked when run on `$HOME`, `~`, `.`, `..`, or `/`"
+msgstr "`rm -rf` 명령은 `$HOME`, `~`, `.`, `..` 또는 `/`에서 실행될 때 항상 차단됩니다"
+
+msgid "e.g. gpt-5, claude-opus-4, gemini-2.5-pro"
+msgstr "예: gpt-5, claude-opus-4, gemini-2.5-pro"
+
+msgid "e.g., Fill the PR description following this template."
+msgstr "예: 이 템플릿에 따라 PR 설명을 작성하세요."
+
+msgid "enabled for all"
+msgstr "모두에게 활성화됨"
+
+msgid "environment variable"
+msgstr "환경 변수"
+
+msgid "failed to check whether {} already exists"
+msgstr "{}이(가) 이미 있는지 확인하지 못했습니다"
+
+msgid "failed to create skill directory {}"
+msgstr "스킬 디렉터리 {}을(를) 만들지 못했습니다"
+
+msgid "failed to fetch {raw_url}"
+msgstr "{raw_url}을(를) 가져오지 못했습니다"
+
+msgid "failed to read response body"
+msgstr "응답 본문을 읽지 못했습니다"
+
+msgid "failed to serialize skill frontmatter as YAML"
+msgstr "스킬 프런트 매터를 YAML로 직렬화하지 못했습니다"
+
+msgid "failed to write {}"
+msgstr "{}을(를) 쓰지 못했습니다"
+
+msgid "header"
+msgstr "헤더"
+
+msgid "macOS Keychain"
+msgstr "macOS 키체인"
+
+msgid "network_allowlist.json does not exist yet. The allowlist is treated as empty (only loopback is allowed). The file is created when you add a host."
+msgstr "network_allowlist.json이 아직 없습니다. 허용 목록은 비어 있는 것으로 처리됩니다(루프백만 허용). 호스트를 추가하면 파일이 만들어집니다."
+
+msgid "the system keyring (Secret Service)"
+msgstr "시스템 키링 (Secret Service)"
+
+msgid "{count} entry registered"
+msgid_plural "{count} entries registered"
+msgstr[0] "항목 {count}개 등록됨"
+
+msgid "{count} rule"
+msgid_plural "{count} rules"
+msgstr[0] "규칙 {count}개"
+
+msgid "{count} tool"
+msgid_plural "{count} tools"
+msgstr[0] "도구 {count}개"
+
+msgid "{entry} is already in the list."
+msgstr "{entry}은(는) 이미 목록에 있습니다."
+
+msgid "{host} is already in the allowlist."
+msgstr "{host}은(는) 이미 허용 목록에 있습니다."
+
+msgid "{names} (values not shown)"
+msgstr "{names} (값은 표시되지 않음)"
+
+msgid "{name} (Edit Prediction)"
+msgstr "{name} (편집 예측)"
+
+msgid "{name} is an external AI service"
+msgstr "{name}은(는) 외부 AI 서비스입니다"
+
+msgid "{name} is not available here. Its settings may have been removed."
+msgstr "여기서는 {name}을(를) 사용할 수 없습니다. 설정이 제거되었을 수 있습니다."
+
+msgid "{name} is ready. Opening a new thread…"
+msgstr "{name}이(가) 준비되었습니다. 새 스레드 여는 중…"
+
+msgid "{name} is running but has no model. Download one (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "{name}이(가) 실행 중이지만 모델이 없습니다. 모델을 다운로드한 후(예: Ollama의 경우 ollama pull qwen3:8b) \"다시 시도\"를 누르세요."
+
+msgid "{name} is signed in, but no model could be listed. The list is fetched from {name}, so its hosts have to be in the allowlist; also check that your account or plan includes models. Then press Retry."
+msgstr "{name}에 로그인되어 있지만 모델 목록을 가져올 수 없습니다. 목록은 {name}에서 가져오므로 해당 호스트가 허용 목록에 있어야 합니다. 계정이나 플랜에 모델이 포함되어 있는지도 확인한 후 \"다시 시도\"를 누르세요."
+
+msgid "{name} must be a number"
+msgstr "{name}은(는) 숫자여야 합니다"
+
+msgid "{path} can't be read, so its contents can't be checked."
+msgstr "{path}을(를) 읽을 수 없으므로 내용을 확인할 수 없습니다."
+
+msgid "{path} is a file in the project, but its contents are not part of the approval. You won't be asked again if the contents change later."
+msgstr "{path}은(는) 프로젝트의 파일이지만 내용은 승인에 포함되지 않습니다. 나중에 내용이 바뀌어도 다시 묻지 않습니다."
+
+msgid "{program} starts another program. Its contents are not part of the approval."
+msgstr "{program}은(는) 다른 프로그램을 시작합니다. 그 내용은 승인에 포함되지 않습니다."
+
+msgid "{program} starts in the project folder {working_directory} and may load code from it. You won't be asked again if the contents change later."
+msgstr "{program}은(는) 프로젝트 폴더 {working_directory}에서 시작되며 그곳의 코드를 로드할 수 있습니다. 나중에 내용이 바뀌어도 다시 묻지 않습니다."
+
+msgid "{provider_name} API Key"
+msgstr "{provider_name} API 키"
+
+msgid "{provider_name} dashboard"
+msgstr "{provider_name} 대시보드"
+
+msgid "{provider_name} dashboard."
+msgstr "{provider_name} 대시보드"
+
+msgid "{{ \"mcpServers\": {{ \"server-name\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+msgstr "{{ \"mcpServers\": {{ \"server-name\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+
+msgid "{} API Key"
+msgstr "{} API 키"
+
+msgid "{} Tool"
+msgstr "{} 도구"
+
+msgid "{} invalid"
+msgstr "잘못된 패턴 {}개"
+
+msgctxt "agent tool"
+msgid "Apply Code Action"
+msgstr "코드 액션 적용"
+
+msgctxt "agent tool"
+msgid "Browser: Click"
+msgstr "브라우저: 클릭"
+
+msgctxt "agent tool"
+msgid "Browser: Close Tab"
+msgstr "브라우저: 탭 닫기"
+
+msgctxt "agent tool"
+msgid "Browser: Hover"
+msgstr "브라우저: 마우스 올리기"
+
+msgctxt "agent tool"
+msgid "Browser: Navigate"
+msgstr "브라우저: 페이지 이동"
+
+msgctxt "agent tool"
+msgid "Browser: Open Tab"
+msgstr "브라우저: 탭 열기"
+
+msgctxt "agent tool"
+msgid "Browser: Press Keys"
+msgstr "브라우저: 키 누르기"
+
+msgctxt "agent tool"
+msgid "Browser: Run JavaScript"
+msgstr "브라우저: JavaScript 실행"
+
+msgctxt "agent tool"
+msgid "Browser: Scroll"
+msgstr "브라우저: 스크롤"
+
+msgctxt "agent tool"
+msgid "Browser: Set Value"
+msgstr "브라우저: 값 설정"
+
+msgctxt "agent tool"
+msgid "Browser: Switch Tab"
+msgstr "브라우저: 탭 전환"
+
+msgctxt "agent tool"
+msgid "Browser: Type"
+msgstr "브라우저: 텍스트 입력"
+
+msgctxt "agent tool"
+msgid "Copy Path"
+msgstr "경로 복사"
+
+msgctxt "agent tool"
+msgid "Create Directory"
+msgstr "디렉터리 만들기"
+
+msgctxt "agent tool"
+msgid "Delete Path"
+msgstr "경로 삭제"
+
+msgctxt "agent tool"
+msgid "Edit File"
+msgstr "파일 편집"
+
+msgctxt "agent tool"
+msgid "Fetch"
+msgstr "가져오기"
+
+msgctxt "agent tool"
+msgid "Git"
+msgstr "Git"
+
+msgctxt "agent tool"
+msgid "Move Path"
+msgstr "경로 이동"
+
+msgctxt "agent tool"
+msgid "Rename Symbol"
+msgstr "심볼 이름 변경"
+
+msgctxt "agent tool"
+msgid "Skill"
+msgstr "스킬"
+
+msgctxt "agent tool"
+msgid "Terminal"
+msgstr "터미널"
+
+msgctxt "agent tool"
+msgid "Web Search"
+msgstr "웹 검색"
+
+msgctxt "agent tool"
+msgid "Write File"
+msgstr "파일 쓰기"
+
+msgctxt "launch approval"
+msgid "Details"
+msgstr "세부 정보"
+
+msgctxt "launch approval"
+msgid "Review"
+msgstr "검토"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "page title"
+msgid "Add Custom Agent"
+msgstr "사용자 지정 에이전트 추가"
+
+msgctxt "page title"
+msgid "Configure MCP Server"
+msgstr "MCP 서버 구성"
+
+msgctxt "skill scope"
+msgid "global"
+msgstr "전역"
+
+msgctxt "skill scope"
+msgid "on this machine"
+msgstr "이 PC에 있는"
+
+msgctxt "skill scope"
+msgid "project"
+msgstr "프로젝트"
+
+msgctxt "skill scope"
+msgid "used in this project"
+msgstr "이 프로젝트에서 사용되는"
+
+msgctxt "tool permission mode"
+msgid "AI Judge"
+msgstr "AI 판단"
+
+msgctxt "tool permission mode"
+msgid "Allow"
+msgstr "허용"
+
+msgctxt "tool permission mode"
+msgid "Confirm"
+msgstr "확인"
+
+msgctxt "tool permission mode"
+msgid "Deny"
+msgstr "거부"

@@ -1,0 +1,48 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Failed to read SKILL.md metadata: {}"
+msgstr "Metadaten von SKILL.md konnten nicht gelesen werden: {}"
+
+msgid "Failed to read file: {}"
+msgstr "Datei konnte nicht gelesen werden: {}"
+
+msgid "Invalid YAML frontmatter"
+msgstr "Ungültiger YAML-Front-Matter"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "Die Datei SKILL.md überschreitet die maximale Größe von {} KB"
+
+msgid "SKILL.md missing closing frontmatter delimiter (---)"
+msgstr "In SKILL.md fehlt das schließende Front-Matter-Trennzeichen (---)"
+
+msgid "SKILL.md must start with YAML frontmatter (---)"
+msgstr "SKILL.md muss mit YAML-Front-Matter (---) beginnen"
+
+msgid "Skill description cannot be empty"
+msgstr "Die Skill-Beschreibung darf nicht leer sein"
+
+msgid "Skill description is {actual_len} characters, exceeding the {max_len}-character limit. The skill was loaded, but long descriptions may consume more model-context tokens."
+msgstr "Die Skill-Beschreibung umfasst {actual_len} Zeichen und überschreitet damit das Limit von {max_len} Zeichen. Der Skill wurde geladen, aber lange Beschreibungen können mehr Modellkontext-Token verbrauchen."
+
+msgid "Skill description must be at most 1024 characters"
+msgstr "Die Skill-Beschreibung darf höchstens 1024 Zeichen lang sein"
+
+msgid "Skill name cannot be empty"
+msgstr "Der Skill-Name darf nicht leer sein"
+
+msgid "Skill name must be at most 64 characters"
+msgstr "Der Skill-Name darf höchstens 64 Zeichen lang sein"
+
+msgid "Skill name must contain only lowercase letters, numbers, and hyphens"
+msgstr "Der Skill-Name darf nur Kleinbuchstaben, Ziffern und Bindestriche enthalten"
+
+msgid "Skill name must not start or end with a hyphen"
+msgstr "Der Skill-Name darf nicht mit einem Bindestrich beginnen oder enden"

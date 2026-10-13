@@ -1,0 +1,173 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(none)"
+msgstr "(ninguno)"
+
+msgid "(not given)"
+msgstr "(no indicado)"
+
+msgid "Agents can't be started in a sandbox in a project that has no folder open."
+msgstr "No se pueden iniciar agentes en un sandbox en un proyecto que no tiene ninguna carpeta abierta."
+
+msgid "Agents can't be started in a sandbox on this remote host (it isn't a Linux host, or the sandbox helper can't be put on it)."
+msgstr "No se pueden iniciar agentes en un sandbox en este host remoto (no es un host Linux o no se puede colocar en él el programa auxiliar del sandbox)."
+
+msgid "An I/O error occurred while preparing the sandbox."
+msgstr "Se produjo un error de E/S al preparar el sandbox."
+
+msgid "Arguments (one per line)"
+msgstr "Argumentos (uno por línea)"
+
+msgid "Command"
+msgstr "Comando"
+
+msgid "Couldn't check the agent's install folder `{}`"
+msgstr "No se pudo comprobar la carpeta de instalación del agente `{}`"
+
+msgid "Couldn't check the folder `{}` that writing is allowed in"
+msgstr "No se pudo comprobar la carpeta `{}` en la que se permite escribir"
+
+msgid "Couldn't create the sandbox."
+msgstr "No se pudo crear el sandbox."
+
+msgid "Couldn't prepare the agent's configuration folder"
+msgstr "No se pudo preparar la carpeta de configuración del agente"
+
+msgid "Couldn't prepare the agent's configuration folder."
+msgstr "No se pudo preparar la carpeta de configuración del agente."
+
+msgid "Couldn't put the sandbox configuration together"
+msgstr "No se pudo componer la configuración del sandbox"
+
+msgid "Couldn't read from {store}"
+msgstr "No se pudo leer de {store}"
+
+msgid "Couldn't remove the key from {store}"
+msgstr "No se pudo quitar la clave de {store}"
+
+msgid "Couldn't start the agent in the sandbox"
+msgstr "No se pudo iniciar el agente en el sandbox"
+
+msgid "Couldn't start the sign-in in the sandbox"
+msgstr "No se pudo iniciar el inicio de sesión en el sandbox"
+
+msgid "Couldn't write to {store}"
+msgstr "No se pudo escribir en {store}"
+
+msgid "Environment Variables the Agent Sets"
+msgstr "Variables de entorno que establece el agente"
+
+msgid "Parts of this are left out because it is long. If you allow it, it runs in full, including the parts left out."
+msgstr "Se omiten partes porque es largo. Si lo permite, se ejecuta completo, incluidas las partes omitidas."
+
+msgid "Running outside the sandbox is not allowed. To allow it, turn on \"Allow Running Outside the Sandbox\" in Settings > AI > Sandbox."
+msgstr "No se permite la ejecución fuera del sandbox. Para permitirla, active \"Permitir la ejecución fuera del sandbox\" en Configuración > IA > Sandbox."
+
+msgid "Technical details"
+msgstr "Detalles técnicos"
+
+msgid "The Zed server on the remote host is too old to start agents in a sandbox. Reconnect to update the server."
+msgstr "El servidor de ForgeKairos del host remoto es demasiado antiguo para iniciar agentes en un sandbox. Vuelva a conectar para actualizar el servidor."
+
+msgid "The agent was started outside the sandbox (on this PC), so its commands run on this PC too (Windows commands don't run in the WSL sandbox)"
+msgstr "El agente se inició fuera del sandbox (en este equipo), por lo que sus comandos también se ejecutan en este equipo (los comandos de Windows no se ejecutan en el sandbox de WSL)"
+
+msgid "The folder {} can't be shown to the sandbox"
+msgstr "No se puede mostrar la carpeta {} al sandbox"
+
+msgid "The project is in the WSL distribution `{project}`, but the name of the default distribution the sandbox runs in isn't known."
+msgstr "El proyecto está en la distribución de WSL `{project}`, pero no se conoce el nombre de la distribución predeterminada en la que se ejecuta el sandbox."
+
+msgid "The project is in the WSL distribution `{project}`, but the sandbox runs in `{sandbox}`."
+msgstr "El proyecto está en la distribución de WSL `{project}`, pero el sandbox se ejecuta en `{sandbox}`."
+
+msgid "The project's folders span two WSL distributions (`{first}`, `{second}`), and the sandbox runs in only one."
+msgstr "Las carpetas del proyecto abarcan dos distribuciones de WSL (`{first}`, `{second}`) y el sandbox solo se ejecuta en una."
+
+msgid "The reason was written to Zed's log."
+msgstr "El motivo se escribió en el registro de ForgeKairos."
+
+msgid "The request to the sandbox is invalid."
+msgstr "La solicitud al sandbox no es válida."
+
+msgid "The requested sandbox configuration can't be applied in this environment."
+msgstr "La configuración del sandbox solicitada no se puede aplicar en este entorno."
+
+msgid "The sandbox is turned off in the settings. The agent runs inside WSL, so its commands run in the same WSL, without the write and network restrictions"
+msgstr "El sandbox está desactivado en la configuración. El agente se ejecuta dentro de WSL, por lo que sus comandos se ejecutan en el mismo WSL, sin las restricciones de escritura y de red"
+
+msgid "The sandbox's bridge executable wasn't found. Zed's installation may be damaged."
+msgstr "No se encontró el ejecutable puente del sandbox. Es posible que la instalación de ForgeKairos esté dañada."
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "La configuración permite escribir en cualquier parte del sistema de archivos"
+
+msgid "The value of {name} contains a line break or a control character"
+msgstr "El valor de {name} contiene un salto de línea o un carácter de control"
+
+msgid "There's no sandbox implementation for this OS."
+msgstr "No hay ninguna implementación de sandbox para este sistema operativo."
+
+msgid "This agent takes no API key (internal error)"
+msgstr "Este agente no acepta clave de API (error interno)"
+
+msgid "This project's folders can't be shown to the WSL sandbox: {}"
+msgstr "No se pueden mostrar las carpetas de este proyecto al sandbox de WSL: {}"
+
+msgid "This way of starting the agent can't use the WSL sandbox (on Windows, agents run as their Linux versions inside WSL)."
+msgstr "Esta forma de iniciar el agente no puede usar el sandbox de WSL (en Windows, los agentes se ejecutan en su versión de Linux dentro de WSL)."
+
+msgid "WSL didn't respond within {} seconds. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
+msgstr "WSL no respondió en {} segundos. Espere un momento e inténtelo de nuevo; si no se soluciona, reinicie WSL con `wsl --shutdown`."
+
+msgid "Windows Credential Manager"
+msgstr "Administrador de credenciales de Windows"
+
+msgid "Working Directory"
+msgstr "Directorio de trabajo"
+
+msgid "Writing to the settings file didn't finish"
+msgstr "No terminó la escritura en el archivo de configuración"
+
+msgid "`{name}` can't be used as a WSL distribution name."
+msgstr "`{name}` no se puede usar como nombre de distribución de WSL."
+
+msgid "macOS Keychain"
+msgstr "Llavero de macOS"
+
+msgid "the system keyring (Secret Service)"
+msgstr "el llavero del sistema (Secret Service)"
+
+msgid "{headline}."
+msgstr "{headline}."
+
+msgid "{headline}: {reason}"
+msgstr "{headline}: {reason}"
+
+msgid "{kept}… ({count} byte left out)"
+msgid_plural "{kept}… ({count} bytes left out)"
+msgstr[0] "{kept}… ({count} byte omitido)"
+msgstr[1] "{kept}… ({count} bytes omitidos)"
+
+msgid "{name} has no value"
+msgstr "{name} no tiene valor"
+
+msgid "{} is a Windows drive seen through WSL. Open it by its drive letter."
+msgstr "{} es una unidad de Windows vista a través de WSL. Ábrala por su letra de unidad."
+
+msgid "{} is on a network share, which the WSL sandbox can't reach."
+msgstr "{} está en un recurso compartido de red, al que el sandbox de WSL no puede acceder."
+
+msgid "{} isn't an absolute Windows path."
+msgstr "{} no es una ruta absoluta de Windows."
+
+msgid "… ({remaining} more)"
+msgstr "… ({remaining} más)"

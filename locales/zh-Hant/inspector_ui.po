@@ -1,0 +1,69 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Bounds: ⌜{} - {}⌟"
+msgstr "邊界：⌜{} - {}⌟"
+
+msgid "Click to open by running Zed CLI"
+msgstr "按一下以透過 ForgeKairos CLI 開啟"
+
+msgid "Content size: {}"
+msgstr "內容大小：{}"
+
+msgid "Disambiguates elements from the same source location"
+msgstr "區分來自相同來源位置的元素"
+
+msgid "Element ID"
+msgstr "元素 ID"
+
+msgid "Failed to convert style to JSON: {err}"
+msgstr "無法將樣式轉換為 JSON：{err}"
+
+msgid "Failed to create buffers for style editing: {err}"
+msgstr "無法建立用於編輯樣式的緩衝區：{err}"
+
+msgid "GPUI Inspector"
+msgstr "GPUI 檢查器"
+
+msgid "GlobalElementId of the nearest ancestor with an ID"
+msgstr "最近具有 ID 的祖先元素之 GlobalElementId"
+
+msgid "Instance {}"
+msgstr "執行個體 {}"
+
+msgid "JSON Style"
+msgstr "JSON 樣式"
+
+msgid "Layout"
+msgstr "版面配置"
+
+msgid "Loading..."
+msgstr "正在載入..."
+
+msgid "Reset style"
+msgstr "重設樣式"
+
+msgid "Rust Style"
+msgstr "Rust 樣式"
+
+msgid "Size of the element's children"
+msgstr "元素子項目的大小"
+
+msgid "Size: {}"
+msgstr "大小：{}"
+
+msgid "Start inspector pick mode"
+msgstr "開始檢查器選取模式"
+
+msgid "dev::ToggleInspector is only available in debug builds"
+msgstr "dev::ToggleInspector 僅在偵錯組建中可用"
+
+msgid "unrecognized"
+msgstr "無法辨識"

@@ -131,6 +131,9 @@ msgstr "このプロジェクトではサンドボックスを使えません ({
 msgid "This thread is a conversation with an agent that was started outside the sandbox"
 msgstr "このスレッドはサンドボックスの外で起動したエージェントの会話です"
 
+msgid "Tool call not found"
+msgstr "ツール呼び出しが見つかりません"
+
 msgid "Unknown reason ({other})"
 msgstr "不明な理由 ({other})"
 

@@ -2269,8 +2269,8 @@ impl ContextServerStore {
         // Start a loopback HTTP server on an ephemeral port. The redirect URI
         // includes this port so the browser sends the callback directly to our
         // process.
-        let (redirect_uri, callback_rx) =
-            oauth::start_callback_server().context("Failed to start OAuth callback server")?;
+        let (redirect_uri, callback_rx) = oauth::start_callback_server()
+            .context(i18n::t!("Failed to start OAuth callback server"))?;
 
         let http_client = cx.update(|cx| cx.http_client());
         let credentials_provider = cx.update(|cx| zed_credentials_provider::global(cx));
@@ -2301,7 +2301,7 @@ impl ContextServerStore {
             }
             _ => oauth::resolve_client_registration(&http_client, &discovery, &redirect_uri)
                 .await
-                .context("Failed to resolve OAuth client registration")?,
+                .context(i18n::t!("Failed to resolve OAuth client registration"))?,
         };
 
         let auth_url = oauth::build_authorization_url(
@@ -2316,9 +2316,9 @@ impl ContextServerStore {
 
         cx.update(|cx| cx.open_url(auth_url.as_str()));
 
-        let callback = callback_rx
-            .await
-            .context("OAuth callback server received an invalid request")?;
+        let callback = callback_rx.await.context(i18n::t!(
+            "OAuth callback server received an invalid request"
+        ))?;
 
         if callback.state != state_param {
             anyhow::bail!("OAuth state parameter mismatch (possible CSRF)");
@@ -2335,7 +2335,7 @@ impl ContextServerStore {
             client_registration.client_secret.as_deref(),
         )
         .await
-        .context("Failed to exchange authorization code for tokens")?;
+        .context(i18n::t!("Failed to exchange authorization code for tokens"))?;
 
         let session = OAuthSession {
             token_endpoint: discovery.auth_server_metadata.token_endpoint.clone(),
@@ -2346,7 +2346,7 @@ impl ContextServerStore {
 
         Self::store_session(&credentials_provider, &server_url, &session, cx)
             .await
-            .context("Failed to persist OAuth session in keychain")?;
+            .context(i18n::t!("Failed to persist OAuth session in keychain"))?;
 
         let token_provider = Self::create_oauth_token_provider(
             &id,
@@ -3168,8 +3168,10 @@ async fn resolve_auth_required(
         return ContextServerState::Error {
             configuration,
             server,
-            error: "Server returned 401 Unauthorized. Check your configured Authorization header."
-                .into(),
+            error: i18n::t!(
+                "Server returned 401 Unauthorized. Check your configured Authorization header."
+            )
+            .into(),
         };
     }
 
@@ -3180,7 +3182,7 @@ async fn resolve_auth_required(
             return ContextServerState::Error {
                 configuration,
                 server,
-                error: "Server returned 401 Unauthorized on a non-HTTP transport".into(),
+                error: i18n::t!("Server returned 401 Unauthorized on a non-HTTP transport").into(),
             };
         }
     };

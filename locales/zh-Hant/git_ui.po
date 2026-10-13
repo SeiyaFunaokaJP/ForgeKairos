@@ -1,0 +1,3851 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\nand {} more…"
+msgstr "\n以及另外 {} 個…"
+
+msgid " (no branch)"
+msgstr "（無分支）"
+
+msgid "\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch."
+msgstr "「中止」會回到原本的分支「{origin_branch}」，並刪除此暫用分支。"
+
+msgid "\"Continue\" carries on with the rest, and \"Abort\" goes back to where it started."
+msgstr "「繼續」會繼續處理其餘部分，「中止」會回到開始前的狀態。"
+
+msgid "\"{label}\" is unavailable right now: {refusal}"
+msgstr "「{label}」目前無法使用：{refusal}"
+
+msgid "\"{merge_request_branch}\" is a branch under development. Give the MR branch another name."
+msgstr "「{merge_request_branch}」是開發中的分支。請為 MR 分支取其他名稱。"
+
+msgid "\"{merge_request_branch}\" is checked out in another worktree, so it cannot be recreated. Use another name."
+msgstr "「{merge_request_branch}」已在其他工作樹中簽出，因此無法重新建立。請使用其他名稱。"
+
+msgid "(binary file not shown)"
+msgstr "（二進位檔案，不顯示）"
+
+msgid "(not selected)"
+msgstr "（未選取）"
+
+msgid ". {count} changed file not from the development branch"
+msgid_plural ". {count} changed files not from the development branch"
+msgstr[0] "。{count} 個變更的檔案不是來自開發分支"
+
+msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
+msgstr "1. 選擇「開發分支」（提交的來源）和「基底」（MR 的目標）。2. 將提交圖的列拖曳到盒中，或選取後按「放入 MR 盒」。不應放入 MR 的項目，請在該列按右鍵並選擇「從 MR 排除」將其擱置。3. 當盒子下方的「未放置」顯示為 0 時，表示沒有遺漏（未放置的列在圖中會標上小小的 ●，「前往下一個未放置項目」可逐一跳至這些列）。4. 輸入訊息和 MR 分支名稱後按「建立並比較」：會在基底之上將 MR 分支建立為一個提交，並與開發分支比較。有未提交的變更時無法建立，請先提交或貯藏這些變更。"
+
+msgid "<no branch>"
+msgstr "<無分支>"
+
+msgid "<no commit message>"
+msgstr "<無提交訊息>"
+
+msgid "<no name>"
+msgstr "<無名稱>"
+
+msgid "A base change may be missing from the MR"
+msgstr "MR 中可能缺少基底的變更"
+
+msgid "A conflict happened while applying the box's commits. Stopped on the scratch branch \"{}\".\nResolve it and press \"Continue\" in the Git panel's banner, then finish with \"Next Steps\" in the MR box. To give up, \"Abort\" in the banner returns to \"{}\".\n{reason}"
+msgstr "套用盒中的提交時發生衝突。已停在暫用分支「{}」上。\n請解決衝突並在 Git 面板的橫幅中按「繼續」，然後在 MR 盒中以「後續步驟」完成。若要放棄，請按橫幅中的「中止」回到「{}」。\n{reason}"
+
+msgid "A detached HEAD cannot be reordered. Switch to a branch first."
+msgstr "無法對 Detached HEAD 重新排序。請先切換至分支。"
+
+msgid "A detached HEAD cannot be rewritten. Switch to a branch first"
+msgstr "無法改寫 Detached HEAD。請先切換至分支"
+
+msgid "A file an excluded commit touched (as intended)."
+msgstr "被排除的提交所變更的檔案（如預期）。"
+
+msgid "A file history tab has no MR box. Open it in a Git Graph tab."
+msgstr "檔案歷程分頁沒有 MR 盒。請在提交圖分頁中開啟。"
+
+msgid "A force push can erase other people's changes. Commits others pushed disappear without a word"
+msgstr "強制推送可能會清除其他人的變更。其他人推送的提交會在沒有任何提示的情況下消失"
+
+msgid "A merge commit and the commits before it cannot be reordered (rewriting them would break the merge)."
+msgstr "無法對合併提交及其之前的提交重新排序（改寫它們會破壞合併）。"
+
+msgid "A merge commit cannot be cherry-picked."
+msgstr "無法揀選合併提交。"
+
+msgid "A merge commit cannot be reverted."
+msgstr "無法還原合併提交。"
+
+msgid "A name cannot start with -."
+msgstr "名稱不能以 - 開頭。"
+
+msgid "A period (3d, 2w, 1m, 1y, a date, \"2026-09-01 12:00\")"
+msgstr "期間（3d、2w、1m、1y、日期、\"2026-09-01 12:00\"）"
+
+msgid "A renamed file is split into two rows, \"Deleted\" and \"Added\"."
+msgstr "重新命名的檔案會分成「已刪除」和「已新增」兩列。"
+
+msgid "A renamed file is split into two rows: its old name and its new name."
+msgstr "重新命名的檔案會分成兩列：舊名稱和新名稱。"
+
+msgid "A value for \"{label}\" cannot contain both spaces and \"."
+msgstr "「{label}」的值不能同時包含空格和 \"。"
+
+msgid "Abort the {}?"
+msgstr "要中止 {} 嗎？"
+
+msgid "Aborted the {}."
+msgstr "已中止 {}。"
+
+msgid "Add Remote…"
+msgstr "新增遠端…"
+
+msgid "Add a fix to an older commit (fixup)"
+msgstr "將修正加入較舊的提交（fixup）"
+
+msgid "Add co-authored-by"
+msgstr "新增 co-authored-by"
+
+msgid "Add repo to project"
+msgstr "將儲存庫加入專案"
+
+msgid "Add the {count} Selected Commit to the MR Box"
+msgid_plural "Add the {count} Selected Commits to the MR Box"
+msgstr[0] "將選取的 {count} 個提交放入 MR 盒"
+
+msgid "Add to .git/info/exclude"
+msgstr "加入 .git/info/exclude"
+
+msgid "Add to .gitignore"
+msgstr "加入 .gitignore"
+
+msgid "Add {count} Commit to MR Box"
+msgid_plural "Add {count} Commits to MR Box"
+msgstr[0] "將 {count} 個提交放入 MR 盒"
+
+msgid "Added or removed lines contain \"foo\" (slow)"
+msgstr "新增或移除的行包含「foo」（較慢）"
+
+msgid "Added the remote {remote_name}."
+msgstr "已新增遠端 {remote_name}。"
+
+msgid "Adds a \"Signed-off-by: name <email>\" line at the end of the commit message. Use it when the project's rules ask for it"
+msgstr "在提交訊息的結尾加上「Signed-off-by: name <email>」行。專案規則要求時使用"
+
+msgid "Adds or removes the stage mark of the chosen change (hunk: one block of changes)"
+msgstr "為選擇的變更（差異區塊：一組變更）加上或移除暫存標記"
+
+msgid "Adds the changes of the {count} picked commit to the tip of the current branch as a new commit (cherry-pick)."
+msgid_plural "Adds the changes of the {count} picked commits to the tip of the current branch as new commits (cherry-pick)."
+msgstr[0] "將選取的 {count} 個提交的變更，作為新提交加到目前分支的最前端（cherry-pick）。"
+
+msgid "Adds the changes of {sha} to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgstr "將 {sha} 的變更，作為新提交加到目前分支 {branch} 的最前端（cherry-pick）。"
+
+msgid "Adds this file to the ignore list at the top of the repository (.gitignore), so that it no longer shows among the changes. Once the .gitignore change is committed, it applies to others too"
+msgstr "將此檔案加入儲存庫最上層的忽略清單（.gitignore），使其不再出現在變更中。提交 .gitignore 的變更後，也會套用到其他人"
+
+msgid "Adds this file to your own local ignore list (.git/info/exclude). It is not committed and does not apply to others"
+msgstr "將此檔案加入您自己的本機忽略清單（.git/info/exclude）。不會被提交，也不會套用到其他人"
+
+msgid "Adds your uncommitted changes into this commit"
+msgstr "將未提交的變更加入此提交"
+
+msgid "After resolving the conflict and pressing \"Continue\" in the Git panel's banner, \"Next Steps\" updates the MR branch and goes back to \"{}\"."
+msgstr "解決衝突並在 Git 面板的橫幅中按「繼續」後，「後續步驟」會更新 MR 分支並回到「{}」。"
+
+msgid "After rewriting pushed commits with amend, fixup, reordering and so on, push with \"Force Push (with lease)\". Because of the lease, commits someone else pushed first are not overwritten."
+msgstr "以修正、fixup、重新排序等方式改寫已推送的提交後，請使用「強制推送（with lease）」推送。由於有 lease，其他人先推送的提交不會被覆寫。"
+
+msgid "After the rewrite there will be {count} commit, with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgid_plural "After the rewrite there will be {count} commits, each with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgstr[0] "改寫後將有 {count} 個提交，每個提交都有新的 SHA。\n改寫會套用到目前分支「{branch}」。作業在暫用分支「{scratch_branch}」上進行，最後會將「{branch}」移到該處（成功後會刪除暫用分支）。\n如果分支已推送，之後需要強制推送。"
+
+msgid "All Branches"
+msgstr "所有分支"
+
+msgid "All changes ({count} tracked file)"
+msgid_plural "All changes ({count} tracked files)"
+msgstr[0] "所有變更（{count} 個已追蹤的檔案）"
+
+msgid "All conflicts marked as resolved"
+msgstr "所有衝突皆已標記為已解決"
+
+msgid "All three move the current branch back to the chosen commit and undo the commits after it. soft keeps the undone commits' changes as staged changes and mixed as unstaged ones, so you can commit them again. hard throws away the undone commits' changes and the changes you have not committed yet as well (uncommitted changes cannot be recovered)."
+msgstr "三者都會將目前分支退回至選擇的提交，並復原其後的提交。soft 會將被復原提交的變更保留為已暫存的變更，mixed 則保留為未暫存的變更，因此可以重新提交。hard 會捨棄被復原提交的變更，以及尚未提交的變更（未提交的變更無法復原）。"
+
+msgid "Already pushed, so a force push (with lease) is needed afterwards"
+msgstr "已推送，因此之後需要強制推送（with lease）"
+
+msgid "Also changed on the base · changed by an excluded commit"
+msgstr "基底也有變更 · 由被排除的提交變更"
+
+msgid "Also changed on the base: the diff includes the base's changes"
+msgstr "基底也有變更：差異包含基底的變更"
+
+msgid "Amend"
+msgstr "修正提交"
+
+msgid "Amend Tracked"
+msgstr "使用已追蹤變更修正提交"
+
+msgid "Another remote operation is running. Push again once it has finished."
+msgstr "另一個遠端作業正在執行。完成後請再推送一次。"
+
+msgid "Applied the patch file with a 3-way merge and staged it."
+msgstr "已以三向合併套用修補檔並加以暫存。"
+
+msgid "Applied the patch file."
+msgstr "已套用修補檔。"
+
+msgid "Applies the changes written in a patch file to your current files. Nothing is committed, so check the result before you commit"
+msgstr "將修補檔中所寫的變更套用到目前的檔案。不會提交任何內容，請在提交前檢查結果"
+
+msgid "Applies to: {}"
+msgstr "套用至：{}"
+
+msgid "Apply"
+msgstr "套用"
+
+msgid "Apply Patch File…"
+msgstr "套用修補檔…"
+
+msgid "Apply stash@{{{}}}?"
+msgstr "要套用 stash@{{{}}} 嗎？"
+
+msgid "Apply the patch file {}?"
+msgstr "要套用修補檔 {} 嗎？"
+
+msgid "Are you sure you want to discard changes to {}?"
+msgstr "確定要捨棄對 {} 的變更嗎？"
+
+msgid "Are you sure you want to restore {}?"
+msgstr "確定要還原 {} 嗎？"
+
+msgid "Are you sure?"
+msgstr "確定嗎？"
+
+msgid "Author"
+msgstr "作者"
+
+msgid "Base commit: {}"
+msgstr "基底提交：{}"
+
+msgid "Base: {base_ref}"
+msgstr "基底：{base_ref}"
+
+msgid "Based off the current branch"
+msgstr "以目前分支為基礎"
+
+msgid "Based off {url}"
+msgstr "以 {url} 為基礎"
+
+msgid "Based off {}"
+msgstr "以 {} 為基礎"
+
+msgid "Binary files cannot be shown side by side."
+msgstr "無法並排顯示二進位檔案。"
+
+msgid "Blame Previous Revision"
+msgstr "對上一個修訂版本執行 Blame"
+
+msgid "Blame Revision"
+msgstr "對此修訂版本執行 Blame"
+
+msgid "Branch \"{branch_name}\" is not fully merged. Force delete it?"
+msgstr "分支「{branch_name}」尚未完全合併。要強制刪除嗎？"
+
+msgid "Branch \"{branch_name}\" was not found."
+msgstr "找不到分支「{branch_name}」。"
+
+msgid "Branch \"{merge_request_branch}\" already exists. Check the recreate option to rebuild it."
+msgstr "分支「{merge_request_branch}」已存在。勾選重新建立選項以重建它。"
+
+msgid "Branch / tag to compare from (the source)"
+msgstr "作為比較起點的分支 / 標籤（來源）"
+
+msgid "Branch / tag to compare with (the target)"
+msgstr "要比較的分支 / 標籤（目標）"
+
+msgid "Branched off at {}."
+msgstr "分支點：{}。"
+
+msgid "Branches"
+msgstr "分支"
+
+msgid "Bring over a commit from another branch (cherry-pick)"
+msgstr "從其他分支帶入提交（cherry-pick）"
+
+msgid "Brings a deleted file back with its content in the last commit"
+msgstr "以最後一次提交中的內容還原已刪除的檔案"
+
+msgid "Brings in the latest from the remote and replays your commits that were not pushed yet on top of it. History stays in a straight line"
+msgstr "從遠端取得最新內容，並將尚未推送的提交重新套用在其上。歷程會保持為一直線"
+
+msgid "Brings the chosen branch's changes into the current branch. Both histories are kept. If the current branch has new commits too, a commit that joins the two (a merge commit) is created"
+msgstr "將選擇的分支的變更帶入目前分支。兩邊的歷程都會保留。如果目前分支也有新的提交，會建立一個將兩者結合的提交（合併提交）"
+
+msgid "Buffer Search"
+msgstr "緩衝區搜尋"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cancel Commit Message Generation"
+msgstr "取消產生提交訊息"
+
+msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+msgstr "無法在 Detached HEAD 上建立 MR 分支。請先切換至分支。"
+
+msgid "Cannot create it on the scratch branch \"{origin_branch}\". Go back to the original branch first."
+msgstr "無法在暫用分支「{origin_branch}」上建立。請先回到原本的分支。"
+
+msgid "Cannot fixup: {}"
+msgstr "無法 fixup：{}"
+
+msgid "Cannot push from a collaborative project."
+msgstr "無法從共同作業專案推送。"
+
+msgid "Caution: {caution}"
+msgstr "注意：{caution}"
+
+msgid "Changed by an excluded commit"
+msgstr "由被排除的提交變更"
+
+msgid "Changed on the development branch, but different on the MR branch. The commits below may be missing."
+msgstr "在開發分支上已變更，但在 MR 分支上的內容不同。可能缺少下列提交。"
+
+msgid "Changes"
+msgstr "變更"
+
+msgid "Changes how the list of changes is shown (list or tree, sort order, grouping). Does nothing to the files"
+msgstr "變更變更清單的顯示方式（清單或樹狀、排序方式、分組）。不會對檔案做任何處理"
+
+msgid "Changes in the working tree (git diff)"
+msgstr "工作樹中的變更（git diff）"
+
+msgid "Changes only this commit's message"
+msgstr "只變更此提交的訊息"
+
+msgid "Changes since {}"
+msgstr "自 {} 以來的變更"
+
+msgid "Changes to Fold In"
+msgstr "要併入的變更"
+
+msgid "Changes to the same lines on both sides cause a conflict"
+msgstr "兩邊變更了相同的行時會發生衝突"
+
+msgid "Check Out This Commit (detached)"
+msgstr "簽出此提交（detached）"
+
+msgid "Checked out {} (detached HEAD)."
+msgstr "已簽出 {}（Detached HEAD）。"
+
+msgid "Cherry-Pick This Commit onto the Current Branch"
+msgstr "將此提交揀選至目前分支"
+
+msgid "Cherry-Pick the {count} Selected Commit onto the Current Branch"
+msgid_plural "Cherry-Pick the {count} Selected Commits onto the Current Branch"
+msgstr[0] "將選取的 {count} 個提交揀選至目前分支"
+
+msgid "Cherry-pick the selected commits onto the current branch?"
+msgstr "要將選取的提交揀選至目前分支嗎？"
+
+msgid "Cherry-pick the {count} picked commit, reorder it or add it to the MR box. Hover over a button to learn more"
+msgid_plural "Cherry-pick the {count} picked commits together, reorder them or add them to the MR box. Hover over a button to learn more"
+msgstr[0] "可將選取的 {count} 個提交一併揀選、重新排序或放入 MR 盒。將滑鼠暫留在按鈕上可查看說明"
+
+msgid "Cherry-pick this commit onto the current branch?"
+msgstr "要將此提交揀選至目前分支嗎？"
+
+msgid "Cherry-pick {count} commit onto the current branch?"
+msgid_plural "Cherry-pick {count} commits onto the current branch?"
+msgstr[0] "要將 {count} 個提交揀選至目前分支嗎？"
+
+msgid "Cherry-picked {}."
+msgstr "已揀選 {}。"
+
+msgid "Cherry-picks {count} commit: adds it, oldest first, to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgid_plural "Cherry-picks {count} commits: adds them, oldest first, to the tip of the current branch {branch} as new commits (cherry-pick)."
+msgstr[0] "揀選 {count} 個提交：從最舊的開始，作為新提交依序加到目前分支 {branch} 的最前端（cherry-pick）。"
+
+msgid "Choose What the Patch File Contains (Whole Repository: {})"
+msgstr "選擇修補檔要包含的內容（整個儲存庫：{}）"
+
+msgid "Choose a Branch…"
+msgstr "選擇分支…"
+
+msgid "Choose a base."
+msgstr "請選擇基底。"
+
+msgid "Choose a commit (right-click one in the history tab or the Git Graph)"
+msgstr "請選擇提交（在歷程分頁或提交圖中的提交上按右鍵）"
+
+msgid "Choose a development branch and a base to check for left-out commits."
+msgstr "選擇開發分支和基底，即可檢查是否有遺漏的提交。"
+
+msgid "Choose a development branch."
+msgstr "請選擇開發分支。"
+
+msgid "Choose a file from the list on the left to show the development branch (left) and the MR branch (right) side by side. Rows in the warning color show the base (left) and the MR branch (right)."
+msgstr "從左側清單選擇檔案，即可並排顯示開發分支（左）和 MR 分支（右）。以警告色顯示的列則並排顯示基底（左）和 MR 分支（右）。"
+
+msgid "Choose the Base Branch or Tag (Where the MR Goes)"
+msgstr "選擇基底分支或標籤（MR 的目標）"
+
+msgid "Choose the Development Branch (Where the Commits Come From)"
+msgstr "選擇開發分支（提交的來源）"
+
+msgid "Choose the MR's base (merge target) and reopen as a comparison that the base's own changes do not bury."
+msgstr "選擇 MR 的基底（合併目標），並以不會被基底本身的變更淹沒的比較方式重新開啟。"
+
+msgid "Choose two branches / tags to list the commits only one of them has and how their contents differ. Useful to check that nothing was left out when porting."
+msgstr "選擇兩個分支 / 標籤，即可列出只有其中一方具有的提交，以及兩者內容的差異。可用於確認移植時是否有遺漏。"
+
+msgid "Chooses the branches the list shows: all, yours (local) or the server's (remote)"
+msgstr "選擇清單要顯示的分支：全部、您自己的（本機）或伺服器上的（遠端）"
+
+msgid "Chooses the commits the graph shows: all branches, the current branch or a chosen branch"
+msgstr "選擇圖中要顯示的提交：所有分支、目前分支或選擇的分支"
+
+msgid "Chooses the remote to send to, then sends your commits"
+msgstr "選擇要推送至的遠端，然後推送您的提交"
+
+msgid "Click to Resolve with Agent"
+msgstr "按一下以使用代理解決"
+
+msgid "Clipboard ↔ {selection_location_path}"
+msgstr "剪貼簿 ↔ {selection_location_path}"
+
+msgid "Clipboard ↔ {selection_location_title}"
+msgstr "剪貼簿 ↔ {selection_location_title}"
+
+msgid "Clone a repository from GitHub or other sources."
+msgstr "從 GitHub 或其他來源複製儲存庫。"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Close (they show again next time)"
+msgstr "關閉（下次會再次顯示）"
+
+msgid "Close the Box (Its Contents Are Kept)"
+msgstr "關閉盒子（保留其內容）"
+
+msgid "Collapse"
+msgstr "摺疊"
+
+msgid "Collapse Commit Editor"
+msgstr "摺疊提交訊息編輯器"
+
+msgid "Collect a development branch's commits in the \"MR box\" and they are squashed into one commit on a new branch for the MR. The original branch stays as it is."
+msgstr "將開發分支的提交收集到「MR 盒」中，就會在 MR 用的新分支上將它們壓縮為一個提交。原本的分支會保持不變。"
+
+msgid "Collects commits in a box and creates a branch with them squashed into one commit for an MR (merge request)"
+msgstr "將提交收集到盒中，並為 MR（Merge Request）建立一個將它們壓縮為單一提交的分支"
+
+msgid "Collects commits in the MR box. From them you can create a branch squashed into one commit for the MR"
+msgstr "將提交收集到 MR 盒中。可從其中建立為 MR 壓縮為單一提交的分支"
+
+msgid "Columns"
+msgstr "欄位"
+
+msgid "Combines the picked consecutive commits into a single commit"
+msgstr "將選取的連續提交合併為單一提交"
+
+msgid "Commit"
+msgstr "提交"
+
+msgid "Commit SHA"
+msgstr "提交 SHA"
+
+msgid "Commit SHA Copied!"
+msgstr "已複製提交 SHA！"
+
+msgid "Commit Tracked"
+msgstr "提交已追蹤變更"
+
+msgid "Commit and Push As"
+msgstr "提交和推送所用的帳戶"
+
+msgid "Commit in progress"
+msgstr "提交進行中"
+
+msgid "Commit message for the MR"
+msgstr "MR 的提交訊息"
+
+msgid "Commit message title exceeds {max_title_length}-character limit."
+msgstr "提交訊息標題超過 {max_title_length} 個字元的限制。"
+
+msgid "Commit or stash the uncommitted changes first"
+msgstr "請先提交或貯藏未提交的變更"
+
+msgid "Commit or stash the uncommitted changes first ({operation})."
+msgstr "請先提交或貯藏未提交的變更（{operation}）。"
+
+msgid "Commit {sha_short}"
+msgstr "提交 {sha_short}"
+
+msgid "Commits and pushes as git is configured. Click to pick a git account."
+msgstr "依照 git 的設定提交和推送。按一下以選擇 Git 帳戶。"
+
+msgid "Commits are reordered one at a time. Drag a single commit."
+msgstr "提交一次只能重新排序一個。請只拖曳一個提交。"
+
+msgid "Commits as {name} <{email}> (git account \"{id}\")"
+msgstr "以 {name} <{email}> 的身分提交（Git 帳戶「{id}」）"
+
+msgid "Commits as {name} <{email}> (git account \"{id}\"). The account's SSH key is not used: {reason}"
+msgstr "以 {name} <{email}> 的身分提交（Git 帳戶「{id}」）。未使用此帳戶的 SSH 金鑰：{reason}"
+
+msgid "Commits on feature that the default branch does not have"
+msgstr "feature 上有但預設分支沒有的提交"
+
+msgid "Commits that are not in the current branch's history cannot be reordered. Switch to that branch, then try again."
+msgstr "無法對不在目前分支歷程中的提交重新排序。請切換至該分支後再試一次。"
+
+msgid "Commits that are only on that branch can no longer be seen"
+msgstr "只存在於該分支上的提交將無法再看到"
+
+msgid "Commits that changed that file or folder (* for patterns)"
+msgstr "變更了該檔案或資料夾的提交（可使用 * 作為模式）"
+
+msgid "Commits that tags with \"v1.2\" in their name point to"
+msgstr "名稱中含有「v1.2」的標籤所指向的提交"
+
+msgid "Commits whose SHA starts like this"
+msgstr "SHA 以此開頭的提交"
+
+msgid "Commits without the checks that run automatically before a commit (hooks)"
+msgstr "略過提交前自動執行的檢查（Hook）並提交"
+
+msgid "Compare two branches"
+msgstr "比較兩個分支"
+
+msgid "Compares only the files {} changed after it branched off {merge_request_base} (the base)."
+msgstr "只比較 {} 自 {merge_request_base}（基底）分出後變更的檔案。"
+
+msgid "Compares the contents of two branches or tags themselves. If there are no differences, everything has been ported."
+msgstr "直接比較兩個分支或標籤的內容。如果沒有差異，表示全部都已移植。"
+
+msgid "Compares the contents of two branches or tags. Useful to check that no commit was left behind"
+msgstr "比較兩個分支或標籤的內容。可用於確認是否有遺漏的提交"
+
+msgid "Comparing needs at least two branches or tags."
+msgstr "比較至少需要兩個分支或標籤。"
+
+msgid "Comparison of {} (source) and {} (target)"
+msgstr "{}（來源）與 {}（目標）的比較"
+
+msgid "Comparison of {} and {}"
+msgstr "{} 與 {} 的比較"
+
+msgid "Configure Provider"
+msgstr "設定提供者"
+
+msgid "Configure an LLM provider to generate commit messages."
+msgstr "設定 LLM 提供者以產生提交訊息。"
+
+msgid "Confirm"
+msgstr "確認"
+
+msgid "Conflict marked as resolved"
+msgstr "衝突已標記為已解決"
+
+msgid "Conflicts"
+msgstr "衝突"
+
+msgid "Conflicts marked as resolved"
+msgstr "衝突皆已標記為已解決"
+
+msgid "Contains Unpushed Changes — {}"
+msgstr "包含未推送的變更 — {}"
+
+msgid "Continued the {}."
+msgstr "已繼續 {}。"
+
+msgid "Copied {text}."
+msgstr "已複製 {text}。"
+
+msgid "Copies how many commits past the nearest tag this is (in git describe form)"
+msgstr "複製此提交距離最近的標籤有多少個提交（git describe 格式）"
+
+msgid "Copies only this commit's changes onto the current branch as a new commit. The original stays"
+msgstr "只將此提交的變更作為新提交複製到目前分支。原本的提交會保留"
+
+msgid "Copies the file's location as a full (absolute) path to the clipboard"
+msgstr "將檔案的位置以完整（絕對）路徑複製到剪貼簿"
+
+msgid "Copies the file's location as a path relative to the project folder to the clipboard"
+msgstr "將檔案的位置以相對於專案資料夾的路徑複製到剪貼簿"
+
+msgid "Copies the picked commits' changes onto the current branch, oldest first. The originals stay"
+msgstr "從最舊的開始，將選取的提交的變更複製到目前分支上。原本的提交會保留"
+
+msgid "Copy"
+msgstr "複製"
+
+msgid "Copy Commit SHA"
+msgstr "複製提交 SHA"
+
+msgid "Copy Distance from Latest Tag"
+msgstr "複製與最新標籤的距離"
+
+msgid "Copy Email"
+msgstr "複製電子郵件"
+
+msgid "Copy Path"
+msgstr "複製路徑"
+
+msgid "Copy Ref Name"
+msgstr "複製 ref 名稱"
+
+msgid "Copy Relative Path"
+msgstr "複製相對路徑"
+
+msgid "Copy SHA"
+msgstr "複製 SHA"
+
+msgid "Copy SHA ({count} Commit)"
+msgid_plural "Copy SHAs ({count} Commits)"
+msgstr[0] "複製 SHA（{count} 個提交）"
+
+msgid "Copy Tag"
+msgstr "複製標籤"
+
+msgid "Copy the Full Error"
+msgstr "複製完整錯誤"
+
+msgid "Could not commit (a hook, for example). The history is unchanged and the changes are still there."
+msgstr "無法提交（例如因為 Hook）。歷程沒有變更，變更內容也仍然保留。"
+
+msgid "Could not commit, but HEAD has moved. Check it with git reflog."
+msgstr "無法提交，但 HEAD 已移動。請以 git reflog 檢查。"
+
+msgid "Could not compare"
+msgstr "無法比較"
+
+msgid "Could not compare the base and the MR branch"
+msgstr "無法比較基底和 MR 分支"
+
+msgid "Could not compare the development branch and the MR branch"
+msgstr "無法比較開發分支和 MR 分支"
+
+msgid "Could not compare the histories of the base and the MR branch: {}"
+msgstr "無法比較基底和 MR 分支的歷程：{}"
+
+msgid "Could not create the MR branch\n{reason}"
+msgstr "無法建立 MR 分支\n{reason}"
+
+msgid "Could not fixup: {}"
+msgstr "無法 fixup：{}"
+
+msgid "Could not fold into {short} (the rebase could not start). The history is unchanged and the changes are left staged."
+msgstr "無法併入 {short}（無法開始重訂基底）。歷程沒有變更，變更內容仍保持已暫存。"
+
+msgid "Could not fold into {short} (the rebase failed). The changes are left at the tip as the \"{fixup_subject}\" commit. Check the working tree with git status too."
+msgstr "無法併入 {short}（重訂基底失敗）。變更內容已作為「{fixup_subject}」提交保留在最前端。也請以 git status 檢查工作樹。"
+
+msgid "Could not get the file's contents."
+msgstr "無法取得檔案的內容。"
+
+msgid "Could not go back to {}. Still on the scratch branch \"{}\".\n{}"
+msgstr "無法回到 {}。仍在暫用分支「{}」上。\n{}"
+
+msgid "Could not load the commits to reorder. Wait a moment and try again."
+msgstr "無法載入要重新排序的提交。請稍候再試一次。"
+
+msgid "Could not load the selected commits. Wait a moment and try again."
+msgstr "無法載入選取的提交。請稍候再試一次。"
+
+msgid "Could not pack the branches and tags\n{reason}"
+msgstr "無法封裝分支和標籤\n{reason}"
+
+msgid "Could not read the Git status"
+msgstr "無法讀取 Git 狀態"
+
+msgid "Could not read the changes on the base"
+msgstr "無法讀取基底上的變更"
+
+msgid "Could not read the common ancestor: {merge_base}"
+msgstr "無法讀取共同祖系：{merge_base}"
+
+msgid "Could not read the current branch."
+msgstr "無法讀取目前分支。"
+
+msgid "Could not read the development branch's changes"
+msgstr "無法讀取開發分支的變更"
+
+msgid "Could not read the development branch's history: {}"
+msgstr "無法讀取開發分支的歷程：{}"
+
+msgid "Could not read the development branch's range: {}"
+msgstr "無法讀取開發分支的範圍：{}"
+
+msgid "Could not read the excluded commits: {}"
+msgstr "無法讀取被排除的提交：{}"
+
+msgid "Could not read the patch file {}"
+msgstr "無法讀取修補檔 {}"
+
+msgid "Could not read the range to reorder."
+msgstr "無法讀取要重新排序的範圍。"
+
+msgid "Could not read {merge_request_base} and {source}: {}"
+msgstr "無法讀取 {merge_request_base} 和 {source}：{}"
+
+msgid "Could not run the MR check"
+msgstr "無法執行 MR 檢查"
+
+msgid "Could not save the patch file {}"
+msgstr "無法儲存修補檔 {}"
+
+msgid "Could not tell which commits touched it (it may have come in through a merge)."
+msgstr "無法判斷哪些提交變更了它（可能是透過合併帶入的）。"
+
+msgid "Could not undo\n{failure}"
+msgstr "無法復原\n{failure}"
+
+msgid "Could not update the MR branch\n{reason}"
+msgstr "無法更新 MR 分支\n{reason}"
+
+msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
+msgstr "無法更新 MR 分支。仍在暫用分支「{}」上。\n{reason}"
+
+msgid "Create"
+msgstr "建立"
+
+msgid "Create Branch Here…"
+msgstr "在此建立分支…"
+
+msgid "Create Branch from {}"
+msgstr "從 {} 建立分支"
+
+msgid "Create Branch: \"{name}\"…"
+msgstr "建立分支：「{name}」…"
+
+msgid "Create Merge Request"
+msgstr "建立 Merge Request"
+
+msgid "Create New From: {default_branch}"
+msgstr "從 {default_branch} 建立新分支"
+
+msgid "Create Only"
+msgstr "僅建立"
+
+msgid "Create Patch File…"
+msgstr "建立修補檔…"
+
+msgid "Create Pull Request"
+msgstr "建立 Pull Request"
+
+msgid "Create Remote Repository"
+msgstr "建立遠端儲存庫"
+
+msgid "Create Remote: \"{name}\""
+msgstr "建立遠端：「{name}」"
+
+msgid "Create Tag"
+msgstr "建立標籤"
+
+msgid "Create Tag at {}"
+msgstr "在 {} 建立標籤"
+
+msgid "Create and Compare"
+msgstr "建立並比較"
+
+msgid "Create and Switch"
+msgstr "建立並切換"
+
+msgid "Create branch \"{name}\"?"
+msgstr "要建立分支「{name}」嗎？"
+
+msgid "Create or switch branches"
+msgstr "建立或切換分支"
+
+msgid "Create the MR branch?"
+msgstr "要建立 MR 分支嗎？"
+
+msgid "Created branch \"{name}\" and switched to it."
+msgstr "已建立分支「{name}」並切換至該分支。"
+
+msgid "Created branch \"{name}\"."
+msgstr "已建立分支「{name}」。"
+
+msgid "Created tag \"{name}\"."
+msgstr "已建立標籤「{name}」。"
+
+msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
+msgstr "已建立 MR 分支「{}」，但仍在暫用分支「{}」上。"
+
+msgid "Created the MR branch {merge_request_branch}"
+msgstr "已建立 MR 分支 {merge_request_branch}"
+
+msgid "Created the MR branch {}, but could not go back to {} (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "已建立 MR 分支 {}，但無法回到 {}（MR 盒中的「返回」可讓您回去）。\n{failure}"
+
+msgid "Created the MR branch {}, but could not go back to {}. You are on the scratch branch \"{}\" (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "已建立 MR 分支 {}，但無法回到 {}。您目前在暫用分支「{}」上（MR 盒中的「返回」可讓您回去）。\n{failure}"
+
+msgid "Creates \"{branch}\" on top of the base \"{base}\" from the box's {count} commit.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgid_plural "Creates \"{branch}\" on top of the base \"{base}\" by squashing the box's {count} commits into one.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgstr[0] "將盒中的 {count} 個提交壓縮為一個，在基底「{base}」之上建立「{branch}」。\n作業在暫用分支「{scratch}」上進行，之後 ForgeKairos 會回到「{origin}」。"
+
+msgid "Creates a new branch (a line of work) starting at this commit. Your current work stays as it is"
+msgstr "以此提交為起點建立新分支（一條工作線）。目前的工作會保持不變"
+
+msgid "Creates a new branch starting from the default branch (main, for example) instead of the current branch"
+msgstr "以預設分支（例如 main）而非目前分支為起點建立新分支"
+
+msgid "Creates a new commit that applies this commit's changes in reverse. History is kept, so it is safe after sharing"
+msgstr "建立一個反向套用此提交變更的新提交。由於會保留歷程，即使已分享也很安全"
+
+msgid "Creates an MR branch that squashes the box's commits into one on top of the base, and compares it with the development branch"
+msgstr "建立一個在基底之上將盒中提交壓縮為一個的 MR 分支，並與開發分支比較"
+
+msgid "Create…"
+msgstr "建立…"
+
+msgid "Current Branch"
+msgstr "目前分支"
+
+msgid "Current Branch ({branch})"
+msgstr "目前分支（{branch}）"
+
+msgid "Current branch (the branch checked out now)"
+msgstr "目前分支（目前簽出的分支）"
+
+msgid "Custom Commands"
+msgstr "自訂命令"
+
+msgid "Cut"
+msgstr "剪下"
+
+msgid "Cut off at {count} commit. Add conditions to narrow the search."
+msgid_plural "Cut off at {count} commits. Add conditions to narrow the search."
+msgstr[0] "已在 {count} 個提交處截斷。請新增條件以縮小搜尋範圍。"
+
+msgid "Date"
+msgstr "日期"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "Delete Branch"
+msgstr "刪除分支"
+
+msgid "Deleted on both the development branch and the MR branch."
+msgstr "在開發分支和 MR 分支上都已刪除。"
+
+msgid "Deletes a local branch even if it has commits that were not merged"
+msgstr "即使本機分支有尚未合併的提交，也將其刪除"
+
+msgid "Deletes a local branch. If it has commits that are not in the current branch (or its upstream), it stops and asks whether to force delete. For a remote branch only your local copy goes; the branch on the server stays"
+msgstr "刪除本機分支。如果它有不在目前分支（或其上游）中的提交，會停下來詢問是否強制刪除。若為遠端分支，只會刪除您的本機複本；伺服器上的分支會保留"
+
+msgid "Deletes the scratch branch \"{}\" and returns to \"{}\". The commits on the scratch branch (conflict resolutions included) are thrown away (they stay in the reflog).\nIf a cherry-pick is still stopped, press \"Abort\" in the Git panel's banner first."
+msgstr "刪除暫用分支「{}」並回到「{}」。暫用分支上的提交（包括衝突的解決內容）會被捨棄（仍保留在 reflog 中）。\n如果揀選仍處於停止狀態，請先在 Git 面板的橫幅中按「中止」。"
+
+msgid "Description"
+msgstr "描述"
+
+msgid "Detected dubious ownership in repository at {}. This happens when the .git/ directory is not owned by the current user. If you want to learn more about safe directories, visit git's documentation."
+msgstr "偵測到 {} 儲存庫中存在可疑的擁有權。當 .git/ 資料夾不屬於目前使用者時，就會發生此情況。如需深入了解安全目錄，請參閱 Git 的說明文件。"
+
+msgid "Development Branch"
+msgstr "開發分支"
+
+msgid "Diff ({count} file)"
+msgid_plural "Diff ({count} files)"
+msgstr[0] "差異（{count} 個檔案）"
+
+msgid "Discard Changes"
+msgstr "捨棄變更"
+
+msgid "Discard Changes to {count} Files"
+msgstr "捨棄 {count} 個檔案的變更"
+
+msgid "Discard Everything (--hard)"
+msgstr "全部捨棄（--hard）"
+
+msgid "Discard Tracked Changes"
+msgstr "捨棄已追蹤的變更"
+
+msgid "Discard changes to these files?"
+msgstr "要捨棄這些檔案的變更嗎？"
+
+msgid "Discard changes to these files? New files are moved to the trash."
+msgstr "要捨棄這些檔案的變更嗎？新檔案會移至垃圾桶。"
+
+msgid "Discards this file's changes and returns it to its content in the last commit"
+msgstr "捨棄此檔案的變更，並將其還原為最後一次提交中的內容"
+
+msgid "Don't Show Again"
+msgstr "不要再顯示"
+
+msgid "Downloads the latest from the remote and brings it into the current branch (fetch + merge; when the git setting pull.rebase is set, it rebases as that says)"
+msgstr "從遠端下載最新內容並帶入目前分支（fetch + merge；若設定了 git 設定 pull.rebase，則依其設定重訂基底）"
+
+msgid "Drag a commit onto a branch to cherry-pick it, onto a row to reorder, or into the MR box"
+msgstr "將提交拖曳到分支上可揀選，拖曳到列上可重新排序，也可拖曳到 MR 盒中"
+
+msgid "Drag commits here (a multiple selection moves together)"
+msgstr "將提交拖曳至此（多重選取會一起移動）"
+
+msgid "Drag: into Staged / onto a commit to fix it up"
+msgstr "拖曳：至「已暫存」/ 至提交上以 fixup"
+
+msgid "Drag: onto a branch to cherry-pick / onto another row to reorder / into the MR box"
+msgstr "拖曳：至分支上以揀選 / 至其他列上以重新排序 / 至 MR 盒中"
+
+msgid "Drop"
+msgstr "捨棄"
+
+msgid "Drop Commit"
+msgstr "捨棄提交"
+
+msgid "Drop Stash"
+msgstr "捨棄貯藏"
+
+msgid "Drop This Commit…"
+msgstr "捨棄此提交…"
+
+msgid "Drop files from the Git panel onto a commit to add the fix to that commit (fixup)"
+msgstr "將檔案從 Git 面板放到提交上，即可將修正加入該提交（fixup）"
+
+msgid "Drop here to stage"
+msgstr "放在此處以暫存"
+
+msgid "Drop here to unstage"
+msgstr "放在此處以取消暫存"
+
+msgid "Drop here: add to this commit (fixup)"
+msgstr "放在此處：加入此提交（fixup）"
+
+msgid "Drop here: cherry-pick"
+msgstr "放在此處：揀選"
+
+msgid "Drop here: cherry-pick {count} commit"
+msgid_plural "Drop here: cherry-pick {count} commits"
+msgstr[0] "放在此處：揀選 {count} 個提交"
+
+msgid "Drop here: move to this position (reorder)"
+msgstr "放在此處：移至此位置（重新排序）"
+
+msgid "Drop here: move {name} here"
+msgstr "放在此處：將 {name} 移至此處"
+
+msgid "Drop here: reset {name} to here (reset)"
+msgstr "放在此處：將 {name} 重設至此處（reset）"
+
+msgid "Drop here: switch to {branch} and cherry-pick"
+msgstr "放在此處：切換至 {branch} 並揀選"
+
+msgid "Drop here: switch to {branch} and cherry-pick {count} commit"
+msgid_plural "Drop here: switch to {branch} and cherry-pick {count} commits"
+msgstr[0] "放在此處：切換至 {branch} 並揀選 {count} 個提交"
+
+msgid "Drop stash@{{{}}}?"
+msgstr "要捨棄 stash@{{{}}} 嗎？"
+
+msgid "Drop {short} from the history?"
+msgstr "要從歷程中捨棄 {short} 嗎？"
+
+msgid "Dropped on the same commit, so the order does not change."
+msgstr "放在同一個提交上，因此順序不會改變。"
+
+msgid "Dropped {} from the history."
+msgstr "已從歷程中捨棄 {}。"
+
+msgid "Edit {count} Commit"
+msgid_plural "Edit {count} Commits"
+msgstr[0] "編輯 {count} 個提交"
+
+msgid "Email Copied!"
+msgstr "已複製電子郵件！"
+
+msgid "Enter a commit message."
+msgstr "請輸入提交訊息。"
+
+msgid "Enter a name for this remote…"
+msgstr "輸入此遠端的名稱…"
+
+msgid "Enter a name."
+msgstr "請輸入名稱。"
+
+msgid "Enter both a remote name and a URL."
+msgstr "請輸入遠端名稱和 URL。"
+
+msgid "Enter commit message"
+msgstr "輸入提交訊息"
+
+msgid "Enter git ref..."
+msgstr "輸入 git ref..."
+
+msgid "Enter repository URL…"
+msgstr "輸入儲存庫 URL…"
+
+msgid "Error loading: {}"
+msgstr "載入時發生錯誤：{}"
+
+msgid "Error parsing date"
+msgstr "剖析日期時發生錯誤"
+
+msgid "Every commit after {short} gets a new SHA."
+msgstr "{short} 之後的每個提交都會有新的 SHA。"
+
+msgid "Every commit of the development branch is checked ({} placed / {} excluded)"
+msgstr "已檢查開發分支的所有提交（已放置 {} / 已排除 {}）"
+
+msgid "Every uncommitted change is lost."
+msgstr "所有未提交的變更都會遺失。"
+
+msgid "Exclude {count} Commit from MR"
+msgid_plural "Exclude {count} Commits from MR"
+msgstr[0] "從 MR 排除 {count} 個提交"
+
+msgid "Expand Commit Description"
+msgstr "展開提交描述"
+
+msgid "Expand Commit Editor"
+msgstr "展開提交訊息編輯器"
+
+msgid "Failed to apply stash"
+msgstr "套用貯藏失敗"
+
+msgid "Failed to change branch"
+msgstr "切換分支失敗"
+
+msgid "Failed to create branch"
+msgstr "建立分支失敗"
+
+msgid "Failed to create remote"
+msgstr "建立遠端失敗"
+
+msgid "Failed to discard changes"
+msgstr "無法捨棄變更"
+
+msgid "Failed to drop stash"
+msgstr "捨棄貯藏失敗"
+
+msgid "Failed to generate commit message: {err}"
+msgstr "無法產生提交訊息：{err}"
+
+msgid "Failed to load commit history"
+msgstr "載入提交歷程失敗"
+
+msgid "Failed to load commits"
+msgstr "載入提交失敗"
+
+msgid "Failed to pop stash"
+msgstr "取出貯藏失敗"
+
+msgid "Failed to rename branch"
+msgstr "重新命名分支失敗"
+
+msgid "Failed to trash file"
+msgstr "無法將檔案移至垃圾桶"
+
+msgid "Failed to trash files"
+msgstr "將檔案移至垃圾桶失敗"
+
+msgid "Failed to trash {failed_count} of {total_count} files: {first_error}"
+msgstr "無法將 {total_count} 個檔案中的 {failed_count} 個移至垃圾桶：{first_error}"
+
+msgid "Fast forwarded from {}"
+msgstr "已從 {} 快轉"
+
+msgid "Fetch"
+msgstr "擷取"
+
+msgid "Fetch From"
+msgstr "從指定遠端擷取"
+
+msgid "Fetch Missing History"
+msgstr "擷取缺少的歷程"
+
+msgid "Fetch in Progress…"
+msgstr "正在擷取…"
+
+msgid "Fetch updates from remote"
+msgstr "從遠端擷取更新"
+
+msgid "Fetch: Already up to date"
+msgstr "擷取：已是最新"
+
+msgid "Fetched the missing commit history"
+msgstr "已擷取缺少的提交歷程"
+
+msgid "Fetches the remote, then makes the current branch the same as the remote branch"
+msgstr "擷取遠端，然後讓目前分支與遠端分支相同"
+
+msgid "Fetches {remote_name}, then runs git reset --hard {target_ref}.\nEvery uncommitted change and every commit the remote does not have is lost."
+msgstr "擷取 {remote_name}，然後執行 git reset --hard {target_ref}。\n所有未提交的變更，以及遠端沒有的所有提交都會遺失。"
+
+msgid "Files from another repository cannot go into this graph's commits."
+msgstr "其他儲存庫的檔案無法放入此圖中的提交。"
+
+msgid "Filter Branches"
+msgstr "篩選分支"
+
+msgid "Find a Git operation by what you want to do"
+msgstr "依想要做的事尋找 Git 操作"
+
+msgid "Find or add a tag (tag)"
+msgstr "尋找或新增標籤（tag）"
+
+msgid "Find past changes (search)"
+msgstr "尋找過去的變更（搜尋）"
+
+msgid "Find what you want to do and press \"Try It\" to start that operation."
+msgstr "找到想要做的事後按「試試看」，即可開始該操作。"
+
+msgid "Fix a commit message (reword)"
+msgstr "修正提交訊息（reword）"
+
+msgid "Fix the last commit (amend)"
+msgstr "修正上一個提交（amend）"
+
+msgid "Fold Commit Description"
+msgstr "摺疊提交描述"
+
+msgid "Fold Current Changes into This Commit (fixup)…"
+msgstr "將目前的變更併入此提交（fixup）…"
+
+msgid "Fold Current Changes into {short} (fixup)"
+msgstr "將目前的變更併入 {short}（fixup）"
+
+msgid "Fold into Commit"
+msgstr "併入提交"
+
+msgid "Fold into Previous"
+msgstr "併入前一個"
+
+msgid "Folded the changes into {short}. However, {}\nPrevious tip: {} (recoverable from the reflog)"
+msgstr "已將變更併入 {short}。但是，{}\n先前的最前端：{}（可從 reflog 復原）"
+
+msgid "Folded the changes into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "已將變更併入 {short}。先前的最前端：{}（可從 reflog 復原）"
+
+msgid "For when you notice something missing right after committing. Check \"Amend\" in the Git panel and the last commit's message comes back; committing then replaces the last commit."
+msgstr "適用於提交後立即發現有遺漏的情況。在 Git 面板中勾選「修正提交」，上一個提交的訊息就會回來；接著提交即會取代上一個提交。"
+
+msgid "Force Delete"
+msgstr "強制刪除"
+
+msgid "Force Delete Branch"
+msgstr "強制刪除分支"
+
+msgid "Force Push"
+msgstr "強制推送"
+
+msgid "Force Push (Without Lease)"
+msgstr "強制推送（不使用 lease）"
+
+msgid "Force Push (with lease)"
+msgstr "強制推送（with lease）"
+
+msgid "Force Push Without Lease…"
+msgstr "強制推送（不使用 lease）…"
+
+msgid "Force push (with lease)?"
+msgstr "要強制推送（with lease）嗎？"
+
+msgid "Force push without a lease?"
+msgstr "要在不使用 lease 的情況下強制推送嗎？"
+
+msgid "Found {count} conflict across the codebase"
+msgid_plural "Found {count} conflicts across the codebase"
+msgstr[0] "在整個程式碼庫中找到 {count} 個衝突"
+
+msgid "Generate Commit Message"
+msgstr "產生提交訊息"
+
+msgid "Generating Commit…"
+msgstr "正在產生提交訊息…"
+
+msgid "Generating commit message..."
+msgstr "正在產生提交訊息..."
+
+msgid "Git Clone: {}"
+msgstr "Git 複製：{}"
+
+msgid "Git Graph"
+msgstr "提交圖"
+
+msgid "Git Guide"
+msgstr "Git 指南"
+
+msgid "Git Guide (find an operation by what you want to do)"
+msgstr "Git 指南（依想要做的事尋找操作）"
+
+msgid "Git Job Queue: {repo_path}"
+msgstr "Git 工作佇列：{repo_path}"
+
+msgid "Git Panel"
+msgstr "Git 面板"
+
+msgid "Git accounts don't apply to a project shared by a collaborator. It commits and pushes as git is configured on its host."
+msgstr "Git 帳戶不適用於協作者分享的專案。會依照其主機上的 git 設定提交和推送。"
+
+msgid "Git's Own Configuration"
+msgstr "Git 本身的設定"
+
+msgid "Git's history has no copy of it, so once the trash is emptied it cannot be restored"
+msgstr "Git 的歷程中沒有它的複本，因此清空垃圾桶後便無法還原"
+
+msgid "Git's history has no copy of them, so once the trash is emptied they cannot be restored"
+msgstr "Git 的歷程中沒有它們的複本，因此清空垃圾桶後便無法還原"
+
+msgid "Gives this commit a marker name (a tag), for example to record a released version"
+msgstr "為此提交加上標記名稱（標籤），例如用來記錄已發行的版本"
+
+msgid "Gives up the operation and returns to the state before it started"
+msgstr "放棄此操作，並回到開始前的狀態"
+
+msgid "Go Back to \"{}\" (Delete the Scratch Branch)"
+msgstr "回到「{}」（刪除暫用分支）"
+
+msgid "Go back to before the fixup?"
+msgstr "要回到 fixup 之前的狀態嗎？"
+
+msgid "Go back to the state before the reorder?"
+msgstr "要回到重新排序之前的狀態嗎？"
+
+msgid "Go to Next Hunk"
+msgstr "移至下一個區塊"
+
+msgid "Go to Next Unplaced"
+msgstr "前往下一個未放置項目"
+
+msgid "Go to Previous Hunk"
+msgstr "移至上一個區塊"
+
+msgid "Graph"
+msgstr "圖表"
+
+msgid "Group By"
+msgstr "分組方式"
+
+msgid "Groups the changed files by folder hierarchy, with folders you can expand and collapse"
+msgstr "依資料夾階層將變更的檔案分組，並以可展開和摺疊的資料夾顯示"
+
+msgid "HEAD has moved or another branch was checked out since the fixup, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "fixup 之後 HEAD 已移動，或已簽出其他分支，因此無法從這裡復原。請以 git reflog 手動復原。"
+
+msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "改寫之後 HEAD 已移動，因此無法從這裡復原。請以 git reflog 手動復原。"
+
+msgid "History"
+msgstr "歷程記錄"
+
+msgid "History (Graph)"
+msgstr "歷程記錄（圖）"
+
+msgid "Hold {} to force delete"
+msgstr "按住 {} 以強制刪除"
+
+msgid "Hover over a button to see what it does here. The Git guide explains the terms too"
+msgstr "將滑鼠暫留在按鈕上，即可在此處查看其作用。Git 指南也會說明各個用語"
+
+msgid "How soft / mixed / hard differ in \"Reset to This Commit\""
+msgstr "「重設至此提交」中 soft / mixed / hard 的差異"
+
+msgid "How to Write a Search"
+msgstr "如何撰寫搜尋"
+
+msgid "I changed commits I had already pushed"
+msgstr "我變更了已推送的提交"
+
+msgid "If the commit was already pushed, you will need to force push"
+msgstr "如果提交已推送，將需要強制推送"
+
+msgid "If your current changes touch the same files, it stops or ends in a conflict. On a conflict, the changes also stay in the stash"
+msgstr "如果目前的變更涉及相同的檔案，作業會停止或發生衝突。發生衝突時，變更也會保留在貯藏中"
+
+msgid "In the Git Graph, pick rows while holding Ctrl / Shift and press \"Reorder / Squash / Drop…\" above to edit the order, what to squash and the messages. You can also reorder a single commit by dragging it onto another row. Mind that the changes of dropped commits are lost (the SHAs of the commits from there on change)."
+msgstr "在提交圖中按住 Ctrl / Shift 選取列，然後按上方的「重新排序 / 壓縮 / 捨棄…」，即可編輯順序、要壓縮的內容和訊息。也可以將單一提交拖曳到其他列上來重新排序。請注意，被捨棄的提交的變更會遺失（自該處起的提交的 SHA 會改變）。"
+
+msgid "Initialize Repository"
+msgstr "初始化儲存庫"
+
+msgid "Instead of adding a new commit, the next commit rebuilds the last commit from the current changes and message"
+msgstr "下次提交時不會新增提交，而是以目前的變更和訊息重建上一個提交"
+
+msgid "It was pushed, so it needs a force push (with lease) afterwards."
+msgstr "它已推送，因此之後需要強制推送（with lease）。"
+
+msgid "It was pushed, so it needs a force push (with lease)."
+msgstr "它已推送，因此需要強制推送（with lease）。"
+
+msgid "Its parent history was not fetched, so the changes it introduced cannot be shown."
+msgstr "未擷取其父系歷程，因此無法顯示此提交帶來的變更。"
+
+msgid "Its remote-tracking branches are removed as well."
+msgstr "其遠端追蹤分支也會一併移除。"
+
+msgid "Keeps both the upper side (ours) and the lower side (theirs) of the conflict, one above the other"
+msgstr "上下並列保留衝突的上方（ours）和下方（theirs）兩邊的內容"
+
+msgid "Latest tag: checking…"
+msgstr "最新標籤：正在檢查…"
+
+msgid "Latest tag: none"
+msgstr "最新標籤：無"
+
+msgid "Latest tag: {tag} (this commit itself)"
+msgstr "最新標籤：{tag}（此提交本身）"
+
+msgid "Latest tag: {tag} ({count} commit before this one)"
+msgid_plural "Latest tag: {tag} ({count} commits before this one)"
+msgstr[0] "最新標籤：{tag}（在此提交的 {count} 個提交之前）"
+
+msgid "Learn More"
+msgstr "深入了解"
+
+msgid "Leaves out merge commits (yes, no, only)"
+msgstr "排除合併提交（yes、no、only）"
+
+msgid "Leaves the current tip {short_new} and goes back to {short_old} (git reset --soft).\nThe folded changes stay as staged changes."
+msgstr "離開目前的最前端 {short_new}，回到 {short_old}（git reset --soft）。\n已併入的變更會保留為已暫存的變更。"
+
+msgid "Left: {} / Right: {}"
+msgstr "左：{} / 右：{}"
+
+msgid "List"
+msgstr "清單"
+
+msgid "Load File Snapshot"
+msgstr "載入檔案快照"
+
+msgid "Load Full Snapshot"
+msgstr "載入完整快照"
+
+msgid "Loading"
+msgstr "正在載入"
+
+msgid "Loading Commit History…"
+msgstr "正在載入提交歷程…"
+
+msgid "Loading comparison…"
+msgstr "正在載入比較…"
+
+msgid "Loading tags…"
+msgstr "正在載入標籤…"
+
+msgid "Loading the development branch's commits…"
+msgstr "正在載入開發分支的提交…"
+
+msgid "Loading the tag list…"
+msgstr "正在載入標籤清單…"
+
+msgid "Loading…"
+msgstr "正在載入…"
+
+msgid "Local Branches"
+msgstr "本機分支"
+
+msgid "Local branch (a branch on this computer)"
+msgstr "本機分支（這台電腦上的分支）"
+
+msgid "MR Box"
+msgstr "MR 盒"
+
+msgid "MR Branch Name"
+msgstr "MR 分支名稱"
+
+msgid "MR Check {} → {}"
+msgstr "MR 檢查 {} → {}"
+
+msgid "MR Check: {} (development branch) → {} (MR branch)"
+msgstr "MR 檢查：{}（開發分支）→ {}（MR 分支）"
+
+msgid "MR's Base (Merge Target) Branch"
+msgstr "MR 的基底（合併目標）分支"
+
+msgid "Make one commit for an MR (MR box)"
+msgstr "為 MR 建立單一提交（MR 盒）"
+
+msgid "Manage Git Accounts…"
+msgstr "管理 Git 帳戶…"
+
+msgid "Marks every change in this folder to go into the next commit"
+msgstr "將此資料夾中的所有變更標記為要放入下一個提交"
+
+msgid "Marks every change under this heading to go into the next commit"
+msgstr "將此標題下的所有變更標記為要放入下一個提交"
+
+msgid "Marks every changed file to go into the next commit (stages it). The files' contents do not change"
+msgstr "將所有變更的檔案標記為要放入下一個提交（暫存）。檔案的內容不會改變"
+
+msgid "Marks only this change (hunk: one block of changes) to go into the next commit. The file's contents do not change"
+msgstr "只將此變更（差異區塊：一組變更）標記為要放入下一個提交。檔案的內容不會改變"
+
+msgid "Marks the commit as one you decided to keep out of the MR, so that the check for forgotten commits no longer counts it as \"unplaced\". If it is in the box, it is taken out too"
+msgstr "將此提交標記為您決定不放入 MR 的提交，讓遺漏提交的檢查不再將其計為「未放置」。如果它在盒中，也會一併移出"
+
+msgid "Marks this file's changes to go into the next commit. The file's contents do not change"
+msgstr "將此檔案的變更標記為要放入下一個提交。檔案的內容不會改變"
+
+msgid "Match Case Sensitivity"
+msgstr "大小寫須相符"
+
+msgid "Matches"
+msgstr "符合項目"
+
+msgid "Merge Branch…"
+msgstr "合併分支…"
+
+msgid "Merge commits cannot go into the box ({count} was left out)."
+msgid_plural "Merge commits cannot go into the box ({count} were left out)."
+msgstr[0] "合併提交無法放入盒中（已略過 {count} 個）。"
+
+msgid "Merged from {}"
+msgstr "已從 {} 合併"
+
+msgid "Merged {branch}."
+msgstr "已合併 {branch}。"
+
+msgid "Merged {count} file change from {remote}"
+msgid_plural "Merged {count} file changes from {remote}"
+msgstr[0] "已從 {remote} 合併 {count} 項檔案變更"
+
+msgid "Message (leave empty for a lightweight tag)"
+msgstr "訊息（留空則建立輕量標籤）"
+
+msgid "Mismatches Only"
+msgstr "僅不相符項目"
+
+msgid "Move {branch} to this commit?"
+msgstr "要將 {branch} 移至此提交嗎？"
+
+msgid "Moves a new file that was never committed to the system trash. It can be restored from the trash"
+msgstr "將從未提交過的新檔案移至系統垃圾桶。可從垃圾桶還原"
+
+msgid "Moves new files Git does not manage yet (untracked) to the system trash. They can be restored from the trash"
+msgstr "將 Git 尚未管理的新檔案（未追蹤）移至系統垃圾桶。可從垃圾桶還原"
+
+msgid "Moves only the branch back. The later changes stay staged and in the working tree"
+msgstr "只將分支往回移。之後的變更會保留在暫存區和工作樹中"
+
+msgid "Moves the branch back and unstages. The later changes stay in the working tree's files"
+msgstr "將分支往回移並取消暫存。之後的變更會保留在工作樹的檔案中"
+
+msgid "Moves the current branch back to here. Choose soft / mixed / hard for the later changes"
+msgstr "將目前分支往回移至此處。請為之後的變更選擇 soft / mixed / hard"
+
+msgid "New branch name"
+msgstr "新分支名稱"
+
+msgid "New commit message"
+msgstr "新的提交訊息"
+
+msgid "Next Steps (Update the MR Branch and Go Back)"
+msgstr "後續步驟（更新 MR 分支並返回）"
+
+msgid "No Changes to Commit"
+msgstr "沒有要提交的變更"
+
+msgid "No Git Repositories"
+msgstr "沒有 Git 儲存庫"
+
+msgid "No Git repository is open."
+msgstr "未開啟任何 Git 儲存庫。"
+
+msgid "No active branch"
+msgstr "沒有使用中的分支"
+
+msgid "No active repository"
+msgstr "沒有使用中的儲存庫"
+
+msgid "No branch is checked out, so there is nothing to push."
+msgstr "未簽出任何分支，因此沒有可推送的內容。"
+
+msgid "No changes"
+msgstr "沒有變更"
+
+msgid "No changes to commit"
+msgstr "沒有要提交的變更"
+
+msgid "No commit message"
+msgstr "沒有提交訊息"
+
+msgid "No commits found"
+msgstr "找不到提交"
+
+msgid "No commits match. Try fewer conditions."
+msgstr "沒有符合的提交。請嘗試減少條件。"
+
+msgid "No commits yet"
+msgstr "尚無提交"
+
+msgid "No development branch is chosen. Choose a development branch first."
+msgstr "尚未選擇開發分支。請先選擇開發分支。"
+
+msgid "No differences (everything has been ported)"
+msgstr "沒有差異（全部都已移植）"
+
+msgid "No files changed on the development branch."
+msgstr "開發分支上沒有變更的檔案。"
+
+msgid "No files mismatch. \"All\" also shows the matching files."
+msgstr "沒有不相符的檔案。「全部」也會顯示相符的檔案。"
+
+msgid "No matching tags"
+msgstr "沒有符合的標籤"
+
+msgid "No remote available to push to. Add a remote to be able to publish changes."
+msgstr "沒有可推送的遠端。請新增遠端以便發佈變更。"
+
+msgid "No remote configured for repository"
+msgstr "儲存庫未設定遠端"
+
+msgid "No repository found"
+msgstr "找不到儲存庫"
+
+msgid "No staged changes"
+msgstr "沒有已暫存的變更"
+
+msgid "No staged changes yet"
+msgstr "尚無已暫存的變更"
+
+msgid "No stashes found"
+msgstr "找不到貯藏項目"
+
+msgid "No tags"
+msgstr "沒有標籤"
+
+msgid "No tracked file has changes"
+msgstr "已追蹤的檔案沒有變更"
+
+msgid "No tracked file has staged changes"
+msgstr "已追蹤的檔案沒有已暫存的變更"
+
+msgid "No uncommitted changes"
+msgstr "沒有未提交的變更"
+
+msgid "No unstaged changes"
+msgstr "沒有未暫存的變更"
+
+msgid "Not available on a detached HEAD. Switch to a branch first."
+msgstr "無法在 Detached HEAD 上使用。請先切換至分支。"
+
+msgid "Not available while several files are selected"
+msgstr "選取多個檔案時無法使用"
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base (a change that came in while resolving a conflict, for example). The base is on the left, the MR branch on the right."
+msgstr "在開發分支上未變更，但 MR 分支與基底不同（例如解決衝突時帶入的變更）。左側為基底，右側為 MR 分支。"
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base. The MR branch was not created from the tip of its base, so it may only lack the base's newer changes (or the change came in while resolving a conflict). The base is on the left, the MR branch on the right."
+msgstr "在開發分支上未變更，但 MR 分支與基底不同。MR 分支並非從其基底的最前端建立，因此可能只是缺少基底較新的變更（或該變更是在解決衝突時帶入的）。左側為基底，右側為 MR 分支。"
+
+msgid "Not every commit could be checked for being left out. Create the MR branch anyway?"
+msgstr "無法檢查所有提交是否有遺漏。仍要建立 MR 分支嗎？"
+
+msgid "Not from the development branch"
+msgstr "不是來自開發分支"
+
+msgid "Not from the development branch (came in while resolving conflicts, for example)"
+msgstr "不是來自開發分支（例如解決衝突時帶入的）"
+
+msgid "Not from the development branch (includes newer base changes the MR branch lacks)"
+msgstr "不是來自開發分支（包括 MR 分支所缺少的基底較新變更）"
+
+msgid "Nothing has been put away on the shelf (the stash)"
+msgstr "貯藏區（stash）中沒有任何內容"
+
+msgid "Nothing has changed. Reorder the commits or choose an action."
+msgstr "沒有任何變更。請重新排序提交或選擇動作。"
+
+msgid "Nothing is missing"
+msgstr "沒有遺漏"
+
+msgid "Nothing is missing, but {count} file needs a look"
+msgid_plural "Nothing is missing, but {count} files need a look"
+msgstr[0] "沒有遺漏，但有 {count} 個檔案需要查看"
+
+msgid "Once you have a fix that belongs in a commit a few back, pick that commit in the Git Graph and press \"Add Current Changes (fixup)\". You can also drag files from the Git panel onto the commit's row."
+msgstr "準備好應該屬於前幾個提交的修正後，請在提交圖中選取該提交，然後按「加入目前的變更（fixup）」。也可以將檔案從 Git 面板拖曳到該提交的列上。"
+
+msgid "Only downloads the latest from the remote (the shared server). Your files and branches do not change"
+msgstr "只從遠端（共用的伺服器）下載最新內容。您的檔案和分支不會改變"
+
+msgid "Only for new files Git does not manage yet (untracked)"
+msgstr "僅適用於 Git 尚未管理的新檔案（未追蹤）"
+
+msgid "Only the staged changes ({count} file)"
+msgid_plural "Only the staged changes ({count} files)"
+msgstr[0] "僅已暫存的變更（{count} 個檔案）"
+
+msgid "Open Commit Modal"
+msgstr "開啟提交對話方塊"
+
+msgid "Open Commit Permalink"
+msgstr "開啟提交永久連結"
+
+msgid "Open Diff"
+msgstr "開啟差異"
+
+msgid "Open File Diff"
+msgstr "開啟檔案差異"
+
+msgid "Open File in Project"
+msgstr "在專案中開啟檔案"
+
+msgid "Open Git Graph"
+msgstr "開啟提交圖"
+
+msgid "Open a directory first"
+msgstr "請先開啟資料夾"
+
+msgid "Open repo in new project"
+msgstr "在新專案中開啟儲存庫"
+
+msgid "Opens a diff of just this file (before and after the change) in a tab of its own"
+msgstr "在獨立的分頁中開啟僅此檔案的差異（變更前和變更後）"
+
+msgid "Opens a guide that explains Git's terms and the steps of common operations"
+msgstr "開啟說明 Git 用語和常見操作步驟的指南"
+
+msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
+msgstr "開啟改寫上一個提交訊息的畫面。若為較舊的提交，請在提交圖中選取它並按「改寫訊息」（自該處起的提交的 SHA 會改變）。"
+
+msgid "Opens the current file itself in the editor, rather than the diff"
+msgstr "在編輯器中開啟目前的檔案本身，而非差異"
+
+msgid "Opens the difference between this file before and after the change (the diff) in the tab that shows all changes together"
+msgstr "在一併顯示所有變更的分頁中，開啟此檔案變更前後的差異"
+
+msgid "Opens the list of changes put on the shelf (the stash), where you can look inside, pop or drop them"
+msgstr "開啟放入貯藏區（stash）的變更清單，可在其中查看內容、取出或捨棄"
+
+msgid "Opens the list of commits that changed this file, newest first"
+msgstr "開啟變更此檔案的提交清單，由新到舊排列"
+
+msgid "Operation was canceled"
+msgstr "操作已取消"
+
+msgid "Operations that did not fit in the row. Open it to see each one explained beside it"
+msgstr "列中放不下的操作。開啟即可在每個操作旁看到說明"
+
+msgid "Optionally provide a stash message"
+msgstr "選填貯藏訊息"
+
+msgid "Other staged changes are not included (after the rewrite they are left unstaged)."
+msgstr "不包含其他已暫存的變更（改寫後會保留為未暫存）。"
+
+msgid "Outside the development branch"
+msgstr "開發分支以外"
+
+msgid "Overwrites the remote branch with your history, without checking"
+msgstr "不經檢查，以您的歷程覆寫遠端分支"
+
+msgid "Overwrites the remote branch with your history. Stops if someone else pushed commits after your last fetch"
+msgstr "以您的歷程覆寫遠端分支。如果在您上次擷取之後有其他人推送了提交，就會停止"
+
+msgid "Packed the branches and tags ({seconds} s)"
+msgstr "已封裝分支和標籤（{seconds} 秒）"
+
+msgid "Packing…"
+msgstr "正在封裝…"
+
+msgid "Packs the refs (branches and tags) stored as separate files into one file."
+msgstr "將以個別檔案儲存的 ref（分支和標籤）封裝為單一檔案。"
+
+msgid "Packs the {count} or more refs (branches and tags) stored as separate files into one file."
+msgstr "將以個別檔案儲存的 {count} 個以上 ref（分支和標籤）封裝為單一檔案。"
+
+msgid "Packs the {formatted} ref (branch or tag) stored as a separate file into one file."
+msgid_plural "Packs the {formatted} refs (branches and tags) stored as separate files into one file."
+msgstr[0] "將以個別檔案儲存的 {formatted} 個 ref（分支和標籤）封裝為單一檔案。"
+
+msgid "Part of a name or email address"
+msgstr "名稱或電子郵件地址的一部分"
+
+msgid "Paste"
+msgstr "貼上"
+
+msgid "Path History"
+msgstr "路徑歷程"
+
+msgid "Pick a commit and the buttons for it show above"
+msgstr "選取提交後，上方會顯示其按鈕"
+
+msgid "Pick a commit in the Git Graph and press \"Check Out\" to put the working tree in that commit's state (detached HEAD). Commits made from there belong to no branch, so to keep working, use \"Branch from Here\". To go back, switch to the original branch from the branch list."
+msgstr "在提交圖中選取提交並按「簽出」，即可將工作樹變為該提交的狀態（Detached HEAD）。從該處建立的提交不屬於任何分支，若要繼續工作，請使用「從此處建立分支」。若要返回，請從分支清單切換至原本的分支。"
+
+msgid "Pick a commit in the Git Graph, then press \"Revert\" to make a commit that undoes its changes, or \"Reset to This Commit ▾\" to move the branch back (hard throws the changes away). After a rewrite, \"Undo…\" on the notification or the reflog brings things back."
+msgstr "在提交圖中選取提交，然後按「還原提交」以建立復原其變更的提交，或按「重設至此提交 ▾」將分支往回移（hard 會捨棄變更）。改寫後，可透過通知上的「復原…」或 reflog 復原。"
+
+msgid "Pick a commit to get its operations here (right-clicking offers the same)"
+msgstr "選取提交即可在此取得其操作（按右鍵也提供相同的操作）"
+
+msgid "Pick an unbroken range"
+msgstr "請選取連續的範圍"
+
+msgid "Pick an unbroken range. A range that contains a merge commit cannot be rewritten."
+msgstr "請選取連續的範圍。包含合併提交的範圍無法改寫。"
+
+msgid "Pick at least two commits to reorder."
+msgstr "請選取至少兩個要重新排序的提交。"
+
+msgid "Pick commits on the current branch"
+msgstr "請選取目前分支上的提交"
+
+msgid "Pick commits on the current branch."
+msgstr "請選取目前分支上的提交。"
+
+msgid "Pick the commit in the Git Graph and press \"Cherry-Pick\" to add its changes to the current branch as a new commit. With several picked through Ctrl / Shift, \"Cherry-Pick N Commits\" adds them oldest first. You can also drag a row onto a branch name. Changes to the same places can end in a conflict."
+msgstr "在提交圖中選取提交並按「揀選」，即可將其變更作為新提交加入目前分支。以 Ctrl / Shift 選取多個時，「揀選 N 個提交」會從最舊的開始加入。也可以將列拖曳到分支名稱上。變更相同位置時可能會發生衝突。"
+
+msgid "Pick the commit to add your current changes to, then press \"Add Current Changes (fixup)\" above."
+msgstr "請選取要加入目前變更的提交，然後按上方的「加入目前的變更（fixup）」。"
+
+msgid "Pick which remote to fetch"
+msgstr "選擇要擷取的遠端"
+
+msgid "Pick which remote to push to"
+msgstr "選擇要推送至的遠端"
+
+msgid "Pick which remote to remove"
+msgstr "選擇要移除的遠端"
+
+msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
+msgstr "選擇要在其上工作的其他分支（一條工作線）。檔案會變為該分支的內容"
+
+msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
+msgstr "從已註冊的遠端中選擇一個，只下載其最新內容。檔案不會改變"
+
+msgid "Pop"
+msgstr "取出"
+
+msgid "Pop Stash"
+msgstr "取出貯藏"
+
+msgid "Pop stash@{{{}}}?"
+msgstr "要取出 stash@{{{}}} 嗎？"
+
+msgid "Possibly missing"
+msgstr "可能遺漏"
+
+msgid "Previous tip: {} (recoverable from the reflog)"
+msgstr "先前的最前端：{}（可從 reflog 復原）"
+
+msgid "Problems the checks would have stopped can get into the commit"
+msgstr "原本會被檢查攔下的問題可能會進入提交"
+
+msgid "Publish"
+msgstr "發佈"
+
+msgid "Publish branch to remote"
+msgstr "將分支發佈至遠端"
+
+msgid "Pull"
+msgstr "拉取"
+
+msgid "Pull (Rebase)"
+msgstr "拉取（重訂基底）"
+
+msgid "Pull in Progress…"
+msgstr "正在拉取…"
+
+msgid "Pull: Already up to date"
+msgstr "拉取：已是最新"
+
+msgid "Push"
+msgstr "推送"
+
+msgid "Push To"
+msgstr "推送至"
+
+msgid "Push committed changes to remote"
+msgstr "將已提交的變更推送至遠端"
+
+msgid "Push in Progress…"
+msgstr "正在推送…"
+
+msgid "Push: Everything is up-to-date"
+msgstr "推送：全部已是最新"
+
+msgid "Pushed {} to {}"
+msgstr "已將 {} 推送到 {}"
+
+msgid "Put Back"
+msgstr "放回"
+
+msgid "Puts all changes together in one list, without splitting them"
+msgstr "將所有變更放在同一個清單中，不加以分組"
+
+msgid "Puts all uncommitted changes, newly created files (untracked) included, away on a temporary shelf (the stash) and returns the files to the last commit. \"Stash Pop\" brings them back later"
+msgstr "將所有未提交的變更（包括新建立的檔案（未追蹤））暫時放入貯藏區（stash），並將檔案還原為最後一次提交的狀態。之後可用「取出貯藏」取回"
+
+msgid "Puts only the changes to files Git manages (tracked) away on the shelf (the stash). Newly created files are kept"
+msgstr "只將 Git 所管理的檔案（已追蹤）的變更放入貯藏區（stash）。新建立的檔案會保留"
+
+msgid "Puts only the staged changes away on the shelf (the stash). Unstaged changes stay in the files"
+msgstr "只將已暫存的變更放入貯藏區（stash）。未暫存的變更會保留在檔案中"
+
+msgid "Puts the changes last put on the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "將最後放入貯藏區（stash）的變更放回檔案中，並從貯藏區移除"
+
+msgid "Puts these changes from the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "將貯藏區（stash）中的這些變更放回檔案中，並從貯藏區移除"
+
+msgid "Re-publish branch to remote"
+msgstr "將分支重新發佈至遠端"
+
+msgid "Rebuilds the last commit from your changes and message (Git panel)"
+msgstr "以您的變更和訊息重建上一個提交（Git 面板）"
+
+msgid "Received {count} file change from {remote}"
+msgid_plural "Received {count} file changes from {remote}"
+msgstr[0] "已從 {remote} 接收 {count} 項檔案變更"
+
+msgid "Records the names of the people you worked with in \"Co-authored-by\" lines of the commit message"
+msgstr "以提交訊息中的「Co-authored-by」行記錄一同工作者的名稱"
+
+msgid "Recreate an MR branch"
+msgstr "重新建立 MR 分支"
+
+msgid "Recreate the existing {branch_name} (needs a force push)"
+msgstr "重新建立現有的 {branch_name}（需要強制推送）"
+
+msgid "Recreated the MR branch {merge_request_branch}\nPrevious MR branch: {} (recoverable from the reflog)"
+msgstr "已重新建立 MR 分支 {merge_request_branch}\n先前的 MR 分支：{}（可從 reflog 復原）"
+
+msgid "Ref {ref_name}"
+msgstr "Ref {ref_name}"
+
+msgid "Registers a folder owned by another user as a place Git may work in"
+msgstr "將其他使用者擁有的資料夾註冊為 Git 可在其中工作的位置"
+
+msgid "Registers a server to push to and fetch from (a remote) by name and URL"
+msgstr "以名稱和 URL 註冊要推送至和擷取自的伺服器（遠端）"
+
+msgid "Remote Branches"
+msgstr "遠端分支"
+
+msgid "Remote Name"
+msgstr "遠端名稱"
+
+msgid "Remote branch (a copy of a branch on the server)"
+msgstr "遠端分支（伺服器上分支的複本）"
+
+msgid "Remote name can't be empty"
+msgstr "遠端名稱不能為空"
+
+msgid "Remote up to date"
+msgstr "遠端已是最新版本"
+
+msgid "Remove Remote…"
+msgstr "移除遠端…"
+
+msgid "Remove co-authored-by"
+msgstr "移除 co-authored-by"
+
+msgid "Remove the remote {remote_name}?"
+msgstr "要移除遠端 {remote_name} 嗎？"
+
+msgid "Remove this condition and search again"
+msgstr "移除此條件並重新搜尋"
+
+msgid "Removed the remote {remote_name}."
+msgstr "已移除遠端 {remote_name}。"
+
+msgid "Removes every stage mark in this folder. The changes stay in the files"
+msgstr "移除此資料夾中的所有暫存標記。變更會保留在檔案中"
+
+msgid "Removes every stage mark. The changes stay in the files and just no longer go into the next commit"
+msgstr "移除所有暫存標記。變更會保留在檔案中，只是不再放入下一個提交"
+
+msgid "Removes the exclusion mark and makes the commit \"unplaced\" again"
+msgstr "移除排除標記，讓提交再次成為「未放置」"
+
+msgid "Removes the stage mark of this change (hunk). The change stays in the file"
+msgstr "移除此變更（差異區塊）的暫存標記。變更會保留在檔案中"
+
+msgid "Removes the stage marks of every change under this heading. The changes stay in the files"
+msgstr "移除此標題下所有變更的暫存標記。變更會保留在檔案中"
+
+msgid "Removes this commit and its changes from history"
+msgstr "從歷程中移除此提交及其變更"
+
+msgid "Removes this file's stage mark. The changes stay in the file"
+msgstr "移除此檔案的暫存標記。變更會保留在檔案中"
+
+msgid "Rename Branch ({})"
+msgstr "重新命名分支（{}）"
+
+msgid "Reorder / Squash / Drop the {count} Selected Commit…"
+msgid_plural "Reorder / Squash / Drop the {count} Selected Commits…"
+msgstr[0] "重新排序 / 壓縮 / 捨棄選取的 {count} 個提交…"
+
+msgid "Reorder / Squash / Drop — {reason}"
+msgstr "重新排序 / 壓縮 / 捨棄 — {reason}"
+
+msgid "Reorder commits: done\nPrevious tip: {short_old} (can be restored from the reflog)"
+msgstr "重新排序提交：完成\n先前的最前端：{short_old}（可從 reflog 還原）"
+
+msgid "Reorder commits: done."
+msgstr "重新排序提交：完成。"
+
+msgid "Reorders, squashes or drops the picked range"
+msgstr "重新排序、壓縮或捨棄選取的範圍"
+
+msgid "Repository not found."
+msgstr "找不到儲存庫。"
+
+msgid "Republish"
+msgstr "重新發佈"
+
+msgid "Reset (Discard Changes)"
+msgstr "重設（捨棄變更）"
+
+msgid "Reset the local branch to the remote?"
+msgstr "要將本機分支重設為遠端的狀態嗎？"
+
+msgid "Reset the local branch to {target_ref}."
+msgstr "已將本機分支重設為 {target_ref}。"
+
+msgid "Reset to Remote"
+msgstr "重設為遠端"
+
+msgid "Reset to Remote…"
+msgstr "重設為遠端…"
+
+msgid "Reset to This Commit (hard: {summary})…"
+msgstr "重設至此提交（hard：{summary}）…"
+
+msgid "Reset to This Commit (mixed: {summary})"
+msgstr "重設至此提交（mixed：{summary}）"
+
+msgid "Reset to This Commit (soft: {summary})"
+msgstr "重設至此提交（soft：{summary}）"
+
+msgid "Reset to {short}?"
+msgstr "要重設至 {short} 嗎？"
+
+msgid "Reset to {} ({flag})."
+msgstr "已重設至 {}（{flag}）。"
+
+msgid "Reset {branch} to this commit?"
+msgstr "要將 {branch} 重設至此提交嗎？"
+
+msgid "Resets the branch, discarding later and uncommitted changes"
+msgstr "重設分支，並捨棄之後的變更及未提交的變更"
+
+msgid "Resets the current branch {branch} to {short_sha}.\n- Undo Commits Only (--soft): the changes stay staged\n- Unstage Too (--mixed): the changes stay in the working tree\n- Discard Everything (--hard): uncommitted changes are lost too"
+msgstr "將目前分支 {branch} 重設至 {short_sha}。\n- 僅復原提交（--soft）：變更會保留為已暫存\n- 一併取消暫存（--mixed）：變更會保留在工作樹中\n- 全部捨棄（--hard）：未提交的變更也會遺失"
+
+msgid "Resolve Merge Conflict with Agent"
+msgid_plural "Resolve Merge Conflicts with Agent"
+msgstr[0] "使用代理解決合併衝突"
+
+msgid "Resolve the conflicts, stage them, then press \"Continue\"."
+msgstr "請解決衝突並加以暫存，然後按「繼續」。"
+
+msgid "Resolve with Agent"
+msgstr "使用代理解決"
+
+msgid "Resolves the conflict with only the lower side (the >>>>>>> side, theirs). The upper side is thrown away. During a merge that is the side being merged in; during a rebase, your commit being replayed"
+msgstr "只以下方（>>>>>>> 那一側，theirs）的內容解決衝突。上方的內容會被捨棄。合併時這是要合併進來的一方；重訂基底時則是正在重新套用的您的提交"
+
+msgid "Resolves the conflict with only the upper side (the <<<<<<< side, ours). The lower side is thrown away. During a merge that is the branch you are on; during a rebase, the branch being rebased onto"
+msgstr "只以上方（<<<<<<< 那一側，ours）的內容解決衝突。下方的內容會被捨棄。合併時這是您目前所在的分支；重訂基底時則是要重訂到其上的分支"
+
+msgid "Restore"
+msgstr "還原"
+
+msgid "Restore All"
+msgstr "全部還原"
+
+msgid "Restore All Changes"
+msgstr "還原所有變更"
+
+msgid "Restore File"
+msgstr "還原檔案"
+
+msgid "Restore Hunk"
+msgstr "還原區塊"
+
+msgid "Restore Selected Hunks"
+msgstr "還原選取的區塊"
+
+msgid "Restore Tracked Files"
+msgstr "還原已追蹤的檔案"
+
+msgid "Restore selected hunk"
+msgstr "還原選取的區塊"
+
+msgid "Returns each tracked file that has staged changes to its content in the last commit, unstaged changes included. Files with only unstaged changes and newly created files (untracked) are kept"
+msgstr "將每個有已暫存變更的已追蹤檔案還原為最後一次提交中的內容，包括未暫存的變更。只有未暫存變更的檔案和新建立的檔案（未追蹤）會保留"
+
+msgid "Revert This Commit"
+msgstr "還原此提交"
+
+msgid "Reverted {}."
+msgstr "已還原 {}。"
+
+msgid "Review Diff"
+msgstr "檢閱差異"
+
+msgid "Reword Message…"
+msgstr "改寫訊息…"
+
+msgid "Reword the Message of {}"
+msgstr "改寫 {} 的訊息"
+
+msgid "Reworded the message of {}."
+msgstr "已改寫 {} 的訊息。"
+
+msgid "Rewrite"
+msgstr "改寫"
+
+msgid "Rewrite History…"
+msgstr "改寫歷程…"
+
+msgid "Rewrite the selected commits like this?"
+msgstr "要以此方式改寫選取的提交嗎？"
+
+msgid "Run `git fetch --unshallow` to download the full history"
+msgstr "執行 `git fetch --unshallow` 以下載完整歷程"
+
+msgid "Run `git fetch --unshallow` to download the full history, then show this commit's changes."
+msgstr "執行 `git fetch --unshallow` 以下載完整歷程，然後顯示此提交的變更。"
+
+msgid "Runs git pack-refs --all. The branches and tags themselves do not change. With tens of thousands of them it takes about a minute, and other Git operations wait meanwhile."
+msgstr "執行 git pack-refs --all。分支和標籤本身不會改變。若有數萬個，大約需要一分鐘，期間其他 Git 操作會等待。"
+
+msgid "Runs git remote add."
+msgstr "執行 git remote add。"
+
+msgid "Runs git reset {flag} {short}.\n{kept}"
+msgstr "執行 git reset {flag} {short}。\n{kept}"
+
+msgid "Same contents as on the development branch."
+msgstr "內容與開發分支上的相同。"
+
+msgid "Saved the patch file: {destination}"
+msgstr "已儲存修補檔：{destination}"
+
+msgid "Saves the staged changes as a single record with a message (a commit). With nothing staged, all tracked changes go in"
+msgstr "將已暫存的變更儲存為附有訊息的單一記錄（提交）。沒有已暫存的內容時，會放入所有已追蹤的變更"
+
+msgid "Search"
+msgstr "搜尋"
+
+msgid "Search by Conditions"
+msgstr "依條件搜尋"
+
+msgid "Search by conditions such as the author, a tag or a period"
+msgstr "依作者、標籤或期間等條件搜尋"
+
+msgid "Search commits… (e.g. author:alice file:src/ since:2w)"
+msgstr "搜尋提交…（例如：author:alice file:src/ since:2w）"
+
+msgid "Search for a tag in the Git Graph's \"Tags\" and pick it to jump to its commit. To add a tag, right-click the commit's row and choose \"Tag Here…\" (an empty message makes a lightweight tag)."
+msgstr "在提交圖的「標籤」中搜尋標籤並選取，即可跳至其提交。若要新增標籤，請在提交的列上按右鍵並選擇「在此建立標籤…」（訊息留空會建立輕量標籤）。"
+
+msgid "Search in the Git Graph's search box. Add author: tag: branch: file: since: until: change: merge: to narrow it down (for example author:alice file:src/main.rs since:2026-01-01)."
+msgstr "在提交圖的搜尋方塊中搜尋。加上 author: tag: branch: file: since: until: change: merge: 可縮小範圍（例如：author:alice file:src/main.rs since:2026-01-01）。"
+
+msgid "Search tags… (newest first)"
+msgstr "搜尋標籤…（由新到舊）"
+
+msgid "Searches the tags (names given to commits) and jumps to the commit of the one you pick"
+msgstr "搜尋標籤（為提交取的名稱），選取後即跳至其提交"
+
+msgid "Searching… {count} commit"
+msgid_plural "Searching… {count} commits"
+msgstr[0] "正在搜尋… {count} 個提交"
+
+msgid "See Docs"
+msgstr "檢視文件"
+
+msgid "See an older commit as it was (checkout)"
+msgstr "查看較舊提交當時的狀態（簽出）"
+
+msgid "Select Base Branch"
+msgstr "選取基底分支"
+
+msgid "Select Next Match"
+msgstr "選取下一個符合項目"
+
+msgid "Select Previous Match"
+msgstr "選取上一個符合項目"
+
+msgid "Select a Patch File to Apply"
+msgstr "選取要套用的修補檔"
+
+msgid "Select a repository..."
+msgstr "選取儲存庫..."
+
+msgid "Select a stash…"
+msgstr "選取貯藏…"
+
+msgid "Select as Repository Destination"
+msgstr "選取為儲存庫目的地"
+
+msgid "Selected Branch"
+msgstr "已選取的分支"
+
+msgid "Selection Actions…"
+msgstr "選取項目動作…"
+
+msgid "Selects the next unplaced commit in the graph, starting from the oldest. Press again for the one after it."
+msgstr "選取圖中下一個未放置的提交，從最舊的開始。再按一次可前往再下一個。"
+
+msgid "Send Review to Agent ({})"
+msgstr "傳送檢閱意見給代理（{}）"
+
+msgid "Send all review comments to the Agent panel"
+msgstr "傳送所有檢閱意見至代理面板"
+
+msgid "Send this diff for your last agent to review."
+msgstr "將此差異傳送給上一個代理進行檢閱。"
+
+msgid "Sends a branch that disappeared from the remote there again and links it again"
+msgstr "將已從遠端消失的分支再次推送至遠端，並重新建立連結"
+
+msgid "Sends this branch to the remote for the first time and links it as the branch to push to and pull from from now on"
+msgstr "第一次將此分支推送至遠端，並將其連結為日後推送和拉取的對象分支"
+
+msgid "Sends your commits to the remote. Changes you have not committed are not sent"
+msgstr "將您的提交推送至遠端。尚未提交的變更不會被推送"
+
+msgid "Separate conditions with spaces to find the commits that match all of them. Put a value that contains spaces in \"…\"."
+msgstr "以空格分隔條件，即可尋找符合所有條件的提交。包含空格的值請以 \"…\" 括住。"
+
+msgid "Separates the changes marked to go into the next commit (staged) from the changes not marked yet (unstaged)"
+msgstr "將標記為放入下一個提交的變更（已暫存）與尚未標記的變更（未暫存）分開"
+
+msgid "Separates the files Git manages (tracked) from the new files it does not manage yet (untracked)"
+msgstr "將 Git 所管理的檔案（已追蹤）與 Git 尚未管理的新檔案（未追蹤）分開"
+
+msgid "Shallow clone boundary: earlier history is missing, so these lines may come from an older commit."
+msgstr "淺層複製的邊界：缺少更早的歷程，因此這些行可能來自更舊的提交。"
+
+msgid "Show Changes Only"
+msgstr "僅顯示變更"
+
+msgid "Show Flat View"
+msgstr "顯示平面檢視"
+
+msgid "Show Full File"
+msgstr "顯示完整檔案"
+
+msgid "Show Git Output"
+msgstr "顯示 Git 輸出"
+
+msgid "Show Tree View"
+msgstr "顯示樹狀檢視"
+
+msgid "Show every file at this commit as added. This can be slow in large repositories."
+msgstr "將此提交時的所有檔案顯示為新增。在大型儲存庫中可能會很慢。"
+
+msgid "Show in Git Graph"
+msgstr "在提交圖中顯示"
+
+msgid "Show this file's full contents at this commit as added."
+msgstr "將此檔案在此提交時的完整內容顯示為新增。"
+
+msgid "Show {hidden_count} More"
+msgstr "再顯示 {hidden_count} 個"
+
+msgid "Show:"
+msgstr "顯示："
+
+msgid "Shows a diff of only the changes not staged yet (which do not go into the next commit)"
+msgstr "以差異顯示僅尚未暫存的變更（不會放入下一個提交）"
+
+msgid "Shows a diff of only the staged changes (which go into the next commit)"
+msgstr "以差異顯示僅已暫存的變更（會放入下一個提交）"
+
+msgid "Shows both your branches (local) and the copies of the server's branches (remote)"
+msgstr "同時顯示您的分支（本機）和伺服器分支的複本（遠端）"
+
+msgid "Shows only the branches in your repository. These are the ones you can commit to"
+msgstr "只顯示您儲存庫中的分支。這些是您可以提交的分支"
+
+msgid "Shows only the copies of the server's branches that the last fetch brought in (origin/… and so on)"
+msgstr "只顯示上次擷取帶入的伺服器分支複本（origin/… 等）"
+
+msgid "Shows the changed files in a single column, without splitting them by folder"
+msgstr "將變更的檔案顯示為單一欄，不依資料夾分開"
+
+msgid "Shows the diff (before and after) of the uncommitted changes together in one tab"
+msgstr "在一個分頁中一併顯示未提交變更的差異（變更前和變更後）"
+
+msgid "Shows what these changes put on the shelf (the stash) contain, as a diff. Does not pop them"
+msgstr "以差異顯示放入貯藏區（stash）的這些變更的內容。不會取出"
+
+msgid "Signoff"
+msgstr "簽署"
+
+msgid "Skip Hooks"
+msgstr "略過 Hook"
+
+msgid "Skipped a commit of the {}."
+msgstr "已略過 {} 的一個提交。"
+
+msgid "Skips the commit it stopped at and moves on to the next commit"
+msgstr "略過停止處的提交，繼續處理下一個提交"
+
+msgid "Some branches could not be loaded"
+msgstr "無法載入部分分支"
+
+msgid "Some branches could not be loaded: {error}"
+msgstr "部分分支無法載入：{error}"
+
+msgid "Some files have conflicts. Resolve them first."
+msgstr "部分檔案有衝突。請先解決衝突。"
+
+msgid "Sort By"
+msgstr "排序方式"
+
+msgid "Sorts by file name, regardless of the folder"
+msgstr "依檔案名稱排序，不論資料夾"
+
+msgid "Sorts by location, folders included (the path). Files in the same folder end up next to each other"
+msgstr "依包含資料夾在內的位置（路徑）排序。同一資料夾中的檔案會排在一起"
+
+msgid "Squash into One — {reason}"
+msgstr "壓縮為一個 — {reason}"
+
+msgid "Squash the selected commits into one?"
+msgstr "要將選取的提交壓縮為一個嗎？"
+
+msgid "Squash the {count} Selected Commit into One"
+msgid_plural "Squash the {count} Selected Commits into One"
+msgstr[0] "將選取的 {count} 個提交壓縮為一個"
+
+msgid "Squash the {count} Selected Commit into One Commit on a New MR Branch…"
+msgid_plural "Squash the {count} Selected Commits into One Commit on a New MR Branch…"
+msgstr[0] "將選取的 {count} 個提交壓縮為新 MR 分支上的單一提交…"
+
+msgid "Squash {count} commit"
+msgid_plural "Squash {count} commits"
+msgstr[0] "壓縮 {count} 個提交"
+
+msgid "Squash, reorder or drop commits (squash / drop)"
+msgstr "壓縮、重新排序或捨棄提交（squash / drop）"
+
+msgid "Squashed the commits (squash)."
+msgstr "已壓縮提交（squash）。"
+
+msgid "Stage"
+msgstr "暫存"
+
+msgid "Stage All"
+msgstr "全部暫存"
+
+msgid "Stage All Changes"
+msgstr "暫存所有變更"
+
+msgid "Stage File"
+msgstr "暫存檔案"
+
+msgid "Stage Folder"
+msgstr "暫存資料夾"
+
+msgid "Stage Hunk"
+msgstr "暫存區塊"
+
+msgid "Stage Selected Hunks"
+msgstr "暫存選取的區塊"
+
+msgid "Stage and Go to Next Hunk"
+msgstr "暫存並移至下一個區塊"
+
+msgid "Stage {count} Files"
+msgstr "暫存 {count} 個檔案"
+
+msgid "Staged"
+msgstr "已暫存"
+
+msgid "Staged & Unstaged"
+msgstr "已暫存與未暫存"
+
+msgid "Staged Changes"
+msgstr "已暫存的變更"
+
+msgid "Staged changes (git diff --cached)"
+msgstr "已暫存的變更（git diff --cached）"
+
+msgid "Starts using Git in this folder (creates a .git folder). The existing files do not change"
+msgstr "開始在此資料夾中使用 Git（建立 .git 資料夾）。現有的檔案不會改變"
+
+msgid "Stash All"
+msgstr "貯藏全部"
+
+msgid "Stash Pop"
+msgstr "取出貯藏"
+
+msgid "Stash Staged"
+msgstr "貯藏已暫存變更"
+
+msgid "Stash Tracked"
+msgstr "貯藏已追蹤變更"
+
+msgid "Stash has changed, drop aborted"
+msgstr "貯藏已變更，已中止捨棄"
+
+msgid "Stash has changed, not applying"
+msgstr "貯藏已變更，不套用"
+
+msgid "Stash has changed, pop aborted"
+msgstr "貯藏已變更，已中止取出"
+
+msgid "Stashes"
+msgstr "貯藏"
+
+msgid "Still on the scratch branch \"{}\"."
+msgstr "仍在暫用分支「{}」上。"
+
+msgid "Stop Excluding and Mark as Unplaced"
+msgstr "停止排除並標記為未放置"
+
+msgid "Stop Excluding {count} Commit from MR"
+msgid_plural "Stop Excluding {count} Commits from MR"
+msgstr[0] "停止從 MR 排除 {count} 個提交"
+
+msgid "Stop and Go Back"
+msgstr "停止並返回"
+
+msgid "Stop and Go Back…"
+msgstr "停止並返回…"
+
+msgid "Stop creating the MR branch?"
+msgstr "要停止建立 MR 分支嗎？"
+
+msgid "Stopped at {count} commit."
+msgid_plural "Stopped at {count} commits."
+msgstr[0] "已在 {count} 個提交處停止。"
+
+msgid "Stops the search. The commits found so far stay"
+msgstr "停止搜尋。目前為止找到的提交會保留"
+
+msgid "Successfully pulled from {}"
+msgstr "已成功從 {} 拉取"
+
+msgid "Successfully rebased from {}"
+msgstr "已成功從 {} 重訂基底"
+
+msgid "Switch"
+msgstr "切換"
+
+msgid "Switch Active Repository"
+msgstr "切換使用中的儲存庫"
+
+msgid "Switch Branch"
+msgstr "切換分支"
+
+msgid "Switch from the branch list. Type a name that is not in the list to create a new branch. To start from an older commit, pick that commit in the Git Graph and press \"Branch from Here\"."
+msgstr "從分支清單切換。輸入不在清單中的名稱即可建立新分支。若要從較舊的提交開始，請在提交圖中選取該提交並按「從此處建立分支」。"
+
+msgid "Switch or type to create a branch…"
+msgstr "切換或輸入以建立分支…"
+
+msgid "Switch to {branch} and then cherry-pick {count} commit?"
+msgid_plural "Switch to {branch} and then cherry-pick {count} commits?"
+msgstr[0] "要切換至 {branch}，然後揀選 {count} 個提交嗎？"
+
+msgid "Switch to {branch} and then cherry-pick?"
+msgstr "要切換至 {branch}，然後揀選嗎？"
+
+msgid "Switched the graph to all branches: the commit was not among the rows loaded for the branch it was showing."
+msgstr "已將圖切換為所有分支：此提交不在目前顯示的分支已載入的列中。"
+
+msgid "Switches to this commit (detached HEAD: not on any branch)"
+msgstr "切換至此提交（Detached HEAD：不在任何分支上）"
+
+msgid "Switches to {branch}, then adds the changes of {sha} as a new commit (checkout + cherry-pick)."
+msgstr "切換至 {branch}，然後將 {sha} 的變更作為新提交加入（checkout + cherry-pick）。"
+
+msgid "Switches to {branch}, then cherry-picks {count} commit: adds it, oldest first, as a new commit (checkout + cherry-pick)."
+msgid_plural "Switches to {branch}, then cherry-picks {count} commits: adds them, oldest first, as new commits (checkout + cherry-pick)."
+msgstr[0] "切換至 {branch}，然後揀選 {count} 個提交：從最舊的開始，作為新提交依序加入（checkout + cherry-pick）。"
+
+msgid "Synchronized with remotes"
+msgstr "已與遠端同步"
+
+msgid "Synchronized with {}"
+msgstr "已與 {} 同步"
+
+msgid "Tag (a marker given to a particular commit)"
+msgstr "標籤（為特定提交加上的標記）"
+
+msgid "Tag Here…"
+msgstr "在此建立標籤…"
+
+msgid "Tag name (e.g. v1.2.3)"
+msgstr "標籤名稱（例如：v1.2.3）"
+
+msgid "Take Out of the Box"
+msgstr "從盒中取出"
+
+msgid "Text of added or removed lines (slow)"
+msgstr "新增或移除的行的文字（較慢）"
+
+msgid "The Git panel has another repository selected. Switch the Git panel to this repository, then amend."
+msgstr "Git 面板中選取的是其他儲存庫。請將 Git 面板切換至此儲存庫，然後再修正提交。"
+
+msgid "The MR branch \"{}\" is half created (on the scratch branch \"{}\")."
+msgstr "MR 分支「{}」只建立了一半（在暫用分支「{}」上）。"
+
+msgid "The MR branch matches the development branch, but the base changed this file too and differs from it. Merging the MR may undo the base's change. The base is on the left, the MR branch on the right."
+msgstr "MR 分支與開發分支相符，但基底也變更了此檔案且與其不同。合併 MR 可能會復原基底的變更。左側為基底，右側為 MR 分支。"
+
+msgid "The MR branch was not created from the tip of its base (the base is at least {MAX_COUNTED_BASE_COMMITS} commits ahead)"
+msgstr "MR 分支並非從其基底的最前端建立（基底至少領先 {MAX_COUNTED_BASE_COMMITS} 個提交）"
+
+msgid "The MR branch was not created from the tip of its base (the base is {count} commit ahead)"
+msgid_plural "The MR branch was not created from the tip of its base (the base is {count} commits ahead)"
+msgstr[0] "MR 分支並非從其基底的最前端建立（基底領先 {count} 個提交）"
+
+msgid "The MR has the same contents as the base (fine if the base already took the same change)"
+msgstr "MR 的內容與基底相同（若基底已經納入相同的變更則沒有問題）"
+
+msgid "The SHAs of the later commits change"
+msgstr "之後提交的 SHA 會改變"
+
+msgid "The Zed server on the remote host is too old for the MR check (it refuses git rev-parse). Update Zed on the remote host."
+msgstr "遠端主機上的 ForgeKairos 伺服器版本太舊，無法進行 MR 檢查（拒絕 git rev-parse）。請更新遠端主機上的 ForgeKairos。"
+
+msgid "The Zed server on the remote host is too old for this operation. Update the server."
+msgstr "遠端主機上的 ForgeKairos 伺服器版本太舊，無法進行此操作。請更新伺服器。"
+
+msgid "The Zed server on the remote host is too old to pack branches and tags."
+msgstr "遠端主機上的 ForgeKairos 伺服器版本太舊，無法封裝分支和標籤。"
+
+msgid "The Zed server on the remote host is too old, so this ran as a force push with a lease. Reconnect to update the server."
+msgstr "遠端主機上的 ForgeKairos 伺服器版本太舊，因此已改以 with lease 的強制推送執行。請重新連線以更新伺服器。"
+
+msgid "The author's name or email address contains \"alice\""
+msgstr "作者的名稱或電子郵件地址包含「alice」"
+
+msgid "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
+msgstr "基底分支「{merge_request_branch}」不能作為 MR 分支。請使用其他名稱。"
+
+msgid "The box is empty. Drag commits into it."
+msgstr "盒子是空的。請將提交拖曳到其中。"
+
+msgid "The changes of {short} are undone, and every commit after it gets a new SHA.\nIf the branch was pushed, it needs a force push afterwards."
+msgstr "{short} 的變更會被復原，其後的每個提交都會有新的 SHA。\n如果分支已推送，之後需要強制推送。"
+
+msgid "The changes stay in the working tree."
+msgstr "變更會保留在工作樹中。"
+
+msgid "The changes stay staged."
+msgstr "變更會保留為已暫存。"
+
+msgid "The commit {} is not in the graph. Refresh the graph and try again."
+msgstr "提交 {} 不在圖中。請重新整理圖後再試一次。"
+
+msgid "The commits that touched it are not in the loaded history (the newest {MAX_MERGE_REQUEST_HISTORY_COMMITS} commits)."
+msgstr "變更了它的提交不在已載入的歷程中（最新的 {MAX_MERGE_REQUEST_HISTORY_COMMITS} 個提交）。"
+
+msgid "The commits were not put in the box because no development branch is chosen. Choose a development branch first."
+msgstr "由於尚未選擇開發分支，提交未放入盒中。請先選擇開發分支。"
+
+msgid "The conditions you enter are written into the search box."
+msgstr "您輸入的條件會寫入搜尋方塊。"
+
+msgid "The development branch has no commits newer than the base."
+msgstr "開發分支沒有比基底更新的提交。"
+
+msgid "The development branch was rewritten (or merged into the base), so {count} commit was taken out of the box."
+msgid_plural "The development branch was rewritten (or merged into the base), so {count} commits were taken out of the box."
+msgstr[0] "開發分支已被改寫（或已合併至基底），因此已從盒中取出 {count} 個提交。"
+
+msgid "The development branch's range could not be read, so left-out commits were not checked."
+msgstr "無法讀取開發分支的範圍，因此未檢查遺漏的提交。"
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits, so older commits were not checked for being left out."
+msgstr "開發分支的範圍超過 {MAX_RANGE_COMMITS} 個提交，因此未檢查較舊的提交是否有遺漏。"
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits. Check that the base is right (older commits are not shown)."
+msgstr "開發分支的範圍超過 {MAX_RANGE_COMMITS} 個提交。請確認基底是否正確（不會顯示較舊的提交）。"
+
+msgid "The development branch's range is too wide (more than {MAX_RANGE_COMMITS} commits). Check that the base is right."
+msgstr "開發分支的範圍太廣（超過 {MAX_RANGE_COMMITS} 個提交）。請確認基底是否正確。"
+
+msgid "The dragged order could not be reproduced, so the list opened in the original order."
+msgstr "無法重現拖曳的順序，因此以原本的順序開啟清單。"
+
+msgid "The excluded commit {} was not found."
+msgstr "找不到被排除的提交 {}。"
+
+msgid "The existing \"{}\" ({previous}) is recreated to point at the new commit. If it was pushed, it needs a force push."
+msgstr "現有的「{}」（{previous}）會重新建立為指向新的提交。如果它已推送，需要強制推送。"
+
+msgid "The folder of the patch file was removed from the project."
+msgstr "修補檔所在的資料夾已從專案中移除。"
+
+msgid "The git account \"{id}\" is not in effect on the remote host ({reason}), so commits are refused there. Update the remote server, or pick Git's Own Configuration."
+msgstr "Git 帳戶「{id}」在遠端主機上未生效（{reason}），因此會拒絕在該處提交。請更新遠端伺服器，或選擇「Git 本身的設定」。"
+
+msgid "The git account \"{id}\" picked for this repository cannot be used ({reason}), so it commits and pushes as git is configured."
+msgstr "為此儲存庫選擇的 Git 帳戶「{id}」無法使用（{reason}），因此會依照 git 的設定提交和推送。"
+
+msgid "The git command was interrupted."
+msgstr "git 命令已中斷。"
+
+msgid "The latest commit (git format-patch -1 HEAD)"
+msgstr "最新的提交（git format-patch -1 HEAD）"
+
+msgid "The list is in the order you dragged the commits into. Run it as it is or adjust it here."
+msgstr "清單已依照您拖曳提交的順序排列。可以直接執行，或在此調整。"
+
+msgid "The local {base} is {count} commit behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgid_plural "The local {base} is {count} commits behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgstr[0] "本機的 {base} 落後遠端（{remote}）{count} 個提交。請使用 {remote} 作為基底，或先拉取。"
+
+msgid "The merge ran into conflicts. Resolve them, then commit."
+msgstr "合併時發生衝突。請解決衝突後再提交。"
+
+msgid "The message of {} is empty. Enter a message."
+msgstr "{} 的訊息是空的。請輸入訊息。"
+
+msgid "The newest {MAX_RANGE_COMMITS} commits are all placed or excluded, but older commits were not checked."
+msgstr "最新的 {MAX_RANGE_COMMITS} 個提交都已放置或排除，但未檢查較舊的提交。"
+
+msgid "The oldest commit is at the top. Drag the rows or use ↑↓ to reorder them, choose to fold, reword or drop, then run the rewrite."
+msgstr "最舊的提交在最上方。拖曳列或使用 ↑↓ 重新排序，選擇併入、改寫訊息或捨棄，然後執行改寫。"
+
+msgid "The original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "不知道原本的分支，因此「中止」不會回到該分支。中止後請自行切換。"
+
+msgid "The overwritten commits disappear from the remote branch"
+msgstr "被覆寫的提交會從遠端分支中消失"
+
+msgid "The rebase finished, but the \"{fixup_subject}\" commit was not squashed into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "重訂基底已完成，但「{fixup_subject}」提交未壓縮至 {short}。先前的最前端：{}（可從 reflog 復原）"
+
+msgid "The rebase stopped while folding into {short} (a conflict, for example). Continue or abort it from the Git panel's banner. Even after aborting, the changes stay at the tip as the \"{fixup_subject}\" commit ({}). Skipping that commit takes the changes out of the history (recoverable from git reflog). Previous tip: {}"
+msgstr "併入 {short} 時重訂基底已停止（例如發生衝突）。請從 Git 面板的橫幅繼續或中止。即使中止，變更仍會作為「{fixup_subject}」提交（{}）保留在最前端。略過該提交會將變更從歷程中移除（可從 git reflog 復原）。先前的最前端：{}"
+
+msgid "The remote host may still commit as the git account picked before, as it did not take the change ({reason}), so commits are refused there. Pick an account again, or reconnect to the remote server."
+msgstr "遠端主機未接收到變更（{reason}），因此可能仍會以先前選擇的 Git 帳戶提交，所以會拒絕在該處提交。請重新選擇帳戶，或重新連線至遠端伺服器。"
+
+msgid "The replayed commits of yours get new SHAs"
+msgstr "重新套用的您的提交會有新的 SHA"
+
+msgid "The repository could not be found, so the files cannot go into the commit."
+msgstr "找不到儲存庫，因此無法將檔案放入提交。"
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
+msgstr "上次嘗試的暫用分支「{scratch_branch}」仍然存在。請檢查其內容並將其刪除，然後再試一次。"
+
+msgid "The scratch branch \"{}\" has moved away from the commit of the MR branch \"{}\", so it is not deleted. Check its contents, then switch to \"{}\" yourself."
+msgstr "暫用分支「{}」已離開 MR 分支「{}」的提交，因此不會刪除。請檢查其內容，然後自行切換至「{}」。"
+
+msgid "The skipped commit's changes are not brought in"
+msgstr "不會帶入被略過的提交的變更"
+
+msgid "The tip commit of the current branch is not known, so nothing can be reordered."
+msgstr "不知道目前分支的最前端提交，因此無法重新排序。"
+
+msgid "The top commit cannot be folded into a previous one. Put the commit to fold into above it."
+msgstr "最上方的提交無法併入前一個提交。請將要併入的目標提交放在其上方。"
+
+msgid "The {count} chosen file (staged or not, as it is now)"
+msgid_plural "The {count} chosen files (staged or not, as they are now)"
+msgstr[0] "選擇的 {count} 個檔案（不論是否暫存，依目前的狀態）"
+
+msgid "The {count} commit becomes one, and its SHA changes (squash).\nMessage after squashing: {first_line}"
+msgid_plural "The {count} commits become one, and each SHA changes (squash).\nMessage after squashing: {first_line}"
+msgstr[0] "{count} 個提交會合而為一，且每個 SHA 都會改變（squash）。\n壓縮後的訊息：{first_line}"
+
+msgid "There are no changes to put in the commit. Untracked files can be put in once they are staged."
+msgstr "沒有可放入提交的變更。未追蹤的檔案在暫存後即可放入。"
+
+msgid "There are no changes to stage"
+msgstr "沒有可暫存的變更"
+
+msgid "There are no changes to stash"
+msgstr "沒有可貯藏的變更"
+
+msgid "There are no commits yet, or none in the chosen range. Try widening the range with \"Show\" above."
+msgstr "還沒有提交，或選擇的範圍中沒有提交。請嘗試以上方的「顯示」擴大範圍。"
+
+msgid "There are no commits yet. You can only amend once there is a commit."
+msgstr "還沒有提交。必須有提交才能修正提交。"
+
+msgid "There are no files to fold in."
+msgstr "沒有要併入的檔案。"
+
+msgid "There are no staged changes"
+msgstr "沒有已暫存的變更"
+
+msgid "There are no tags."
+msgstr "沒有標籤。"
+
+msgid "There are no untracked files"
+msgstr "沒有未追蹤的檔案"
+
+msgid "There are still conflicts. You must stage these before committing"
+msgstr "仍有衝突。提交前必須先暫存這些變更"
+
+msgid "There are uncommitted changes, so it cannot be undone. Commit or stash them, then try again."
+msgstr "有未提交的變更，因此無法復原。請提交或貯藏這些變更，然後再試一次。"
+
+msgid "There are uncommitted changes. Commit or stash them before creating the MR branch (the box stays as it is)."
+msgstr "有未提交的變更。建立 MR 分支前，請先提交或貯藏這些變更（盒子會保持原樣）。"
+
+msgid "There is no active repository."
+msgstr "沒有使用中的儲存庫。"
+
+msgid "There is no remote to remove."
+msgstr "沒有可移除的遠端。"
+
+msgid "There were no changes to put in a patch file."
+msgstr "沒有可放入修補檔的變更。"
+
+msgid "They are the rows with a small ● in the graph. Drag them into the box, or set them aside with \"Exclude from MR\" in the right-click menu."
+msgstr "這些是圖中標有小小 ● 的列。請將它們拖曳到盒中，或以右鍵選單中的「從 MR 排除」將其擱置。"
+
+msgid "This branch has no upstream, so whether it was pushed was not checked."
+msgstr "此分支沒有上游，因此未檢查它是否已推送。"
+
+msgid "This cannot be undone"
+msgstr "此動作無法復原"
+
+msgid "This commit is at the boundary of a shallow clone."
+msgstr "此提交位於淺層複製的邊界。"
+
+msgid "This commit was already pushed to {}."
+msgstr "此提交已推送至 {}。"
+
+msgid "This commit's SHA changes"
+msgstr "此提交的 SHA 會改變"
+
+msgid "This file changed on the base too, and an excluded commit touched it. The diff mixes both."
+msgstr "此檔案在基底上也有變更，且被排除的提交也變更了它。差異中兩者混在一起。"
+
+msgid "This file changed on the base too, so the diff includes the base's changes (usually fine)."
+msgstr "此檔案在基底上也有變更，因此差異包含基底的變更（通常沒有問題）。"
+
+msgid "This is the tip of the current branch. There is nothing to pick."
+msgstr "這是目前分支的最前端。沒有可揀選的內容。"
+
+msgid "This remote host's server does not support git accounts ({reason}); update it to pick one. The project commits and pushes as git is configured on the host."
+msgstr "此遠端主機的伺服器不支援 Git 帳戶（{reason}）；請更新伺服器以選擇帳戶。此專案會依照該主機上的 git 設定提交和推送。"
+
+msgid "This throws away the current tip {short_new} and goes back to {short_old} (git reset --hard).\nThe commits the reorder made can then only be found through the reflog."
+msgstr "這會捨棄目前的最前端 {short_new} 並回到 {short_old}（git reset --hard）。\n之後只能透過 reflog 找到重新排序所產生的提交。"
+
+msgid "This will update your most recent commit."
+msgstr "這會更新最近一次的提交。"
+
+msgid "Throws away these changes on the shelf (the stash) without putting them back into the files"
+msgstr "捨棄貯藏區（stash）中的這些變更，不將其放回檔案中"
+
+msgid "To create it under the same MR branch name, check \"Recreate the existing …\". An MR branch that was already pushed needs a force push (with lease) once recreated. The old MR branch can be restored from the reflog."
+msgstr "若要以相同的 MR 分支名稱建立，請勾選「重新建立現有的 …」。已推送的 MR 分支重新建立後，需要強制推送（with lease）。舊的 MR 分支可從 reflog 還原。"
+
+msgid "To work here, create a branch first"
+msgstr "若要在此工作，請先建立分支"
+
+msgid "Toggle Branch Picker"
+msgstr "切換分支選取器"
+
+msgid "Toggle Folder"
+msgstr "展開/摺疊資料夾"
+
+msgid "Toggle Staged"
+msgstr "切換暫存狀態"
+
+msgid "Toggle Stash Picker"
+msgstr "切換貯藏選取器"
+
+msgid "Toggle {} Tab"
+msgstr "切換 {} 分頁"
+
+msgid "Too large to show."
+msgstr "太大，無法顯示。"
+
+msgid "Tracked"
+msgstr "已追蹤"
+
+msgid "Tracked & Untracked"
+msgstr "已追蹤與未追蹤"
+
+msgid "Trash"
+msgstr "移至垃圾桶"
+
+msgid "Trash File"
+msgstr "將檔案移至垃圾桶"
+
+msgid "Trash Untracked Files"
+msgstr "將未追蹤的檔案移至垃圾桶"
+
+msgid "Trash these files?"
+msgstr "要將這些檔案移至垃圾桶嗎？"
+
+msgid "Trash {count} Files"
+msgstr "將 {count} 個檔案移至垃圾桶"
+
+msgid "Trash {}?"
+msgstr "要將 {} 移至垃圾桶嗎？"
+
+msgid "Tree"
+msgstr "樹狀"
+
+msgid "Trust Directory"
+msgstr "信任資料夾"
+
+msgid "Try It"
+msgstr "試試看"
+
+msgid "Unable to construct pull request URL"
+msgstr "無法建構 Pull Request URL"
+
+msgid "Unable to initialize a git repository"
+msgstr "無法初始化 git 儲存庫"
+
+msgid "Uncommit"
+msgstr "取消提交"
+
+msgid "Uncommitted Changes"
+msgstr "未提交的變更"
+
+msgid "Uncommitted changes and your commits that are not on the remote are thrown away and cannot be undone"
+msgstr "未提交的變更和不在遠端上的您的提交都會被捨棄，且無法復原"
+
+msgid "Uncommitted changes cannot be recovered"
+msgstr "未提交的變更無法復原"
+
+msgid "Undo Commits Only (--soft)"
+msgstr "僅復原提交（--soft）"
+
+msgid "Undo a mistake (reset / revert / undo)"
+msgstr "復原錯誤（reset / revert / 復原）"
+
+msgid "Undoes every unstaged change and returns the files to their staged content. Newly created files are kept"
+msgstr "復原所有未暫存的變更，並將檔案還原為已暫存的內容。新建立的檔案會保留"
+
+msgid "Undoes the edits in this change (hunk) and returns the file to its staged content"
+msgstr "復原此變更（差異區塊）中的編輯，並將檔案還原為已暫存的內容"
+
+msgid "Undoes the last commit and returns its changes to the staged, uncommitted state. The files' contents do not change"
+msgstr "復原上一個提交，並將其變更恢復為已暫存、未提交的狀態。檔案的內容不會改變"
+
+msgid "Undo…"
+msgstr "復原…"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Unregisters a remote. Your local record of that remote's branches goes too. The data on the server is not deleted"
+msgstr "取消註冊遠端。您本機中該遠端的分支記錄也會一併移除。伺服器上的資料不會被刪除"
+
+msgid "Unresolved conflicts remain, but whether a rebase caused them could not be confirmed. Check which changes would be lost before pressing \"Abort\"."
+msgstr "仍有未解決的衝突，但無法確認是否由重訂基底造成。按「中止」前，請檢查哪些變更會遺失。"
+
+msgid "Unstage"
+msgstr "取消暫存"
+
+msgid "Unstage All"
+msgstr "全部取消暫存"
+
+msgid "Unstage All Changes"
+msgstr "取消暫存所有變更"
+
+msgid "Unstage File"
+msgstr "取消暫存檔案"
+
+msgid "Unstage Folder"
+msgstr "取消暫存資料夾"
+
+msgid "Unstage Hunk"
+msgstr "取消暫存區塊"
+
+msgid "Unstage Selected Hunks"
+msgstr "取消暫存選取的區塊"
+
+msgid "Unstage Too (--mixed)"
+msgstr "一併取消暫存（--mixed）"
+
+msgid "Unstage and Go to Next Hunk"
+msgstr "取消暫存並移至下一個區塊"
+
+msgid "Unstage {count} Files"
+msgstr "取消暫存 {count} 個檔案"
+
+msgid "Unstaged"
+msgstr "未暫存"
+
+msgid "Unstaged Changes"
+msgstr "未暫存的變更"
+
+msgid "Unstaged edits are lost"
+msgstr "未暫存的編輯會遺失"
+
+msgid "Unsupported remote URL: {}"
+msgstr "不支援的遠端 URL：{}"
+
+msgid "Untracked"
+msgstr "未追蹤"
+
+msgid "Untracked files are not included unless they are staged."
+msgstr "除非已暫存，否則不包含未追蹤的檔案。"
+
+msgid "Use Both"
+msgstr "兩者都使用"
+
+msgid "Use {}"
+msgstr "使用 {}"
+
+msgid "Using the Git Graph"
+msgstr "使用提交圖"
+
+msgid "Using the MR box (add, exclude, create and compare)"
+msgstr "使用 MR 盒（放入、排除、建立並比較）"
+
+msgid "View"
+msgstr "檢視"
+
+msgid "View Branch Diff"
+msgstr "檢視分支差異"
+
+msgid "View Changes"
+msgstr "檢視變更"
+
+msgid "View Commit"
+msgstr "檢視提交"
+
+msgid "View Commit Diff"
+msgstr "檢視提交差異"
+
+msgid "View Diff"
+msgstr "檢視差異"
+
+msgid "View File"
+msgstr "檢視檔案"
+
+msgid "View File History"
+msgstr "檢視檔案歷程"
+
+msgid "View Log"
+msgstr "檢視記錄"
+
+msgid "View Merge Request"
+msgstr "檢視 Merge Request"
+
+msgid "View Options"
+msgstr "檢視選項"
+
+msgid "View Stash"
+msgstr "檢視貯藏"
+
+msgid "View as MR Check…"
+msgstr "以 MR 檢查檢視…"
+
+msgid "View commit failed"
+msgstr "檢視提交失敗"
+
+msgid "View on {}"
+msgstr "在 {} 上檢視"
+
+msgid "Went back to {short_old}."
+msgstr "已回到 {short_old}。"
+
+msgid "Went back to {short_old}. The folded changes are staged."
+msgstr "已回到 {short_old}。已併入的變更已暫存。"
+
+msgid "Went back to {} and deleted the scratch branch \"{}\"."
+msgstr "已回到 {} 並刪除暫用分支「{}」。"
+
+msgid "Whatever you resolved along the way is thrown away"
+msgstr "過程中解決的內容都會被捨棄"
+
+msgid "When on, the last message is filled in and committing replaces the last commit"
+msgstr "開啟時，會填入上一個訊息，提交時會取代上一個提交"
+
+msgid "Where the MR goes. The MR branch is created from here"
+msgstr "MR 的目標。MR 分支會從這裡建立"
+
+msgid "Where the commits come from. Used to check for left-out commits and for the final comparison"
+msgstr "提交的來源。用於檢查遺漏的提交和最後的比較"
+
+msgid "Where would you like to initialize this git repository?"
+msgstr "要在哪裡初始化此 Git 儲存庫？"
+
+msgid "With tens of thousands of them this takes about a minute, and other Git operations wait meanwhile. No data changes."
+msgstr "若有數萬個，大約需要一分鐘，期間其他 Git 操作會等待。資料不會改變。"
+
+msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
+msgstr "在衝突已解決並暫存的狀態下，繼續執行中途停止的操作的其餘部分"
+
+msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
+msgstr "寫出只包含變更的文字檔（修補檔）。可選擇工作樹、已暫存的變更或最後一次提交。檔案本身不會改變"
+
+msgid "Writes to your user's Git settings as a whole (--global)"
+msgstr "寫入您使用者的整體 Git 設定（--global）"
+
+msgid "You do not have write access to this project"
+msgstr "沒有此專案的寫入權限"
+
+msgid "You must resolve conflicts before committing"
+msgstr "提交前必須先解決衝突"
+
+msgid "and {left_out} more"
+msgstr "還有 {left_out} 個"
+
+msgid "and {more} more"
+msgstr "還有 {more} 個"
+
+msgid "author:alice"
+msgstr "author:alice"
+
+msgid "branch:feature"
+msgstr "branch:feature"
+
+msgid "change:foo"
+msgstr "change:foo"
+
+msgid "cherry-pick / squash / create an MR branch (also on right-click)"
+msgstr "揀選 / 壓縮 / 建立 MR 分支（按右鍵也可使用）"
+
+msgid "discard the changes too"
+msgstr "一併捨棄變更"
+
+msgid "e.g. 2026-09-30"
+msgstr "例如：2026-09-30"
+
+msgid "e.g. 2w, 2026-09-01"
+msgstr "例如：2w、2026-09-01"
+
+msgid "e.g. feature/login"
+msgstr "例如：feature/login"
+
+msgid "e.g. mr/new-feature"
+msgstr "例如：mr/new-feature"
+
+msgid "e.g. src/ or *.rs"
+msgstr "例如：src/ 或 *.rs"
+
+msgid "e.g. v1.2"
+msgstr "例如：v1.2"
+
+msgid "file:src/"
+msgstr "file:src/"
+
+msgid "git push --force overwrites {branch_name} on the remote.\nWithout a lease, commits others pushed since the last fetch are lost as well."
+msgstr "git push --force 會覆寫遠端上的 {branch_name}。\n由於不使用 lease，自上次擷取以來其他人推送的提交也會遺失。"
+
+msgid "git push --force-with-lease overwrites {branch_name} on the remote.\nIf others pushed commits since the last fetch, it stops without overwriting them."
+msgstr "git push --force-with-lease 會覆寫遠端上的 {branch_name}。\n如果自上次擷取以來其他人推送了提交，會停止而不覆寫。"
+
+msgid "keep the changes staged"
+msgstr "將變更保留為已暫存"
+
+msgid "merge:no"
+msgstr "merge:no"
+
+msgid "project has no worktrees"
+msgstr "專案沒有工作樹"
+
+msgid "since:2w  until:2026-09-01"
+msgstr "since:2w  until:2026-09-01"
+
+msgid "tag:v1.2"
+msgstr "tag:v1.2"
+
+msgid "unstage only, keep the files"
+msgstr "僅取消暫存，保留檔案"
+
+msgid "{branch} is checked out in another worktree ({path}), so it cannot be moved."
+msgstr "{branch} 已在其他工作樹（{path}）中簽出，因此無法移動。"
+
+msgid "{branch}, which is not checked out, will point to {short_sha}. The working tree does not change."
+msgstr "未簽出的 {branch} 將指向 {short_sha}。工作樹不會改變。"
+
+msgid "{count} Changed File"
+msgid_plural "{count} Changed Files"
+msgstr[0] "{count} 個變更的檔案"
+
+msgid "{count} Commit Selected"
+msgid_plural "{count} Commits Selected"
+msgstr[0] "已選取 {count} 個提交"
+
+msgid "{count} base change possibly missing"
+msgid_plural "{count} base changes possibly missing"
+msgstr[0] "可能缺少 {count} 項基底變更"
+
+msgid "{count} branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "有 {count} 個分支和標籤以個別檔案儲存。將其封裝可讓 Git 更快。"
+
+msgid "{count} commit"
+msgid_plural "{count} commits"
+msgstr[0] "{count} 個提交"
+
+msgid "{count} commit is already in the box."
+msgid_plural "{count} commits are already in the box."
+msgstr[0] "{count} 個提交已在盒中。"
+
+msgid "{count} commit is not placed. Create the MR branch anyway?"
+msgid_plural "{count} commits are not placed. Create the MR branch anyway?"
+msgstr[0] "有 {count} 個提交尚未放置。仍要建立 MR 分支嗎？"
+
+msgid "{count} commit:"
+msgid_plural "{count} commits:"
+msgstr[0] "{count} 個提交："
+
+msgid "{count} excluded commit."
+msgid_plural "{count} excluded commits."
+msgstr[0] "{count} 個被排除的提交。"
+
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count} 個檔案"
+
+msgid "{count} file changed on the development branch: {matched} matching / {mismatched} not matching"
+msgid_plural "{count} files changed on the development branch: {matched} matching / {mismatched} not matching"
+msgstr[0] "開發分支上有 {count} 個變更的檔案：{matched} 個相符 / {mismatched} 個不相符"
+
+msgid "{count} file differs. Choose it from the list on the left to show the contents side by side."
+msgid_plural "{count} files differ. Choose one from the list on the left to show the contents side by side."
+msgstr[0] "有 {count} 個檔案不同。從左側清單中選擇即可並排顯示內容。"
+
+msgid "{count} file possibly missing"
+msgid_plural "{count} files possibly missing"
+msgstr[0] "可能遺漏 {count} 個檔案"
+
+msgid "{count} merge commit (not included)"
+msgid_plural "{count} merge commits (not included)"
+msgstr[0] "{count} 個合併提交（不包含）"
+
+msgid "{count} more commit"
+msgid_plural "{count} more commits"
+msgstr[0] "還有 {count} 個提交"
+
+msgid "{count} or more branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "有 {count} 個以上的分支和標籤以個別檔案儲存。將其封裝可讓 Git 更快。"
+
+msgid "{count} selected"
+msgid_plural "{count} selected"
+msgstr[0] "已選取 {count} 個"
+
+msgid "{count} unplaced commit"
+msgid_plural "{count} unplaced commits"
+msgstr[0] "{count} 個未放置的提交"
+
+msgid "{explanation}."
+msgstr "{explanation}。"
+
+msgid "{explanation}. Caution: {caution}."
+msgstr "{explanation}。注意：{caution}。"
+
+msgid "{headline}: could not run\n{error}"
+msgstr "{headline}：無法執行\n{error}"
+
+msgid "{headline}: done"
+msgstr "{headline}：完成"
+
+msgid "{headline}: failed\n{failure}"
+msgstr "{headline}：失敗\n{failure}"
+
+msgid "{hedge}Creating the MR branch stopped on the scratch branch \"{scratch_branch}\". {resolve}\n{abort}\nOnce \"Continue\" has applied the remaining commits, \"Next Steps\" in the Git Graph's \"MR Box\" updates the MR branch and goes back to the original branch."
+msgstr "{hedge}建立 MR 分支時已停在暫用分支「{scratch_branch}」上。{resolve}\n{abort}\n以「繼續」套用其餘提交後，提交圖「MR 盒」中的「後續步驟」會更新 MR 分支並回到原本的分支。"
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\n\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch (the partly rewritten commits stay only in git reflog).\nIf you carry on with \"Continue\", you have to move the original branch onto the result yourself (git rebase --onto)."
+msgstr "{hedge}改寫提交時已停在暫用分支「{scratch_branch}」上。{resolve}\n「中止」會回到原本的分支「{origin_branch}」，並刪除此暫用分支（部分改寫的提交只會保留在 git reflog 中）。\n如果以「繼續」繼續進行，您必須自行將原本的分支移至結果上（git rebase --onto）。"
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\nThe original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "{hedge}改寫提交時已停在暫用分支「{scratch_branch}」上。{resolve}\n不知道原本的分支，因此「中止」不會回到該分支。中止後請自行切換。"
+
+msgid "{hidden} more (keep typing to narrow them down)"
+msgstr "還有 {hidden} 個（繼續輸入以縮小範圍）"
+
+msgid "{merge_request_base} and {source} have no common ancestor (unrelated histories). The MR check cannot run."
+msgstr "{merge_request_base} 和 {source} 沒有共同祖系（不相關的歷程）。無法執行 MR 檢查。"
+
+msgid "{merge_request_base} and {source} have {} common ancestors (a criss-cross merge). The MR check cannot tell where to compare from, so it cannot run."
+msgstr "{merge_request_base} 和 {source} 有 {} 個共同祖系（交叉合併）。MR 檢查無法判斷要從何處開始比較，因此無法執行。"
+
+msgid "{reason}."
+msgstr "{reason}。"
+
+msgid "{}\nHowever, {}"
+msgstr "{}\n但是，{}"
+
+msgid "{}\nRuns git {} --abort. If no rebase is running, git refuses; if one is, whatever was partly resolved is lost."
+msgstr "{}\n執行 git {} --abort。如果沒有正在進行的重訂基底，git 會拒絕；如果有，已部分解決的內容會遺失。"
+
+msgid "{} Excluded"
+msgstr "已排除 {} 個"
+
+msgid "{} also changed on the base"
+msgstr "{} 個在基底上也有變更"
+
+msgid "{} and {} have the same contents."
+msgstr "{} 和 {} 的內容相同。"
+
+msgid "{} excluded"
+msgstr "已排除 {} 個"
+
+msgid "{} more omitted"
+msgstr "另有 {} 個已省略"
+
+msgid "{} of the excluded commits are not in the recent history of the development branch (at most {MAX_EXCLUDED_COMMIT_LOOKUPS} can be looked up at once)."
+msgstr "被排除的提交中有 {} 個不在開發分支的近期歷程中（一次最多可查詢 {MAX_EXCLUDED_COMMIT_LOOKUPS} 個）。"
+
+msgid "{} possibly missing"
+msgstr "{} 個可能遺漏"
+
+msgid "{} stopped partway"
+msgstr "{} 已中途停止"
+
+msgctxt "amend checkbox"
+msgid "Amend"
+msgstr "修正提交"
+
+msgctxt "commit action"
+msgid "Add Current Changes (fixup)"
+msgstr "加入目前的變更（fixup）"
+
+msgctxt "commit action"
+msgid "Add to MR Box"
+msgstr "放入 MR 盒"
+
+msgctxt "commit action"
+msgid "Add to MR Box ({count} Commit)"
+msgid_plural "Add to MR Box ({count} Commits)"
+msgstr[0] "放入 MR 盒（{count} 個提交）"
+
+msgctxt "commit action"
+msgid "Amend Last Commit"
+msgstr "修正上一個提交"
+
+msgctxt "commit action"
+msgid "Branch from Here"
+msgstr "從此處建立分支"
+
+msgctxt "commit action"
+msgid "Check Out"
+msgstr "簽出"
+
+msgctxt "commit action"
+msgid "Cherry-Pick"
+msgstr "揀選"
+
+msgctxt "commit action"
+msgid "Cherry-Pick {count} Commit"
+msgid_plural "Cherry-Pick {count} Commits"
+msgstr[0] "揀選 {count} 個提交"
+
+msgctxt "commit action"
+msgid "Exclude from MR"
+msgstr "從 MR 排除"
+
+msgctxt "commit action"
+msgid "More"
+msgstr "更多"
+
+msgctxt "commit action"
+msgid "Reorder / Squash / Drop…"
+msgstr "重新排序 / 壓縮 / 捨棄…"
+
+msgctxt "commit action"
+msgid "Reset to This Commit"
+msgstr "重設至此提交"
+
+msgctxt "commit action"
+msgid "Revert"
+msgstr "還原提交"
+
+msgctxt "commit action"
+msgid "Reword Message"
+msgstr "改寫訊息"
+
+msgctxt "commit action"
+msgid "Stop Excluding from MR"
+msgstr "停止從 MR 排除"
+
+msgctxt "commit button"
+msgid "Commit"
+msgstr "提交"
+
+msgctxt "commit modal"
+msgid "Signoff"
+msgstr "簽署"
+
+msgctxt "commit search"
+msgid "Advanced"
+msgstr "進階"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "作者"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "分支"
+
+msgctxt "commit search"
+msgid "Changed Text"
+msgstr "變更的文字"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "檔案"
+
+msgctxt "commit search"
+msgid "Merges"
+msgstr "合併"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "起始時間"
+
+msgctxt "commit search"
+msgid "Stop"
+msgstr "停止"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "標籤"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "結束時間"
+
+msgctxt "file status"
+msgid "Added"
+msgstr "已新增"
+
+msgctxt "file status"
+msgid "Deleted"
+msgstr "已刪除"
+
+msgctxt "file status"
+msgid "Modified"
+msgstr "已修改"
+
+msgctxt "git fetch"
+msgid "Fetching…"
+msgstr "正在擷取…"
+
+msgctxt "git graph hints"
+msgid "Guide"
+msgstr "指南"
+
+msgctxt "git graph toolbar"
+msgid "Compare…"
+msgstr "比較…"
+
+msgctxt "git graph toolbar"
+msgid "Create MR"
+msgstr "建立 MR"
+
+msgctxt "git graph toolbar"
+msgid "Tags"
+msgstr "標籤"
+
+msgctxt "git history"
+msgid "Drop"
+msgstr "捨棄"
+
+msgctxt "git history"
+msgid "Go Back"
+msgstr "返回"
+
+msgctxt "git operation"
+msgid "Abort (--abort)"
+msgstr "中止（--abort）"
+
+msgctxt "git operation"
+msgid "Add Current Changes (fixup)"
+msgstr "加入目前的變更（fixup）"
+
+msgctxt "git operation"
+msgid "Add Remote (remote add)"
+msgstr "新增遠端（remote add）"
+
+msgctxt "git operation"
+msgid "Add to .git/info/exclude"
+msgstr "加入 .git/info/exclude"
+
+msgctxt "git operation"
+msgid "Add to .gitignore"
+msgstr "加入 .gitignore"
+
+msgctxt "git operation"
+msgid "All Branches"
+msgstr "所有分支"
+
+msgctxt "git operation"
+msgid "Amend Last Commit"
+msgstr "修正上一個提交"
+
+msgctxt "git operation"
+msgid "Apply Patch File (apply)"
+msgstr "套用修補檔（apply）"
+
+msgctxt "git operation"
+msgid "Branch from Here"
+msgstr "從此處建立分支"
+
+msgctxt "git operation"
+msgid "Check Out"
+msgstr "簽出"
+
+msgctxt "git operation"
+msgid "Cherry-Pick"
+msgstr "揀選"
+
+msgctxt "git operation"
+msgid "Cherry-Pick Selected"
+msgstr "揀選選取的提交"
+
+msgctxt "git operation"
+msgid "Co-Authors (Co-authored-by)"
+msgstr "共同作者（Co-authored-by）"
+
+msgctxt "git operation"
+msgid "Commit"
+msgstr "提交"
+
+msgctxt "git operation"
+msgid "Compare"
+msgstr "比較"
+
+msgctxt "git operation"
+msgid "Continue (--continue)"
+msgstr "繼續（--continue）"
+
+msgctxt "git operation"
+msgid "Copy Path"
+msgstr "複製路徑"
+
+msgctxt "git operation"
+msgid "Copy Relative Path"
+msgstr "複製相對路徑"
+
+msgctxt "git operation"
+msgid "Create MR"
+msgstr "建立 MR"
+
+msgctxt "git operation"
+msgid "Create Patch File (diff)"
+msgstr "建立修補檔（diff）"
+
+msgctxt "git operation"
+msgid "Create from Default Branch"
+msgstr "從預設分支建立"
+
+msgctxt "git operation"
+msgid "Delete Branch (branch -d)"
+msgstr "刪除分支（branch -d）"
+
+msgctxt "git operation"
+msgid "Discard Changes (restore)"
+msgstr "捨棄變更（restore）"
+
+msgctxt "git operation"
+msgid "Discard Tracked Changes (restore)"
+msgstr "捨棄已追蹤的變更（restore）"
+
+msgctxt "git operation"
+msgid "Distance from Tag"
+msgstr "與標籤的距離"
+
+msgctxt "git operation"
+msgid "Drop"
+msgstr "捨棄"
+
+msgctxt "git operation"
+msgid "Drop Stash (stash drop)"
+msgstr "捨棄貯藏（stash drop）"
+
+msgctxt "git operation"
+msgid "Exclude from MR"
+msgstr "從 MR 排除"
+
+msgctxt "git operation"
+msgid "Fetch"
+msgstr "擷取"
+
+msgctxt "git operation"
+msgid "Fetch From (fetch)"
+msgstr "從指定遠端擷取（fetch）"
+
+msgctxt "git operation"
+msgid "File History (log)"
+msgstr "檔案歷程（log）"
+
+msgctxt "git operation"
+msgid "Filter Branches"
+msgstr "篩選分支"
+
+msgctxt "git operation"
+msgid "Force Delete Branch (branch -D)"
+msgstr "強制刪除分支（branch -D）"
+
+msgctxt "git operation"
+msgid "Force Push (push --force-with-lease)"
+msgstr "強制推送（push --force-with-lease）"
+
+msgctxt "git operation"
+msgid "Force Push Without Lease (push --force)"
+msgstr "強制推送，不使用 lease（push --force）"
+
+msgctxt "git operation"
+msgid "Git Guide"
+msgstr "Git 指南"
+
+msgctxt "git operation"
+msgid "Group by Staged and Unstaged"
+msgstr "依已暫存和未暫存分組"
+
+msgctxt "git operation"
+msgid "Group by Tracked and Untracked"
+msgstr "依已追蹤和未追蹤分組"
+
+msgctxt "git operation"
+msgid "Initialize Repository (init)"
+msgstr "初始化儲存庫（init）"
+
+msgctxt "git operation"
+msgid "List View"
+msgstr "清單檢視"
+
+msgctxt "git operation"
+msgid "Local Branches"
+msgstr "本機分支"
+
+msgctxt "git operation"
+msgid "MR Box"
+msgstr "MR 盒"
+
+msgctxt "git operation"
+msgid "Merge Branch"
+msgstr "合併分支"
+
+msgctxt "git operation"
+msgid "More"
+msgstr "更多"
+
+msgctxt "git operation"
+msgid "Move File to Trash"
+msgstr "將檔案移至垃圾桶"
+
+msgctxt "git operation"
+msgid "Move Untracked Files to Trash"
+msgstr "將未追蹤的檔案移至垃圾桶"
+
+msgctxt "git operation"
+msgid "No Grouping"
+msgstr "不分組"
+
+msgctxt "git operation"
+msgid "Open Diff"
+msgstr "開啟差異"
+
+msgctxt "git operation"
+msgid "Open File Diff"
+msgstr "開啟檔案差異"
+
+msgctxt "git operation"
+msgid "Pop This Stash (stash pop)"
+msgstr "取出此貯藏（stash pop）"
+
+msgctxt "git operation"
+msgid "Publish (push --set-upstream)"
+msgstr "發佈（push --set-upstream）"
+
+msgctxt "git operation"
+msgid "Pull"
+msgstr "拉取"
+
+msgctxt "git operation"
+msgid "Pull with Rebase (pull --rebase)"
+msgstr "拉取並重訂基底（pull --rebase）"
+
+msgctxt "git operation"
+msgid "Push"
+msgstr "推送"
+
+msgctxt "git operation"
+msgid "Push To (push)"
+msgstr "推送至指定遠端（push）"
+
+msgctxt "git operation"
+msgid "Remote Branches"
+msgstr "遠端分支"
+
+msgctxt "git operation"
+msgid "Remove Remote (remote remove)"
+msgstr "移除遠端（remote remove）"
+
+msgctxt "git operation"
+msgid "Reorder / Squash / Drop"
+msgstr "重新排序 / 壓縮 / 捨棄"
+
+msgctxt "git operation"
+msgid "Republish (push --set-upstream)"
+msgstr "重新發佈（push --set-upstream）"
+
+msgctxt "git operation"
+msgid "Reset to Remote (reset --hard)"
+msgstr "重設為遠端（reset --hard）"
+
+msgctxt "git operation"
+msgid "Reset to This Commit"
+msgstr "重設至此提交"
+
+msgctxt "git operation"
+msgid "Reset: hard"
+msgstr "重設：hard"
+
+msgctxt "git operation"
+msgid "Reset: mixed"
+msgstr "重設：mixed"
+
+msgctxt "git operation"
+msgid "Reset: soft"
+msgstr "重設：soft"
+
+msgctxt "git operation"
+msgid "Restore All (restore)"
+msgstr "全部還原（restore）"
+
+msgctxt "git operation"
+msgid "Restore File (restore)"
+msgstr "還原檔案（restore）"
+
+msgctxt "git operation"
+msgid "Restore Hunk (restore)"
+msgstr "還原差異區塊（restore）"
+
+msgctxt "git operation"
+msgid "Revert"
+msgstr "還原提交"
+
+msgctxt "git operation"
+msgid "Reword Message"
+msgstr "改寫訊息"
+
+msgctxt "git operation"
+msgid "Show"
+msgstr "顯示"
+
+msgctxt "git operation"
+msgid "Show Diff"
+msgstr "顯示差異"
+
+msgctxt "git operation"
+msgid "Signoff"
+msgstr "簽署"
+
+msgctxt "git operation"
+msgid "Skip (--skip)"
+msgstr "略過（--skip）"
+
+msgctxt "git operation"
+msgid "Skip Hooks (--no-verify)"
+msgstr "略過 Hook（--no-verify）"
+
+msgctxt "git operation"
+msgid "Sort by Name"
+msgstr "依名稱排序"
+
+msgctxt "git operation"
+msgid "Sort by Path"
+msgstr "依路徑排序"
+
+msgctxt "git operation"
+msgid "Squash into One"
+msgstr "壓縮為一個"
+
+msgctxt "git operation"
+msgid "Stage All"
+msgstr "全部暫存"
+
+msgctxt "git operation"
+msgid "Stage All in Section"
+msgstr "暫存區段中的全部"
+
+msgctxt "git operation"
+msgid "Stage File"
+msgstr "暫存檔案"
+
+msgctxt "git operation"
+msgid "Stage Folder"
+msgstr "暫存資料夾"
+
+msgctxt "git operation"
+msgid "Stage Hunk"
+msgstr "暫存區塊"
+
+msgctxt "git operation"
+msgid "Staged Changes"
+msgstr "已暫存的變更"
+
+msgctxt "git operation"
+msgid "Stash All"
+msgstr "貯藏全部"
+
+msgctxt "git operation"
+msgid "Stash Pop"
+msgstr "取出貯藏"
+
+msgctxt "git operation"
+msgid "Stash Staged (stash --staged)"
+msgstr "貯藏已暫存的變更（stash --staged）"
+
+msgctxt "git operation"
+msgid "Stash Tracked"
+msgstr "貯藏已追蹤變更"
+
+msgctxt "git operation"
+msgid "Stop Excluding from MR"
+msgstr "停止從 MR 排除"
+
+msgctxt "git operation"
+msgid "Switch Branch"
+msgstr "切換分支"
+
+msgctxt "git operation"
+msgid "Tag"
+msgstr "標籤"
+
+msgctxt "git operation"
+msgid "Tags"
+msgstr "標籤"
+
+msgctxt "git operation"
+msgid "Toggle Staged"
+msgstr "切換暫存狀態"
+
+msgctxt "git operation"
+msgid "Tree View"
+msgstr "樹狀檢視"
+
+msgctxt "git operation"
+msgid "Trust Directory (safe.directory)"
+msgstr "信任資料夾（safe.directory）"
+
+msgctxt "git operation"
+msgid "Uncommit (reset --soft)"
+msgstr "取消提交（reset --soft）"
+
+msgctxt "git operation"
+msgid "Unstage All"
+msgstr "全部取消暫存"
+
+msgctxt "git operation"
+msgid "Unstage All in Section"
+msgstr "取消暫存區段中的全部"
+
+msgctxt "git operation"
+msgid "Unstage File"
+msgstr "取消暫存檔案"
+
+msgctxt "git operation"
+msgid "Unstage Folder"
+msgstr "取消暫存資料夾"
+
+msgctxt "git operation"
+msgid "Unstage Hunk"
+msgstr "取消暫存區塊"
+
+msgctxt "git operation"
+msgid "Unstaged Changes"
+msgstr "未暫存的變更"
+
+msgctxt "git operation"
+msgid "Use Both"
+msgstr "兩者都使用"
+
+msgctxt "git operation"
+msgid "Use Ours"
+msgstr "使用上方（ours）"
+
+msgctxt "git operation"
+msgid "Use Theirs"
+msgstr "使用下方（theirs）"
+
+msgctxt "git operation"
+msgid "View File"
+msgstr "檢視檔案"
+
+msgctxt "git operation"
+msgid "View Options"
+msgstr "檢視選項"
+
+msgctxt "git operation"
+msgid "View Stash"
+msgstr "檢視貯藏"
+
+msgctxt "git operation"
+msgid "View Stash List (stash list)"
+msgstr "檢視貯藏清單（stash list）"
+
+msgctxt "git panel view options"
+msgid "Name"
+msgstr "名稱"
+
+msgctxt "git panel view options"
+msgid "None"
+msgstr "無"
+
+msgctxt "git panel view options"
+msgid "Path"
+msgstr "路徑"
+
+msgctxt "git panel view options"
+msgid "View"
+msgstr "檢視"
+
+msgctxt "git prompt"
+msgid "Cherry-Pick"
+msgstr "揀選"
+
+msgctxt "git prompt"
+msgid "Go Back"
+msgstr "返回"
+
+msgctxt "git prompt"
+msgid "Move"
+msgstr "移動"
+
+msgctxt "git prompt"
+msgid "Rewrite"
+msgstr "改寫"
+
+msgctxt "git prompt"
+msgid "Squash"
+msgstr "壓縮"
+
+msgctxt "git prompt"
+msgid "Switch and Cherry-Pick"
+msgstr "切換並揀選"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "揀選（cherry-pick）"
+
+msgctxt "git result"
+msgid "Edit commits"
+msgstr "編輯提交"
+
+msgctxt "git result"
+msgid "Move branch"
+msgstr "移動分支"
+
+msgctxt "git result"
+msgid "Reorder commits"
+msgstr "重新排序提交"
+
+msgctxt "git result"
+msgid "Reset branch"
+msgstr "重設分支"
+
+msgctxt "git result"
+msgid "Squash"
+msgstr "壓縮"
+
+msgctxt "git result"
+msgid "Squash commits"
+msgstr "壓縮提交"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "切換分支"
+
+msgctxt "git rewrite"
+msgid "Keep"
+msgstr "保留"
+
+msgctxt "git rewrite"
+msgid "Move Down"
+msgstr "下移"
+
+msgctxt "git rewrite"
+msgid "Move Up"
+msgstr "上移"
+
+msgctxt "git rewrite"
+msgid "Reword"
+msgstr "改寫訊息"
+
+msgctxt "git sequencer"
+msgid "Abort"
+msgstr "中止"
+
+msgctxt "git sequencer"
+msgid "Continue"
+msgstr "繼續"
+
+msgctxt "git sequencer"
+msgid "Skip"
+msgstr "略過"
+
+msgctxt "git sequencer prompt"
+msgid "Abort"
+msgstr "中止"
+
+msgctxt "git sequencer prompt"
+msgid "Cancel"
+msgstr "取消"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "log source"
+msgid "All Branches"
+msgstr "所有分支"
+
+msgctxt "log source"
+msgid "File History"
+msgstr "檔案歷程"
+
+msgctxt "merge commits"
+msgid "Exclude"
+msgstr "排除"
+
+msgctxt "merge commits"
+msgid "Include"
+msgstr "包含"
+
+msgctxt "merge commits"
+msgid "Only"
+msgstr "僅限"
+
+msgctxt "merge request box"
+msgid "Base"
+msgstr "基底"
+
+msgctxt "merge request box"
+msgid "Create"
+msgstr "建立"
+
+msgctxt "merge request box"
+msgid "Message"
+msgstr "訊息"
+
+msgctxt "merge request check"
+msgid "All"
+msgstr "全部"
+
+msgctxt "pack refs"
+msgid "Pack"
+msgstr "封裝"
+
+msgctxt "remove remote"
+msgid "Remove"
+msgstr "移除"
+
+msgctxt "two sentences"
+msgid "{0} {1}"
+msgstr "{0}{1}"

@@ -5,9 +5,6 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-msgid "Back"
-msgstr "戻る"
-
 msgid "Fetching call hierarchy…"
 msgstr "呼び出し階層を取得しています…"
 
@@ -47,3 +44,7 @@ msgstr "方向を切り替え"
 msgid "{path}:{line_number} ({count} call)"
 msgid_plural "{path}:{line_number} ({count} calls)"
 msgstr[0] "{path}:{line_number} ({count} 件の呼び出し)"
+
+msgctxt "call hierarchy"
+msgid "Back"
+msgstr "戻る"

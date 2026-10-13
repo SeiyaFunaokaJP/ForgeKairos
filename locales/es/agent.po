@@ -1,0 +1,579 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid " (case-sensitive)"
+msgstr " (distingue mayúsculas y minúsculas)"
+
+msgid "Abort"
+msgstr "Anular"
+
+msgid "Allow"
+msgstr "Permitir"
+
+msgid "Allow always"
+msgstr "Permitir siempre"
+
+msgid "Allow for this subagent"
+msgstr "Permitir para este subagente"
+
+msgid "Allow for this thread"
+msgstr "Permitir para esta conversación"
+
+msgid "Allow once"
+msgstr "Permitir una vez"
+
+msgid "Always for `{}`"
+msgstr "Siempre para `{}`"
+
+msgid "Always for `{}` commands"
+msgstr "Siempre para comandos `{}`"
+
+msgid "Always for {display_name} MCP tool"
+msgstr "Siempre para la herramienta MCP {display_name}"
+
+msgid "Always for {}"
+msgstr "Siempre para {}"
+
+msgid "Annotate code"
+msgstr "Anotar código"
+
+msgid "Annotate code ({count} note)"
+msgid_plural "Annotate code ({count} notes)"
+msgstr[0] "Anotar código ({count} nota)"
+msgstr[1] "Anotar código ({count} notas)"
+
+msgid "Answered: {selected}"
+msgstr "Respuesta: {selected}"
+
+msgid "Apply code action"
+msgstr "Aplicar acción de código"
+
+msgid "Apply code action #{}"
+msgstr "Aplicar acción de código #{}"
+
+msgid "Apply code action: {title}"
+msgstr "Aplicar acción de código: {title}"
+
+msgid "Asking a question"
+msgstr "Haciendo una pregunta"
+
+msgid "Asking you, because no model is set for the review"
+msgstr "Se le pregunta porque no hay ningún modelo configurado para la revisión"
+
+msgid "Asking you, because the review couldn't decide"
+msgstr "Se le pregunta porque la revisión no pudo decidir"
+
+msgid "Asking you, because the review didn't finish in time"
+msgstr "Se le pregunta porque la revisión no terminó a tiempo"
+
+msgid "Asking you, because the review's answer couldn't be read"
+msgstr "Se le pregunta porque no se pudo leer la respuesta de la revisión"
+
+msgid "Build a repository map"
+msgstr "Crear un mapa del repositorio"
+
+msgid "Build a repository map of {path}"
+msgstr "Crear un mapa del repositorio de {path}"
+
+msgid "Call hierarchy"
+msgstr "Jerarquía de llamadas"
+
+msgid "Callers of {}"
+msgstr "Llamadores de {}"
+
+msgid "Calls made by {}"
+msgstr "Llamadas realizadas por {}"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Check diagnostics for {}"
+msgstr "Comprobar diagnósticos de {}"
+
+msgid "Check project diagnostics"
+msgstr "Comprobar diagnósticos del proyecto"
+
+msgid "Check the changes (git diff)"
+msgstr "Revisar los cambios (git diff)"
+
+msgid "Check the changes (git diff) in {path}"
+msgstr "Revisar los cambios (git diff) en {path}"
+
+msgid "Choose an option"
+msgstr "Elija una opción"
+
+msgid "Clear the editor annotations"
+msgstr "Borrar las anotaciones del editor"
+
+msgid "Click on the page"
+msgstr "Hacer clic en la página"
+
+msgid "Click {}"
+msgstr "Hacer clic en {}"
+
+msgid "Close AI tab {}"
+msgstr "Cerrar la pestaña de IA {}"
+
+msgid "Close an AI tab"
+msgstr "Cerrar una pestaña de IA"
+
+msgid "Code tour"
+msgstr "Recorrido por el código"
+
+msgid "Code tour “{title}” ({count} step)"
+msgid_plural "Code tour “{title}” ({count} steps)"
+msgstr[0] "Recorrido por el código “{title}” ({count} paso)"
+msgstr[1] "Recorrido por el código “{title}” ({count} pasos)"
+
+msgid "Continue"
+msgstr "Continuar"
+
+msgid "Copy path"
+msgstr "Copiar ruta"
+
+msgid "Copy {src} to {dest}"
+msgstr "Copiar {src} a {dest}"
+
+msgid "Create directory"
+msgstr "Crear directorio"
+
+msgid "Create directory {}"
+msgstr "Crear directorio {}"
+
+msgid "Create thread"
+msgstr "Crear conversación"
+
+msgid "Create thread: {}"
+msgstr "Crear conversación: {}"
+
+msgid "Delete path"
+msgstr "Eliminar ruta"
+
+msgid "Delete {}"
+msgstr "Eliminar {}"
+
+msgid "Delete “`{}`”"
+msgstr "Eliminar “`{}`”"
+
+msgid "Deny"
+msgstr "Denegar"
+
+msgid "Edit {}"
+msgstr "Editar {}"
+
+msgid "Editing file"
+msgstr "Editando archivo"
+
+msgid "Failed to read file: {}"
+msgstr "No se pudo leer el archivo: {}"
+
+msgid "Failed to scan project skills: {}"
+msgstr "No se pudieron analizar las habilidades del proyecto: {}"
+
+msgid "Fetch URL"
+msgstr "Obtener URL"
+
+msgid "Fetch {}"
+msgstr "Obtener {}"
+
+msgid "Find on the page"
+msgstr "Buscar en la página"
+
+msgid "Find paths"
+msgstr "Buscar rutas"
+
+msgid "Find paths matching “`{}`”"
+msgstr "Buscar rutas que coincidan con “`{}`”"
+
+msgid "Find references"
+msgstr "Buscar referencias"
+
+msgid "Find references to `{symbol_name}`"
+msgstr "Buscar referencias a `{symbol_name}`"
+
+msgid "Find {} on the page"
+msgstr "Buscar {} en la página"
+
+msgid "Get code actions"
+msgstr "Obtener acciones de código"
+
+msgid "Get code actions for `{symbol_name}`"
+msgstr "Obtener acciones de código para `{symbol_name}`"
+
+msgid "Get hover information"
+msgstr "Obtener información al pasar el cursor"
+
+msgid "Get page {page} of search results for regex {regex_str}{case_info}"
+msgstr "Obtener la página {page} de los resultados de búsqueda para la expresión regular {regex_str}{case_info}"
+
+msgid "Go back in the browser"
+msgstr "Retroceder en el navegador"
+
+msgid "Go forward in the browser"
+msgstr "Avanzar en el navegador"
+
+msgid "Go to definition"
+msgstr "Ir a la definición"
+
+msgid "Go to definition of `{symbol_name}`"
+msgstr "Ir a la definición de `{symbol_name}`"
+
+msgid "Highlight code"
+msgstr "Resaltar código"
+
+msgid "Highlight code ({count} place)"
+msgid_plural "Highlight code ({count} places)"
+msgstr[0] "Resaltar código ({count} lugar)"
+msgstr[1] "Resaltar código ({count} lugares)"
+
+msgid "Hover information for line {1} of {0}"
+msgstr "Información al pasar el cursor por la línea {1} de {0}"
+
+msgid "Hover information for {}"
+msgstr "Información al pasar el cursor por {}"
+
+msgid "Hover on the page"
+msgstr "Pasar el cursor por encima en la página"
+
+msgid "Hover over {}"
+msgstr "Pasar el cursor por encima de {}"
+
+msgid "List agents and models"
+msgstr "Listar agentes y modelos"
+
+msgid "List directory"
+msgstr "Listar directorio"
+
+msgid "List the browser's AI tabs"
+msgstr "Enumerar las pestañas de IA del navegador"
+
+msgid "List the page's network requests"
+msgstr "Enumerar las solicitudes de red de la página"
+
+msgid "List the {path} directory's contents"
+msgstr "Listar el contenido del directorio {path}"
+
+msgid "Move path"
+msgstr "Mover ruta"
+
+msgid "Move {src} to {dest}"
+msgstr "Mover {src} a {dest}"
+
+msgid "Navigate the browser"
+msgstr "Navegar en el navegador"
+
+msgid "Navigate to {}"
+msgstr "Navegar a {}"
+
+msgid "No matches"
+msgstr "Sin coincidencias"
+
+msgid "Only this time"
+msgstr "Solo esta vez"
+
+msgid "Open a new AI tab"
+msgstr "Abrir una nueva pestaña de IA"
+
+msgid "Open {} in a new AI tab"
+msgstr "Abrir {} en una nueva pestaña de IA"
+
+msgid "Or type your own answer"
+msgstr "O escriba su propia respuesta"
+
+msgid "Press keys in the page"
+msgstr "Presionar teclas en la página"
+
+msgid "Press {}"
+msgstr "Presionar {}"
+
+msgid "Read file"
+msgstr "Leer archivo"
+
+msgid "Read file `{path}`"
+msgstr "Leer archivo `{path}`"
+
+msgid "Read file `{path}` (from line {})"
+msgstr "Leer archivo `{path}` (desde la línea {})"
+
+msgid "Read file `{path}` (lines {}-{})"
+msgstr "Leer archivo `{path}` (líneas {}-{})"
+
+msgid "Read the page's console"
+msgstr "Leer la consola de la página"
+
+msgid "Read the page's text"
+msgstr "Leer el texto de la página"
+
+msgid "Recommended"
+msgstr "Recomendado"
+
+msgid "Reload the page"
+msgstr "Recargar la página"
+
+msgid "Rename `{symbol_name}` to `{new_name}`"
+msgstr "Cambiar el nombre de `{symbol_name}` a `{new_name}`"
+
+msgid "Rename symbol"
+msgstr "Cambiar el nombre del símbolo"
+
+msgid "Rename {src} to {filename}"
+msgstr "Cambiar el nombre de {src} a {filename}"
+
+msgid "Retry"
+msgstr "Reintentar"
+
+msgid "Retry (attempt {})"
+msgstr "Reintentar (intento {})"
+
+msgid "Reviewed as safe"
+msgstr "Revisado como seguro"
+
+msgid "Run JavaScript in the page"
+msgstr "Ejecutar JavaScript en la página"
+
+msgid "Run MCP tool `{}`"
+msgstr "Ejecutar herramienta MCP `{}`"
+
+msgid "Run MCP tool `{}` {}"
+msgstr "Ejecutar herramienta MCP `{}` {}"
+
+msgid "Run a git command"
+msgstr "Ejecutar un comando de git"
+
+msgid "Run {}"
+msgstr "Ejecutar {}"
+
+msgid "Run {} in the page"
+msgstr "Ejecutar {} en la página"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "El archivo SKILL.md supera el tamaño máximo de {}KB"
+
+msgid "Scroll the page"
+msgstr "Desplazar la página"
+
+msgid "Search files for regex {regex_str}{case_info}"
+msgstr "Buscar en archivos la expresión regular {regex_str}{case_info}"
+
+msgid "Search symbols"
+msgstr "Buscar símbolos"
+
+msgid "Search symbols: {}"
+msgstr "Buscar símbolos: {}"
+
+msgid "Search the web for {}"
+msgstr "Buscar {} en la web"
+
+msgid "Search with regex"
+msgstr "Buscar con expresión regular"
+
+msgid "Searched the web: {count} result"
+msgid_plural "Searched the web: {count} results"
+msgstr[0] "Se buscó en la web: {count} resultado"
+msgstr[1] "Se buscó en la web: {count} resultados"
+
+msgid "Searching the Web"
+msgstr "Buscando en la web"
+
+msgid "Set a form value"
+msgstr "Establecer un valor de formulario"
+
+msgid "Set the value of {}"
+msgstr "Establecer el valor de {}"
+
+msgid "Skill"
+msgstr "Habilidad"
+
+msgid "Spawning agent"
+msgstr "Iniciando agente"
+
+msgid "Switch AI tabs"
+msgstr "Cambiar de pestaña de IA"
+
+msgid "Switch to AI tab {}"
+msgstr "Cambiar a la pestaña de IA {}"
+
+msgid "Take a screenshot of the page"
+msgstr "Tomar una captura de pantalla de la página"
+
+msgid "Take a snapshot of the page"
+msgstr "Tomar una instantánea de la página"
+
+msgid "Terminal command"
+msgstr "Comando de terminal"
+
+msgid "The review was stopped because the settings changed"
+msgstr "La revisión se detuvo porque cambió la configuración"
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "La configuración permite escribir en cualquier parte del sistema de archivos"
+
+msgid "Type into the page"
+msgstr "Escribir en la página"
+
+msgid "Type layout"
+msgstr "Contenido del tipo"
+
+msgid "Type layout of {}"
+msgstr "Contenido del tipo {}"
+
+msgid "Type {}"
+msgstr "Escribir {}"
+
+msgid "Use the browser"
+msgstr "Usar el navegador"
+
+msgid "Wait for the page"
+msgstr "Esperar a la página"
+
+msgid "Web Search Failed"
+msgstr "Error en la búsqueda web"
+
+msgid "Writing file"
+msgstr "Escribiendo archivo"
+
+msgid "Your answer"
+msgstr "Su respuesta"
+
+msgid "`{}` Skill"
+msgstr "Habilidad `{}`"
+
+msgid "`{}` points outside the project (symlink to `{}`)"
+msgstr "`{}` apunta fuera del proyecto (enlace simbólico a `{}`)"
+
+msgid "line {1} of {0}"
+msgstr "línea {1} de {0}"
+
+msgid "outside the project"
+msgstr "fuera del proyecto"
+
+msgid "which worktree is ambiguous: approving copies it to {destination}"
+msgstr "el worktree es ambiguo: al aprobar, se copia a {destination}"
+
+msgid "which worktree is ambiguous: approving moves it to {destination}"
+msgstr "el worktree es ambiguo: al aprobar, se mueve a {destination}"
+
+msgid "which worktree is ambiguous: approving writes it to {destination}"
+msgstr "el worktree es ambiguo: al aprobar, se escribe en {destination}"
+
+msgid "{count} match"
+msgid_plural "{count} matches"
+msgstr[0] "{count} coincidencia"
+msgstr[1] "{count} coincidencias"
+
+msgid "{title} (agent skills)"
+msgstr "{title} (habilidades del agente)"
+
+msgid "{title} (local settings)"
+msgstr "{title} (configuración del proyecto)"
+
+msgid "{title} (no language server)"
+msgstr "{title} (sin servidor de lenguaje)"
+
+msgid "{title} (settings)"
+msgstr "{title} (configuración)"
+
+msgid "{} (no name index)"
+msgstr "{} (sin índice de nombres)"
+
+msgid "{} (symlinks outside project)"
+msgstr "{} (enlaces simbólicos fuera del proyecto)"
+
+msgctxt "list conjunction"
+msgid " and "
+msgstr " y "
+
+msgctxt "tool name"
+msgid "apply code action"
+msgstr "aplicar acción de código"
+
+msgctxt "tool name"
+msgid "browser: click"
+msgstr "navegador: hacer clic"
+
+msgctxt "tool name"
+msgid "browser: close tab"
+msgstr "navegador: cerrar pestaña"
+
+msgctxt "tool name"
+msgid "browser: hover"
+msgstr "navegador: pasar el cursor"
+
+msgctxt "tool name"
+msgid "browser: navigate"
+msgstr "navegador: navegar"
+
+msgctxt "tool name"
+msgid "browser: open tab"
+msgstr "navegador: abrir pestaña"
+
+msgctxt "tool name"
+msgid "browser: press key"
+msgstr "navegador: presionar tecla"
+
+msgctxt "tool name"
+msgid "browser: run script"
+msgstr "navegador: ejecutar script"
+
+msgctxt "tool name"
+msgid "browser: scroll"
+msgstr "navegador: desplazar"
+
+msgctxt "tool name"
+msgid "browser: select tab"
+msgstr "navegador: seleccionar pestaña"
+
+msgctxt "tool name"
+msgid "browser: set value"
+msgstr "navegador: establecer valor"
+
+msgctxt "tool name"
+msgid "browser: type"
+msgstr "navegador: escribir"
+
+msgctxt "tool name"
+msgid "copy path"
+msgstr "copiar ruta"
+
+msgctxt "tool name"
+msgid "create directory"
+msgstr "crear directorio"
+
+msgctxt "tool name"
+msgid "delete path"
+msgstr "eliminar ruta"
+
+msgctxt "tool name"
+msgid "edit file"
+msgstr "editar archivo"
+
+msgctxt "tool name"
+msgid "fetch"
+msgstr "obtener URL"
+
+msgctxt "tool name"
+msgid "move path"
+msgstr "mover ruta"
+
+msgctxt "tool name"
+msgid "rename symbol"
+msgstr "cambiar el nombre del símbolo"
+
+msgctxt "tool name"
+msgid "sandboxed terminal"
+msgstr "terminal en el sandbox"
+
+msgctxt "tool name"
+msgid "terminal"
+msgstr "terminal"
+
+msgctxt "tool name"
+msgid "write file"
+msgstr "escribir archivo"

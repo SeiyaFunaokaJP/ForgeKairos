@@ -1,0 +1,574 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " (case-sensitive)"
+msgstr " (대소문자 구분)"
+
+msgid "Abort"
+msgstr "중단"
+
+msgid "Allow"
+msgstr "허용"
+
+msgid "Allow always"
+msgstr "항상 허용"
+
+msgid "Allow for this subagent"
+msgstr "이 하위 에이전트에서 허용"
+
+msgid "Allow for this thread"
+msgstr "이 스레드에서 허용"
+
+msgid "Allow once"
+msgstr "한 번 허용"
+
+msgid "Always for `{}`"
+msgstr "`{}`에 항상 적용"
+
+msgid "Always for `{}` commands"
+msgstr "`{}` 명령에 항상 적용"
+
+msgid "Always for {display_name} MCP tool"
+msgstr "{display_name} MCP 도구에 항상 적용"
+
+msgid "Always for {}"
+msgstr "{}에 항상 적용"
+
+msgid "Annotate code"
+msgstr "코드에 주석 달기"
+
+msgid "Annotate code ({count} note)"
+msgid_plural "Annotate code ({count} notes)"
+msgstr[0] "코드에 주석 달기 (메모 {count}개)"
+
+msgid "Answered: {selected}"
+msgstr "답변: {selected}"
+
+msgid "Apply code action"
+msgstr "코드 액션 적용"
+
+msgid "Apply code action #{}"
+msgstr "코드 액션 #{} 적용"
+
+msgid "Apply code action: {title}"
+msgstr "코드 액션 적용: {title}"
+
+msgid "Asking a question"
+msgstr "질문 중"
+
+msgid "Asking you, because no model is set for the review"
+msgstr "검토에 사용할 모델이 설정되지 않았으므로 확인을 요청합니다"
+
+msgid "Asking you, because the review couldn't decide"
+msgstr "검토에서 판단하지 못했으므로 확인을 요청합니다"
+
+msgid "Asking you, because the review didn't finish in time"
+msgstr "검토가 제시간에 끝나지 않았으므로 확인을 요청합니다"
+
+msgid "Asking you, because the review's answer couldn't be read"
+msgstr "검토 응답을 읽을 수 없으므로 확인을 요청합니다"
+
+msgid "Build a repository map"
+msgstr "저장소 맵 만들기"
+
+msgid "Build a repository map of {path}"
+msgstr "{path}의 저장소 맵 만들기"
+
+msgid "Call hierarchy"
+msgstr "호출 계층"
+
+msgid "Callers of {}"
+msgstr "{}의 호출자"
+
+msgid "Calls made by {}"
+msgstr "{}이(가) 호출하는 항목"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Check diagnostics for {}"
+msgstr "{}의 진단 확인"
+
+msgid "Check project diagnostics"
+msgstr "프로젝트 진단 확인"
+
+msgid "Check the changes (git diff)"
+msgstr "변경 사항 확인 (git diff)"
+
+msgid "Check the changes (git diff) in {path}"
+msgstr "{path}의 변경 사항 확인 (git diff)"
+
+msgid "Choose an option"
+msgstr "옵션 선택"
+
+msgid "Clear the editor annotations"
+msgstr "편집기 주석 지우기"
+
+msgid "Click on the page"
+msgstr "페이지 클릭"
+
+msgid "Click {}"
+msgstr "{} 클릭"
+
+msgid "Close AI tab {}"
+msgstr "AI 탭 {} 닫기"
+
+msgid "Close an AI tab"
+msgstr "AI 탭 닫기"
+
+msgid "Code tour"
+msgstr "코드 투어"
+
+msgid "Code tour “{title}” ({count} step)"
+msgid_plural "Code tour “{title}” ({count} steps)"
+msgstr[0] "코드 투어 “{title}” ({count}단계)"
+
+msgid "Continue"
+msgstr "계속"
+
+msgid "Copy path"
+msgstr "경로 복사"
+
+msgid "Copy {src} to {dest}"
+msgstr "{src}을(를) {dest}(으)로 복사"
+
+msgid "Create directory"
+msgstr "디렉터리 만들기"
+
+msgid "Create directory {}"
+msgstr "{} 디렉터리 만들기"
+
+msgid "Create thread"
+msgstr "스레드 만들기"
+
+msgid "Create thread: {}"
+msgstr "스레드 만들기: {}"
+
+msgid "Delete path"
+msgstr "경로 삭제"
+
+msgid "Delete {}"
+msgstr "{} 삭제"
+
+msgid "Delete “`{}`”"
+msgstr "“`{}`” 삭제"
+
+msgid "Deny"
+msgstr "거부"
+
+msgid "Edit {}"
+msgstr "{} 편집"
+
+msgid "Editing file"
+msgstr "파일 편집"
+
+msgid "Failed to read file: {}"
+msgstr "파일을 읽지 못했습니다: {}"
+
+msgid "Failed to scan project skills: {}"
+msgstr "프로젝트 스킬을 스캔하지 못했습니다: {}"
+
+msgid "Fetch URL"
+msgstr "URL 가져오기"
+
+msgid "Fetch {}"
+msgstr "{} 가져오기"
+
+msgid "Find on the page"
+msgstr "페이지에서 찾기"
+
+msgid "Find paths"
+msgstr "경로 찾기"
+
+msgid "Find paths matching “`{}`”"
+msgstr "“`{}`”와(과) 일치하는 경로 찾기"
+
+msgid "Find references"
+msgstr "참조 찾기"
+
+msgid "Find references to `{symbol_name}`"
+msgstr "`{symbol_name}`에 대한 참조 찾기"
+
+msgid "Find {} on the page"
+msgstr "페이지에서 {} 찾기"
+
+msgid "Get code actions"
+msgstr "코드 액션 가져오기"
+
+msgid "Get code actions for `{symbol_name}`"
+msgstr "`{symbol_name}`의 코드 액션 가져오기"
+
+msgid "Get hover information"
+msgstr "호버 정보 가져오기"
+
+msgid "Get page {page} of search results for regex {regex_str}{case_info}"
+msgstr "정규식 {regex_str}{case_info} 검색 결과의 {page}페이지 가져오기"
+
+msgid "Go back in the browser"
+msgstr "브라우저에서 뒤로 이동"
+
+msgid "Go forward in the browser"
+msgstr "브라우저에서 앞으로 이동"
+
+msgid "Go to definition"
+msgstr "정의로 이동"
+
+msgid "Go to definition of `{symbol_name}`"
+msgstr "`{symbol_name}`의 정의로 이동"
+
+msgid "Highlight code"
+msgstr "코드 강조 표시"
+
+msgid "Highlight code ({count} place)"
+msgid_plural "Highlight code ({count} places)"
+msgstr[0] "코드 강조 표시 ({count}곳)"
+
+msgid "Hover information for line {1} of {0}"
+msgstr "{0}의 {1}번째 줄에 대한 호버 정보"
+
+msgid "Hover information for {}"
+msgstr "{}에 대한 호버 정보"
+
+msgid "Hover on the page"
+msgstr "페이지에 마우스 올리기"
+
+msgid "Hover over {}"
+msgstr "{}에 마우스 올리기"
+
+msgid "List agents and models"
+msgstr "에이전트 및 모델 목록 표시"
+
+msgid "List directory"
+msgstr "디렉터리 목록 표시"
+
+msgid "List the browser's AI tabs"
+msgstr "브라우저의 AI 탭 나열"
+
+msgid "List the page's network requests"
+msgstr "페이지의 네트워크 요청 나열"
+
+msgid "List the {path} directory's contents"
+msgstr "{path} 디렉터리의 내용 목록 표시"
+
+msgid "Move path"
+msgstr "경로 이동"
+
+msgid "Move {src} to {dest}"
+msgstr "{src}을(를) {dest}(으)로 이동"
+
+msgid "Navigate the browser"
+msgstr "브라우저에서 페이지 열기"
+
+msgid "Navigate to {}"
+msgstr "{}(으)로 이동"
+
+msgid "No matches"
+msgstr "일치 항목 없음"
+
+msgid "Only this time"
+msgstr "이번만"
+
+msgid "Open a new AI tab"
+msgstr "새 AI 탭 열기"
+
+msgid "Open {} in a new AI tab"
+msgstr "새 AI 탭에서 {} 열기"
+
+msgid "Or type your own answer"
+msgstr "또는 직접 답변 입력"
+
+msgid "Press keys in the page"
+msgstr "페이지에서 키 누르기"
+
+msgid "Press {}"
+msgstr "{} 누르기"
+
+msgid "Read file"
+msgstr "파일 읽기"
+
+msgid "Read file `{path}`"
+msgstr "파일 `{path}` 읽기"
+
+msgid "Read file `{path}` (from line {})"
+msgstr "파일 `{path}` 읽기 ({}줄부터)"
+
+msgid "Read file `{path}` (lines {}-{})"
+msgstr "파일 `{path}` 읽기 ({}-{}줄)"
+
+msgid "Read the page's console"
+msgstr "페이지의 콘솔 읽기"
+
+msgid "Read the page's text"
+msgstr "페이지의 텍스트 읽기"
+
+msgid "Recommended"
+msgstr "권장"
+
+msgid "Reload the page"
+msgstr "페이지 다시 로드"
+
+msgid "Rename `{symbol_name}` to `{new_name}`"
+msgstr "`{symbol_name}`의 이름을 `{new_name}`(으)로 변경"
+
+msgid "Rename symbol"
+msgstr "심볼 이름 변경"
+
+msgid "Rename {src} to {filename}"
+msgstr "{src}을(를) {filename}(으)로 이름 변경"
+
+msgid "Retry"
+msgstr "다시 시도"
+
+msgid "Retry (attempt {})"
+msgstr "다시 시도 ({}번째)"
+
+msgid "Reviewed as safe"
+msgstr "안전한 것으로 검토됨"
+
+msgid "Run JavaScript in the page"
+msgstr "페이지에서 JavaScript 실행"
+
+msgid "Run MCP tool `{}`"
+msgstr "MCP 도구 `{}` 실행"
+
+msgid "Run MCP tool `{}` {}"
+msgstr "MCP 도구 `{}` 실행: {}"
+
+msgid "Run a git command"
+msgstr "git 명령 실행"
+
+msgid "Run {}"
+msgstr "{} 실행"
+
+msgid "Run {} in the page"
+msgstr "페이지에서 {} 실행"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md 파일이 최대 크기 {}KB를 초과합니다"
+
+msgid "Scroll the page"
+msgstr "페이지 스크롤"
+
+msgid "Search files for regex {regex_str}{case_info}"
+msgstr "파일에서 정규식 {regex_str}{case_info} 검색"
+
+msgid "Search symbols"
+msgstr "심볼 검색"
+
+msgid "Search symbols: {}"
+msgstr "심볼 검색: {}"
+
+msgid "Search the web for {}"
+msgstr "웹에서 {} 검색"
+
+msgid "Search with regex"
+msgstr "정규식으로 검색"
+
+msgid "Searched the web: {count} result"
+msgid_plural "Searched the web: {count} results"
+msgstr[0] "웹 검색 완료: 결과 {count}개"
+
+msgid "Searching the Web"
+msgstr "웹 검색 중"
+
+msgid "Set a form value"
+msgstr "양식 값 설정"
+
+msgid "Set the value of {}"
+msgstr "{}의 값 설정"
+
+msgid "Skill"
+msgstr "스킬"
+
+msgid "Spawning agent"
+msgstr "에이전트 생성 중"
+
+msgid "Switch AI tabs"
+msgstr "AI 탭 전환"
+
+msgid "Switch to AI tab {}"
+msgstr "AI 탭 {}(으)로 전환"
+
+msgid "Take a screenshot of the page"
+msgstr "페이지 스크린샷 찍기"
+
+msgid "Take a snapshot of the page"
+msgstr "페이지 스냅샷 가져오기"
+
+msgid "Terminal command"
+msgstr "터미널 명령"
+
+msgid "The review was stopped because the settings changed"
+msgstr "설정이 변경되어 검토를 중지했습니다"
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "설정에서 파일 시스템의 모든 위치에 쓰기를 허용합니다"
+
+msgid "Type into the page"
+msgstr "페이지에 입력"
+
+msgid "Type layout"
+msgstr "타입 레이아웃"
+
+msgid "Type layout of {}"
+msgstr "{}의 타입 레이아웃"
+
+msgid "Type {}"
+msgstr "{} 입력"
+
+msgid "Use the browser"
+msgstr "브라우저 사용"
+
+msgid "Wait for the page"
+msgstr "페이지 대기"
+
+msgid "Web Search Failed"
+msgstr "웹 검색 실패"
+
+msgid "Writing file"
+msgstr "파일 쓰기"
+
+msgid "Your answer"
+msgstr "답변"
+
+msgid "`{}` Skill"
+msgstr "`{}` 스킬"
+
+msgid "`{}` points outside the project (symlink to `{}`)"
+msgstr "`{}`이(가) 프로젝트 외부를 가리킵니다 (`{}`에 대한 심볼릭 링크)"
+
+msgid "line {1} of {0}"
+msgstr "{0}의 {1}번째 줄"
+
+msgid "outside the project"
+msgstr "프로젝트 외부"
+
+msgid "which worktree is ambiguous: approving copies it to {destination}"
+msgstr "어느 워크트리인지 모호함: 승인하면 {destination}(으)로 복사됩니다"
+
+msgid "which worktree is ambiguous: approving moves it to {destination}"
+msgstr "어느 워크트리인지 모호함: 승인하면 {destination}(으)로 이동됩니다"
+
+msgid "which worktree is ambiguous: approving writes it to {destination}"
+msgstr "어느 워크트리인지 모호함: 승인하면 {destination}에 기록됩니다"
+
+msgid "{count} match"
+msgid_plural "{count} matches"
+msgstr[0] "일치 항목 {count}개"
+
+msgid "{title} (agent skills)"
+msgstr "{title} (에이전트 스킬)"
+
+msgid "{title} (local settings)"
+msgstr "{title} (프로젝트 설정)"
+
+msgid "{title} (no language server)"
+msgstr "{title} (언어 서버 없음)"
+
+msgid "{title} (settings)"
+msgstr "{title} (설정)"
+
+msgid "{} (no name index)"
+msgstr "{} (이름 색인 없음)"
+
+msgid "{} (symlinks outside project)"
+msgstr "{} (프로젝트 외부를 가리키는 심볼릭 링크)"
+
+msgctxt "list conjunction"
+msgid " and "
+msgstr " 및 "
+
+msgctxt "tool name"
+msgid "apply code action"
+msgstr "코드 액션 적용"
+
+msgctxt "tool name"
+msgid "browser: click"
+msgstr "브라우저: 클릭"
+
+msgctxt "tool name"
+msgid "browser: close tab"
+msgstr "브라우저: 탭 닫기"
+
+msgctxt "tool name"
+msgid "browser: hover"
+msgstr "브라우저: 호버"
+
+msgctxt "tool name"
+msgid "browser: navigate"
+msgstr "브라우저: 이동"
+
+msgctxt "tool name"
+msgid "browser: open tab"
+msgstr "브라우저: 탭 열기"
+
+msgctxt "tool name"
+msgid "browser: press key"
+msgstr "브라우저: 키 누르기"
+
+msgctxt "tool name"
+msgid "browser: run script"
+msgstr "브라우저: 스크립트 실행"
+
+msgctxt "tool name"
+msgid "browser: scroll"
+msgstr "브라우저: 스크롤"
+
+msgctxt "tool name"
+msgid "browser: select tab"
+msgstr "브라우저: 탭 전환"
+
+msgctxt "tool name"
+msgid "browser: set value"
+msgstr "브라우저: 값 설정"
+
+msgctxt "tool name"
+msgid "browser: type"
+msgstr "브라우저: 입력"
+
+msgctxt "tool name"
+msgid "copy path"
+msgstr "경로 복사"
+
+msgctxt "tool name"
+msgid "create directory"
+msgstr "디렉터리 만들기"
+
+msgctxt "tool name"
+msgid "delete path"
+msgstr "경로 삭제"
+
+msgctxt "tool name"
+msgid "edit file"
+msgstr "파일 편집"
+
+msgctxt "tool name"
+msgid "fetch"
+msgstr "URL 가져오기"
+
+msgctxt "tool name"
+msgid "move path"
+msgstr "경로 이동"
+
+msgctxt "tool name"
+msgid "rename symbol"
+msgstr "심볼 이름 변경"
+
+msgctxt "tool name"
+msgid "sandboxed terminal"
+msgstr "샌드박스 터미널"
+
+msgctxt "tool name"
+msgid "terminal"
+msgstr "터미널"
+
+msgctxt "tool name"
+msgid "write file"
+msgstr "파일 쓰기"

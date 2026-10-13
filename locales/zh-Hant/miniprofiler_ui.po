@@ -1,0 +1,34 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "All threads"
+msgstr "所有執行緒"
+
+msgid "Include profiler timings"
+msgstr "包含分析工具本身的計時"
+
+msgid "Pause"
+msgstr "暫停"
+
+msgid "Profiler Window"
+msgstr "分析工具視窗"
+
+msgid "Remote: All threads"
+msgstr "遠端：所有執行緒"
+
+msgid "Remote: Foreground"
+msgstr "遠端：前景"
+
+msgid "Resume"
+msgstr "繼續執行"
+
+msgid "Save"
+msgstr "儲存"
+
+msgctxt "profiler thread"
+msgid "Foreground"
+msgstr "前景"

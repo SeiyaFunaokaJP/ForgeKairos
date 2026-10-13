@@ -1,0 +1,268 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\n\n1 of these has unsaved changes, which will be lost."
+msgstr "\n\n其中 1 个文件包含未保存的更改，这些更改将丢失。"
+
+msgid "\n\nIt has unsaved changes, which will be lost."
+msgstr "\n\n该文件包含未保存的更改，这些更改将丢失。"
+
+msgid "\n\n{dirty_buffers} of these have unsaved changes, which will be lost."
+msgstr "\n\n其中 {dirty_buffers} 个文件包含未保存的更改，这些更改将丢失。"
+
+msgid ".. 1 file not shown"
+msgstr ".. 还有 1 个文件未显示"
+
+msgid ".. {omitted_count} files not shown"
+msgstr ".. 还有 {omitted_count} 个文件未显示"
+
+msgid "A file or folder with name {} already exists in the destination folder. Do you want to replace it?"
+msgstr "目标文件夹中已存在名为 {} 的文件或文件夹。是否替换？"
+
+msgid "Add Folders to Project…"
+msgstr "将文件夹添加到项目…"
+
+msgid "Add to .git/info/exclude"
+msgstr "添加到 .git/info/exclude"
+
+msgid "Add to .gitignore"
+msgstr "添加到 .gitignore"
+
+msgid "Apply Patch File…"
+msgstr "应用补丁文件…"
+
+msgid "Are you sure you want to permanently delete the following {} files?\n{}"
+msgstr "确定要永久删除以下 {} 个文件吗？\n{}"
+
+msgid "Are you sure you want to permanently delete {}?"
+msgstr "确定要永久删除 {} 吗？"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Change Folder…"
+msgstr "更改文件夹…"
+
+msgid "Collapse All"
+msgstr "全部折叠"
+
+msgid "Compare Marked Files"
+msgstr "比较标记的文件"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Copy File Permalink"
+msgstr "复制文件永久链接"
+
+msgid "Copy Path"
+msgstr "复制路径"
+
+msgid "Copy Relative Path"
+msgstr "复制相对路径"
+
+msgid "Create Patch File…"
+msgstr "创建补丁文件…"
+
+msgid "Created an excluded directory at {}.\nAlter `file_scan_exclusions` in the settings to show it in the panel"
+msgstr "已在 {} 创建被排除的文件夹。\n要在面板中显示它，请在设置中修改 `file_scan_exclusions`"
+
+msgid "Cut"
+msgstr "剪切"
+
+msgid "Discard changes to {}?"
+msgstr "放弃对 {} 的更改？"
+
+msgid "Disconnected from SSH host"
+msgstr "已与 SSH 主机断开连接"
+
+msgid "Disconnected from remote project"
+msgstr "已与远程项目断开连接"
+
+msgid "Do you want to trash the following {} files?\n{}"
+msgstr "是否将以下 {} 个文件移至回收站？\n{}"
+
+msgid "Do you want to trash {}?"
+msgstr "是否将 {} 移至回收站？"
+
+msgid "Download"
+msgstr "下载"
+
+msgid "Download..."
+msgstr "下载..."
+
+msgid "Downloaded {} files"
+msgstr "已下载 {} 个文件"
+
+msgid "Downloading 0/{} files..."
+msgstr "正在下载 0/{} 个文件..."
+
+msgid "Downloading {}/{} files..."
+msgstr "正在下载 {}/{} 个文件..."
+
+msgid "Duplicate"
+msgstr "创建副本"
+
+msgid "Expand All"
+msgstr "全部展开"
+
+msgid "Failed to add to .git/info/exclude: {}"
+msgstr "添加到 .git/info/exclude 失败：{}"
+
+msgid "Failed to add to .gitignore: {}"
+msgstr "添加到 .gitignore 失败：{}"
+
+msgid "Failed to delete {failed_count} of {total_count} file."
+msgstr "{total_count} 个文件中有 {failed_count} 个删除失败。"
+
+msgid "Failed to delete {failed_count} of {total_count} files."
+msgstr "{total_count} 个文件中有 {failed_count} 个删除失败。"
+
+msgid "Failed to open file"
+msgstr "打开文件失败"
+
+msgid "Failed to refresh"
+msgstr "刷新失败"
+
+msgid "Failed to restore `{name}`. It may have been permanently deleted."
+msgstr "还原 `{name}` 失败。它可能已被永久删除。"
+
+msgid "Failed to restore `{name}`. Something already exists at its original location."
+msgstr "还原 `{name}` 失败。原位置已存在其他文件或文件夹。"
+
+msgid "Failed to restore {}: {}"
+msgstr "还原 {} 失败：{}"
+
+msgid "Failed to trash `{name}`."
+msgstr "将 `{name}` 移至回收站失败。"
+
+msgid "Failed to trash `{name}`. It no longer exists."
+msgstr "将 `{name}` 移至回收站失败。该条目已不存在。"
+
+msgid "Failed to trash {failed_count} of {total_count} file."
+msgstr "{total_count} 个文件中有 {failed_count} 个移至回收站失败。"
+
+msgid "Failed to trash {failed_count} of {total_count} files."
+msgstr "{total_count} 个文件中有 {failed_count} 个移至回收站失败。"
+
+msgid "Failed to {operation} `{from_name}` to `{to_name}`. A file or folder already exists there."
+msgstr "将 `{from_name}` {operation}至 `{to_name}` 失败。该位置已存在文件或文件夹。"
+
+msgid "Failed to {operation} `{from_name}`. It no longer exists."
+msgstr "{operation} `{from_name}` 失败。该条目已不存在。"
+
+msgid "File or directory '{}' already exists at location. Please choose a different name."
+msgstr "此位置已存在名为“{}”的文件或文件夹。请选择其他名称。"
+
+msgid "File or directory name cannot be empty."
+msgstr "文件或文件夹名称不能为空。"
+
+msgid "File or directory name contains leading or trailing whitespace."
+msgstr "文件或文件夹名称包含前导或尾随空白字符。"
+
+msgid "Find in Folder…"
+msgstr "在文件夹中查找…"
+
+msgid "Fold Directory"
+msgstr "折叠文件夹"
+
+msgid "New File"
+msgstr "新建文件"
+
+msgid "New Folder"
+msgstr "新建文件夹"
+
+msgid "Open File Permalink"
+msgstr "打开文件永久链接"
+
+msgid "Open Markdown Preview"
+msgstr "打开 Markdown 预览"
+
+msgid "Open in Default App"
+msgstr "用默认应用打开"
+
+msgid "Open in Terminal"
+msgstr "在终端中打开"
+
+msgid "Paste"
+msgstr "粘贴"
+
+msgid "Project Panel"
+msgstr "项目面板"
+
+msgid "Redo"
+msgstr "重做"
+
+msgid "Redo Failed"
+msgstr "重做失败"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Remove from Project"
+msgstr "从项目中移除"
+
+msgid "Rename"
+msgstr "重命名"
+
+msgid "Replace"
+msgstr "替换"
+
+msgid "Restore"
+msgstr "还原"
+
+msgid "Search Inside"
+msgstr "在此处搜索"
+
+msgid "Symbolic Link"
+msgstr "符号链接"
+
+msgid "This cannot be undone."
+msgstr "此操作无法撤销。"
+
+msgid "Trash"
+msgstr "移至回收站"
+
+msgid "Undo"
+msgstr "撤销"
+
+msgid "Undo Failed"
+msgstr "撤销失败"
+
+msgid "Unfold Directory"
+msgstr "展开文件夹"
+
+msgid "View History"
+msgstr "查看历史记录"
+
+msgid "item"
+msgstr "条目"
+
+msgid "{} entries"
+msgstr "{} 个条目"
+
+msgid "{} is not shared by the host. This could be because it has been marked as `private`"
+msgstr "{} 未被主机共享。这可能是因为它被标记为 `private`。"
+
+msgctxt "delete permanently"
+msgid "Delete"
+msgstr "删除"
+
+msgctxt "discard file changes"
+msgid "Restore File"
+msgstr "还原文件"
+
+msgctxt "file operation"
+msgid "move"
+msgstr "移动"
+
+msgctxt "file operation"
+msgid "rename"
+msgstr "重命名"

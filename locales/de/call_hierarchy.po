@@ -1,0 +1,54 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Fetching call hierarchy…"
+msgstr "Aufrufhierarchie wird abgerufen…"
+
+msgid "No callable symbol under the cursor"
+msgstr "Kein aufrufbares Symbol unter dem Cursor"
+
+msgid "No incoming calls found"
+msgstr "Keine eingehenden Aufrufe gefunden"
+
+msgid "No matches"
+msgstr "Keine Treffer"
+
+msgid "No outgoing calls found"
+msgstr "Keine ausgehenden Aufrufe gefunden"
+
+msgid "Search calls from `{}`..."
+msgstr "Ausgehende Aufrufe von `{}` suchen..."
+
+msgid "Search calls to `{}`..."
+msgstr "Eingehende Aufrufe an `{}` suchen..."
+
+msgid "Search incoming calls..."
+msgstr "Eingehende Aufrufe suchen..."
+
+msgid "Search outgoing calls..."
+msgstr "Ausgehende Aufrufe suchen..."
+
+msgid "Show Callees"
+msgstr "Aufgerufene anzeigen"
+
+msgid "Show Callers"
+msgstr "Aufrufer anzeigen"
+
+msgid "Switch Direction"
+msgstr "Richtung wechseln"
+
+msgid "{path}:{line_number} ({count} call)"
+msgid_plural "{path}:{line_number} ({count} calls)"
+msgstr[0] "{path}:{line_number} ({count} Aufruf)"
+msgstr[1] "{path}:{line_number} ({count} Aufrufe)"
+
+msgctxt "call hierarchy"
+msgid "Back"
+msgstr "Zurück"

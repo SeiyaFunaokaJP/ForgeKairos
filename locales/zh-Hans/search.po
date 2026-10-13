@@ -1,0 +1,182 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Also search files ignored by configuration"
+msgstr "同时搜索被配置忽略的文件"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Close Search Bar"
+msgstr "关闭搜索栏"
+
+msgid "Collapse All Files"
+msgstr "折叠所有文件"
+
+msgid "Collapse All Search Results"
+msgstr "折叠所有搜索结果"
+
+msgid "Don't Save"
+msgstr "不保存"
+
+msgid "Down"
+msgstr "向下"
+
+msgid "Exclude: e.g. vendor/*, *.lock"
+msgstr "排除：例如 vendor/*, *.lock"
+
+msgid "Expand All Files"
+msgstr "展开所有文件"
+
+msgid "Expand All Search Results"
+msgstr "展开所有搜索结果"
+
+msgid "Find and replace"
+msgstr "查找和替换"
+
+msgid "Find in Results"
+msgstr "在结果中查找"
+
+msgid "Fold"
+msgstr "折叠"
+
+msgid "Hit enter to search. For more options:"
+msgstr "按 Enter 开始搜索。更多选项："
+
+msgid "Include/exclude specific paths"
+msgstr "包含/排除特定路径"
+
+msgid "Include: e.g. src/**/*.rs"
+msgstr "包含：例如 src/**/*.rs"
+
+msgid "Left"
+msgstr "左"
+
+msgid "Loading project…"
+msgstr "正在加载项目…"
+
+msgid "Match Case Sensitivity"
+msgstr "区分大小写"
+
+msgid "Match Whole Words"
+msgstr "全字匹配"
+
+msgid "Match case"
+msgstr "区分大小写"
+
+msgid "Match whole words"
+msgstr "全字匹配"
+
+msgid "Match with regex"
+msgstr "使用正则表达式匹配"
+
+msgid "No Results"
+msgstr "无结果"
+
+msgid "No more matches"
+msgstr "没有更多匹配项"
+
+msgid "No results found in this project for the provided query"
+msgstr "在此项目中未找到与所提供查询匹配的结果"
+
+msgid "One Match Per Line"
+msgstr "每行一个匹配项"
+
+msgid "Only Search Open Files"
+msgstr "仅搜索已打开的文件"
+
+msgid "Open File"
+msgstr "打开文件"
+
+msgid "Open Multiple"
+msgstr "打开多个文件"
+
+msgid "Open as Tab"
+msgstr "作为标签页打开"
+
+msgid "Project Search"
+msgstr "项目搜索"
+
+msgid "Project search buffer contains unsaved edits. Do you want to save it?"
+msgstr "项目搜索缓冲区包含未保存的编辑。是否保存？"
+
+msgid "Replace All Matches"
+msgstr "替换所有匹配项"
+
+msgid "Replace Next Match"
+msgstr "替换下一个匹配项"
+
+msgid "Replace in project…"
+msgstr "在项目中替换…"
+
+msgid "Replace with…"
+msgstr "替换为…"
+
+msgid "Right"
+msgstr "右"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Search All Files"
+msgstr "搜索所有文件"
+
+msgid "Search Backwards"
+msgstr "向后搜索"
+
+msgid "Search Limits Reached\nTry narrowing your search"
+msgstr "已达搜索上限\n尝试缩小搜索范围"
+
+msgid "Search all files…"
+msgstr "搜索所有文件…"
+
+msgid "Searching…"
+msgstr "正在搜索…"
+
+msgid "Search…"
+msgstr "搜索…"
+
+msgid "Select All Matches"
+msgstr "选择所有匹配项"
+
+msgid "Split…"
+msgstr "拆分…"
+
+msgid "Start typing to search. For more options:"
+msgstr "输入内容即可开始搜索。更多选项："
+
+msgid "Toggle Filters"
+msgstr "切换筛选器"
+
+msgid "Toggle Replace"
+msgstr "切换替换"
+
+msgid "Toggle Search Selection"
+msgstr "切换仅在选区内搜索"
+
+msgid "Unfold"
+msgstr "展开"
+
+msgid "Up"
+msgstr "向上"
+
+msgid "Use Regular Expressions"
+msgstr "使用正则表达式"
+
+msgid "{} to toggle all"
+msgstr "按 {} 切换全部"
+
+msgctxt "search bar"
+msgid "Select Next Match"
+msgstr "选择下一个匹配项"
+
+msgctxt "search bar"
+msgid "Select Previous Match"
+msgstr "选择上一个匹配项"

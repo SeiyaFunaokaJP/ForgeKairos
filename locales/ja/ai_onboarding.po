@@ -92,6 +92,9 @@ msgstr "サンドボックスの設定を開く"
 msgid "Optional credit packs for additional usage"
 msgstr "追加利用向けのオプションのクレジットパック"
 
+msgid "Pro Trial"
+msgstr "Pro トライアル"
+
 msgid "Sandbox"
 msgstr "サンドボックス"
 

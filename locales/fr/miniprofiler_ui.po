@@ -1,0 +1,34 @@
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "All threads"
+msgstr "Tous les threads"
+
+msgid "Include profiler timings"
+msgstr "Inclure les mesures du profileur"
+
+msgid "Pause"
+msgstr "Suspendre"
+
+msgid "Profiler Window"
+msgstr "Fenêtre du profileur"
+
+msgid "Remote: All threads"
+msgstr "Distant : tous les threads"
+
+msgid "Remote: Foreground"
+msgstr "Distant : premier plan"
+
+msgid "Resume"
+msgstr "Reprendre"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgctxt "profiler thread"
+msgid "Foreground"
+msgstr "Premier plan"

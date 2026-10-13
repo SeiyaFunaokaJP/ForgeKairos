@@ -1,0 +1,165 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Add to Allowlist and Update"
+msgstr "Agregar a la lista de permitidos y actualizar"
+
+msgid "Agentic"
+msgstr "Agéntico"
+
+msgid "Application menu"
+msgstr "Menú de la aplicación"
+
+msgid "Branch & Stash"
+msgstr "Rama y stash"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Classic"
+msgstr "Clásico"
+
+msgid "Click to Follow"
+msgstr "Haga clic para seguir"
+
+msgid "Close Announcement Banner"
+msgstr "Cerrar banner de anuncio"
+
+msgid "Connected to: {host}"
+msgstr "Conectado con: {host}"
+
+msgid "Connecting to: {host}"
+msgstr "Conectando con: {host}"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "Intento fallido de conexión con {host}. Reintentando..."
+
+msgid "Create Branch"
+msgstr "Crear rama"
+
+msgid "Creating {}…"
+msgstr "Creando {}…"
+
+msgid "Currently Checked Out: {}"
+msgstr "Rama actual: {}"
+
+msgid "Currently In Use: {}"
+msgstr "En uso actualmente: {}"
+
+msgid "Custom"
+msgstr "Personalizado"
+
+msgid "Detached HEAD: {}"
+msgstr "detached HEAD: {}"
+
+msgid "Dev Container"
+msgstr "Contenedor de desarrollo"
+
+msgid "Disconnected"
+msgstr "Desconectado"
+
+msgid "Disconnected from {host}"
+msgstr "Desconectado de {host}"
+
+msgid "Downloading the update needs network access"
+msgstr "Para descargar la actualización se necesita acceso a la red"
+
+msgid "Extensions"
+msgstr "Extensiones"
+
+msgid "Icon Themes…"
+msgstr "Temas de iconos…"
+
+msgid "Introducing:"
+msgstr "Presentamos:"
+
+msgid "It won't show again for this feature"
+msgstr "No volverá a mostrarse para esta función"
+
+msgid "Keymap"
+msgstr "Mapa de teclas"
+
+msgid "Loading {}…"
+msgstr "Cargando {}…"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "Se perdió la conexión con {host}. Volviendo a conectar..."
+
+msgid "Mark this project as trusted and unlock all features"
+msgstr "Marcar este proyecto como de confianza y desbloquear todas las funciones"
+
+msgid "Open Application Menu"
+msgstr "Abrir menú de la aplicación"
+
+msgid "Open Recent Project"
+msgstr "Abrir proyecto reciente"
+
+msgid "Organization"
+msgstr "Organización"
+
+msgid "Panel Layout"
+msgstr "Diseño del panel"
+
+msgid "Please restart Zed to Collaborate"
+msgstr "Reinicie ForgeKairos para colaborar"
+
+msgid "Please update Zed to Collaborate"
+msgstr "Actualice ForgeKairos para colaborar"
+
+msgid "Recent Projects"
+msgstr "Proyectos recientes"
+
+msgid "Remote Project"
+msgstr "Proyecto remoto"
+
+msgid "Restart to update Zed"
+msgstr "Reiniciar para actualizar ForgeKairos"
+
+msgid "Restricted Mode"
+msgstr "Modo restringido"
+
+msgid "Settings"
+msgstr "Configuración"
+
+msgid "Sign In"
+msgstr "Iniciar sesión"
+
+msgid "Sign Out"
+msgstr "Cerrar sesión"
+
+msgid "Signing in…"
+msgstr "Iniciando sesión…"
+
+msgid "Themes…"
+msgstr "Temas…"
+
+msgid "To download version {version}, these hosts must be added to the network allowlist:\n\n{hosts}\n\nOnce added, connections to them are always allowed. You can remove them at any time on the Network page of the settings."
+msgstr "Para descargar la versión {version}, se deben agregar estos hosts a la lista de permitidos de red:\n\n{hosts}\n\nUna vez agregados, las conexiones a ellos siempre se permiten. Puede quitarlos en cualquier momento en la página Red de la configuración."
+
+msgid "Toggle AI chat"
+msgstr "Mostrar u ocultar el chat de IA"
+
+msgid "Update Needs Permission"
+msgstr "La actualización necesita permiso"
+
+msgid "Updating..."
+msgstr "Actualizando..."
+
+msgid "User menu"
+msgstr "Menú de usuario"
+
+msgid "Worktree"
+msgstr "Worktree"
+
+msgid "You're in Restricted Mode"
+msgstr "Está en modo restringido"
+
+msgid "{} is sharing this project. Click to follow."
+msgstr "{} está compartiendo este proyecto. Haga clic para seguir."

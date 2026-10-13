@@ -1,0 +1,2303 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"Sandbox\" on the \"AI\" page is a separate setting that isolates the commands agents run (restricting which domains they can reach and where they can write). However, domains allowed there take effect only within this list. Think of the sandbox as narrowing this scope further rather than widening what is allowed."
+msgstr "“AI”页面上的“沙盒”是另一项设置，用于隔离智能体运行的命令（限制它们可以访问的域名以及可以写入的位置）。但是，在那里允许的域名仅在此列表范围内生效。可以将沙盒理解为进一步缩小此范围，而不是扩大允许的内容。"
+
+msgid "\"{label}\": \"{name}\" in `{key}` must be a string."
+msgstr "“{label}”：`{key}` 中的“{name}”必须是字符串。"
+
+msgid "\"{label}\": `args` must be an array of strings."
+msgstr "“{label}”：`args` 必须是字符串数组。"
+
+msgid "\"{label}\": `command.path` must be a string."
+msgstr "“{label}”：`command.path` 必须是字符串。"
+
+msgid "\"{label}\": `command` is empty."
+msgstr "“{label}”：`command` 为空。"
+
+msgid "\"{label}\": `command` must be a string."
+msgstr "“{label}”：`command` 必须是字符串。"
+
+msgid "\"{label}\": `enabled` must be true or false."
+msgstr "“{label}”：`enabled` 必须为 true 或 false。"
+
+msgid "\"{label}\": `oauth` must look like {{ \"client_id\": \"…\" }}."
+msgstr "“{label}”：`oauth` 的格式必须类似于 {{ \"client_id\": \"…\" }}。"
+
+msgid "\"{label}\": `remote` must be true or false."
+msgstr "“{label}”：`remote` 必须为 true 或 false。"
+
+msgid "\"{label}\": `timeout` must be a positive whole number of seconds."
+msgstr "“{label}”：`timeout` 必须是以秒为单位的正整数。"
+
+msgid "\"{label}\": `type` \"{kind}\" is not supported. Use `stdio`, `http`, or `sse`."
+msgstr "“{label}”：不支持 `type` “{kind}”。请使用 `stdio`、`http` 或 `sse`。"
+
+msgid "\"{label}\": `type` must be a string."
+msgstr "“{label}”：`type` 必须是字符串。"
+
+msgid "\"{label}\": `url` is not set."
+msgstr "“{label}”：未设置 `url`。"
+
+msgid "\"{label}\": `{key}` must be a URL string."
+msgstr "“{label}”：`{key}` 必须是 URL 字符串。"
+
+msgid "\"{label}\": `{key}` must be an object ({{ … }})."
+msgstr "“{label}”：`{key}` 必须是对象（{{ … }}）。"
+
+msgid "\"{label}\": neither `command` nor `url` is set."
+msgstr "“{label}”：`command` 和 `url` 均未设置。"
+
+msgid "\"{name}\": the value is not an object ({{ … }})."
+msgstr "“{name}”：该值不是对象（{{ … }}）。"
+
+msgid "\"{name}\": {error}"
+msgstr "“{name}”：{error}"
+
+msgid "(added)"
+msgstr "（已添加）"
+
+msgid "(loading the allowlist)"
+msgstr "（正在加载允许列表）"
+
+msgid "(not added)"
+msgstr "（未添加）"
+
+msgid "(optional)"
+msgstr "（可选）"
+
+msgid "(unnamed)"
+msgstr "（未命名）"
+
+msgid "// Zed egress allowlist\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// ForgeKairos 外部通信允许列表\n//\n// 由 AI 发起的外部通信（AI 提供商、智能体工具、MCP 服务器、\n// 外部智能体进程）仅允许访问此处写入的主机。\n// IDE 自身工具（如语言服务器和扩展）的通信不在此范围内。\n// 127.0.0.1 / ::1 / localhost 无需写入，始终允许。\n// 可以使用 // 注释和末尾逗号。保存后更改即生效。\n"
+
+msgid "127.0.0.1 / ::1 / localhost are always allowed without being registered, so local LLM servers (such as Ollama) work even with an empty allowlist. A small number of hosts, such as the external agent (ACP) registry, are allowed by built-in rules. Every redirect target is checked the same way, one hop at a time."
+msgstr "127.0.0.1 / ::1 / localhost 无需注册即始终允许，因此即使允许列表为空，本地 LLM 服务器（如 Ollama）也能正常工作。少数主机（如外部智能体（ACP）注册表）由内置规则允许。每个重定向目标都会以同样的方式逐跃点检查。"
+
+msgid "A client secret is required to connect this server"
+msgstr "连接此服务器需要客户端密钥"
+
+msgid "A client secret is required to connect."
+msgstr "需要客户端密钥才能连接。"
+
+msgid "A command server: Zed starts the executable and talks to it over standard input and output."
+msgstr "命令型服务器：ForgeKairos 启动可执行文件，并通过标准输入和输出与其通信。"
+
+msgid "A file (not a skill directory) already exists at {}. Delete it or pick a different skill name."
+msgstr "{} 处已存在一个文件（不是技能目录）。删除它或选择其他技能名称。"
+
+msgid "A pattern with that name already exists in this rule list."
+msgstr "此规则列表中已存在同名模式。"
+
+msgid "A personal access token for the login. Without one, git asks for the password as usual."
+msgstr "用于该登录名的个人访问令牌。如果没有，Git 将照常询问密码。"
+
+msgid "A project window is needed to install agents"
+msgstr "安装智能体需要项目窗口"
+
+msgid "A project window is needed to run this in the terminal"
+msgstr "要在终端中运行此操作，需要项目窗口"
+
+msgid "A server defined in the project settings starts in the project's folder once you allow it."
+msgstr "项目设置中定义的服务器在你允许后会在项目文件夹中启动。"
+
+msgid "A server named \"{name}\" already exists. Open it in the form and rename it before adding it."
+msgstr "名为“{name}”的服务器已存在。请在表单中打开它并重命名，然后再添加。"
+
+msgid "A server named \"{}\" already exists."
+msgstr "名为“{}”的服务器已存在。"
+
+msgid "A server with this name already exists"
+msgstr "同名服务器已存在"
+
+msgid "A skill named \"{name}\" already exists at {}. Pick a different name."
+msgstr "名为“{name}”的技能已存在于 {}。选择其他名称。"
+
+msgid "A small, fast model is enough (for example, an 8B-class model on Ollama). When none is set, the fast model is used, then the default model. To judge an action, the tool name, command, and paths are sent to that model's provider, so a local model is recommended. If no answer comes back within 10 seconds, no model is available, or the answer can't be read, a confirmation is shown."
+msgstr "小而快的模型就足够了（例如 Ollama 上的 8B 级模型）。未设置时，将使用快速模型，其次是默认模型。为了判定操作，工具名称、命令和路径会被发送到该模型的提供商，因此推荐使用本地模型。如果 10 秒内没有返回结果、没有可用模型或无法读取结果，则会显示确认。"
+
+msgid "A token is stored. Leave this empty to keep it."
+msgstr "已存储令牌。留空以保留它。"
+
+msgid "A token needs a host and a login to sign in with."
+msgstr "使用令牌需要用于登录的主机和登录名。"
+
+msgid "A unique name used to identify this provider."
+msgstr "用于标识此提供商的唯一名称。"
+
+msgid "A wildcard is allowed only as a leading `*.` (for example, *.corp.example)."
+msgstr "通配符只能作为开头的 `*.` 使用（例如 *.corp.example）。"
+
+msgid "ACP Agent"
+msgstr "ACP 智能体"
+
+msgid "ACP Docs"
+msgstr "ACP 文档"
+
+msgid "AI Connections"
+msgstr "AI 连接"
+
+msgid "AI features are off. Turn on \"Enable Agent\" on the AI page to use them."
+msgstr "AI 功能已关闭。要使用这些功能，请在 AI 页面上打开“启用智能体”。"
+
+msgid "API Key"
+msgstr "API 密钥"
+
+msgid "API Key Configured"
+msgstr "API 密钥已配置"
+
+msgid "API Key Set in Environment Variable"
+msgstr "API 密钥已通过环境变量设置"
+
+msgid "API Key cannot be empty"
+msgstr "API 密钥不能为空"
+
+msgid "API URL"
+msgstr "API URL"
+
+msgid "API URL cannot be empty"
+msgstr "API URL 不能为空"
+
+msgid "Accept the external AI warning to list models from this server."
+msgstr "接受外部 AI 警告后才能列出此服务器的模型。"
+
+msgid "Account"
+msgstr "账户"
+
+msgid "Account Name"
+msgstr "账户名称"
+
+msgid "Accounts a repository can commit and push as. Pick one for each repository with the account button next to Commit in the Git panel; a repository without one follows git's own configuration. Tokens are kept in {store}, never in settings.json."
+msgstr "仓库可用于提交和推送的账户。在 Git 面板中“提交”旁的账户按钮为每个仓库选择一个；未选择的仓库遵循 Git 自身的配置。令牌保存在 {store} 中，绝不会写入 settings.json。"
+
+msgid "Action to take when no patterns match."
+msgstr "没有匹配模式时采取的操作。"
+
+msgid "Active Provider"
+msgstr "当前提供商"
+
+msgid "Add"
+msgstr "添加"
+
+msgid "Add Account"
+msgstr "添加账户"
+
+msgid "Add Agent"
+msgstr "添加智能体"
+
+msgid "Add All"
+msgstr "全部添加"
+
+msgid "Add Custom Agent"
+msgstr "添加自定义智能体"
+
+msgid "Add Git Account"
+msgstr "添加 Git 账户"
+
+msgid "Add Local MCP Server"
+msgstr "添加本地 MCP 服务器"
+
+msgid "Add Local Server"
+msgstr "添加本地服务器"
+
+msgid "Add MCP Server from Template"
+msgstr "从模板添加 MCP 服务器"
+
+msgid "Add MCP Servers from JSON"
+msgstr "从 JSON 添加 MCP 服务器"
+
+msgid "Add Model"
+msgstr "添加模型"
+
+msgid "Add Provider"
+msgstr "添加提供商"
+
+msgid "Add Remote MCP Server"
+msgstr "添加远程 MCP 服务器"
+
+msgid "Add Remote Server"
+msgstr "添加远程服务器"
+
+msgid "Add Server"
+msgstr "添加服务器"
+
+msgid "Add a host (for example, api.anthropic.com, *.corp.example)…"
+msgstr "添加主机（例如 api.anthropic.com、*.corp.example）…"
+
+msgid "Add an absolute path (e.g. /path/to/directory)…"
+msgstr "添加绝对路径（例如 /path/to/directory）…"
+
+msgid "Add an entry"
+msgstr "添加条目"
+
+msgid "Add domain (e.g. github.com or *.npmjs.org)…"
+msgstr "添加域名（例如 github.com 或 *.npmjs.org）…"
+
+msgid "Add from Template"
+msgstr "从模板添加"
+
+msgid "Add regex pattern…"
+msgstr "添加正则表达式模式…"
+
+msgid "Add skill content…"
+msgstr "添加技能内容…"
+
+msgid "Add to Allowlist"
+msgstr "添加到允许列表"
+
+msgid "Add {count} Server"
+msgid_plural "Add All {count} Servers"
+msgstr[0] "全部添加 {count} 个服务器"
+
+msgid "Add {count} server to your user settings?"
+msgid_plural "Add all {count} servers to your user settings?"
+msgstr[0] "是否将全部 {count} 个服务器添加到用户设置？"
+
+msgid "Add {}-Compatible Provider"
+msgstr "添加兼容 {} 的提供商"
+
+msgid "Added {count} model"
+msgid_plural "Added {count} models"
+msgstr[0] "已添加 {count} 个模型"
+
+msgid "Adds the hosts to network_allowlist.json. Unless they are added, downloading or connecting to this server stays refused"
+msgstr "将这些主机添加到 network_allowlist.json。除非添加，否则下载或连接此服务器将一直被拒绝"
+
+msgid "Adds them to network_allowlist.json. If you don't add them, traffic to this provider stays denied"
+msgstr "将其添加到 network_allowlist.json。如果不添加，发往此提供商的通信将一直被拒绝"
+
+msgid "Agent name is required."
+msgstr "智能体名称为必填项。"
+
+msgid "Agents connected through the Agent Client Protocol."
+msgstr "通过 Agent Client Protocol 连接的智能体。"
+
+msgid "Allow All Domains"
+msgstr "允许所有域名"
+
+msgid "Allow All File System Writes"
+msgstr "允许所有文件系统写入"
+
+msgid "Allow Running Outside the Sandbox"
+msgstr "允许在沙盒外运行"
+
+msgid "Allow and Start"
+msgstr "允许并启动"
+
+msgid "Allowed"
+msgstr "允许"
+
+msgid "Allowed Domains"
+msgstr "允许的域名"
+
+msgid "Allowed Hosts"
+msgstr "允许的主机"
+
+msgid "Allowed host"
+msgstr "允许的主机"
+
+msgid "Always Allow"
+msgstr "始终允许"
+
+msgid "Always Confirm"
+msgstr "始终确认"
+
+msgid "Always Deny"
+msgstr "始终拒绝"
+
+msgid "Always Launch Outside the Sandbox"
+msgstr "始终在沙盒外启动"
+
+msgid "An HTTP server: Zed connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
+msgstr "HTTP 服务器：ForgeKairos 连接到该 URL 并通过 HTTP 与其通信。所连接的主机受网络允许列表约束。"
+
+msgid "An agent named \"{}\" already exists."
+msgstr "名为“{}”的智能体已存在。"
+
+msgid "Apply the Proxy to AI Agent Child Processes"
+msgstr "将代理应用于 AI 智能体子进程"
+
+msgid "Applying language server code actions"
+msgstr "应用语言服务器代码操作"
+
+msgid "Argument"
+msgstr "参数"
+
+msgid "Arguments"
+msgstr "参数"
+
+msgid "Arguments passed to the command, one per row (an argument containing spaces is passed as it is). Rows added and left empty are ignored."
+msgstr "传递给命令的参数，每行一个（包含空格的参数会原样传递）。添加后留空的行将被忽略。"
+
+msgid "Audio Test"
+msgstr "音频测试"
+
+msgid "Authenticate"
+msgstr "认证"
+
+msgid "Authenticate to connect this server"
+msgstr "认证以连接此服务器"
+
+msgid "Authenticating…"
+msgstr "正在认证…"
+
+msgid "Authentication failed ({status}). Check the API key. If the server needs no authentication, check \"Connect without an API key\"."
+msgstr "认证失败（{status}）。请检查 API 密钥。如果服务器不需要认证，请勾选“无需 API 密钥即可连接”。"
+
+msgid "Authentication is required to connect."
+msgstr "需要认证才能连接。"
+
+msgid "Binary for language server \"{name}\""
+msgstr "语言服务器“{name}”的二进制文件"
+
+msgid "Body is required."
+msgstr "技能内容为必填项。"
+
+msgid "Browse…"
+msgstr "浏览…"
+
+msgid "Can't save to the project settings file because no project is open."
+msgstr "未打开项目，因此无法保存到项目设置文件。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot add {host}: {reason}"
+msgstr "无法添加 {host}：{reason}"
+
+msgid "Change Scope"
+msgstr "更改适用范围"
+
+msgid "Changes take effect from the next child process that starts (no restart needed). Processes that ignore proxy settings cannot be controlled even when this is enabled. Child processes unrelated to AI, such as npm used by language servers or extensions, are not covered even when this is enabled."
+msgstr "更改将从下一个启动的子进程开始生效（无需重启）。即使启用此项，也无法管控忽略代理设置的进程。与 AI 无关的子进程（如语言服务器或扩展使用的 npm）即使启用此项也不在管控范围内。"
+
+msgid "Checking PATH on this PC…"
+msgstr "正在检查本机上的 PATH…"
+
+msgid "Checking…"
+msgstr "正在检查…"
+
+msgid "Choose File"
+msgstr "选择文件"
+
+msgid "Claude (Anthropic)"
+msgstr "Claude (Anthropic)"
+
+msgid "Claude Code Thinking Effort (--effort)"
+msgstr "Claude Code 思考深度（--effort）"
+
+msgid "Claude Pro / Max subscriptions can't be used here (pay-as-you-go with an API key only). See \"Claude Subscription\" below."
+msgstr "此处不能使用 Claude Pro / Max 订阅（仅支持使用 API 密钥按量付费）。请参阅下方的“Claude 订阅”。"
+
+msgid "Claude Subscription"
+msgstr "Claude 订阅"
+
+msgid "Clear"
+msgstr "清除"
+
+msgid "Clicking on pages in the built-in browser"
+msgstr "在内置浏览器的页面上点击"
+
+msgid "Client secret (leave empty for a public client)"
+msgstr "客户端密钥（公共客户端请留空）"
+
+msgid "Closes the settings window and launches Claude Code in a tab of the agent panel. For a local project on Windows it runs inside the sandbox (WSL); on a Linux host connected over SSH it runs inside that host's sandbox."
+msgstr "关闭设置窗口，并在智能体面板的标签页中启动 Claude Code。对于 Windows 上的本地项目，它在沙盒（WSL）中运行；在通过 SSH 连接的 Linux 主机上，它在该主机的沙盒中运行。"
+
+msgid "Closes the settings window and launches `claude` on this PC (on the SSH host, when connected over SSH) outside the sandbox. Asks for confirmation every time (unless \"Always Launch Outside the Sandbox\" below is on)."
+msgstr "关闭设置窗口，并在沙盒外启动本机上（通过 SSH 连接时为 SSH 主机上）的 `claude`。每次都会请求确认（除非下方的“始终在沙盒外启动”已打开）。"
+
+msgid "Closes the settings window and opens the file in the editor. Creates the file if it does not exist"
+msgstr "关闭设置窗口，并在编辑器中打开该文件。如果文件不存在，则创建该文件。"
+
+msgid "Closes the settings window and runs the official install command `npm install -g @anthropic-ai/claude-code` in the integrated terminal. Requires Node.js (npm)."
+msgstr "关闭设置窗口，并在集成终端中运行官方安装命令 `npm install -g @anthropic-ai/claude-code`。需要 Node.js（npm）。"
+
+msgid "Closing AI tabs in the built-in browser"
+msgstr "关闭内置浏览器中的 AI 标签页"
+
+msgid "Command"
+msgstr "命令"
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). To save anyway, press \"Save\" again."
+msgstr "未找到命令“{program}”（它既不在 PATH 中，也不在指定位置；命令未运行）。若仍要保存，请再次按“保存”。"
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). {hint} To save anyway, press \"Save\" again."
+msgstr "未找到命令“{program}”（它既不在 PATH 中，也不在指定位置；命令未运行）。{hint} 若仍要保存，请再次按“保存”。"
+
+msgid "Command chosen by an extension on the remote host (no settings file)"
+msgstr "由远程主机上的扩展选择的命令（无设置文件）"
+
+msgid "Command chosen by an extension on {display_name} (no settings file)"
+msgstr "由 {display_name} 上的扩展选择的命令（无设置文件）"
+
+msgid "Command is required."
+msgstr "命令为必填项。"
+
+msgid "Command: starts an executable and talks to it over standard input and output."
+msgstr "命令：启动可执行文件，并通过标准输入和输出与其通信。"
+
+msgid "Commands executed in the terminal"
+msgstr "在终端中执行的命令"
+
+msgid "Compatible APIs"
+msgstr "兼容的 API"
+
+msgid "Configure"
+msgstr "配置"
+
+msgid "Configure Agent"
+msgstr "配置智能体"
+
+msgid "Configure External Agent"
+msgstr "配置外部智能体"
+
+msgid "Configure MCP Server"
+msgstr "配置 MCP 服务器"
+
+msgid "Configure Provider"
+msgstr "配置提供商"
+
+msgid "Configure {}"
+msgstr "配置 {}"
+
+msgid "Configured Servers"
+msgstr "已配置的服务器"
+
+msgid "Confirm"
+msgstr "确认"
+
+msgid "Connect without an API key (server needs no authentication)"
+msgstr "无需 API 密钥即可连接（服务器不需要认证）"
+
+msgid "Connection test: connected."
+msgstr "连接测试：已连接。"
+
+msgid "Connection test: {message}"
+msgstr "连接测试：{message}"
+
+msgid "Contact your organization admins to adjust this setting."
+msgstr "联系组织管理员以调整此设置。"
+
+msgid "Controls only outbound traffic that AI initiates. All such traffic is denied by default, and only the hosts registered here are allowed."
+msgstr "仅管控由 AI 发起的外部通信。所有此类通信默认被拒绝，只允许此处注册的主机。"
+
+msgid "Controls the default behavior for all tool actions. Per-tool rules and patterns can override this. \"Allow\" is the same setting as \"Auto-Approve (In Sandbox)\" in the agent panel. \"AI Judge\" runs automatically only the actions that a separate model judges not dangerous, and asks for confirmation for everything else. In either case, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files all still apply. File operations outside the project (worktree) are always confirmed, whatever this is set to, unless you wrote an \"Always Allow\" pattern for that path yourself. Terminal commands that run outside the sandbox (when the sandbox is disabled, or in a project without one) are confirmed every time, regardless of \"Allow\", \"AI Judge\", or \"Always Allow\". Which tools are available is chosen by the profile, not by this setting."
+msgstr "控制所有工具操作的默认行为。可以通过每个工具的规则和模式覆盖此设置。“允许”与智能体面板中的“全自动（沙盒内）”是同一设置。“AI 判定”仅自动运行由另一个模型判定为不危险的操作，其他操作均请求确认。无论哪种情况，内置安全规则、你设置的拒绝和确认模式、沙盒以及写入设置文件时的确认仍然有效。无论此项如何设置，项目（工作树）之外的文件操作始终需要确认，除非你自己为该路径编写了“始终允许”模式。在沙盒外运行的终端命令（禁用沙盒时，或在没有沙盒的项目中）每次都需要确认，与“允许”“AI 判定”或“始终允许”无关。可用的工具由配置文件决定，而不是由此设置决定。"
+
+msgid "Copy Link"
+msgstr "复制链接"
+
+msgid "Copy Share Link"
+msgstr "复制共享链接"
+
+msgid "Could not connect: {error}"
+msgstr "无法连接：{error}"
+
+msgid "Could not determine the range to rewrite"
+msgstr "无法确定要重写的范围"
+
+msgid "Couldn't choose the file: {error}"
+msgstr "无法选择文件：{error}"
+
+msgid "Couldn't connect to the server: {error}"
+msgstr "无法连接到服务器：{error}"
+
+msgid "Couldn't create the request: {error}"
+msgstr "无法创建请求：{error}"
+
+msgid "Couldn't fetch the tool list: {error}"
+msgstr "无法获取工具列表：{error}"
+
+msgid "Couldn't get the approval details for this server."
+msgstr "无法获取此服务器的批准详细信息。"
+
+msgid "Couldn't load the template list: {error}"
+msgstr "无法加载模板列表：{error}"
+
+msgid "Couldn't parse the model list response: {error}"
+msgstr "无法解析模型列表响应：{error}"
+
+msgid "Couldn't read shared skill: {err}"
+msgstr "无法读取共享技能：{err}"
+
+msgid "Couldn't read this as JSON: {error}"
+msgstr "无法将其作为 JSON 读取：{error}"
+
+msgid "Couldn't revoke the approval: {error}"
+msgstr "无法撤销批准：{error}"
+
+msgid "Couldn't revoke: {error}"
+msgstr "无法撤销：{error}"
+
+msgid "Couldn't save \"Don't Allow\": {error}"
+msgstr "无法保存“不允许”：{error}"
+
+msgid "Couldn't save because the project settings file can't be read. Fix the JSON errors in the file, then save again."
+msgstr "无法读取项目设置文件，因此无法保存。请修正文件中的 JSON 错误，然后再次保存。"
+
+msgid "Couldn't save the decision: {error}"
+msgstr "无法保存决定：{error}"
+
+msgid "Couldn't save the permission: {error}"
+msgstr "无法保存权限：{error}"
+
+msgid "Couldn't save to the project settings file: the save was cancelled."
+msgstr "无法保存到项目设置文件：保存已取消。"
+
+msgid "Couldn't save to the project settings file: {error}"
+msgstr "无法保存到项目设置文件：{error}"
+
+msgid "Couldn't submit the client secret: {error}"
+msgstr "无法提交客户端密钥：{error}"
+
+msgid "Create Skill"
+msgstr "创建技能"
+
+msgid "Create a Skill"
+msgstr "创建技能"
+
+msgid "Decision"
+msgstr "决定"
+
+msgid "Decrement"
+msgstr "递减"
+
+msgid "Default"
+msgstr "默认"
+
+msgid "Default (Fast Model)"
+msgstr "默认（快速模型）"
+
+msgid "Default Action"
+msgstr "默认操作"
+
+msgid "Default Permission"
+msgstr "默认权限"
+
+msgid "Default reasoning effort"
+msgstr "默认思考深度"
+
+msgid "Defined in"
+msgstr "定义位置"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete Invalid Pattern"
+msgstr "删除无效模式"
+
+msgid "Delete Pattern"
+msgstr "删除模式"
+
+msgid "Delete Skill"
+msgstr "删除技能"
+
+msgid "Delete the provider \"{name}\"?"
+msgstr "删除提供商“{name}”？"
+
+msgid "Delete the {skill_scope} skill \"{skill_name}\"?"
+msgstr "删除{skill_scope}技能“{skill_name}”？"
+
+msgid "Delete {name}"
+msgstr "删除 {name}"
+
+msgid "Deletes the API key saved in the system keychain for {url}. A key set in an environment variable is not affected."
+msgstr "删除系统钥匙串中为 {url} 保存的 API 密钥。在环境变量中设置的密钥不受影响。"
+
+msgid "Denied: {}"
+msgstr "已拒绝：{}"
+
+msgid "Description"
+msgstr "描述"
+
+msgid "Directory creation"
+msgstr "目录创建"
+
+msgid "Disable model invocation"
+msgstr "禁用模型调用"
+
+msgid "Disabled"
+msgstr "已禁用"
+
+msgid "Disabled in the project settings."
+msgstr "已在项目设置中禁用。"
+
+msgid "Dismiss"
+msgstr "关闭"
+
+msgid "Domain cannot be empty."
+msgstr "域名不能为空。"
+
+msgid "Don't Allow"
+msgstr "不允许"
+
+msgid "Duplicate {label} \"{key}\"."
+msgstr "{label}“{key}”重复。"
+
+msgid "Each entry is an exact domain (github.com) or a leading-*. subdomain wildcard (*.npmjs.org). IP addresses and local domains are not allowed. An entry here only takes effect within the editor-wide network allowlist: a host that is not on that list stays unreachable even if you add it here."
+msgstr "每个条目是一个精确域名（github.com）或以 *. 开头的子域名通配符（*.npmjs.org）。不允许使用 IP 地址和本地域名。此处的条目仅在编辑器范围的网络允许列表内生效：不在该列表中的主机即使添加到此处也无法访问。"
+
+msgid "Each entry is an exact host name (api.anthropic.com), a subdomain wildcard with a leading *. (*.corp.example, which does not match the parent domain itself), or an IP address (10.0.0.5 / [fd00::1]). Entries are case-insensitive and take no port."
+msgstr "每个条目是一个精确主机名（api.anthropic.com）、以 *. 开头的子域名通配符（*.corp.example，不匹配父域名本身）或 IP 地址（10.0.0.5 / [fd00::1]）。条目不区分大小写，且不包含端口。"
+
+msgid "Each entry must be an absolute path and grants write access to the whole subtree, except protected Git metadata."
+msgstr "每个条目必须是绝对路径，并授予整个子树的写入权限，但受保护的 Git 元数据除外。"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Edit Git Account"
+msgstr "编辑 Git 账户"
+
+msgid "Edit in Form (saves to the project settings file that defines this server)"
+msgstr "在表单中编辑（保存到定义此服务器的项目设置文件）"
+
+msgid "Edit in settings.json"
+msgstr "在 settings.json 中编辑"
+
+msgid "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from Zed itself."
+msgstr "编辑预测的通信由 Copilot 语言服务器（独立进程）发送，因此不受外部通信允许列表管控。注册主机仅影响从 ForgeKairos 本身登录。"
+
+msgid "Edit {entry}"
+msgstr "编辑 {entry}"
+
+msgid "Edit {name}"
+msgstr "编辑 {name}"
+
+msgid "Email"
+msgstr "电子邮件"
+
+msgid "Enable Sandbox"
+msgstr "启用沙盒"
+
+msgid "Enter \"{prompt}\"."
+msgstr "请输入“{prompt}”。"
+
+msgid "Enter Secret"
+msgstr "输入密钥"
+
+msgid "Enter a host."
+msgstr "请输入主机。"
+
+msgid "Enter a tool input to test your rules…"
+msgstr "输入工具参数以测试规则…"
+
+msgid "Enter a valid GitHub URL"
+msgstr "输入有效的 GitHub URL"
+
+msgid "Enter a value for the {label} \"{key}\"."
+msgstr "请为{label}“{key}”输入值。"
+
+msgid "Enter the API key."
+msgstr "请输入 API 密钥。"
+
+msgid "Enter to Confirm"
+msgstr "按 Enter 确认"
+
+msgid "Enter: {prompt}"
+msgstr "请输入：{prompt}"
+
+msgid "Environment"
+msgstr "环境"
+
+msgid "Environment Variables"
+msgstr "环境变量"
+
+msgid "Environment variables provided to the server process. Enter the values the server's documentation asks for here, such as API keys or tokens."
+msgstr "提供给服务器进程的环境变量。请在此处输入服务器文档要求的值，例如 API 密钥或令牌。"
+
+msgid "Environment variables to fill in: {inputs}"
+msgstr "需要填写的环境变量：{inputs}"
+
+msgid "Environment variables: {names}"
+msgstr "环境变量：{names}"
+
+msgid "Error: {}"
+msgstr "错误：{}"
+
+msgid "Escalation Prompts"
+msgstr "权限提升确认"
+
+msgid "Every AI you can use here, by whose AI it is. Each row shows how you sign in and what runs it. In the agent panel, the + menu lists the same AIs."
+msgstr "此处可以使用的所有 AI，按 AI 的所属方分类。每一行显示登录方式和运行方式。智能体面板的 + 菜单中列出相同的 AI。"
+
+msgid "Execution Host"
+msgstr "运行主机"
+
+msgid "Extension: the extension provides the command. Its settings are made in the extension's own form."
+msgstr "扩展：由扩展提供命令。其设置在扩展自己的表单中进行。"
+
+msgid "External Agents"
+msgstr "外部智能体"
+
+msgid "External formatter \"{name}\""
+msgstr "外部格式化程序“{name}”"
+
+msgid "Failed to add the hosts to the allowlist: {error}"
+msgstr "将主机添加到允许列表失败：{error}"
+
+msgid "Failed to load your settings. Some values may be incorrect and changes may be lost."
+msgstr "加载设置失败。部分值可能不正确，更改可能会丢失。"
+
+msgid "Failed to parse network_allowlist.json"
+msgstr "解析 network_allowlist.json 失败"
+
+msgid "Failed to parse network_allowlist.json: {error}"
+msgstr "解析 network_allowlist.json 失败：{error}"
+
+msgid "Failed to read network_allowlist.json"
+msgstr "读取 network_allowlist.json 失败"
+
+msgid "Failed to read network_allowlist.json: {error}"
+msgstr "读取 network_allowlist.json 失败：{error}"
+
+msgid "Failed to read the response body: {error}"
+msgstr "读取响应正文失败：{error}"
+
+msgid "Failed to save the allowlist: {write_error}"
+msgstr "保存允许列表失败：{write_error}"
+
+msgid "Failed to save the child process proxy setting: {write_error}"
+msgstr "保存子进程代理设置失败：{write_error}"
+
+msgid "Failed to write network_allowlist.json"
+msgstr "写入 network_allowlist.json 失败"
+
+msgid "Fetch Models"
+msgstr "获取模型列表"
+
+msgid "Fetching and parsing…"
+msgstr "正在获取并解析…"
+
+msgid "Fetching the tool list…"
+msgstr "正在获取工具列表…"
+
+msgid "Fetching…"
+msgstr "正在获取…"
+
+msgid "File System"
+msgstr "文件系统"
+
+msgid "File and directory copying"
+msgstr "文件和目录复制"
+
+msgid "File and directory deletion"
+msgstr "文件和目录删除"
+
+msgid "File and directory moves/renames"
+msgstr "文件和目录移动/重命名"
+
+msgid "File creation and overwrite operations"
+msgstr "文件创建和覆盖操作"
+
+msgid "File editing operations"
+msgstr "文件编辑操作"
+
+msgid "Files whose contents are part of this approval: {files}. A change to their contents asks for confirmation again, but the command line alone doesn't show what they do, so review their contents too before allowing."
+msgstr "内容包含在此批准中的文件：{files}。这些文件的内容更改后会再次请求确认，但仅从命令行无法看出它们会做什么，因此请在允许前同时检查其内容。"
+
+msgid "Finish the steps below to start a thread with {name}."
+msgstr "完成以下步骤即可与 {name} 开始会话。"
+
+msgid "Fix in settings.json"
+msgstr "在 settings.json 中修复"
+
+msgid "Focus Content"
+msgstr "聚焦内容"
+
+msgid "Focus Navbar"
+msgstr "聚焦导航栏"
+
+msgid "Folder"
+msgstr "文件夹"
+
+msgid "For a public client, leave this empty and submit."
+msgstr "对于公共客户端，请留空并提交。"
+
+msgid "Found {count} server. Open it in the form to review it, or add it right away."
+msgid_plural "Found {count} servers. Open each one in the form to review it, or add them all at once."
+msgstr[0] "找到 {count} 个服务器。可以在表单中逐个打开检查，也可以一次全部添加。"
+
+msgid "Front-matter"
+msgstr "前置元数据"
+
+msgid "Git Accounts"
+msgstr "Git 账户"
+
+msgid "Git commands run outside the sandbox with hooks turned off (commit, branch, merge, …)"
+msgstr "在沙盒外禁用钩子运行的 Git 命令（commit、branch、merge 等）"
+
+msgid "GitHub response was not valid UTF-8"
+msgstr "GitHub 响应不是有效的 UTF-8"
+
+msgid "GitHub returned 404 while fetching the skill; no repository exists at this URL, or it is private"
+msgstr "获取技能时 GitHub 返回 404；此 URL 处没有仓库，或该仓库为私有"
+
+msgid "GitHub returned an unexpected redirect ({}) for the authenticated request to {raw_url}"
+msgstr "GitHub 对向 {raw_url} 发出的已认证请求返回了意外的重定向（{}）"
+
+msgid "GitHub returned {} while fetching the skill"
+msgstr "获取技能时 GitHub 返回 {}"
+
+msgid "GitHub skill URLs must use https://"
+msgstr "GitHub 技能 URL 必须使用 https://"
+
+msgid "Go to \"Enable Agent\""
+msgstr "转到“启用智能体”"
+
+msgid "Google"
+msgstr "Google"
+
+msgid "HTTP headers sent with each request to the server. For a server that authenticates with a token, set Authorization to \"Bearer <token>\"."
+msgstr "随每个请求发送到服务器的 HTTP 标头。对于使用令牌认证的服务器，请将 Authorization 设置为“Bearer <token>”。"
+
+msgid "HTTP requests to URLs"
+msgstr "对 URL 的 HTTP 请求"
+
+msgid "HTTP: connects over HTTP to a server published at a URL."
+msgstr "HTTP：通过 HTTP 连接到在 URL 上发布的服务器。"
+
+msgid "Headers"
+msgstr "标头"
+
+msgid "Headers to fill in: {inputs}"
+msgstr "需要填写的标头：{inputs}"
+
+msgid "Headers: {names}"
+msgstr "标头：{names}"
+
+msgid "Hide this skill from the model's catalog. It can still be invoked via slash command."
+msgstr "在模型目录中隐藏此技能，但仍可通过斜杠命令调用。"
+
+msgid "Host"
+msgstr "主机"
+
+msgid "Hosts that need to be allowed:"
+msgstr "需要允许的主机："
+
+msgid "How long to wait for the server to respond before timing out."
+msgstr "超时前等待服务器响应的时长。"
+
+msgid "I understand the risks above and want to add this provider"
+msgstr "我了解上述风险，并希望添加此提供商"
+
+msgid "I understand the risks above and want to enable {name}"
+msgstr "我了解上述风险，并希望启用 {name}"
+
+msgid "I understand the risks above and want to save this provider"
+msgstr "我了解上述风险，并希望保存此提供商"
+
+msgid "IP addresses and local domains aren't allowed; enter a domain like github.com."
+msgstr "不允许使用 IP 地址和本地域名；输入域名，例如 github.com。"
+
+msgid "If any of these regexes match, a confirmation will be shown unless an Always Deny regex matches."
+msgstr "如果其中任一正则表达式匹配，将显示确认提示，除非匹配到“始终拒绝”规则。"
+
+msgid "If any of these regexes match, the action will be approved—unless an Always Confirm or Always Deny matches."
+msgstr "如果其中任一正则表达式匹配，操作将被批准，除非匹配到“始终确认”或“始终拒绝”规则。"
+
+msgid "If any of these regexes match, the tool action will be denied."
+msgstr "如果其中任一正则表达式匹配，工具操作将被拒绝。"
+
+msgid "Import from URL"
+msgstr "从 URL 导入"
+
+msgid "In a project folder where the agent has written files, language servers and formatters do not run that folder's code (the project's Prettier and ESLint configuration, build scripts, and so on) until you press Resume. This setting is saved only in your user settings and cannot be changed by project settings."
+msgstr "在智能体写入过文件的项目文件夹中，语言服务器和格式化程序在你按下“恢复”之前不会运行该文件夹中的代码（项目的 Prettier 和 ESLint 配置、构建脚本等）。此设置仅保存在用户设置中，无法通过项目设置更改。"
+
+msgid "Increment"
+msgstr "递增"
+
+msgid "Input Device"
+msgstr "输入设备"
+
+msgid "Install Claude Code (Official Command)"
+msgstr "安装 Claude Code（官方命令）"
+
+msgid "Install Docker to make it available."
+msgstr "安装 Docker 后即可使用。"
+
+msgid "Install Node.js to make it available."
+msgstr "安装 Node.js 后即可使用。"
+
+msgid "Install from Extensions"
+msgstr "从扩展安装"
+
+msgid "Install from Registry"
+msgstr "从注册表安装"
+
+msgid "Install uv to make it available."
+msgstr "安装 uv 后即可使用。"
+
+msgid "Installed on this PC ({version})"
+msgstr "已安装在本机上（{version}）"
+
+msgid "Installed on this PC."
+msgstr "已安装在本机上。"
+
+msgid "Invalid Patterns"
+msgstr "无效模式"
+
+msgid "Invalid URL in settings."
+msgstr "设置中的 URL 无效。"
+
+msgid "Invalid URL: {error}"
+msgstr "URL 无效：{error}"
+
+msgid "Invalid regex: {err}. Pattern saved but will block this tool until fixed or removed."
+msgstr "无效正则表达式：{err}。模式已保存，但在修复或移除之前会阻止此工具。"
+
+msgid "Judge Model"
+msgstr "判定模型"
+
+msgid "Keeps the API key saved for {url}, because another provider uses the same URL."
+msgstr "由于另一个提供商使用相同的 URL，将保留为 {url} 保存的 API 密钥。"
+
+msgid "Kept these hosts because another provider you consented to uses them: {hosts}"
+msgstr "由于你已同意的另一个提供商正在使用以下主机，已保留这些主机：{hosts}"
+
+msgid "Key"
+msgstr "键"
+
+msgid "LLM Providers"
+msgstr "LLM 提供商"
+
+msgid "Launch Claude Code in Terminal"
+msgstr "在终端中启动 Claude Code"
+
+msgid "Launch Outside the Sandbox"
+msgstr "在沙盒外启动"
+
+msgid "Launches this agent outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Saved only in your user settings."
+msgstr "每次都在沙盒外启动此智能体，不再询问。写入不再受限制，网络限制仅对读取代理设置的程序生效（在 SSH 主机上，外部通信管控完全不生效）。仅保存在用户设置中。"
+
+msgid "Learn More"
+msgstr "了解详情"
+
+msgid "Learn more about sandboxing"
+msgstr "了解沙盒的更多信息"
+
+msgid "Leave blank to keep the key saved in the system keychain, or enter a new key to replace it."
+msgstr "留空以保留系统钥匙串中已保存的密钥，或输入新密钥以替换它。"
+
+msgid "Leave blank to keep the saved key"
+msgstr "留空以保留已保存的密钥"
+
+msgid "Let sandboxed commands reach any domain over the network without prompting. This only lifts the sandbox's own restriction, so commands can still reach only the hosts within the editor-wide network allowlist (localhost is always reachable)."
+msgstr "允许沙盒中的命令无需确认即可通过网络访问任意域名。这只解除沙盒自身的限制，因此命令仍然只能访问编辑器范围的网络允许列表内的主机（localhost 始终可访问）。"
+
+msgid "Let sandboxed commands write anywhere except protected paths (such as Git metadata). This is almost the same as running outside the sandbox, so while it is on, auto-approval does not apply and each command asks for confirmation."
+msgstr "允许沙盒中的命令写入除受保护路径（如 Git 元数据）以外的任意位置。这与在沙盒外运行几乎相同，因此启用期间自动批准不生效，每个命令都会请求确认。"
+
+msgid "Load"
+msgstr "加载"
+
+msgid "Loaded the template \"{title}\". Fill in the fields that ask for a value before saving."
+msgstr "已加载模板“{title}”。请在保存前填写要求输入值的字段。"
+
+msgid "Loading agent skill instructions"
+msgstr "加载智能体技能指令"
+
+msgid "Loading models…"
+msgstr "正在加载模型…"
+
+msgid "Loading pages in AI tabs of the built-in browser"
+msgstr "在内置浏览器的 AI 标签页中加载页面"
+
+msgid "Loading…"
+msgstr "正在加载…"
+
+msgid "Loads mcpServers JSON, such as the one in a server's README, into the form."
+msgstr "将 mcpServers JSON（例如服务器 README 中的 JSON）加载到表单中。"
+
+msgid "Loads the settings of a commonly used MCP server into the form. Nothing is written to your settings until you click Save."
+msgstr "将常用 MCP 服务器的设置加载到表单中。在点击“保存”之前不会写入你的设置。"
+
+msgid "Loads the settings of a commonly used server, such as Filesystem or GitHub, into the form."
+msgstr "将常用服务器（如 Filesystem 或 GitHub）的设置加载到表单中。"
+
+msgid "Local"
+msgstr "本地"
+
+msgid "Local (command)"
+msgstr "本地（命令）"
+
+msgid "Local Model (Ollama, LM Studio, …)"
+msgstr "本地模型（Ollama、LM Studio 等）"
+
+msgid "Local Models"
+msgstr "本地模型"
+
+msgid "Log Out"
+msgstr "退出登录"
+
+msgid "Login"
+msgstr "登录名"
+
+msgid "MCP server \"{name}\""
+msgstr "MCP 服务器“{name}”"
+
+msgid "MCP server did not respond (timed out)"
+msgstr "MCP 服务器没有响应（超时）"
+
+msgid "Makes \"Launch Claude Code\" start outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Sign-in is shared with your regular Claude Code. Saved only in your user settings."
+msgstr "使“启动 Claude Code”每次都在沙盒外启动，不再询问。写入不再受限制，网络限制仅对读取代理设置的程序生效（在 SSH 主机上，外部通信管控完全不生效）。登录状态与你平时使用的 Claude Code 共享。仅保存在用户设置中。"
+
+msgid "Manage Trust"
+msgstr "管理信任"
+
+msgid "Manage servers connected directly or via extensions."
+msgstr "管理直接连接或通过扩展连接的服务器。"
+
+msgid "Max Completion Tokens"
+msgstr "最大生成 Token 数"
+
+msgid "Max Output Tokens"
+msgstr "最大输出 Token 数"
+
+msgid "Max Tokens"
+msgstr "最大 Token 数"
+
+msgid "Maximum completion tokens for OpenAI-compatible requests."
+msgstr "OpenAI 兼容请求的最大生成 Token 数。"
+
+msgid "Model Name"
+msgstr "模型名称"
+
+msgid "Model Name cannot be empty"
+msgstr "模型名称不能为空"
+
+msgid "Model Names must be unique"
+msgstr "模型名称必须唯一"
+
+msgid "Models"
+msgstr "模型"
+
+msgid "Modified in {modified_in}"
+msgstr "已在 {modified_in} 中修改"
+
+msgid "Move Down"
+msgstr "下移"
+
+msgid "Move Up"
+msgstr "上移"
+
+msgid "Moving the mouse over pages in the built-in browser"
+msgstr "在内置浏览器的页面上移动鼠标"
+
+msgid "Name"
+msgstr "名称"
+
+msgid "Network"
+msgstr "网络"
+
+msgid "No API key is sent, because this connects to a server that needs no authentication."
+msgstr "由于连接的是不需要认证的服务器，不会发送 API 密钥。"
+
+msgid "No MCP server settings were found. Paste JSON that contains `command` (local) or `url` (remote)."
+msgstr "未找到 MCP 服务器设置。请粘贴包含 `command`（本地）或 `url`（远程）的 JSON。"
+
+msgid "No MCP servers added yet. Click \"Add Server\" to get started."
+msgstr "尚未添加 MCP 服务器。点击“添加服务器”开始。"
+
+msgid "No Models"
+msgstr "无模型"
+
+msgid "No Results"
+msgstr "无结果"
+
+msgid "No active project found. Open a workspace to manage MCP servers."
+msgstr "未找到活动项目。打开工作区以管理 MCP 服务器。"
+
+msgid "No active project found. Open a workspace to manage external agents."
+msgstr "未找到活动项目。打开工作区以管理外部智能体。"
+
+msgid "No authenticated models"
+msgstr "没有已认证的模型"
+
+msgid "No decisions have been recorded yet."
+msgstr "尚未记录任何决定。"
+
+msgid "No entries"
+msgstr "无条目"
+
+msgid "No external agents added yet. Click \"Add Agent\" to get started."
+msgstr "尚未添加外部智能体。点击“添加智能体”开始。"
+
+msgid "No git accounts yet."
+msgstr "暂无 Git 账户。"
+
+msgid "No global skills installed."
+msgstr "未安装全局技能。"
+
+msgid "No hosts configured (everything except loopback is denied)"
+msgstr "未配置主机（除环回外全部拒绝）"
+
+msgid "No models found. Check your Ollama server URL."
+msgstr "未找到模型。请检查 Ollama 服务器的 URL。"
+
+msgid "No new models were found to add"
+msgstr "未找到可添加的新模型"
+
+msgid "No patterns configured"
+msgstr "未配置模式"
+
+msgid "No project skills found."
+msgstr "未找到项目技能。"
+
+msgid "No regex matches, using the default action."
+msgstr "没有正则表达式匹配，使用默认操作。"
+
+msgid "No settings match \"{}\""
+msgstr "没有与“{}”匹配的设置"
+
+msgid "No skills available for this context."
+msgstr "此上下文中没有可用技能。"
+
+msgid "No token is stored. Without one, git asks for the password as usual."
+msgstr "未存储令牌。如果没有令牌，Git 将照常询问密码。"
+
+msgid "No tools"
+msgstr "无工具"
+
+msgid "None"
+msgstr "无"
+
+msgid "None (disable edit predictions)"
+msgstr "无（禁用编辑预测）"
+
+msgid "Not Controlled"
+msgstr "不受管控"
+
+msgid "Not Controlled (Own Proxy)"
+msgstr "不受管控（自有代理）"
+
+msgid "Not Installed"
+msgstr "未安装"
+
+msgid "Not Set Up"
+msgstr "未设置"
+
+msgid "Not a valid domain. Use a domain like github.com or *.npmjs.org."
+msgstr "不是有效域名。使用 github.com 或 *.npmjs.org 这样的域名。"
+
+msgid "Not a valid host name or IP address. Examples: api.anthropic.com, *.corp.example, 10.0.0.5"
+msgstr "不是有效的主机名或 IP 地址。示例：api.anthropic.com、*.corp.example、10.0.0.5"
+
+msgid "Not allowed"
+msgstr "不允许"
+
+msgid "Not installed on this PC (claude is not on PATH)."
+msgstr "未安装在本机上（claude 不在 PATH 中）。"
+
+msgid "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
+msgstr "注意：自定义工具权限仅适用于 ForgeKairos 原生智能体，不会扩展到通过 Agent Client Protocol (ACP) 连接的外部智能体。"
+
+msgid "Nothing configured"
+msgstr "未配置任何内容"
+
+msgid "OAuth Client ID"
+msgstr "OAuth 客户端 ID"
+
+msgid "Official CLI Tab"
+msgstr "官方 CLI 标签页"
+
+msgid "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
+msgstr "2026-06-15，Anthropic 宣布通过订阅（Claude Pro、Max 等）的使用方式将照旧继续。登录在 Claude Code 自己的界面中进行；ForgeKairos 绝不会查看、存储或中转你的凭据。关闭此项将从认证卡片中移除登录按钮（使用 API 密钥仍然可用）。"
+
+msgid "One of the {label} rows has no name. Enter a name or remove that row."
+msgstr "{label}中有一行没有名称。请输入名称或删除该行。"
+
+msgid "Open"
+msgstr "打开"
+
+msgid "Open Detailed Settings"
+msgstr "打开详细设置"
+
+msgid "Open in Form"
+msgstr "在表单中打开"
+
+msgid "Open network_allowlist.json in Editor"
+msgstr "在编辑器中打开 network_allowlist.json"
+
+msgid "Open the project settings file that defines this server"
+msgstr "打开定义此服务器的项目设置文件"
+
+msgid "OpenAI"
+msgstr "OpenAI"
+
+msgid "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below."
+msgstr "OpenAI 兼容 API、Ollama、GitHub Copilot、Codestral 和 Mercury 在下方各自的部分中设置凭据或端点 URL 后即可选择。Zed 在下方“Zed”部分中给予同意后即可选择。"
+
+msgid "Opening AI tabs in the built-in browser"
+msgstr "在内置浏览器中打开 AI 标签页"
+
+msgid "Opens the official Claude Code in a tab of the agent panel. You sign in on Claude Code's own screen. The CLI is not bundled; it is installed with the official install command. For pay-as-you-go billing with an API key, use Anthropic above."
+msgstr "在智能体面板的标签页中打开官方 Claude Code。你在 Claude Code 自己的界面中登录。CLI 未随附；它通过官方安装命令安装。如需使用 API 密钥按量付费，请使用上方的 Anthropic。"
+
+msgid "Opens {docs_url}"
+msgstr "打开 {docs_url}"
+
+msgid "Optional OAuth client ID"
+msgstr "可选 OAuth 客户端 ID"
+
+msgid "Optional OAuth client ID used to authenticate with the server. Leave it empty if the server supports dynamic client registration: connecting then asks you to authenticate in the browser."
+msgstr "用于向服务器认证的 OAuth 客户端 ID（可选）。如果服务器支持动态客户端注册，请留空：连接时会要求你在浏览器中进行认证。"
+
+msgid "Optional. The HTTPS host the token signs in to, such as github.com. Remotes on other hosts and SSH remotes sign in as git is configured."
+msgstr "可选。令牌用于登录的 HTTPS 主机，例如 github.com。其他主机上的远程和 SSH 远程按 Git 的配置登录。"
+
+msgid "Optional. The key commits are signed with when signing is on (user.signingkey)."
+msgstr "可选。启用签名时用于签名提交的密钥（user.signingkey）。"
+
+msgid "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set, which Git for Windows does in its system configuration when installed to use the external OpenSSH. A passphrase is asked for each time."
+msgstr "可选。推送、拉取和提取访问 SSH 远程时使用的私钥文件（仅提供此密钥）。仅限本地项目。设置了 GIT_SSH_COMMAND、GIT_SSH 或 core.sshCommand 时不使用；Git for Windows 安装为使用外部 OpenSSH 时，会在其系统配置中设置这些项。每次都会询问密码短语。"
+
+msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
+msgstr "或者设置 {env_var_name} 环境变量并重启 ForgeKairos 以使其生效。"
+
+msgid "Or set the {} env var and restart Zed."
+msgstr "或设置 {} 环境变量并重启 ForgeKairos。"
+
+msgid "Other"
+msgstr "其他"
+
+msgid "Outbound Traffic from Child Processes"
+msgstr "子进程的外部通信"
+
+msgid "Output Device"
+msgstr "输出设备"
+
+msgid "Overridden by Organization"
+msgstr "已被组织覆盖"
+
+msgid "Paste a GitHub .md URL"
+msgstr "粘贴 GitHub .md URL"
+
+msgid "Paste a GitHub .md URL to fetch it and fill out the form. For private files, Zed retries using GITHUB_TOKEN, if set."
+msgstr "粘贴 GitHub .md URL 以获取内容并填写表单。对于私有文件，如果已设置 GITHUB_TOKEN，ForgeKairos 会使用它重试。"
+
+msgid "Paste a GitHub URL that points to a .md file"
+msgstr "粘贴指向 .md 文件的 GitHub URL"
+
+msgid "Paste a GitHub blob URL that points to a .md file"
+msgstr "粘贴指向 .md 文件的 GitHub blob URL"
+
+msgid "Paste a JSON object ({{ … }})."
+msgstr "请粘贴 JSON 对象（{{ … }}）。"
+
+msgid "Paste from JSON"
+msgstr "从 JSON 粘贴"
+
+msgid "Paste some JSON."
+msgstr "请粘贴 JSON。"
+
+msgid "Paste the configuration JSON from an MCP server's README or similar, then press \"Load\". The mcpServers format of Claude Desktop and Cursor, the servers format of VS Code and Zed's context_servers format are supported. What is loaded goes into the form and isn't written to your settings until you press \"Save\"."
+msgstr "粘贴 MCP 服务器 README 等处的配置 JSON，然后按“加载”。支持 Claude Desktop 和 Cursor 的 mcpServers 格式、VS Code 的 servers 格式以及 Zed 的 context_servers 格式。加载的内容会填入表单，在按“保存”之前不会写入你的设置。"
+
+msgid "Pattern preview differs from engine — showing authoritative result."
+msgstr "模式预览结果与引擎结果不一致，现以引擎结果为准。"
+
+msgid "Patterns are matched against each command in the input. Commands chained with &&, ||, ;, or pipes are split and checked individually."
+msgstr "模式会与输入中的每条命令进行匹配。使用 &&、||、; 或管道连接的命令会被拆分并逐一检查。"
+
+msgid "Patterns are matched against the JavaScript expression being run."
+msgstr "模式与要运行的 JavaScript 表达式进行匹配。"
+
+msgid "Patterns are matched against the URL being fetched."
+msgstr "模式会与正在获取的 URL 进行匹配。"
+
+msgid "Patterns are matched against the URL being loaded, or against back, forward or reload."
+msgstr "模式与要加载的 URL 进行匹配，或与 back、forward 或 reload 进行匹配。"
+
+msgid "Patterns are matched against the URL the new tab opens (about:blank for an empty tab)."
+msgstr "模式与新标签页打开的 URL 进行匹配（空标签页为 about:blank）。"
+
+msgid "Patterns are matched against the absolute path to the skill's SKILL.md file."
+msgstr "模式会与技能的 SKILL.md 文件的绝对路径进行匹配。"
+
+msgid "Patterns are matched against the direction: `up`, `down`, `left` or `right`."
+msgstr "模式与方向进行匹配：`up`、`down`、`left` 或 `right`。"
+
+msgid "Patterns are matched against the directory path being created."
+msgstr "模式会与正在创建的目录路径进行匹配。"
+
+msgid "Patterns are matched against the element's ref, such as `e12`, or against the point as `x,y`."
+msgstr "模式与元素的 ref（如 `e12`）进行匹配，或与 `x,y` 形式的位置进行匹配。"
+
+msgid "Patterns are matched against the file path being edited."
+msgstr "模式会与正在编辑的文件路径进行匹配。"
+
+msgid "Patterns are matched against the file path being written."
+msgstr "模式会与正在写入的文件路径进行匹配。"
+
+msgid "Patterns are matched against the keys being pressed, such as `ctrl+a Backspace`."
+msgstr "模式与按下的按键（如 `ctrl+a Backspace`）进行匹配。"
+
+msgid "Patterns are matched against the name of the code action. Its edits are written straight into the buffer without going through diff review."
+msgstr "模式与代码操作的名称进行匹配。其编辑会直接写入缓冲区，不经过差异审阅。"
+
+msgid "Patterns are matched against the new value (an array or other non-text value as JSON)."
+msgstr "模式与新值进行匹配（数组或其他非文本值以 JSON 形式匹配）。"
+
+msgid "Patterns are matched against the path being deleted."
+msgstr "模式会与正在删除的路径进行匹配。"
+
+msgid "Patterns are matched against the search query."
+msgstr "模式会与搜索查询进行匹配。"
+
+msgid "Patterns are matched against the symbol's name before the rename. The rename skips diff review, and every file that references the symbol is saved."
+msgstr "模式与重命名前的符号名称进行匹配。重命名会跳过差异审阅，并保存引用该符号的每个文件。"
+
+msgid "Patterns are matched against the tab's id, such as `1`."
+msgstr "模式与标签页的 ID（如 `1`）进行匹配。"
+
+msgid "Patterns are matched against the text being typed."
+msgstr "模式与要输入的文本进行匹配。"
+
+msgid "Patterns are matched against the whole command, starting with `git`, such as `git commit -m 'Fix the parser'`."
+msgstr "模式与以 `git` 开头的完整命令（如 `git commit -m 'Fix the parser'`）进行匹配。"
+
+msgid "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
+msgstr "模式会分别与源路径和目标路径进行匹配。在下方输入任一路径进行测试。"
+
+msgid "Pause Folder Code After Agent Writes Until Resumed"
+msgstr "智能体写入后暂停文件夹代码直至恢复"
+
+msgid "Preserves thinking in chat history"
+msgstr "在聊天记录中保留思考过程"
+
+msgid "Pressing keys in pages in the built-in browser"
+msgstr "在内置浏览器的页面中按键"
+
+msgid "Project"
+msgstr "项目"
+
+msgid "Project-wide symbol renames by the language server"
+msgstr "语言服务器执行的项目范围符号重命名"
+
+msgid "Provider"
+msgstr "提供商"
+
+msgid "Provider Name"
+msgstr "提供商名称"
+
+msgid "Provider Name cannot be empty"
+msgstr "提供商名称不能为空"
+
+msgid "Provider Name is already taken by another provider"
+msgstr "提供商名称已被另一个提供商占用"
+
+msgid "Proxied"
+msgstr "经代理"
+
+msgid "Proxying for child processes is turned off, so this server's outbound traffic is not controlled by the network allowlist."
+msgstr "子进程代理已关闭，因此此服务器的外部通信不受网络允许列表管控。"
+
+msgid "Read the file again"
+msgstr "重新读取文件"
+
+msgid "Ready"
+msgstr "就绪"
+
+msgid "Reason: {}"
+msgstr "原因：{}"
+
+msgid "Reconnects the server to check whether it can be connected to."
+msgstr "重新连接服务器以检查能否连接。"
+
+msgid "Registered in the allowlist: {hosts}"
+msgstr "已在允许列表中注册：{hosts}"
+
+msgid "Reload"
+msgstr "重新加载"
+
+msgid "Remote"
+msgstr "远程"
+
+msgid "Remote (HTTP)"
+msgstr "远程（HTTP）"
+
+msgid "Remote host ({display_name})"
+msgstr "远程主机（{display_name}）"
+
+msgid "Remove"
+msgstr "移除"
+
+msgid "Remove Allowed Hosts"
+msgstr "删除允许的主机"
+
+msgid "Remove Custom Agent"
+msgstr "移除自定义智能体"
+
+msgid "Remove Domain"
+msgstr "移除域名"
+
+msgid "Remove Host"
+msgstr "删除主机"
+
+msgid "Remove Model"
+msgstr "移除模型"
+
+msgid "Remove Path"
+msgstr "移除路径"
+
+msgid "Remove Registry Agent"
+msgstr "移除注册表智能体"
+
+msgid "Remove Stored Token"
+msgstr "删除已存储的令牌"
+
+msgid "Remove the account, its token if no other account uses it, and every repository's pick of it"
+msgstr "删除该账户；如果没有其他账户使用其令牌，也删除令牌；并清除所有仓库对它的选择"
+
+msgid "Remove {entry}"
+msgstr "删除 {entry}"
+
+msgid "Removed from the allowlist: {removed}"
+msgstr "已从允许列表中删除：{removed}"
+
+msgid "Removed from the allowlist: {removed}. {kept}"
+msgstr "已从允许列表中删除：{removed}。{kept}"
+
+msgid "Removes its entry from language_models in settings.json."
+msgstr "从 settings.json 的 language_models 中删除其条目。"
+
+msgid "Removes the record of the denial. The next time the same launch is requested, you'll be asked again."
+msgstr "删除拒绝记录。下次请求相同的启动时，会再次询问你。"
+
+msgid "Removes this provider's hosts from network_allowlist.json. Hosts that another provider you consented to needs, and separately written entries such as wildcards, are kept"
+msgstr "从 network_allowlist.json 中删除此提供商的主机。你已同意的其他提供商所需的主机，以及通配符等单独写入的条目将被保留"
+
+msgid "Removes what refers to its models from these settings (a model chosen there goes back to the default): {settings}"
+msgstr "从以下设置中删除引用其模型的内容（在那里选择的模型将恢复为默认）：{settings}"
+
+msgid "Renaming: the settings that choose this provider's models and your consent move to the new name. Saved threads keep the old name; to continue one, choose a model again."
+msgstr "重命名：选择此提供商模型的设置和你的同意将转移到新名称。已保存的会话保留旧名称；要继续某个会话，请重新选择模型。"
+
+msgid "Replaces the binary your user settings specify for the same language server"
+msgstr "替换用户设置中为同一语言服务器指定的二进制文件"
+
+msgid "Replaces the formatter your user settings specify"
+msgstr "替换用户设置中指定的格式化程序"
+
+msgid "Replaces the server of the same name in your user settings"
+msgstr "替换用户设置中的同名服务器"
+
+msgid "Required. A unique name used to identify this MCP server."
+msgstr "必填。用于标识此 MCP 服务器的唯一名称。"
+
+msgid "Required. Path to the executable that launches the server, or the name of a command on the PATH (such as npx or uvx). Saving only checks that it can be found; it does not run it."
+msgstr "必填。启动服务器的可执行文件路径，或 PATH 中的命令名称（如 npx 或 uvx）。保存时仅检查能否找到它，不会运行它。"
+
+msgid "Required. The base URL of the remote MCP server, such as https://example.com/mcp."
+msgstr "必填。远程 MCP 服务器的基础 URL，例如 https://example.com/mcp。"
+
+msgid "Requires: {requires}"
+msgstr "需要：{requires}"
+
+msgid "Reset"
+msgstr "重置"
+
+msgid "Reset Key"
+msgstr "重置 API 密钥"
+
+msgid "Reset to Default"
+msgstr "重置为默认值"
+
+msgid "Restricted Mode"
+msgstr "受限模式"
+
+msgid "Result:"
+msgstr "结果："
+
+msgid "Retry"
+msgstr "重试"
+
+msgid "Revoke Approval"
+msgstr "撤销批准"
+
+msgid "Revoke Consent"
+msgstr "撤销同意"
+
+msgid "Revoke Denial"
+msgstr "撤销拒绝"
+
+msgid "Revokes the approval and stops the program if it is running. Starting it again will need your approval again."
+msgstr "撤销批准，如果程序正在运行则停止它。再次启动将需要你重新批准。"
+
+msgid "Revokes the approval and stops the server. Starting it again requires allowing it again."
+msgstr "撤销批准并停止服务器。再次启动需要重新允许。"
+
+msgid "Revoking consent shows the warning again, and the provider can no longer be configured. Also removes the hosts registered in the allowlist for this provider"
+msgstr "撤销同意后将再次显示警告，并且无法再配置该提供商。同时删除为此提供商在允许列表中注册的主机"
+
+msgid "Run on This Computer"
+msgstr "在此计算机上运行"
+
+msgid "Run on the SSH Host"
+msgstr "在 SSH 主机上运行"
+
+msgid "Running JavaScript in pages in the built-in browser"
+msgstr "在内置浏览器的页面中运行 JavaScript"
+
+msgid "Runs on"
+msgstr "运行位置"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md 文件超过最大大小 {}KB"
+
+msgid "SSH Key"
+msgstr "SSH 密钥"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save Provider"
+msgstr "保存提供商"
+
+msgid "Save Skill"
+msgstr "保存技能"
+
+msgid "Save and Start"
+msgstr "保存并开始"
+
+msgid "Saved threads that used it stay in the history; to continue one, choose another model."
+msgstr "使用过它的已保存会话会保留在历史记录中；要继续某个会话，请选择其他模型。"
+
+msgid "Saving…"
+msgstr "正在保存…"
+
+msgid "Scope"
+msgstr "适用范围"
+
+msgid "Scrolling pages in the built-in browser"
+msgstr "在内置浏览器中滚动页面"
+
+msgid "Search Settings"
+msgstr "搜索设置"
+
+msgid "Search fonts…"
+msgstr "搜索字体…"
+
+msgid "Search icon themes…"
+msgstr "搜索图标主题…"
+
+msgid "Search models…"
+msgstr "搜索模型…"
+
+msgid "Search settings…"
+msgstr "搜索设置…"
+
+msgid "Search theme…"
+msgstr "搜索主题…"
+
+msgid "Select"
+msgstr "选择"
+
+msgid "Select a model…"
+msgstr "选择模型…"
+
+msgid "Select which provider to use for edit predictions."
+msgstr "选择用于编辑预测的提供商。"
+
+msgid "Server Name"
+msgstr "服务器名称"
+
+msgid "Server name is required."
+msgstr "服务器名称为必填项。"
+
+msgid "Server settings on the remote host"
+msgstr "远程主机上的服务器设置"
+
+msgid "Server settings on {display_name}"
+msgstr "{display_name} 上的服务器设置"
+
+msgid "Servers can't be added all at once while one has a name that is already taken. Open each server marked \"A server with this name already exists\" in the form and rename it before adding it."
+msgstr "存在名称已被占用的服务器时，无法一次全部添加。请在表单中打开每个标有“同名服务器已存在”的服务器，重命名后再添加。"
+
+msgid "Set Up {name}"
+msgstr "设置 {name}"
+
+msgid "Setting the values of form fields in the built-in browser"
+msgstr "在内置浏览器中设置表单字段的值"
+
+msgid "Settings Content"
+msgstr "设置内容"
+
+msgid "Settings File"
+msgstr "设置文件"
+
+msgid "Settings Navigation"
+msgstr "设置导航"
+
+msgid "Signing Key"
+msgstr "签名密钥"
+
+msgid "Signs in as git is configured"
+msgstr "按 Git 的配置登录"
+
+msgid "Signs in to {host} as {login}"
+msgstr "以 {login} 身份登录 {host}"
+
+msgid "Skill Content"
+msgstr "技能内容"
+
+msgid "Start Testing"
+msgstr "开始测试"
+
+msgid "Start {name} on this computer. If it has no model yet, download one first (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "请在此计算机上启动 {name}。如果它还没有模型，请先下载一个（例如 Ollama：ollama pull qwen3:8b），然后按“重试”。"
+
+msgid "Starting with these details is not allowed."
+msgstr "不允许以这些详细信息启动。"
+
+msgid "Stop Testing"
+msgstr "停止测试"
+
+msgid "Stored in the system keychain, not in settings.json."
+msgstr "存储在系统钥匙串中，而非 settings.json。"
+
+msgid "Submit"
+msgstr "提交"
+
+msgid "Subscription"
+msgstr "订阅"
+
+msgid "Subscription or API Key"
+msgstr "订阅或 API 密钥"
+
+msgid "Supports /chat/completions"
+msgstr "支持 /chat/completions"
+
+msgid "Supports images"
+msgstr "支持图片"
+
+msgid "Supports parallel_tool_calls"
+msgstr "支持 parallel_tool_calls"
+
+msgid "Supports prompt_cache_key"
+msgstr "支持 prompt_cache_key"
+
+msgid "Supports thinking"
+msgstr "支持思考"
+
+msgid "Supports tools"
+msgstr "支持工具"
+
+msgid "Switching the current AI tab in the built-in browser"
+msgstr "在内置浏览器中切换当前 AI 标签页"
+
+msgid "System Default"
+msgstr "系统默认"
+
+msgid "Test Connection"
+msgstr "测试连接"
+
+msgid "Test Your Rules"
+msgstr "测试你的规则"
+
+msgid "Testing the connection…"
+msgstr "正在测试连接…"
+
+msgid "Testing…"
+msgstr "正在测试…"
+
+msgid "The API URL changed, so enter the API key for the new URL. The saved key is not sent to a different URL."
+msgstr "API URL 已更改，请输入新 URL 的 API 密钥。已保存的密钥不会发送到其他 URL。"
+
+msgid "The API key could not be saved: {error}"
+msgstr "无法保存 API 密钥：{error}"
+
+msgid "The API key sent as Authorization: Bearer {{key}}."
+msgstr "API 密钥以 Authorization: Bearer {{key}} 的形式发送。"
+
+msgid "The approval records are unavailable, so the decision can't be revoked."
+msgstr "批准记录不可用，因此无法撤销该决定。"
+
+msgid "The approval records are unavailable, so the decision can't be saved."
+msgstr "批准记录不可用，因此无法保存该决定。"
+
+msgid "The approval records are unavailable, so the list can't be shown."
+msgstr "批准记录不可用，因此无法显示列表。"
+
+msgid "The approval records can't be read, so it won't be started: {error}"
+msgstr "无法读取批准记录，因此不会启动：{error}"
+
+msgid "The approval records can't be read, so no decision can be made."
+msgstr "无法读取批准记录，因此无法做出决定。"
+
+msgid "The author and committer email of commits (user.email)."
+msgstr "提交的作者和提交者电子邮件（user.email）。"
+
+msgid "The author and committer name of commits (user.name)."
+msgstr "提交的作者和提交者名称（user.name）。"
+
+msgid "The base URL for the compatible API."
+msgstr "兼容 API 的基础 URL。"
+
+msgid "The connection can't be tested until the server is allowed to start."
+msgstr "在允许服务器启动之前无法测试连接。"
+
+msgid "The contents of the argument file {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "参数文件 {path} 的内容不包含在批准中。如果之后内容发生更改，不会再次询问你。"
+
+msgid "The contents of the folder {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "文件夹 {path} 的内容不包含在批准中。如果之后内容发生更改，不会再次询问你。"
+
+msgid "The contents of the remote file {path} can't be checked from here, so they are not part of the approval. You won't be asked again if the contents change later."
+msgstr "无法从此处检查远程文件 {path} 的内容，因此它不包含在批准中。如果之后内容发生更改，不会再次询问你。"
+
+msgid "The endpoint depends on the AWS region (for example, bedrock-runtime.us-east-1.amazonaws.com). Register the host for the region you actually use in the allowlist."
+msgstr "端点取决于 AWS 区域（例如 bedrock-runtime.us-east-1.amazonaws.com）。请在允许列表中注册你实际使用的区域的主机。"
+
+msgid "The key is kept in this computer's credential store, not in a settings file."
+msgstr "密钥保存在此计算机的凭据存储中，而不是设置文件中。"
+
+msgid "The maximum number of tokens the model can output."
+msgstr "模型可输出的最大 Token 数。"
+
+msgid "The model context window size."
+msgstr "模型的上下文窗口大小。"
+
+msgid "The model's name in the provider's API."
+msgstr "模型在提供商 API 中的名称。"
+
+msgid "The name the account is picked by in the Git panel."
+msgstr "在 Git 面板中选择该账户时使用的名称。"
+
+msgid "The network allowlist blocked the connection to {host}. Add this host under \"Network Allowlist\" on the \"Network\" page."
+msgstr "网络允许列表阻止了与 {host} 的连接。请在“网络”页面的“网络允许列表”中添加此主机。"
+
+msgid "The sandbox is disabled, so terminal commands are confirmed every time, even with \"Allow\"."
+msgstr "沙盒已禁用，因此即使设置为“允许”，终端命令每次也都需要确认。"
+
+msgid "The saved key belongs to the previous API URL and is not sent to the new one. Enter the key for this URL."
+msgstr "已保存的密钥属于之前的 API URL，不会发送到新 URL。请输入此 URL 的密钥。"
+
+msgid "The server didn't become ready for connections."
+msgstr "服务器未能进入可连接状态。"
+
+msgid "The server returned HTTP {status}."
+msgstr "服务器返回了 HTTP {status}。"
+
+msgid "The server returned HTTP {status}: {body}"
+msgstr "服务器返回了 HTTP {status}：{body}"
+
+msgid "The user name on the host that goes with the token."
+msgstr "与令牌对应的主机上的用户名。"
+
+msgid "The value of `{key}` is not an object ({{ … }})."
+msgstr "`{key}` 的值不是对象（{{ … }}）。"
+
+msgid "These fields weren't loaded because Zed doesn't use them: {keys}"
+msgstr "以下字段未被加载，因为 ForgeKairos 不使用它们：{keys}"
+
+msgid "These patterns failed to compile as regular expressions. The tool will be blocked until they are fixed or removed."
+msgstr "这些模式未能编译为正则表达式，工具将被阻止，直到它们被修复或删除。"
+
+msgid "They can be automatically migrated to the latest version."
+msgstr "它们可以自动迁移到最新版本。"
+
+msgid "They must be manually migrated to the latest version."
+msgstr "它们必须手动迁移到最新版本。"
+
+msgid "Thinking Effort: {effort}"
+msgstr "思考深度：{effort}"
+
+msgid "This approval lasts until Zed quits."
+msgstr "此批准在 ForgeKairos 退出前有效。"
+
+msgid "This computer"
+msgstr "此计算机"
+
+msgid "This consent is shared with the \"Zed\" LLM provider on the AI page. Withdrawing it applies to both edit predictions and the agent."
+msgstr "此同意与“AI”页面上的“Zed”LLM 提供商共享。撤销后将同时应用于编辑预测和智能体。"
+
+msgid "This covers outbound traffic from AI providers (LLMs), agent tools (fetch / web search), MCP servers, external agent (ACP) processes, and commands that agents run in the sandbox. Traffic from the IDE's own tooling, such as language servers, formatters, debug adapters, extensions, app updates, remote development servers, Git, and the browser panel, is not covered and is not restricted."
+msgstr "管控范围包括 AI 提供商（LLM）、智能体工具（fetch / 网页搜索）、MCP 服务器、外部智能体（ACP）进程以及智能体在沙盒中运行的命令的外部通信。IDE 自身工具（如语言服务器、格式化程序、调试适配器、扩展、应用更新、远程开发服务器、Git 和浏览器面板）的通信不在范围内，也不受限制。"
+
+msgid "This entry is ignored because its format is invalid."
+msgstr "此条目格式无效，已被忽略。"
+
+msgid "This project is in restricted mode. Some project settings may not apply."
+msgstr "此项目处于受限模式。部分项目设置可能不会生效。"
+
+msgid "This project's definition is not allowed to start."
+msgstr "此项目的定义不被允许启动。"
+
+msgid "This project's folder is no longer open."
+msgstr "此项目的文件夹已不再打开。"
+
+msgid "This project's settings are trying to start a program as shown below. Review it before choosing."
+msgstr "此项目的设置正尝试以如下方式启动程序。请在选择前检查。"
+
+msgid "This project's settings want to start a program"
+msgstr "此项目的设置想要启动程序"
+
+msgid "This provider connects to an external service. Review the warning about training risks and check the box"
+msgstr "此提供商会连接到外部服务。请查看有关训练风险的警告并勾选复选框"
+
+msgid "This provider is defined outside the top level of your settings.json (for example, in a release channel, OS or profile override), so it can't be edited or deleted here. Edit it in settings.json."
+msgstr "此提供商定义在 settings.json 顶层以外的位置（例如发布渠道、操作系统或配置文件的覆盖设置中），因此无法在此处编辑或删除。请在 settings.json 中编辑。"
+
+msgid "This provider is no longer in settings.json, so nothing was saved. Close the form and add it again."
+msgstr "此提供商已不在 settings.json 中，因此未保存任何内容。请关闭表单并重新添加。"
+
+msgid "This provider will use an Anthropic Messages-compatible API."
+msgstr "此提供商将使用与 Anthropic Messages 兼容的 API。"
+
+msgid "This provider will use an OpenAI-compatible API."
+msgstr "此提供商将使用兼容 OpenAI 的 API。"
+
+msgid "This provider's endpoint cannot be determined from settings. Verify where your data will be sent before enabling it."
+msgstr "无法从设置中确定此提供商的端点。请在启用前确认数据的发送目标。"
+
+msgid "This server hasn't been created yet. Check its settings and extension."
+msgstr "此服务器尚未创建。请检查其设置和扩展。"
+
+msgid "This server is defined in the project settings file {file_label}. Saving rewrites this file (not your user settings). Because the definition changes, the server must be allowed again before it starts."
+msgstr "此服务器定义在项目设置文件 {file_label} 中。保存会重写此文件（而不是你的用户设置）。由于定义发生更改，服务器启动前必须再次允许。"
+
+msgid "This server is disabled. Enable it before testing the connection."
+msgstr "此服务器已禁用。请先启用后再测试连接。"
+
+msgid "This server starts in an empty folder of Zed's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
+msgstr "此服务器在 ForgeKairos 专用的空文件夹中启动，而不是在项目文件夹中。要让它处理某个项目，请将该文件夹的绝对路径作为参数传入。"
+
+msgid "This server's child process goes through the loopback proxy, so its outbound traffic is controlled by the network allowlist."
+msgstr "此服务器的子进程通过环回代理，因此其外部通信受网络允许列表管控。"
+
+msgid "This server's definition in the project settings file changed after the form was opened. Open the form again."
+msgstr "打开表单后，项目设置文件中此服务器的定义已更改。请重新打开表单。"
+
+msgid "This server's environment variables name a proxy, so the loopback proxy is not applied. Its outbound traffic is not controlled by the network allowlist."
+msgstr "此服务器的环境变量指定了代理，因此不应用环回代理。其外部通信不受网络允许列表管控。"
+
+msgid "This will move {} to the trash. This skill is shared with other agent tools {shared_scope}, so it will no longer be available to them either."
+msgstr "这会将 {} 移至回收站。此技能与{shared_scope}其他智能体工具共享，因此它们也将无法再使用此技能。"
+
+msgid "Timeout (seconds)"
+msgstr "超时（秒）"
+
+msgid "Timeout must be a positive whole number of seconds."
+msgstr "超时时间必须是以秒为单位的正整数。"
+
+msgid "To find an API key, visit the {link}"
+msgstr "要获取 API 密钥，请访问 {link}"
+
+msgid "To reset your API key, unset the {env_var_name} environment variable."
+msgstr "若要重置 API 密钥，取消设置 {env_var_name} 环境变量。"
+
+msgid "To reset your API key, unset the {} environment variable."
+msgstr "若要重置 API 密钥，取消设置 {} 环境变量。"
+
+msgid "Token"
+msgstr "令牌"
+
+msgid "Turning this off sets this project's definition to \"Don't Allow\" and stops the server."
+msgstr "关闭此项会将此项目的定义设为“不允许”并停止服务器。"
+
+msgid "Turning this on allows this project's definition and starts the server."
+msgstr "打开此项会允许此项目的定义并启动服务器。"
+
+msgid "Typing text into pages in the built-in browser"
+msgstr "在内置浏览器的页面中输入文本"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "URL is required."
+msgstr "URL 为必填项。"
+
+msgid "Uninstall MCP Server"
+msgstr "卸载 MCP 服务器"
+
+msgid "Use Subscription Sign-In for Claude (ACP)"
+msgstr "为 Claude (ACP) 使用订阅登录"
+
+msgid "Use This Template"
+msgstr "使用此模板"
+
+msgid "User"
+msgstr "用户"
+
+msgid "User Name"
+msgstr "用户名"
+
+msgid "Uses max_tokens for output limit"
+msgstr "使用 max_tokens 作为输出限制"
+
+msgid "Value"
+msgstr "值"
+
+msgid "View Other Projects"
+msgstr "查看其他项目"
+
+msgid "Visit the {link} to generate an API key."
+msgstr "请访问 {link} 生成 API 密钥。"
+
+msgid "Waiting for approval: this command was resolved on the remote host and needs your permission to start. Review the details before allowing it."
+msgstr "等待批准：此命令在远程主机上解析，需要你的许可才能启动。请在允许前检查详细信息。"
+
+msgid "Waiting for approval: this project's settings ask to start this server. Review the details before allowing it."
+msgstr "等待批准：此项目的设置请求启动此服务器。请在允许前检查详细信息。"
+
+msgid "Warn About Confusable Unicode"
+msgstr "易混淆 Unicode 字符警告"
+
+msgid "Warn About Windows-Drive Grants"
+msgstr "Windows 驱动器授权警告"
+
+msgid "Warn when an approval prompt requests a domain or write path that contains potentially confusable Unicode characters, such as homoglyphs (i.e. two symbols that look similar, such as a Cyrillic `а`)"
+msgstr "当批准提示中请求的域名或写入路径包含潜在易混淆的 Unicode 字符（例如同形字符，即两个看起来相似的符号，比如西里尔字母 `а`）时发出警告"
+
+msgid "Web search queries"
+msgstr "网页搜索查询"
+
+msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
+msgstr "启用后，ACP 智能体、MCP 服务器以及安装 AI 智能体的 npm 的每个子进程都会获得一个环回代理，因此其外部通信也会根据上方的允许列表进行检查。默认启用。禁用后，这些子进程的外部通信不受允许列表管控（来自 IDE 本身的 AI 通信仍受管控）。"
+
+msgid "When enabled, the code you enter and the content of your conversations are sent to {name}'s servers. Depending on the provider's policies, they may be stored and used to train models. If you use this for work, be sure to check your organization's policies."
+msgstr "启用后，你输入的代码和对话内容将发送到 {name} 的服务器。根据提供商的政策，这些内容可能会被存储并用于训练模型。如果用于工作，请务必确认所在组织的政策。"
+
+msgid "When it runs on the SSH host, the command is resolved there (a server provided by an extension needs the same extension installed there too). When it runs on this computer, the files the server reads and writes are the ones on this computer."
+msgstr "在 SSH 主机上运行时，命令在该主机上解析（由扩展提供的服务器也需要在该主机上安装相同的扩展）。在此计算机上运行时，服务器读写的是此计算机上的文件。"
+
+msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
+msgstr "关闭（默认）时，智能体功能新启动或运行的任何内容都不会在沙盒外运行：无法在沙盒中运行的终端命令、在沙盒外启动外部智能体或 Claude Code，以及恢复在沙盒外开始的会话，都会被直接拒绝而不询问，并且始终在沙盒外启动它们的设置也会被忽略。已在沙盒外运行的连接将继续运行。MCP 服务器（上下文服务器）不受此设置影响。打开时，上述各项会先询问，或遵循各自的设置。"
+
+msgid "When the server runs on the SSH host, type the path on the host directly."
+msgstr "服务器在 SSH 主机上运行时，请直接输入主机上的路径。"
+
+msgid "Whether each program that a project's settings tried to start was allowed or denied. Revoking a decision stops the program if it is running, and you'll be asked again the next time it needs to start."
+msgstr "项目设置尝试启动的每个程序是被允许还是被拒绝。撤销决定会停止正在运行的程序，下次需要启动时会再次询问你。"
+
+msgid "While the file cannot be parsed, the allowlist is treated as empty (only loopback is allowed). Fix the file directly. Editing from this page is disabled."
+msgstr "在文件无法解析期间，允许列表被视为空（仅允许环回）。请直接修正文件。已禁用从此页面编辑。"
+
+msgid "Wildcards are only allowed as a leading label, e.g. *.github.com."
+msgstr "通配符只能作为前导标签使用，例如 *.github.com。"
+
+msgid "Windows Credential Manager"
+msgstr "Windows 凭据管理器"
+
+msgid "Windows only: warn when a sandbox grant targets a file on a Windows drive (accessed inside WSL via DrvFs). Such grants are enforced through a translated path and their sandbox-integrity guarantees are weaker than files on the Linux distro's own filesystem."
+msgstr "仅限 Windows：当沙盒授权的目标是 Windows 驱动器上的文件（在 WSL 内通过 DrvFs 访问）时发出警告。此类授权通过转换后的路径强制执行，其沙盒完整性保障弱于 Linux 发行版自身文件系统中的文件。"
+
+msgid "Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above."
+msgstr "选择 Zed 作为提供商时，撤销同意不会停止 Zed（会再次显示警告，并且 Zed 会从上方的“提供商”列表中消失）。要停止它，请在上方的“提供商”中选择“无”。"
+
+msgid "Withdraws your consent to sending data to it, and removes its host from the allowlist unless another provider you consented to needs it."
+msgstr "撤销你对向其发送数据的同意，并将其主机从允许列表中移除（除非你已同意的其他提供商需要该主机）。"
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. It can only be turned off while running outside the sandbox is allowed (above)."
+msgstr "将智能体运行的终端命令包裹在操作系统级沙盒中。只有在允许在沙盒外运行（上方设置）时才能关闭。"
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
+msgstr "将智能体运行的终端命令包裹在操作系统级沙盒中。关闭时，命令以 ForgeKairos 自身的权限运行，因此自动批准不生效，每个命令都会请求确认。这不影响外部智能体本身或 Claude Code 的启动方式（它们的设置位于“AI”页面）。"
+
+msgid "Writable Paths"
+msgstr "可写路径"
+
+msgid "You have consented to using this as an external AI service."
+msgstr "你已同意将其作为外部 AI 服务使用。"
+
+msgid "You have not consented to any providers."
+msgstr "你尚未同意任何提供商。"
+
+msgid "You have not given consent, but the hosts above are still in the allowlist."
+msgstr "你尚未给予同意，但上述主机仍在允许列表中。"
+
+msgid "Your settings are out of date, and need to be updated."
+msgstr "你的设置已过时，需要更新。"
+
+msgid "Your settings file is out of date, automatic migration failed"
+msgstr "你的设置文件已过时，自动迁移失败"
+
+msgid "Zed — Settings"
+msgstr "ForgeKairos — 设置"
+
+msgid "Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev."
+msgstr "Zed 的云端编辑预测（Zeta）。你正在编辑的代码及其周围的代码会被发送到 cloud.zed.dev。"
+
+msgid "`*.` cannot be used with an IP address."
+msgstr "`*.` 不能用于 IP 地址。"
+
+msgid "`rm -rf` commands are always blocked when run on `$HOME`, `~`, `.`, `..`, or `/`"
+msgstr "以 `$HOME`、`~`、`.`、`..` 或 `/` 为目标的 `rm -rf` 命令始终会被阻止"
+
+msgid "e.g. gpt-5, claude-opus-4, gemini-2.5-pro"
+msgstr "例如 gpt-5、claude-opus-4、gemini-2.5-pro"
+
+msgid "e.g., Fill the PR description following this template."
+msgstr "例如：按此模板填写 PR 描述。"
+
+msgid "enabled for all"
+msgstr "对所有人启用"
+
+msgid "environment variable"
+msgstr "环境变量"
+
+msgid "failed to check whether {} already exists"
+msgstr "检查 {} 是否已存在失败"
+
+msgid "failed to create skill directory {}"
+msgstr "创建技能目录 {} 失败"
+
+msgid "failed to fetch {raw_url}"
+msgstr "获取 {raw_url} 失败"
+
+msgid "failed to read response body"
+msgstr "读取响应正文失败"
+
+msgid "failed to serialize skill frontmatter as YAML"
+msgstr "将技能前置元数据序列化为 YAML 失败"
+
+msgid "failed to write {}"
+msgstr "写入 {} 失败"
+
+msgid "header"
+msgstr "标头"
+
+msgid "macOS Keychain"
+msgstr "macOS 钥匙串"
+
+msgid "network_allowlist.json does not exist yet. The allowlist is treated as empty (only loopback is allowed). The file is created when you add a host."
+msgstr "network_allowlist.json 尚不存在。允许列表被视为空（仅允许环回）。添加主机时会创建该文件。"
+
+msgid "the system keyring (Secret Service)"
+msgstr "系统密钥环（Secret Service）"
+
+msgid "{count} entry registered"
+msgid_plural "{count} entries registered"
+msgstr[0] "已注册 {count} 个条目"
+
+msgid "{count} rule"
+msgid_plural "{count} rules"
+msgstr[0] "{count} 条规则"
+
+msgid "{count} tool"
+msgid_plural "{count} tools"
+msgstr[0] "{count} 个工具"
+
+msgid "{entry} is already in the list."
+msgstr "{entry} 已在列表中。"
+
+msgid "{host} is already in the allowlist."
+msgstr "{host} 已在允许列表中。"
+
+msgid "{names} (values not shown)"
+msgstr "{names}（不显示值）"
+
+msgid "{name} (Edit Prediction)"
+msgstr "{name}（编辑预测）"
+
+msgid "{name} is an external AI service"
+msgstr "{name} 是外部 AI 服务"
+
+msgid "{name} is not available here. Its settings may have been removed."
+msgstr "{name} 在此处不可用。其设置可能已被删除。"
+
+msgid "{name} is ready. Opening a new thread…"
+msgstr "{name} 已就绪。正在打开新会话…"
+
+msgid "{name} is running but has no model. Download one (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "{name} 正在运行，但没有模型。请下载一个模型（例如 Ollama：ollama pull qwen3:8b），然后按“重试”。"
+
+msgid "{name} is signed in, but no model could be listed. The list is fetched from {name}, so its hosts have to be in the allowlist; also check that your account or plan includes models. Then press Retry."
+msgstr "{name} 已登录，但无法列出任何模型。模型列表从 {name} 获取，因此其主机必须在允许列表中；另请检查你的账户或套餐是否包含模型。然后按“重试”。"
+
+msgid "{name} must be a number"
+msgstr "{name} 必须是数字"
+
+msgid "{path} can't be read, so its contents can't be checked."
+msgstr "无法读取 {path}，因此无法检查其内容。"
+
+msgid "{path} is a file in the project, but its contents are not part of the approval. You won't be asked again if the contents change later."
+msgstr "{path} 是项目中的文件，但其内容不包含在批准中。如果之后内容发生更改，不会再次询问你。"
+
+msgid "{program} starts another program. Its contents are not part of the approval."
+msgstr "{program} 会启动另一个程序。其内容不包含在批准中。"
+
+msgid "{program} starts in the project folder {working_directory} and may load code from it. You won't be asked again if the contents change later."
+msgstr "{program} 在项目文件夹 {working_directory} 中启动，并可能从中加载代码。如果之后内容发生更改，不会再次询问你。"
+
+msgid "{provider_name} API Key"
+msgstr "{provider_name} API 密钥"
+
+msgid "{provider_name} dashboard"
+msgstr "{provider_name} 仪表盘"
+
+msgid "{provider_name} dashboard."
+msgstr "{provider_name} 仪表盘。"
+
+msgid "{{ \"mcpServers\": {{ \"server-name\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+msgstr "{{ \"mcpServers\": {{ \"服务器名称\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+
+msgid "{} API Key"
+msgstr "{} API 密钥"
+
+msgid "{} Tool"
+msgstr "{} 工具"
+
+msgid "{} invalid"
+msgstr "{} 个无效模式"
+
+msgctxt "agent tool"
+msgid "Apply Code Action"
+msgstr "应用代码操作"
+
+msgctxt "agent tool"
+msgid "Browser: Click"
+msgstr "浏览器: 点击"
+
+msgctxt "agent tool"
+msgid "Browser: Close Tab"
+msgstr "浏览器: 关闭标签页"
+
+msgctxt "agent tool"
+msgid "Browser: Hover"
+msgstr "浏览器: 悬停"
+
+msgctxt "agent tool"
+msgid "Browser: Navigate"
+msgstr "浏览器: 导航"
+
+msgctxt "agent tool"
+msgid "Browser: Open Tab"
+msgstr "浏览器: 打开标签页"
+
+msgctxt "agent tool"
+msgid "Browser: Press Keys"
+msgstr "浏览器: 按键"
+
+msgctxt "agent tool"
+msgid "Browser: Run JavaScript"
+msgstr "浏览器: 运行 JavaScript"
+
+msgctxt "agent tool"
+msgid "Browser: Scroll"
+msgstr "浏览器: 滚动"
+
+msgctxt "agent tool"
+msgid "Browser: Set Value"
+msgstr "浏览器: 设置值"
+
+msgctxt "agent tool"
+msgid "Browser: Switch Tab"
+msgstr "浏览器: 切换标签页"
+
+msgctxt "agent tool"
+msgid "Browser: Type"
+msgstr "浏览器: 输入"
+
+msgctxt "agent tool"
+msgid "Copy Path"
+msgstr "复制路径"
+
+msgctxt "agent tool"
+msgid "Create Directory"
+msgstr "创建目录"
+
+msgctxt "agent tool"
+msgid "Delete Path"
+msgstr "删除路径"
+
+msgctxt "agent tool"
+msgid "Edit File"
+msgstr "编辑文件"
+
+msgctxt "agent tool"
+msgid "Fetch"
+msgstr "获取"
+
+msgctxt "agent tool"
+msgid "Git"
+msgstr "Git"
+
+msgctxt "agent tool"
+msgid "Move Path"
+msgstr "移动路径"
+
+msgctxt "agent tool"
+msgid "Rename Symbol"
+msgstr "重命名符号"
+
+msgctxt "agent tool"
+msgid "Skill"
+msgstr "技能"
+
+msgctxt "agent tool"
+msgid "Terminal"
+msgstr "终端"
+
+msgctxt "agent tool"
+msgid "Web Search"
+msgstr "网页搜索"
+
+msgctxt "agent tool"
+msgid "Write File"
+msgstr "写入文件"
+
+msgctxt "launch approval"
+msgid "Details"
+msgstr "详细信息"
+
+msgctxt "launch approval"
+msgid "Review"
+msgstr "审阅"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "page title"
+msgid "Add Custom Agent"
+msgstr "添加自定义智能体"
+
+msgctxt "page title"
+msgid "Configure MCP Server"
+msgstr "配置 MCP 服务器"
+
+msgctxt "skill scope"
+msgid "global"
+msgstr "全局"
+
+msgctxt "skill scope"
+msgid "on this machine"
+msgstr "本机上的"
+
+msgctxt "skill scope"
+msgid "project"
+msgstr "项目"
+
+msgctxt "skill scope"
+msgid "used in this project"
+msgstr "在此项目中使用的"
+
+msgctxt "tool permission mode"
+msgid "AI Judge"
+msgstr "AI 判定"
+
+msgctxt "tool permission mode"
+msgid "Allow"
+msgstr "允许"
+
+msgctxt "tool permission mode"
+msgid "Confirm"
+msgstr "确认"
+
+msgctxt "tool permission mode"
+msgid "Deny"
+msgstr "拒绝"

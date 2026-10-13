@@ -1,0 +1,181 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add code block"
+msgstr "添加代码块"
+
+msgid "Add code cell"
+msgstr "添加代码单元格"
+
+msgid "Add markdown block"
+msgstr "添加 Markdown 块"
+
+msgid "Add markdown cell"
+msgstr "添加 Markdown 单元格"
+
+msgid "Clear all outputs"
+msgstr "清除所有输出"
+
+msgid "Close output area"
+msgstr "关闭输出区域"
+
+msgid "Connecting to kernel..."
+msgstr "正在连接到内核..."
+
+msgid "Copy Full Error"
+msgstr "复制完整错误"
+
+msgid "Copy Output"
+msgstr "复制输出"
+
+msgid "Delete cell"
+msgstr "删除单元格"
+
+msgid "Error: {err}"
+msgstr "错误：{err}"
+
+msgid "Execute all cells"
+msgstr "执行所有单元格"
+
+msgid "Executing..."
+msgstr "正在执行..."
+
+msgid "Failed to install ipykernel in {}: {}"
+msgstr "在 {} 中安装 ipykernel 失败：{}"
+
+msgid "Input:"
+msgstr "输入："
+
+msgid "Install Kernels"
+msgstr "安装内核"
+
+msgid "Installing ipykernel in {}..."
+msgstr "正在 {} 中安装 ipykernel..."
+
+msgid "Interrupt"
+msgstr "中断"
+
+msgid "Interrupt Kernel"
+msgstr "中断内核"
+
+msgid "Jupyter Kernel Sessions"
+msgstr "Jupyter 内核会话"
+
+msgid "Jupyter Kernels"
+msgstr "Jupyter 内核"
+
+msgid "Kernel Docs"
+msgstr "内核文档"
+
+msgid "Kernel error: {}"
+msgstr "内核错误：{}"
+
+msgid "Kernel restarting..."
+msgstr "内核正在重启..."
+
+msgid "Kernel shutdown"
+msgstr "内核已关闭"
+
+msgid "Kernel shutting down..."
+msgstr "内核正在关闭..."
+
+msgid "Kernel: {} ({}). Click to change."
+msgstr "内核：{} ({})。点击以更改。"
+
+msgid "More options"
+msgstr "更多选项"
+
+msgid "Move cell down"
+msgstr "下移单元格"
+
+msgid "Move cell up"
+msgstr "上移单元格"
+
+msgid "No Jupyter Kernel Sessions"
+msgstr "没有 Jupyter 内核会话"
+
+msgid "No Jupyter Kernels Available"
+msgstr "没有可用的 Jupyter 内核"
+
+msgid "Open Full Error in Buffer"
+msgstr "在缓冲区中打开完整错误"
+
+msgid "Open in Buffer"
+msgstr "在缓冲区中打开"
+
+msgid "Python Environments"
+msgstr "Python 环境"
+
+msgid "Queued..."
+msgstr "排队中..."
+
+msgid "REPL Sessions"
+msgstr "REPL 会话"
+
+msgid "Recommended"
+msgstr "推荐"
+
+msgid "Remote Servers"
+msgstr "远程服务器"
+
+msgid "Restart Kernel"
+msgstr "重启内核"
+
+msgid "Restarting"
+msgstr "正在重启"
+
+msgid "Running..."
+msgstr "运行中..."
+
+msgid "Select Kernel"
+msgstr "选择内核"
+
+msgid "Select a kernel..."
+msgstr "选择内核..."
+
+msgid "Shutdown"
+msgstr "关闭"
+
+msgid "Shutting Down"
+msgstr "正在关闭"
+
+msgid "Starting"
+msgstr "正在启动"
+
+msgid "This notebook is empty."
+msgstr "此笔记本为空。"
+
+msgid "To run code in a Jupyter kernel, select some code and use the 'repl::Run' command."
+msgstr "要在 Jupyter 内核中运行代码，选中代码并使用 'repl::Run' 命令。"
+
+msgid "To start interactively running code in your editor, you need to install and configure Jupyter kernels."
+msgstr "要在编辑器中交互式运行代码，需要安装并配置 Jupyter 内核。"
+
+msgid "Type here and press Enter"
+msgstr "在此输入并按 Enter"
+
+msgid "Unknown status"
+msgstr "未知状态"
+
+msgid "WSL Kernels"
+msgstr "WSL 内核"
+
+msgid "ipykernel installed in {}"
+msgstr "ipykernel 已安装到 {}"
+
+msgid "ipykernel not installed"
+msgstr "ipykernel 未安装"
+
+msgid "{} ({}). Click to change kernel."
+msgstr "{} ({})。点击以更改内核。"
+
+msgctxt "kernel status"
+msgid "Shutdown"
+msgstr "关闭"

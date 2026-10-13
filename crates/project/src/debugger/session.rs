@@ -481,15 +481,15 @@ impl RunningMode {
                             .strip_prefix(worktree.read(cx).abs_path())
                             .unwrap_or(failed_path)
                             .display();
-                        let message = format!(
-                            "Failed to set breakpoints for {failed_path}{}",
-                            match errors_by_path.len() {
-                                0 => unreachable!(),
-                                1 => "".into(),
-                                2 => " and 1 other path".into(),
-                                n => format!(" and {} other paths", n - 1),
-                            }
-                        );
+                        let message = match errors_by_path.len() {
+                            0 => unreachable!(),
+                            1 => i18n::t!("Failed to set breakpoints for {failed_path}"),
+                            n => i18n::tn!(
+                                n - 1,
+                                "Failed to set breakpoints for {failed_path} and {count} other path",
+                                "Failed to set breakpoints for {failed_path} and {count} other paths"
+                            ),
+                        };
                         cx.emit(super::dap_store::DapStoreEvent::Notification(message));
                     }
                 })?;

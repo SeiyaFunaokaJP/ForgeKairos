@@ -780,7 +780,7 @@ impl DebugPanel {
                                                             let focus_handle = focus_handle.clone();
                                                             move |_window, cx| {
                                                                 Tooltip::for_action_in(
-                                                                    "Continue Thread",
+                                                                    i18n::t!("Continue Thread"),
                                                                     &ContinueThread,
                                                                     &focus_handle,
                                                                     cx,

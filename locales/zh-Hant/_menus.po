@@ -1,0 +1,589 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "menu"
+msgid "AI Browser Panel"
+msgstr "AI 瀏覽器面板"
+
+msgctxt "menu"
+msgid "About Zed"
+msgstr "關於 ForgeKairos"
+
+msgctxt "menu"
+msgid "Add Cursor Above"
+msgstr "在上方新增游標"
+
+msgctxt "menu"
+msgid "Add Cursor Below"
+msgstr "在下方新增游標"
+
+msgctxt "menu"
+msgid "Add Folder to Project…"
+msgstr "將資料夾新增至專案…"
+
+msgctxt "menu"
+msgid "Agent Panel"
+msgstr "代理面板"
+
+msgctxt "menu"
+msgid "Amend Last Commit"
+msgstr "修正上一個提交"
+
+msgctxt "menu"
+msgid "Back"
+msgstr "返回"
+
+msgctxt "menu"
+msgid "Browser Panel"
+msgstr "瀏覽器面板"
+
+msgctxt "menu"
+msgid "Call Graph Panel"
+msgstr "呼叫圖面板"
+
+msgctxt "menu"
+msgid "Change Folder…"
+msgstr "變更資料夾…"
+
+msgctxt "menu"
+msgid "Check for Updates"
+msgstr "檢查更新"
+
+msgctxt "menu"
+msgid "Clear All Breakpoints"
+msgstr "清除所有中斷點"
+
+msgctxt "menu"
+msgid "Close Editor"
+msgstr "關閉編輯器"
+
+msgctxt "menu"
+msgid "Close Project"
+msgstr "關閉專案"
+
+msgctxt "menu"
+msgid "Close Window"
+msgstr "關閉視窗"
+
+msgctxt "menu"
+msgid "Command Palette..."
+msgstr "命令選擇區..."
+
+msgctxt "menu"
+msgid "Compare Two Branches…"
+msgstr "比較兩個分支…"
+
+msgctxt "menu"
+msgid "Continue"
+msgstr "繼續"
+
+msgctxt "menu"
+msgid "Copy"
+msgstr "複製"
+
+msgctxt "menu"
+msgid "Copy and Trim"
+msgstr "複製並修剪"
+
+msgctxt "menu"
+msgid "Create Branch…"
+msgstr "建立分支…"
+
+msgctxt "menu"
+msgid "Create Merge Request"
+msgstr "建立 Merge Request"
+
+msgctxt "menu"
+msgid "Cut"
+msgstr "剪下"
+
+msgctxt "menu"
+msgid "Debugger Panel"
+msgstr "偵錯工具面板"
+
+msgctxt "menu"
+msgid "Diagnostics"
+msgstr "診斷"
+
+msgctxt "menu"
+msgid "Documentation"
+msgstr "文件"
+
+msgctxt "menu"
+msgid "Duplicate Selection"
+msgstr "複製選取範圍"
+
+msgctxt "menu"
+msgid "Edit"
+msgstr "編輯"
+
+msgctxt "menu"
+msgid "Edit Breakpoint"
+msgstr "編輯中斷點"
+
+msgctxt "menu"
+msgid "Edit debug.json…"
+msgstr "編輯 debug.json…"
+
+msgctxt "menu"
+msgid "Edit tasks.json…"
+msgstr "編輯 tasks.json…"
+
+msgctxt "menu"
+msgid "Editor Layout"
+msgstr "編輯器版面配置"
+
+msgctxt "menu"
+msgid "Email Us..."
+msgstr "寄信給我們..."
+
+msgctxt "menu"
+msgid "Expand Selection"
+msgstr "展開選取範圍"
+
+msgctxt "menu"
+msgid "Extensions"
+msgstr "擴充功能"
+
+msgctxt "menu"
+msgid "Fetch"
+msgstr "擷取"
+
+msgctxt "menu"
+msgid "File"
+msgstr "檔案"
+
+msgctxt "menu"
+msgid "File Bug Report..."
+msgstr "回報 Bug..."
+
+msgctxt "menu"
+msgid "Find"
+msgstr "尋找"
+
+msgctxt "menu"
+msgid "Find All References"
+msgstr "尋找所有參考"
+
+msgctxt "menu"
+msgid "Find in Project"
+msgstr "在專案中尋找"
+
+msgctxt "menu"
+msgid "Fixup into an Earlier Commit…"
+msgstr "併入較早的提交（fixup）…"
+
+msgctxt "menu"
+msgid "Force Push with Lease…"
+msgstr "強制推送（with lease）…"
+
+msgctxt "menu"
+msgid "Forward"
+msgstr "前進"
+
+msgctxt "menu"
+msgid "Git"
+msgstr "Git"
+
+msgctxt "menu"
+msgid "Git Guide"
+msgstr "Git 指南"
+
+msgctxt "menu"
+msgid "Git Panel"
+msgstr "Git 面板"
+
+msgctxt "menu"
+msgid "Go"
+msgstr "移至"
+
+msgctxt "menu"
+msgid "Go to Declaration"
+msgstr "前往宣告"
+
+msgctxt "menu"
+msgid "Go to Definition"
+msgstr "前往定義"
+
+msgctxt "menu"
+msgid "Go to File..."
+msgstr "移至檔案..."
+
+msgctxt "menu"
+msgid "Go to Line/Column..."
+msgstr "移至行/欄..."
+
+msgctxt "menu"
+msgid "Go to Symbol in Editor..."
+msgstr "移至編輯器中的符號..."
+
+msgctxt "menu"
+msgid "Go to Type Definition"
+msgstr "前往型別定義"
+
+msgctxt "menu"
+msgid "Help"
+msgstr "說明"
+
+msgctxt "menu"
+msgid "Hide Others"
+msgstr "隱藏其他"
+
+msgctxt "menu"
+msgid "Hide Zed"
+msgstr "隱藏 ForgeKairos"
+
+msgctxt "menu"
+msgid "Install CLI"
+msgstr "安裝 CLI"
+
+msgctxt "menu"
+msgid "Join the Team"
+msgstr "加入團隊"
+
+msgctxt "menu"
+msgid "Minimize"
+msgstr "最小化"
+
+msgctxt "menu"
+msgid "Move Line Down"
+msgstr "下移一行"
+
+msgctxt "menu"
+msgid "Move Line Up"
+msgstr "上移一行"
+
+msgctxt "menu"
+msgid "New"
+msgstr "新增"
+
+msgctxt "menu"
+msgid "New Browser Tab"
+msgstr "新增瀏覽器分頁"
+
+msgctxt "menu"
+msgid "New Window"
+msgstr "新視窗"
+
+msgctxt "menu"
+msgid "Next Problem"
+msgstr "下一個問題"
+
+msgctxt "menu"
+msgid "Open Default Key Bindings"
+msgstr "開啟預設按鍵繫結"
+
+msgctxt "menu"
+msgid "Open Default Settings"
+msgstr "開啟預設設定"
+
+msgctxt "menu"
+msgid "Open File..."
+msgstr "開啟檔案..."
+
+msgctxt "menu"
+msgid "Open Folder..."
+msgstr "開啟資料夾..."
+
+msgctxt "menu"
+msgid "Open Git Graph"
+msgstr "開啟提交圖"
+
+msgctxt "menu"
+msgid "Open Keymap"
+msgstr "開啟按鍵對應"
+
+msgctxt "menu"
+msgid "Open Keymap File"
+msgstr "開啟按鍵對應檔"
+
+msgctxt "menu"
+msgid "Open Project Settings"
+msgstr "開啟專案設定"
+
+msgctxt "menu"
+msgid "Open Project Settings File"
+msgstr "開啟專案設定檔案"
+
+msgctxt "menu"
+msgid "Open Recent…"
+msgstr "開啟最近使用的項目…"
+
+msgctxt "menu"
+msgid "Open Remote…"
+msgstr "開啟遠端…"
+
+msgctxt "menu"
+msgid "Open Settings"
+msgstr "開啟設定"
+
+msgctxt "menu"
+msgid "Open Settings File"
+msgstr "開啟設定檔案"
+
+msgctxt "menu"
+msgid "Open…"
+msgstr "開啟…"
+
+msgctxt "menu"
+msgid "Outline Panel"
+msgstr "大綱面板"
+
+msgctxt "menu"
+msgid "Paste"
+msgstr "貼上"
+
+msgctxt "menu"
+msgid "Previous Problem"
+msgstr "上一個問題"
+
+msgctxt "menu"
+msgid "Project Panel"
+msgstr "專案面板"
+
+msgctxt "menu"
+msgid "Pull"
+msgstr "拉取"
+
+msgctxt "menu"
+msgid "Push"
+msgstr "推送"
+
+msgctxt "menu"
+msgid "Quit Zed"
+msgstr "結束 ForgeKairos"
+
+msgctxt "menu"
+msgid "Redo"
+msgstr "取消復原"
+
+msgctxt "menu"
+msgid "Request Feature..."
+msgstr "提出功能需求..."
+
+msgctxt "menu"
+msgid "Reset All Zoom"
+msgstr "重設所有縮放"
+
+msgctxt "menu"
+msgid "Reset Zoom"
+msgstr "重設縮放"
+
+msgctxt "menu"
+msgid "Run"
+msgstr "執行"
+
+msgctxt "menu"
+msgid "Save"
+msgstr "儲存"
+
+msgctxt "menu"
+msgid "Save All"
+msgstr "全部儲存"
+
+msgctxt "menu"
+msgid "Save As…"
+msgstr "另存新檔…"
+
+msgctxt "menu"
+msgid "Select All"
+msgstr "全選"
+
+msgctxt "menu"
+msgid "Select All Occurrences"
+msgstr "選取所有出現位置"
+
+msgctxt "menu"
+msgid "Select Icon Theme..."
+msgstr "選取圖示佈景主題…"
+
+msgctxt "menu"
+msgid "Select Next Occurrence"
+msgstr "選取下一個出現位置"
+
+msgctxt "menu"
+msgid "Select Next Sibling"
+msgstr "選取下一個同層節點"
+
+msgctxt "menu"
+msgid "Select Previous Occurrence"
+msgstr "選取上一個出現位置"
+
+msgctxt "menu"
+msgid "Select Previous Sibling"
+msgstr "選取上一個同層節點"
+
+msgctxt "menu"
+msgid "Select Theme..."
+msgstr "選取佈景主題…"
+
+msgctxt "menu"
+msgid "Selection"
+msgstr "選取項目"
+
+msgctxt "menu"
+msgid "Services"
+msgstr "服務"
+
+msgctxt "menu"
+msgid "Settings"
+msgstr "設定"
+
+msgctxt "menu"
+msgid "Show All"
+msgstr "全部顯示"
+
+msgctxt "menu"
+msgid "Show Callees in Call Graph"
+msgstr "在呼叫圖中顯示被呼叫端"
+
+msgctxt "menu"
+msgid "Show Callers in Call Graph"
+msgstr "在呼叫圖中顯示呼叫端"
+
+msgctxt "menu"
+msgid "Show Incoming Calls"
+msgstr "顯示來電呼叫"
+
+msgctxt "menu"
+msgid "Show Outgoing Calls"
+msgstr "顯示撥出呼叫"
+
+msgctxt "menu"
+msgid "Show Welcome"
+msgstr "顯示歡迎畫面"
+
+msgctxt "menu"
+msgid "Shrink Selection"
+msgstr "縮小選取範圍"
+
+msgctxt "menu"
+msgid "Spawn Task"
+msgstr "執行工作"
+
+msgctxt "menu"
+msgid "Split Down"
+msgstr "向下分割"
+
+msgctxt "menu"
+msgid "Split Left"
+msgstr "向左分割"
+
+msgctxt "menu"
+msgid "Split Right"
+msgstr "向右分割"
+
+msgctxt "menu"
+msgid "Split Up"
+msgstr "向上分割"
+
+msgctxt "menu"
+msgid "Start Debugger"
+msgstr "啟動偵錯工具"
+
+msgctxt "menu"
+msgid "Stash…"
+msgstr "貯藏…"
+
+msgctxt "menu"
+msgid "Step Into"
+msgstr "逐步執行"
+
+msgctxt "menu"
+msgid "Step Out"
+msgstr "跳離函式"
+
+msgctxt "menu"
+msgid "Step Over"
+msgstr "不進入函式"
+
+msgctxt "menu"
+msgid "Switch Branch…"
+msgstr "切換分支…"
+
+msgctxt "menu"
+msgid "Terminal Panel"
+msgstr "終端機面板"
+
+msgctxt "menu"
+msgid "Toggle All Docks"
+msgstr "切換所有停駐區"
+
+msgctxt "menu"
+msgid "Toggle Bottom Dock"
+msgstr "切換底部停駐區"
+
+msgctxt "menu"
+msgid "Toggle Breakpoint"
+msgstr "切換中斷點"
+
+msgctxt "menu"
+msgid "Toggle GPUI Inspector"
+msgstr "切換 GPUI 檢查器"
+
+msgctxt "menu"
+msgid "Toggle Left Dock"
+msgstr "切換左側停駐區"
+
+msgctxt "menu"
+msgid "Toggle Line Comment"
+msgstr "切換行註解"
+
+msgctxt "menu"
+msgid "Toggle Right Dock"
+msgstr "切換右側停駐區"
+
+msgctxt "menu"
+msgid "Undo"
+msgstr "復原"
+
+msgctxt "menu"
+msgid "View"
+msgstr "檢視"
+
+msgctxt "menu"
+msgid "View Dependency Licenses"
+msgstr "檢視相依性授權"
+
+msgctxt "menu"
+msgid "View Release Notes Locally"
+msgstr "在本機檢視版本資訊"
+
+msgctxt "menu"
+msgid "View Telemetry"
+msgstr "檢視遙測資料"
+
+msgctxt "menu"
+msgid "Window"
+msgstr "視窗"
+
+msgctxt "menu"
+msgid "Zed"
+msgstr "ForgeKairos"
+
+msgctxt "menu"
+msgid "Zed Repository"
+msgstr "Zed 儲存庫"
+
+msgctxt "menu"
+msgid "Zed Twitter"
+msgstr "Zed 的 Twitter"
+
+msgctxt "menu"
+msgid "Zoom"
+msgstr "縮放"
+
+msgctxt "menu"
+msgid "Zoom In"
+msgstr "放大"
+
+msgctxt "menu"
+msgid "Zoom Out"
+msgstr "縮小"

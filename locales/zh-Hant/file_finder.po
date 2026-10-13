@@ -1,0 +1,48 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Channel Notes"
+msgstr "頻道筆記"
+
+msgid "Create File: {}"
+msgstr "建立檔案：{}"
+
+msgid "Create file "
+msgstr "建立檔案 "
+
+msgid "Down"
+msgstr "向下"
+
+msgid "Exclude Ignored Files"
+msgstr "排除已忽略的檔案"
+
+msgid "Include Ignored Files"
+msgstr "包含已忽略的檔案"
+
+msgid "Left"
+msgstr "左"
+
+msgid "Open File"
+msgstr "開啟檔案"
+
+msgid "Open multiple"
+msgstr "開啟多個"
+
+msgid "Right"
+msgstr "右"
+
+msgid "Search project files..."
+msgstr "搜尋專案檔案..."
+
+msgid "Split…"
+msgstr "分割…"
+
+msgid "Up"
+msgstr "向上"

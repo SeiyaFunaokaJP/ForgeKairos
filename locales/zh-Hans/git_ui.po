@@ -1,0 +1,3851 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\nand {} more…"
+msgstr "\n另外 {} 个…"
+
+msgid " (no branch)"
+msgstr "（无分支）"
+
+msgid "\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch."
+msgstr "“中止”会返回原分支“{origin_branch}”并删除此临时分支。"
+
+msgid "\"Continue\" carries on with the rest, and \"Abort\" goes back to where it started."
+msgstr "“继续”会处理剩余部分，“中止”会回到开始前的状态。"
+
+msgid "\"{label}\" is unavailable right now: {refusal}"
+msgstr "“{label}”当前不可用：{refusal}"
+
+msgid "\"{merge_request_branch}\" is a branch under development. Give the MR branch another name."
+msgstr "“{merge_request_branch}”是开发分支。请为 MR 分支另起一个名称。"
+
+msgid "\"{merge_request_branch}\" is checked out in another worktree, so it cannot be recreated. Use another name."
+msgstr "“{merge_request_branch}”已在另一个工作树中签出，因此无法重新创建。请使用其他名称。"
+
+msgid "(binary file not shown)"
+msgstr "（二进制文件，不显示）"
+
+msgid "(not selected)"
+msgstr "（未选择）"
+
+msgid ". {count} changed file not from the development branch"
+msgid_plural ". {count} changed files not from the development branch"
+msgstr[0] "。{count} 个已更改的文件不来自开发分支"
+
+msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
+msgstr "1. 选择“开发分支”（提交的来源）和“基准”（MR 的目标）。2. 将提交图中的行拖入收集箱，或选中后点击“加入 MR 收集箱”。不应进入 MR 的内容，可右键点击其行并选择“从 MR 中排除”将其搁置。3. 收集箱下方的“未放置”显示为 0 时，表示没有遗漏（未放置的行在图中带有小 ●，“转到下一个未放置项”可逐个跳转）。4. 输入消息和 MR 分支名称，然后点击“创建并比较”：它会在基准之上以一个提交创建 MR 分支，并与开发分支进行比较。存在未提交的更改时无法创建，请先提交或储藏。"
+
+msgid "<no branch>"
+msgstr "<无分支>"
+
+msgid "<no commit message>"
+msgstr "<无提交消息>"
+
+msgid "<no name>"
+msgstr "<无名称>"
+
+msgid "A base change may be missing from the MR"
+msgstr "MR 中可能缺少基准上的更改"
+
+msgid "A conflict happened while applying the box's commits. Stopped on the scratch branch \"{}\".\nResolve it and press \"Continue\" in the Git panel's banner, then finish with \"Next Steps\" in the MR box. To give up, \"Abort\" in the banner returns to \"{}\".\n{reason}"
+msgstr "应用收集箱中的提交时发生冲突。已停在临时分支“{}”上。\n解决冲突后，在 Git 面板的横幅中点击“继续”，然后在 MR 收集箱中通过“后续步骤”完成。若要放弃，点击横幅中的“中止”可返回“{}”。\n{reason}"
+
+msgid "A detached HEAD cannot be reordered. Switch to a branch first."
+msgstr "游离 HEAD 无法重新排序。请先切换到某个分支。"
+
+msgid "A detached HEAD cannot be rewritten. Switch to a branch first"
+msgstr "游离 HEAD 无法改写。请先切换到某个分支"
+
+msgid "A file an excluded commit touched (as intended)."
+msgstr "被排除的提交所涉及的文件（符合预期）。"
+
+msgid "A file history tab has no MR box. Open it in a Git Graph tab."
+msgstr "文件历史记录标签页中没有 MR 收集箱。请在提交图标签页中打开。"
+
+msgid "A force push can erase other people's changes. Commits others pushed disappear without a word"
+msgstr "强制推送可能会抹掉他人的更改。他人推送的提交会在无提示的情况下消失"
+
+msgid "A merge commit and the commits before it cannot be reordered (rewriting them would break the merge)."
+msgstr "合并提交及其之前的提交无法重新排序（改写它们会破坏合并）。"
+
+msgid "A merge commit cannot be cherry-picked."
+msgstr "无法拣选合并提交。"
+
+msgid "A merge commit cannot be reverted."
+msgstr "无法还原合并提交。"
+
+msgid "A name cannot start with -."
+msgstr "名称不能以 - 开头。"
+
+msgid "A period (3d, 2w, 1m, 1y, a date, \"2026-09-01 12:00\")"
+msgstr "时间段（3d、2w、1m、1y、日期、\"2026-09-01 12:00\"）"
+
+msgid "A renamed file is split into two rows, \"Deleted\" and \"Added\"."
+msgstr "重命名的文件会拆分为“已删除”和“已添加”两行。"
+
+msgid "A renamed file is split into two rows: its old name and its new name."
+msgstr "重命名的文件会拆分为两行：旧名称和新名称。"
+
+msgid "A value for \"{label}\" cannot contain both spaces and \"."
+msgstr "“{label}”的值不能同时包含空格和 \"。"
+
+msgid "Abort the {}?"
+msgstr "要中止 {} 吗？"
+
+msgid "Aborted the {}."
+msgstr "已中止 {}。"
+
+msgid "Add Remote…"
+msgstr "添加远程…"
+
+msgid "Add a fix to an older commit (fixup)"
+msgstr "为较早的提交添加修正（fixup）"
+
+msgid "Add co-authored-by"
+msgstr "添加 co-authored-by"
+
+msgid "Add repo to project"
+msgstr "将仓库添加到项目"
+
+msgid "Add the {count} Selected Commit to the MR Box"
+msgid_plural "Add the {count} Selected Commits to the MR Box"
+msgstr[0] "将选中的 {count} 个提交加入 MR 收集箱"
+
+msgid "Add to .git/info/exclude"
+msgstr "添加到 .git/info/exclude"
+
+msgid "Add to .gitignore"
+msgstr "添加到 .gitignore"
+
+msgid "Add {count} Commit to MR Box"
+msgid_plural "Add {count} Commits to MR Box"
+msgstr[0] "将 {count} 个提交加入 MR 收集箱"
+
+msgid "Added or removed lines contain \"foo\" (slow)"
+msgstr "添加或删除的行包含“foo”（较慢）"
+
+msgid "Added the remote {remote_name}."
+msgstr "已添加远程 {remote_name}。"
+
+msgid "Adds a \"Signed-off-by: name <email>\" line at the end of the commit message. Use it when the project's rules ask for it"
+msgstr "在提交消息末尾添加“Signed-off-by: name <email>”行。在项目规则要求时使用"
+
+msgid "Adds or removes the stage mark of the chosen change (hunk: one block of changes)"
+msgstr "为所选更改（差异块：一组连续的更改）添加或移除暂存标记"
+
+msgid "Adds the changes of the {count} picked commit to the tip of the current branch as a new commit (cherry-pick)."
+msgid_plural "Adds the changes of the {count} picked commits to the tip of the current branch as new commits (cherry-pick)."
+msgstr[0] "将所选 {count} 个提交的更改作为新提交添加到当前分支的末端（cherry-pick）。"
+
+msgid "Adds the changes of {sha} to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgstr "将 {sha} 的更改作为新提交添加到当前分支 {branch} 的末端（cherry-pick）。"
+
+msgid "Adds this file to the ignore list at the top of the repository (.gitignore), so that it no longer shows among the changes. Once the .gitignore change is committed, it applies to others too"
+msgstr "将此文件添加到仓库顶层的忽略列表（.gitignore）中，使其不再显示在更改中。提交 .gitignore 的更改后，对其他人也会生效"
+
+msgid "Adds this file to your own local ignore list (.git/info/exclude). It is not committed and does not apply to others"
+msgstr "将此文件添加到仅限你本地的忽略列表（.git/info/exclude）中。它不会被提交，对其他人不生效"
+
+msgid "Adds your uncommitted changes into this commit"
+msgstr "将你未提交的更改并入此提交"
+
+msgid "After resolving the conflict and pressing \"Continue\" in the Git panel's banner, \"Next Steps\" updates the MR branch and goes back to \"{}\"."
+msgstr "解决冲突并在 Git 面板的横幅中点击“继续”后，“后续步骤”会更新 MR 分支并返回“{}”。"
+
+msgid "After rewriting pushed commits with amend, fixup, reordering and so on, push with \"Force Push (with lease)\". Because of the lease, commits someone else pushed first are not overwritten."
+msgstr "通过修正提交、fixup、重新排序等方式改写已推送的提交后，请使用“强制推送（--force-with-lease）”进行推送。由于有 lease 保护，他人先推送的提交不会被覆盖。"
+
+msgid "After the rewrite there will be {count} commit, with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgid_plural "After the rewrite there will be {count} commits, each with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgstr[0] "改写后将有 {count} 个提交，每个提交的 SHA 都会变化。\n改写作用于当前分支“{branch}”。操作在临时分支“{scratch_branch}”上进行，最后将“{branch}”移到该处（成功后会删除临时分支）。\n如果该分支已推送，之后需要强制推送。"
+
+msgid "All Branches"
+msgstr "所有分支"
+
+msgid "All changes ({count} tracked file)"
+msgid_plural "All changes ({count} tracked files)"
+msgstr[0] "所有更改（{count} 个已跟踪的文件）"
+
+msgid "All conflicts marked as resolved"
+msgstr "所有冲突已标记为已解决"
+
+msgid "All three move the current branch back to the chosen commit and undo the commits after it. soft keeps the undone commits' changes as staged changes and mixed as unstaged ones, so you can commit them again. hard throws away the undone commits' changes and the changes you have not committed yet as well (uncommitted changes cannot be recovered)."
+msgstr "三者都会将当前分支移回所选提交，并撤销其后的提交。soft 将被撤销提交的更改保留为已暂存的更改，mixed 则保留为未暂存的更改，因此可以重新提交。hard 会丢弃被撤销提交的更改以及你尚未提交的更改（未提交的更改无法恢复）。"
+
+msgid "Already pushed, so a force push (with lease) is needed afterwards"
+msgstr "已推送，之后需要强制推送（--force-with-lease）"
+
+msgid "Also changed on the base · changed by an excluded commit"
+msgstr "基准上也有更改 · 由被排除的提交更改"
+
+msgid "Also changed on the base: the diff includes the base's changes"
+msgstr "基准上也有更改：差异中包含基准的更改"
+
+msgid "Amend"
+msgstr "修正提交"
+
+msgid "Amend Tracked"
+msgstr "修正已跟踪的更改"
+
+msgid "Another remote operation is running. Push again once it has finished."
+msgstr "另一个远程操作正在运行。请在其完成后再次推送。"
+
+msgid "Applied the patch file with a 3-way merge and staged it."
+msgstr "已使用三方合并应用补丁文件并暂存。"
+
+msgid "Applied the patch file."
+msgstr "已应用补丁文件。"
+
+msgid "Applies the changes written in a patch file to your current files. Nothing is committed, so check the result before you commit"
+msgstr "将补丁文件中记录的更改应用到当前文件。不会提交任何内容，请在提交前检查结果"
+
+msgid "Applies to: {}"
+msgstr "适用于：{}"
+
+msgid "Apply"
+msgstr "应用"
+
+msgid "Apply Patch File…"
+msgstr "应用补丁文件…"
+
+msgid "Apply stash@{{{}}}?"
+msgstr "应用 stash@{{{}}}？"
+
+msgid "Apply the patch file {}?"
+msgstr "应用补丁文件 {}？"
+
+msgid "Are you sure you want to discard changes to {}?"
+msgstr "确定要放弃对 {} 的更改吗？"
+
+msgid "Are you sure you want to restore {}?"
+msgstr "确定要还原 {} 吗？"
+
+msgid "Are you sure?"
+msgstr "确定吗？"
+
+msgid "Author"
+msgstr "作者"
+
+msgid "Base commit: {}"
+msgstr "基准提交：{}"
+
+msgid "Base: {base_ref}"
+msgstr "基准：{base_ref}"
+
+msgid "Based off the current branch"
+msgstr "基于当前分支"
+
+msgid "Based off {url}"
+msgstr "基于 {url}"
+
+msgid "Based off {}"
+msgstr "基于 {}"
+
+msgid "Binary files cannot be shown side by side."
+msgstr "二进制文件无法并排显示。"
+
+msgid "Blame Previous Revision"
+msgstr "追溯上一个修订版本"
+
+msgid "Blame Revision"
+msgstr "追溯修订版本"
+
+msgid "Branch \"{branch_name}\" is not fully merged. Force delete it?"
+msgstr "分支“{branch_name}”尚未完全合并。要强制删除吗？"
+
+msgid "Branch \"{branch_name}\" was not found."
+msgstr "未找到分支“{branch_name}”。"
+
+msgid "Branch \"{merge_request_branch}\" already exists. Check the recreate option to rebuild it."
+msgstr "分支“{merge_request_branch}”已存在。勾选重新创建选项以重建它。"
+
+msgid "Branch / tag to compare from (the source)"
+msgstr "作为比较来源的分支 / 标签（源）"
+
+msgid "Branch / tag to compare with (the target)"
+msgstr "作为比较对象的分支 / 标签（目标）"
+
+msgid "Branched off at {}."
+msgstr "分叉于 {}。"
+
+msgid "Branches"
+msgstr "分支"
+
+msgid "Bring over a commit from another branch (cherry-pick)"
+msgstr "从另一个分支引入提交（cherry-pick）"
+
+msgid "Brings a deleted file back with its content in the last commit"
+msgstr "以最后一次提交中的内容恢复已删除的文件"
+
+msgid "Brings in the latest from the remote and replays your commits that were not pushed yet on top of it. History stays in a straight line"
+msgstr "从远程获取最新内容，并将你尚未推送的提交在其之上重新应用。历史记录保持为一条直线"
+
+msgid "Brings the chosen branch's changes into the current branch. Both histories are kept. If the current branch has new commits too, a commit that joins the two (a merge commit) is created"
+msgstr "将所选分支的更改合并到当前分支。两边的历史记录都会保留。如果当前分支也有新提交，会创建一个将两者合并的提交（合并提交）"
+
+msgid "Buffer Search"
+msgstr "缓冲区搜索"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cancel Commit Message Generation"
+msgstr "取消生成提交消息"
+
+msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+msgstr "无法在游离 HEAD 上创建 MR 分支。请先切换到某个分支。"
+
+msgid "Cannot create it on the scratch branch \"{origin_branch}\". Go back to the original branch first."
+msgstr "无法在临时分支“{origin_branch}”上创建。请先返回原分支。"
+
+msgid "Cannot fixup: {}"
+msgstr "无法执行 fixup：{}"
+
+msgid "Cannot push from a collaborative project."
+msgstr "无法从协作项目推送。"
+
+msgid "Caution: {caution}"
+msgstr "注意：{caution}"
+
+msgid "Changed by an excluded commit"
+msgstr "由被排除的提交更改"
+
+msgid "Changed on the development branch, but different on the MR branch. The commits below may be missing."
+msgstr "在开发分支上已更改，但在 MR 分支上内容不同。可能缺少下面的提交。"
+
+msgid "Changes"
+msgstr "更改"
+
+msgid "Changes how the list of changes is shown (list or tree, sort order, grouping). Does nothing to the files"
+msgstr "更改更改列表的显示方式（列表或树、排序顺序、分组）。不会对文件做任何操作"
+
+msgid "Changes in the working tree (git diff)"
+msgstr "工作树中的更改（git diff）"
+
+msgid "Changes only this commit's message"
+msgstr "仅更改此提交的消息"
+
+msgid "Changes since {}"
+msgstr "自 {} 以来的更改"
+
+msgid "Changes to Fold In"
+msgstr "要并入的更改"
+
+msgid "Changes to the same lines on both sides cause a conflict"
+msgstr "两边对相同行的更改会导致冲突"
+
+msgid "Check Out This Commit (detached)"
+msgstr "签出此提交（游离）"
+
+msgid "Checked out {} (detached HEAD)."
+msgstr "已签出 {}（游离 HEAD）。"
+
+msgid "Cherry-Pick This Commit onto the Current Branch"
+msgstr "将此提交拣选到当前分支"
+
+msgid "Cherry-Pick the {count} Selected Commit onto the Current Branch"
+msgid_plural "Cherry-Pick the {count} Selected Commits onto the Current Branch"
+msgstr[0] "将选中的 {count} 个提交拣选到当前分支"
+
+msgid "Cherry-pick the selected commits onto the current branch?"
+msgstr "要将选中的提交拣选到当前分支吗？"
+
+msgid "Cherry-pick the {count} picked commit, reorder it or add it to the MR box. Hover over a button to learn more"
+msgid_plural "Cherry-pick the {count} picked commits together, reorder them or add them to the MR box. Hover over a button to learn more"
+msgstr[0] "可以将所选 {count} 个提交一并拣选、重新排序或加入 MR 收集箱。将鼠标悬停在按钮上可了解详情"
+
+msgid "Cherry-pick this commit onto the current branch?"
+msgstr "要将此提交拣选到当前分支吗？"
+
+msgid "Cherry-pick {count} commit onto the current branch?"
+msgid_plural "Cherry-pick {count} commits onto the current branch?"
+msgstr[0] "要将 {count} 个提交拣选到当前分支吗？"
+
+msgid "Cherry-picked {}."
+msgstr "已拣选 {}。"
+
+msgid "Cherry-picks {count} commit: adds it, oldest first, to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgid_plural "Cherry-picks {count} commits: adds them, oldest first, to the tip of the current branch {branch} as new commits (cherry-pick)."
+msgstr[0] "拣选 {count} 个提交：按从旧到新的顺序，将其作为新提交添加到当前分支 {branch} 的末端（cherry-pick）。"
+
+msgid "Choose What the Patch File Contains (Whole Repository: {})"
+msgstr "选择补丁文件包含的内容（整个仓库：{}）"
+
+msgid "Choose a Branch…"
+msgstr "选择分支…"
+
+msgid "Choose a base."
+msgstr "请选择基准。"
+
+msgid "Choose a commit (right-click one in the history tab or the Git Graph)"
+msgstr "请选择一个提交（在历史记录标签页或提交图中右键点击）"
+
+msgid "Choose a development branch and a base to check for left-out commits."
+msgstr "选择开发分支和基准后，可检查是否有遗漏的提交。"
+
+msgid "Choose a development branch."
+msgstr "请选择开发分支。"
+
+msgid "Choose a file from the list on the left to show the development branch (left) and the MR branch (right) side by side. Rows in the warning color show the base (left) and the MR branch (right)."
+msgstr "从左侧列表中选择一个文件，即可并排显示开发分支（左）和 MR 分支（右）。警告色的行显示基准（左）和 MR 分支（右）。"
+
+msgid "Choose the Base Branch or Tag (Where the MR Goes)"
+msgstr "选择基准分支或标签（MR 的目标）"
+
+msgid "Choose the Development Branch (Where the Commits Come From)"
+msgstr "选择开发分支（提交的来源）"
+
+msgid "Choose the MR's base (merge target) and reopen as a comparison that the base's own changes do not bury."
+msgstr "选择 MR 的基准（合并目标），并以不被基准自身更改淹没的比较方式重新打开。"
+
+msgid "Choose two branches / tags to list the commits only one of them has and how their contents differ. Useful to check that nothing was left out when porting."
+msgstr "选择两个分支 / 标签，列出仅其中一方拥有的提交及其内容差异。可用于检查移植时是否有遗漏。"
+
+msgid "Chooses the branches the list shows: all, yours (local) or the server's (remote)"
+msgstr "选择列表中显示的分支：全部、你的（本地）或服务器上的（远程）"
+
+msgid "Chooses the commits the graph shows: all branches, the current branch or a chosen branch"
+msgstr "选择图中显示的提交：所有分支、当前分支或所选分支"
+
+msgid "Chooses the remote to send to, then sends your commits"
+msgstr "选择要推送到的远程，然后推送你的提交"
+
+msgid "Click to Resolve with Agent"
+msgstr "点击使用智能体解决"
+
+msgid "Clipboard ↔ {selection_location_path}"
+msgstr "剪贴板 ↔ {selection_location_path}"
+
+msgid "Clipboard ↔ {selection_location_title}"
+msgstr "剪贴板 ↔ {selection_location_title}"
+
+msgid "Clone a repository from GitHub or other sources."
+msgstr "从 GitHub 或其他来源克隆仓库。"
+
+msgid "Close"
+msgstr "关闭"
+
+msgid "Close (they show again next time)"
+msgstr "关闭（下次还会显示）"
+
+msgid "Close the Box (Its Contents Are Kept)"
+msgstr "关闭收集箱（其内容会保留）"
+
+msgid "Collapse"
+msgstr "折叠"
+
+msgid "Collapse Commit Editor"
+msgstr "折叠提交编辑器"
+
+msgid "Collect a development branch's commits in the \"MR box\" and they are squashed into one commit on a new branch for the MR. The original branch stays as it is."
+msgstr "将开发分支的提交收集到“MR 收集箱”中，它们会被压缩为一个提交，放到用于 MR 的新分支上。原分支保持不变。"
+
+msgid "Collects commits in a box and creates a branch with them squashed into one commit for an MR (merge request)"
+msgstr "将提交收集到收集箱中，并创建一个将它们压缩为一个提交的分支，用于 MR（合并请求）"
+
+msgid "Collects commits in the MR box. From them you can create a branch squashed into one commit for the MR"
+msgstr "将提交收集到 MR 收集箱中。可由此创建一个压缩为一个提交的分支，用于 MR"
+
+msgid "Columns"
+msgstr "列"
+
+msgid "Combines the picked consecutive commits into a single commit"
+msgstr "将所选的连续提交合并为一个提交"
+
+msgid "Commit"
+msgstr "提交"
+
+msgid "Commit SHA"
+msgstr "提交 SHA"
+
+msgid "Commit SHA Copied!"
+msgstr "提交 SHA 已复制！"
+
+msgid "Commit Tracked"
+msgstr "提交已跟踪的更改"
+
+msgid "Commit and Push As"
+msgstr "提交和推送时使用的身份"
+
+msgid "Commit in progress"
+msgstr "正在提交"
+
+msgid "Commit message for the MR"
+msgstr "MR 的提交消息"
+
+msgid "Commit message title exceeds {max_title_length}-character limit."
+msgstr "提交消息标题超过 {max_title_length} 个字符的限制。"
+
+msgid "Commit or stash the uncommitted changes first"
+msgstr "请先提交或储藏未提交的更改"
+
+msgid "Commit or stash the uncommitted changes first ({operation})."
+msgstr "请先提交或储藏未提交的更改（{operation}）。"
+
+msgid "Commit {sha_short}"
+msgstr "提交 {sha_short}"
+
+msgid "Commits and pushes as git is configured. Click to pick a git account."
+msgstr "按照 git 的配置进行提交和推送。点击以选择 Git 账户。"
+
+msgid "Commits are reordered one at a time. Drag a single commit."
+msgstr "提交一次只能重新排序一个。请只拖动一个提交。"
+
+msgid "Commits as {name} <{email}> (git account \"{id}\")"
+msgstr "以 {name} <{email}> 的身份提交（Git 账户“{id}”）"
+
+msgid "Commits as {name} <{email}> (git account \"{id}\"). The account's SSH key is not used: {reason}"
+msgstr "以 {name} <{email}> 的身份提交（Git 账户“{id}”）。未使用该账户的 SSH 密钥：{reason}"
+
+msgid "Commits on feature that the default branch does not have"
+msgstr "feature 上有而默认分支上没有的提交"
+
+msgid "Commits that are not in the current branch's history cannot be reordered. Switch to that branch, then try again."
+msgstr "不在当前分支历史记录中的提交无法重新排序。请切换到该分支后重试。"
+
+msgid "Commits that are only on that branch can no longer be seen"
+msgstr "仅存在于该分支上的提交将不再可见"
+
+msgid "Commits that changed that file or folder (* for patterns)"
+msgstr "更改过该文件或文件夹的提交（* 表示模式）"
+
+msgid "Commits that tags with \"v1.2\" in their name point to"
+msgstr "名称中包含“v1.2”的标签所指向的提交"
+
+msgid "Commits whose SHA starts like this"
+msgstr "SHA 以此开头的提交"
+
+msgid "Commits without the checks that run automatically before a commit (hooks)"
+msgstr "跳过提交前自动运行的检查（钩子）进行提交"
+
+msgid "Compare two branches"
+msgstr "比较两个分支"
+
+msgid "Compares only the files {} changed after it branched off {merge_request_base} (the base)."
+msgstr "仅比较 {} 从 {merge_request_base}（基准）分叉后更改过的文件。"
+
+msgid "Compares the contents of two branches or tags themselves. If there are no differences, everything has been ported."
+msgstr "比较两个分支或标签本身的内容。如果没有差异，则表示全部已移植。"
+
+msgid "Compares the contents of two branches or tags. Useful to check that no commit was left behind"
+msgstr "比较两个分支或标签的内容。可用于检查是否有遗漏的提交"
+
+msgid "Comparing needs at least two branches or tags."
+msgstr "比较至少需要两个分支或标签。"
+
+msgid "Comparison of {} (source) and {} (target)"
+msgstr "{}（源）与 {}（目标）的比较"
+
+msgid "Comparison of {} and {}"
+msgstr "{} 与 {} 的比较"
+
+msgid "Configure Provider"
+msgstr "配置提供商"
+
+msgid "Configure an LLM provider to generate commit messages."
+msgstr "配置 LLM 提供商以生成提交消息。"
+
+msgid "Confirm"
+msgstr "确认"
+
+msgid "Conflict marked as resolved"
+msgstr "冲突已标记为已解决"
+
+msgid "Conflicts"
+msgstr "冲突"
+
+msgid "Conflicts marked as resolved"
+msgstr "冲突已标记为已解决"
+
+msgid "Contains Unpushed Changes — {}"
+msgstr "包含未推送的更改——{}"
+
+msgid "Continued the {}."
+msgstr "已继续 {}。"
+
+msgid "Copied {text}."
+msgstr "已复制 {text}。"
+
+msgid "Copies how many commits past the nearest tag this is (in git describe form)"
+msgstr "复制距最近标签的提交数（git describe 格式）"
+
+msgid "Copies only this commit's changes onto the current branch as a new commit. The original stays"
+msgstr "仅将此提交的更改作为新提交复制到当前分支。原提交保留"
+
+msgid "Copies the file's location as a full (absolute) path to the clipboard"
+msgstr "将文件位置以完整（绝对）路径复制到剪贴板"
+
+msgid "Copies the file's location as a path relative to the project folder to the clipboard"
+msgstr "将文件位置以相对于项目文件夹的路径复制到剪贴板"
+
+msgid "Copies the picked commits' changes onto the current branch, oldest first. The originals stay"
+msgstr "按从旧到新的顺序将所选提交的更改复制到当前分支。原提交保留"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Copy Commit SHA"
+msgstr "复制提交 SHA"
+
+msgid "Copy Distance from Latest Tag"
+msgstr "复制距最近标签的距离"
+
+msgid "Copy Email"
+msgstr "复制邮箱"
+
+msgid "Copy Path"
+msgstr "复制路径"
+
+msgid "Copy Ref Name"
+msgstr "复制引用名称"
+
+msgid "Copy Relative Path"
+msgstr "复制相对路径"
+
+msgid "Copy SHA"
+msgstr "复制 SHA"
+
+msgid "Copy SHA ({count} Commit)"
+msgid_plural "Copy SHAs ({count} Commits)"
+msgstr[0] "复制 SHA（{count} 个提交）"
+
+msgid "Copy Tag"
+msgstr "复制标签"
+
+msgid "Copy the Full Error"
+msgstr "复制完整错误信息"
+
+msgid "Could not commit (a hook, for example). The history is unchanged and the changes are still there."
+msgstr "无法提交（例如由于钩子）。历史记录未更改，更改仍然保留。"
+
+msgid "Could not commit, but HEAD has moved. Check it with git reflog."
+msgstr "无法提交，但 HEAD 已移动。请使用 git reflog 进行检查。"
+
+msgid "Could not compare"
+msgstr "无法比较"
+
+msgid "Could not compare the base and the MR branch"
+msgstr "无法比较基准与 MR 分支"
+
+msgid "Could not compare the development branch and the MR branch"
+msgstr "无法比较开发分支与 MR 分支"
+
+msgid "Could not compare the histories of the base and the MR branch: {}"
+msgstr "无法比较基准与 MR 分支的历史记录：{}"
+
+msgid "Could not create the MR branch\n{reason}"
+msgstr "无法创建 MR 分支\n{reason}"
+
+msgid "Could not fixup: {}"
+msgstr "无法执行 fixup：{}"
+
+msgid "Could not fold into {short} (the rebase could not start). The history is unchanged and the changes are left staged."
+msgstr "无法并入 {short}（无法开始变基）。历史记录未更改，更改仍保持已暂存状态。"
+
+msgid "Could not fold into {short} (the rebase failed). The changes are left at the tip as the \"{fixup_subject}\" commit. Check the working tree with git status too."
+msgstr "无法并入 {short}（变基失败）。更改作为“{fixup_subject}”提交保留在末端。也请使用 git status 检查工作树。"
+
+msgid "Could not get the file's contents."
+msgstr "无法获取文件内容。"
+
+msgid "Could not go back to {}. Still on the scratch branch \"{}\".\n{}"
+msgstr "无法返回 {}。仍在临时分支“{}”上。\n{}"
+
+msgid "Could not load the commits to reorder. Wait a moment and try again."
+msgstr "无法加载要重新排序的提交。请稍候再试。"
+
+msgid "Could not load the selected commits. Wait a moment and try again."
+msgstr "无法加载选中的提交。请稍候再试。"
+
+msgid "Could not pack the branches and tags\n{reason}"
+msgstr "无法打包分支和标签\n{reason}"
+
+msgid "Could not read the Git status"
+msgstr "无法读取 Git 状态"
+
+msgid "Could not read the changes on the base"
+msgstr "无法读取基准上的更改"
+
+msgid "Could not read the common ancestor: {merge_base}"
+msgstr "无法读取共同祖先：{merge_base}"
+
+msgid "Could not read the current branch."
+msgstr "无法读取当前分支。"
+
+msgid "Could not read the development branch's changes"
+msgstr "无法读取开发分支的更改"
+
+msgid "Could not read the development branch's history: {}"
+msgstr "无法读取开发分支的历史记录：{}"
+
+msgid "Could not read the development branch's range: {}"
+msgstr "无法读取开发分支的范围：{}"
+
+msgid "Could not read the excluded commits: {}"
+msgstr "无法读取被排除的提交：{}"
+
+msgid "Could not read the patch file {}"
+msgstr "无法读取补丁文件 {}"
+
+msgid "Could not read the range to reorder."
+msgstr "无法读取要重新排序的范围。"
+
+msgid "Could not read {merge_request_base} and {source}: {}"
+msgstr "无法读取 {merge_request_base} 和 {source}：{}"
+
+msgid "Could not run the MR check"
+msgstr "无法运行 MR 检查"
+
+msgid "Could not save the patch file {}"
+msgstr "无法保存补丁文件 {}"
+
+msgid "Could not tell which commits touched it (it may have come in through a merge)."
+msgstr "无法确定哪些提交涉及了它（可能是通过合并引入的）。"
+
+msgid "Could not undo\n{failure}"
+msgstr "无法撤销\n{failure}"
+
+msgid "Could not update the MR branch\n{reason}"
+msgstr "无法更新 MR 分支\n{reason}"
+
+msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
+msgstr "无法更新 MR 分支。仍在临时分支“{}”上。\n{reason}"
+
+msgid "Create"
+msgstr "创建"
+
+msgid "Create Branch Here…"
+msgstr "在此处创建分支…"
+
+msgid "Create Branch from {}"
+msgstr "从 {} 创建分支"
+
+msgid "Create Branch: \"{name}\"…"
+msgstr "创建分支：“{name}”…"
+
+msgid "Create Merge Request"
+msgstr "创建合并请求"
+
+msgid "Create New From: {default_branch}"
+msgstr "从 {default_branch} 创建新分支"
+
+msgid "Create Only"
+msgstr "仅创建"
+
+msgid "Create Patch File…"
+msgstr "创建补丁文件…"
+
+msgid "Create Pull Request"
+msgstr "创建拉取请求"
+
+msgid "Create Remote Repository"
+msgstr "创建远程仓库"
+
+msgid "Create Remote: \"{name}\""
+msgstr "创建远程：“{name}”"
+
+msgid "Create Tag"
+msgstr "创建标签"
+
+msgid "Create Tag at {}"
+msgstr "在 {} 处创建标签"
+
+msgid "Create and Compare"
+msgstr "创建并比较"
+
+msgid "Create and Switch"
+msgstr "创建并切换"
+
+msgid "Create branch \"{name}\"?"
+msgstr "要创建分支“{name}”吗？"
+
+msgid "Create or switch branches"
+msgstr "创建或切换分支"
+
+msgid "Create the MR branch?"
+msgstr "要创建 MR 分支吗？"
+
+msgid "Created branch \"{name}\" and switched to it."
+msgstr "已创建分支“{name}”并切换到该分支。"
+
+msgid "Created branch \"{name}\"."
+msgstr "已创建分支“{name}”。"
+
+msgid "Created tag \"{name}\"."
+msgstr "已创建标签“{name}”。"
+
+msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
+msgstr "已创建 MR 分支“{}”，但仍在临时分支“{}”上。"
+
+msgid "Created the MR branch {merge_request_branch}"
+msgstr "已创建 MR 分支 {merge_request_branch}"
+
+msgid "Created the MR branch {}, but could not go back to {} (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "已创建 MR 分支 {}，但无法返回 {}（MR 收集箱中的“返回”可让你回去）。\n{failure}"
+
+msgid "Created the MR branch {}, but could not go back to {}. You are on the scratch branch \"{}\" (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "已创建 MR 分支 {}，但无法返回 {}。你当前在临时分支“{}”上（MR 收集箱中的“返回”可让你回去）。\n{failure}"
+
+msgid "Creates \"{branch}\" on top of the base \"{base}\" from the box's {count} commit.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgid_plural "Creates \"{branch}\" on top of the base \"{base}\" by squashing the box's {count} commits into one.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgstr[0] "在基准“{base}”之上，将收集箱中的 {count} 个提交压缩为一个，创建“{branch}”。\n操作在临时分支“{scratch}”上进行，完成后 ForgeKairos 会返回“{origin}”。"
+
+msgid "Creates a new branch (a line of work) starting at this commit. Your current work stays as it is"
+msgstr "以此提交为起点创建新分支（一条工作线）。你当前的工作保持不变"
+
+msgid "Creates a new branch starting from the default branch (main, for example) instead of the current branch"
+msgstr "以默认分支（例如 main）而非当前分支为起点创建新分支"
+
+msgid "Creates a new commit that applies this commit's changes in reverse. History is kept, so it is safe after sharing"
+msgstr "创建一个反向应用此提交更改的新提交。历史记录会保留，因此在共享后也是安全的"
+
+msgid "Creates an MR branch that squashes the box's commits into one on top of the base, and compares it with the development branch"
+msgstr "在基准之上创建将收集箱中的提交压缩为一个的 MR 分支，并与开发分支进行比较"
+
+msgid "Create…"
+msgstr "创建…"
+
+msgid "Current Branch"
+msgstr "当前分支"
+
+msgid "Current Branch ({branch})"
+msgstr "当前分支（{branch}）"
+
+msgid "Current branch (the branch checked out now)"
+msgstr "当前分支（当前已签出的分支）"
+
+msgid "Custom Commands"
+msgstr "自定义命令"
+
+msgid "Cut"
+msgstr "剪切"
+
+msgid "Cut off at {count} commit. Add conditions to narrow the search."
+msgid_plural "Cut off at {count} commits. Add conditions to narrow the search."
+msgstr[0] "已在 {count} 个提交处截断。请添加条件以缩小搜索范围。"
+
+msgid "Date"
+msgstr "日期"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete Branch"
+msgstr "删除分支"
+
+msgid "Deleted on both the development branch and the MR branch."
+msgstr "在开发分支和 MR 分支上均已删除。"
+
+msgid "Deletes a local branch even if it has commits that were not merged"
+msgstr "即使本地分支含有未合并的提交，也将其删除"
+
+msgid "Deletes a local branch. If it has commits that are not in the current branch (or its upstream), it stops and asks whether to force delete. For a remote branch only your local copy goes; the branch on the server stays"
+msgstr "删除本地分支。如果它含有不在当前分支（或其上游）中的提交，会停止并询问是否强制删除。对于远程分支，只删除你的本地副本；服务器上的分支保留"
+
+msgid "Deletes the scratch branch \"{}\" and returns to \"{}\". The commits on the scratch branch (conflict resolutions included) are thrown away (they stay in the reflog).\nIf a cherry-pick is still stopped, press \"Abort\" in the Git panel's banner first."
+msgstr "删除临时分支“{}”并返回“{}”。临时分支上的提交（包括冲突解决）将被丢弃（仍保留在 reflog 中）。\n如果拣选仍处于停止状态，请先在 Git 面板的横幅中点击“中止”。"
+
+msgid "Description"
+msgstr "描述"
+
+msgid "Detected dubious ownership in repository at {}. This happens when the .git/ directory is not owned by the current user. If you want to learn more about safe directories, visit git's documentation."
+msgstr "检测到 {} 仓库的可疑所有权。当 .git/ 目录不属于当前用户时会出现此情况。如需了解安全目录的更多信息，请查阅 git 文档。"
+
+msgid "Development Branch"
+msgstr "开发分支"
+
+msgid "Diff ({count} file)"
+msgid_plural "Diff ({count} files)"
+msgstr[0] "差异（{count} 个文件）"
+
+msgid "Discard Changes"
+msgstr "放弃更改"
+
+msgid "Discard Changes to {count} Files"
+msgstr "放弃对 {count} 个文件的更改"
+
+msgid "Discard Everything (--hard)"
+msgstr "全部放弃（--hard）"
+
+msgid "Discard Tracked Changes"
+msgstr "放弃已跟踪的更改"
+
+msgid "Discard changes to these files?"
+msgstr "要放弃对这些文件的更改吗？"
+
+msgid "Discard changes to these files? New files are moved to the trash."
+msgstr "要放弃对这些文件的更改吗？新文件将移至回收站。"
+
+msgid "Discards this file's changes and returns it to its content in the last commit"
+msgstr "放弃此文件的更改，并将其恢复为最后一次提交中的内容"
+
+msgid "Don't Show Again"
+msgstr "不再显示"
+
+msgid "Downloads the latest from the remote and brings it into the current branch (fetch + merge; when the git setting pull.rebase is set, it rebases as that says)"
+msgstr "从远程下载最新内容并合并到当前分支（fetch + merge；如果设置了 git 配置 pull.rebase，则按其设置进行变基）"
+
+msgid "Drag a commit onto a branch to cherry-pick it, onto a row to reorder, or into the MR box"
+msgstr "将提交拖到分支上可拣选，拖到行上可重新排序，或拖入 MR 收集箱"
+
+msgid "Drag commits here (a multiple selection moves together)"
+msgstr "将提交拖到此处（多选时会一起移动）"
+
+msgid "Drag: into Staged / onto a commit to fix it up"
+msgstr "拖动：拖入“已暂存” / 拖到提交上进行 fixup"
+
+msgid "Drag: onto a branch to cherry-pick / onto another row to reorder / into the MR box"
+msgstr "拖动：拖到分支上可拣选 / 拖到其他行上可重新排序 / 拖入 MR 收集箱"
+
+msgid "Drop"
+msgstr "删除"
+
+msgid "Drop Commit"
+msgstr "删除提交"
+
+msgid "Drop Stash"
+msgstr "删除储藏"
+
+msgid "Drop This Commit…"
+msgstr "删除此提交…"
+
+msgid "Drop files from the Git panel onto a commit to add the fix to that commit (fixup)"
+msgstr "将 Git 面板中的文件拖放到提交上，即可将修正添加到该提交（fixup）"
+
+msgid "Drop here to stage"
+msgstr "放到此处以暂存"
+
+msgid "Drop here to unstage"
+msgstr "放到此处以取消暂存"
+
+msgid "Drop here: add to this commit (fixup)"
+msgstr "放到此处：添加到此提交（fixup）"
+
+msgid "Drop here: cherry-pick"
+msgstr "放到此处：拣选"
+
+msgid "Drop here: cherry-pick {count} commit"
+msgid_plural "Drop here: cherry-pick {count} commits"
+msgstr[0] "放到此处：拣选 {count} 个提交"
+
+msgid "Drop here: move to this position (reorder)"
+msgstr "放到此处：移到此位置（重新排序）"
+
+msgid "Drop here: move {name} here"
+msgstr "放到此处：将 {name} 移到此处"
+
+msgid "Drop here: reset {name} to here (reset)"
+msgstr "放到此处：将 {name} 重置到此处（reset）"
+
+msgid "Drop here: switch to {branch} and cherry-pick"
+msgstr "放到此处：切换到 {branch} 并拣选"
+
+msgid "Drop here: switch to {branch} and cherry-pick {count} commit"
+msgid_plural "Drop here: switch to {branch} and cherry-pick {count} commits"
+msgstr[0] "放到此处：切换到 {branch} 并拣选 {count} 个提交"
+
+msgid "Drop stash@{{{}}}?"
+msgstr "删除 stash@{{{}}}？"
+
+msgid "Drop {short} from the history?"
+msgstr "要从历史记录中删除 {short} 吗？"
+
+msgid "Dropped on the same commit, so the order does not change."
+msgstr "放到了同一个提交上，因此顺序不变。"
+
+msgid "Dropped {} from the history."
+msgstr "已从历史记录中删除 {}。"
+
+msgid "Edit {count} Commit"
+msgid_plural "Edit {count} Commits"
+msgstr[0] "编辑 {count} 个提交"
+
+msgid "Email Copied!"
+msgstr "邮箱已复制！"
+
+msgid "Enter a commit message."
+msgstr "请输入提交消息。"
+
+msgid "Enter a name for this remote…"
+msgstr "输入此远程名称…"
+
+msgid "Enter a name."
+msgstr "请输入名称。"
+
+msgid "Enter both a remote name and a URL."
+msgstr "请同时输入远程名称和 URL。"
+
+msgid "Enter commit message"
+msgstr "输入提交消息"
+
+msgid "Enter git ref..."
+msgstr "输入 git 引用..."
+
+msgid "Enter repository URL…"
+msgstr "输入仓库 URL…"
+
+msgid "Error loading: {}"
+msgstr "加载出错：{}"
+
+msgid "Error parsing date"
+msgstr "解析日期时出错"
+
+msgid "Every commit after {short} gets a new SHA."
+msgstr "{short} 之后的每个提交都会获得新的 SHA。"
+
+msgid "Every commit of the development branch is checked ({} placed / {} excluded)"
+msgstr "开发分支的所有提交均已检查（已放置 {} / 已排除 {}）"
+
+msgid "Every uncommitted change is lost."
+msgstr "所有未提交的更改都将丢失。"
+
+msgid "Exclude {count} Commit from MR"
+msgid_plural "Exclude {count} Commits from MR"
+msgstr[0] "从 MR 中排除 {count} 个提交"
+
+msgid "Expand Commit Description"
+msgstr "展开提交描述"
+
+msgid "Expand Commit Editor"
+msgstr "展开提交编辑器"
+
+msgid "Failed to apply stash"
+msgstr "应用储藏失败"
+
+msgid "Failed to change branch"
+msgstr "切换分支失败"
+
+msgid "Failed to create branch"
+msgstr "创建分支失败"
+
+msgid "Failed to create remote"
+msgstr "创建远程失败"
+
+msgid "Failed to discard changes"
+msgstr "放弃更改失败"
+
+msgid "Failed to drop stash"
+msgstr "删除储藏失败"
+
+msgid "Failed to generate commit message: {err}"
+msgstr "生成提交消息失败：{err}"
+
+msgid "Failed to load commit history"
+msgstr "加载提交历史记录失败"
+
+msgid "Failed to load commits"
+msgstr "加载提交失败"
+
+msgid "Failed to pop stash"
+msgstr "弹出储藏失败"
+
+msgid "Failed to rename branch"
+msgstr "重命名分支失败"
+
+msgid "Failed to trash file"
+msgstr "无法将文件移至回收站"
+
+msgid "Failed to trash files"
+msgstr "将文件移至回收站失败"
+
+msgid "Failed to trash {failed_count} of {total_count} files: {first_error}"
+msgstr "无法将 {total_count} 个文件中的 {failed_count} 个移至回收站：{first_error}"
+
+msgid "Fast forwarded from {}"
+msgstr "已从 {} 快进"
+
+msgid "Fetch"
+msgstr "提取"
+
+msgid "Fetch From"
+msgstr "从指定远程提取"
+
+msgid "Fetch Missing History"
+msgstr "提取缺失的历史记录"
+
+msgid "Fetch in Progress…"
+msgstr "正在提取…"
+
+msgid "Fetch updates from remote"
+msgstr "从远程提取更新"
+
+msgid "Fetch: Already up to date"
+msgstr "提取：已是最新"
+
+msgid "Fetched the missing commit history"
+msgstr "已提取缺失的提交历史记录"
+
+msgid "Fetches the remote, then makes the current branch the same as the remote branch"
+msgstr "提取远程，然后使当前分支与远程分支相同"
+
+msgid "Fetches {remote_name}, then runs git reset --hard {target_ref}.\nEvery uncommitted change and every commit the remote does not have is lost."
+msgstr "提取 {remote_name}，然后运行 git reset --hard {target_ref}。\n所有未提交的更改以及远程没有的所有提交都将丢失。"
+
+msgid "Files from another repository cannot go into this graph's commits."
+msgstr "来自其他仓库的文件不能放入此图中的提交。"
+
+msgid "Filter Branches"
+msgstr "筛选分支"
+
+msgid "Find a Git operation by what you want to do"
+msgstr "按你想做的事查找 Git 操作"
+
+msgid "Find or add a tag (tag)"
+msgstr "查找或添加标签（tag）"
+
+msgid "Find past changes (search)"
+msgstr "查找过去的更改（搜索）"
+
+msgid "Find what you want to do and press \"Try It\" to start that operation."
+msgstr "找到你想做的事，点击“试一试”即可开始该操作。"
+
+msgid "Fix a commit message (reword)"
+msgstr "修改提交消息（reword）"
+
+msgid "Fix the last commit (amend)"
+msgstr "修正最后一次提交（amend）"
+
+msgid "Fold Commit Description"
+msgstr "折叠提交描述"
+
+msgid "Fold Current Changes into This Commit (fixup)…"
+msgstr "将当前更改并入此提交（fixup）…"
+
+msgid "Fold Current Changes into {short} (fixup)"
+msgstr "将当前更改并入 {short}（fixup）"
+
+msgid "Fold into Commit"
+msgstr "并入提交"
+
+msgid "Fold into Previous"
+msgstr "并入上一个"
+
+msgid "Folded the changes into {short}. However, {}\nPrevious tip: {} (recoverable from the reflog)"
+msgstr "已将更改并入 {short}。但是，{}\n之前的末端：{}（可从 reflog 恢复）"
+
+msgid "Folded the changes into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "已将更改并入 {short}。之前的末端：{}（可从 reflog 恢复）"
+
+msgid "For when you notice something missing right after committing. Check \"Amend\" in the Git panel and the last commit's message comes back; committing then replaces the last commit."
+msgstr "适用于刚提交后发现有遗漏的情况。在 Git 面板中勾选“修正提交”，最后一次提交的消息会重新出现；之后提交会替换最后一次提交。"
+
+msgid "Force Delete"
+msgstr "强制删除"
+
+msgid "Force Delete Branch"
+msgstr "强制删除分支"
+
+msgid "Force Push"
+msgstr "强制推送"
+
+msgid "Force Push (Without Lease)"
+msgstr "强制推送（不带 lease）"
+
+msgid "Force Push (with lease)"
+msgstr "强制推送（--force-with-lease）"
+
+msgid "Force Push Without Lease…"
+msgstr "不带 lease 强制推送…"
+
+msgid "Force push (with lease)?"
+msgstr "要强制推送（--force-with-lease）吗？"
+
+msgid "Force push without a lease?"
+msgstr "要不带 lease 强制推送吗？"
+
+msgid "Found {count} conflict across the codebase"
+msgid_plural "Found {count} conflicts across the codebase"
+msgstr[0] "在整个代码库中发现 {count} 个冲突"
+
+msgid "Generate Commit Message"
+msgstr "生成提交消息"
+
+msgid "Generating Commit…"
+msgstr "正在生成提交消息…"
+
+msgid "Generating commit message..."
+msgstr "正在生成提交消息..."
+
+msgid "Git Clone: {}"
+msgstr "Git 克隆：{}"
+
+msgid "Git Graph"
+msgstr "提交图"
+
+msgid "Git Guide"
+msgstr "Git 指南"
+
+msgid "Git Guide (find an operation by what you want to do)"
+msgstr "Git 指南（按你想做的事查找操作）"
+
+msgid "Git Job Queue: {repo_path}"
+msgstr "Git 作业队列：{repo_path}"
+
+msgid "Git Panel"
+msgstr "Git 面板"
+
+msgid "Git accounts don't apply to a project shared by a collaborator. It commits and pushes as git is configured on its host."
+msgstr "Git 账户不适用于协作者共享的项目。它会按照其主机上的 git 配置进行提交和推送。"
+
+msgid "Git's Own Configuration"
+msgstr "Git 自身的配置"
+
+msgid "Git's history has no copy of it, so once the trash is emptied it cannot be restored"
+msgstr "Git 的历史记录中没有它的副本，因此清空回收站后将无法还原"
+
+msgid "Git's history has no copy of them, so once the trash is emptied they cannot be restored"
+msgstr "Git 的历史记录中没有它们的副本，因此清空回收站后将无法还原"
+
+msgid "Gives this commit a marker name (a tag), for example to record a released version"
+msgstr "为此提交添加一个标记名称（标签），例如用于记录发布的版本"
+
+msgid "Gives up the operation and returns to the state before it started"
+msgstr "放弃该操作，并回到开始前的状态"
+
+msgid "Go Back to \"{}\" (Delete the Scratch Branch)"
+msgstr "返回“{}”（删除临时分支）"
+
+msgid "Go back to before the fixup?"
+msgstr "要回到 fixup 之前的状态吗？"
+
+msgid "Go back to the state before the reorder?"
+msgstr "要回到重新排序之前的状态吗？"
+
+msgid "Go to Next Hunk"
+msgstr "转到下一个差异块"
+
+msgid "Go to Next Unplaced"
+msgstr "转到下一个未放置项"
+
+msgid "Go to Previous Hunk"
+msgstr "转到上一个差异块"
+
+msgid "Graph"
+msgstr "图"
+
+msgid "Group By"
+msgstr "分组方式"
+
+msgid "Groups the changed files by folder hierarchy, with folders you can expand and collapse"
+msgstr "按文件夹层次结构对已更改的文件分组，文件夹可展开和折叠"
+
+msgid "HEAD has moved or another branch was checked out since the fixup, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "fixup 之后 HEAD 已移动或签出了其他分支，因此无法在此撤销。请使用 git reflog 手动撤销。"
+
+msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "改写之后 HEAD 已移动，因此无法在此撤销。请使用 git reflog 手动撤销。"
+
+msgid "History"
+msgstr "历史记录"
+
+msgid "History (Graph)"
+msgstr "历史记录（图）"
+
+msgid "Hold {} to force delete"
+msgstr "按住 {} 可强制删除"
+
+msgid "Hover over a button to see what it does here. The Git guide explains the terms too"
+msgstr "将鼠标悬停在按钮上，此处会显示其作用。Git 指南也会解释相关术语"
+
+msgid "How soft / mixed / hard differ in \"Reset to This Commit\""
+msgstr "“重置到此提交”中 soft / mixed / hard 的区别"
+
+msgid "How to Write a Search"
+msgstr "如何编写搜索条件"
+
+msgid "I changed commits I had already pushed"
+msgstr "我更改了已推送的提交"
+
+msgid "If the commit was already pushed, you will need to force push"
+msgstr "如果该提交已推送，则需要强制推送"
+
+msgid "If your current changes touch the same files, it stops or ends in a conflict. On a conflict, the changes also stay in the stash"
+msgstr "如果你当前的更改涉及相同的文件，会停止或以冲突结束。发生冲突时，更改也会保留在储藏中"
+
+msgid "In the Git Graph, pick rows while holding Ctrl / Shift and press \"Reorder / Squash / Drop…\" above to edit the order, what to squash and the messages. You can also reorder a single commit by dragging it onto another row. Mind that the changes of dropped commits are lost (the SHAs of the commits from there on change)."
+msgstr "在提交图中按住 Ctrl / Shift 选择行，然后点击上方的“重新排序 / 压缩 / 删除…”，即可编辑顺序、压缩方式和消息。也可以将单个提交拖到另一行上进行重新排序。请注意，被删除提交的更改会丢失（从该处起的提交的 SHA 会变化）。"
+
+msgid "Initialize Repository"
+msgstr "初始化仓库"
+
+msgid "Instead of adding a new commit, the next commit rebuilds the last commit from the current changes and message"
+msgstr "下次提交不会添加新提交，而是用当前的更改和消息重建最后一次提交"
+
+msgid "It was pushed, so it needs a force push (with lease) afterwards."
+msgstr "该提交已推送，因此之后需要强制推送（--force-with-lease）。"
+
+msgid "It was pushed, so it needs a force push (with lease)."
+msgstr "该提交已推送，因此需要强制推送（--force-with-lease）。"
+
+msgid "Its parent history was not fetched, so the changes it introduced cannot be shown."
+msgstr "未提取其父级历史记录，因此无法显示此提交引入的更改。"
+
+msgid "Its remote-tracking branches are removed as well."
+msgstr "其远程跟踪分支也会被删除。"
+
+msgid "Keeps both the upper side (ours) and the lower side (theirs) of the conflict, one above the other"
+msgstr "上下并列保留冲突的上侧（ours）和下侧（theirs）两方内容"
+
+msgid "Latest tag: checking…"
+msgstr "最近的标签：正在检查…"
+
+msgid "Latest tag: none"
+msgstr "最近的标签：无"
+
+msgid "Latest tag: {tag} (this commit itself)"
+msgstr "最近的标签：{tag}（即此提交本身）"
+
+msgid "Latest tag: {tag} ({count} commit before this one)"
+msgid_plural "Latest tag: {tag} ({count} commits before this one)"
+msgstr[0] "最近的标签：{tag}（在此提交之前 {count} 个提交）"
+
+msgid "Learn More"
+msgstr "了解详情"
+
+msgid "Leaves out merge commits (yes, no, only)"
+msgstr "排除合并提交（是、否、仅）"
+
+msgid "Leaves the current tip {short_new} and goes back to {short_old} (git reset --soft).\nThe folded changes stay as staged changes."
+msgstr "离开当前末端 {short_new} 并返回 {short_old}（git reset --soft）。\n并入的更改将保留为已暂存的更改。"
+
+msgid "Left: {} / Right: {}"
+msgstr "左：{} / 右：{}"
+
+msgid "List"
+msgstr "列表"
+
+msgid "Load File Snapshot"
+msgstr "加载文件快照"
+
+msgid "Load Full Snapshot"
+msgstr "加载完整快照"
+
+msgid "Loading"
+msgstr "正在加载"
+
+msgid "Loading Commit History…"
+msgstr "正在加载提交历史记录…"
+
+msgid "Loading comparison…"
+msgstr "正在加载比较…"
+
+msgid "Loading tags…"
+msgstr "正在加载标签…"
+
+msgid "Loading the development branch's commits…"
+msgstr "正在加载开发分支的提交…"
+
+msgid "Loading the tag list…"
+msgstr "正在加载标签列表…"
+
+msgid "Loading…"
+msgstr "正在加载…"
+
+msgid "Local Branches"
+msgstr "本地分支"
+
+msgid "Local branch (a branch on this computer)"
+msgstr "本地分支（此计算机上的分支）"
+
+msgid "MR Box"
+msgstr "MR 收集箱"
+
+msgid "MR Branch Name"
+msgstr "MR 分支名称"
+
+msgid "MR Check {} → {}"
+msgstr "MR 检查 {} → {}"
+
+msgid "MR Check: {} (development branch) → {} (MR branch)"
+msgstr "MR 检查：{}（开发分支）→ {}（MR 分支）"
+
+msgid "MR's Base (Merge Target) Branch"
+msgstr "MR 的基准（合并目标）分支"
+
+msgid "Make one commit for an MR (MR box)"
+msgstr "为 MR 创建一个提交（MR 收集箱）"
+
+msgid "Manage Git Accounts…"
+msgstr "管理 Git 账户…"
+
+msgid "Marks every change in this folder to go into the next commit"
+msgstr "将此文件夹中的所有更改标记为纳入下一次提交"
+
+msgid "Marks every change under this heading to go into the next commit"
+msgstr "将此标题下的所有更改标记为纳入下一次提交"
+
+msgid "Marks every changed file to go into the next commit (stages it). The files' contents do not change"
+msgstr "将所有已更改的文件标记为纳入下一次提交（暂存）。文件内容不会改变"
+
+msgid "Marks only this change (hunk: one block of changes) to go into the next commit. The file's contents do not change"
+msgstr "仅将此更改（差异块：一组连续的更改）标记为纳入下一次提交。文件内容不会改变"
+
+msgid "Marks the commit as one you decided to keep out of the MR, so that the check for forgotten commits no longer counts it as \"unplaced\". If it is in the box, it is taken out too"
+msgstr "将该提交标记为你决定不纳入 MR 的提交，这样遗漏检查就不再将其计为“未放置”。如果它在收集箱中，也会被移出"
+
+msgid "Marks this file's changes to go into the next commit. The file's contents do not change"
+msgstr "将此文件的更改标记为纳入下一次提交。文件内容不会改变"
+
+msgid "Match Case Sensitivity"
+msgstr "区分大小写"
+
+msgid "Matches"
+msgstr "匹配项"
+
+msgid "Merge Branch…"
+msgstr "合并分支…"
+
+msgid "Merge commits cannot go into the box ({count} was left out)."
+msgid_plural "Merge commits cannot go into the box ({count} were left out)."
+msgstr[0] "合并提交不能放入收集箱（已排除 {count} 个）。"
+
+msgid "Merged from {}"
+msgstr "已从 {} 合并"
+
+msgid "Merged {branch}."
+msgstr "已合并 {branch}。"
+
+msgid "Merged {count} file change from {remote}"
+msgid_plural "Merged {count} file changes from {remote}"
+msgstr[0] "已从 {remote} 合并 {count} 个文件更改"
+
+msgid "Message (leave empty for a lightweight tag)"
+msgstr "消息（留空则创建轻量标签）"
+
+msgid "Mismatches Only"
+msgstr "仅显示不匹配项"
+
+msgid "Move {branch} to this commit?"
+msgstr "要将 {branch} 移到此提交吗？"
+
+msgid "Moves a new file that was never committed to the system trash. It can be restored from the trash"
+msgstr "将从未提交过的新文件移至系统回收站。可从回收站还原"
+
+msgid "Moves new files Git does not manage yet (untracked) to the system trash. They can be restored from the trash"
+msgstr "将 Git 尚未管理的新文件（未跟踪）移至系统回收站。可从回收站还原"
+
+msgid "Moves only the branch back. The later changes stay staged and in the working tree"
+msgstr "仅将分支移回。之后的更改仍保留在暂存区和工作树中"
+
+msgid "Moves the branch back and unstages. The later changes stay in the working tree's files"
+msgstr "将分支移回并取消暂存。之后的更改保留在工作树的文件中"
+
+msgid "Moves the current branch back to here. Choose soft / mixed / hard for the later changes"
+msgstr "将当前分支移回此处。为之后的更改选择 soft / mixed / hard"
+
+msgid "New branch name"
+msgstr "新分支名称"
+
+msgid "New commit message"
+msgstr "新提交消息"
+
+msgid "Next Steps (Update the MR Branch and Go Back)"
+msgstr "后续步骤（更新 MR 分支并返回）"
+
+msgid "No Changes to Commit"
+msgstr "没有可提交的更改"
+
+msgid "No Git Repositories"
+msgstr "无 Git 仓库"
+
+msgid "No Git repository is open."
+msgstr "未打开 Git 仓库。"
+
+msgid "No active branch"
+msgstr "没有活动分支"
+
+msgid "No active repository"
+msgstr "无活动仓库"
+
+msgid "No branch is checked out, so there is nothing to push."
+msgstr "未签出任何分支，因此没有可推送的内容。"
+
+msgid "No changes"
+msgstr "没有更改"
+
+msgid "No changes to commit"
+msgstr "没有可提交的更改"
+
+msgid "No commit message"
+msgstr "没有提交消息"
+
+msgid "No commits found"
+msgstr "未找到提交"
+
+msgid "No commits match. Try fewer conditions."
+msgstr "没有匹配的提交。请尝试减少条件。"
+
+msgid "No commits yet"
+msgstr "尚无提交"
+
+msgid "No development branch is chosen. Choose a development branch first."
+msgstr "未选择开发分支。请先选择开发分支。"
+
+msgid "No differences (everything has been ported)"
+msgstr "没有差异（全部已移植）"
+
+msgid "No files changed on the development branch."
+msgstr "开发分支上没有已更改的文件。"
+
+msgid "No files mismatch. \"All\" also shows the matching files."
+msgstr "没有不匹配的文件。“全部”也会显示匹配的文件。"
+
+msgid "No matching tags"
+msgstr "没有匹配的标签"
+
+msgid "No remote available to push to. Add a remote to be able to publish changes."
+msgstr "没有可推送到的远程。请添加远程以便发布更改。"
+
+msgid "No remote configured for repository"
+msgstr "仓库未配置远程"
+
+msgid "No repository found"
+msgstr "未找到仓库"
+
+msgid "No staged changes"
+msgstr "没有已暂存的更改"
+
+msgid "No staged changes yet"
+msgstr "尚无已暂存的更改"
+
+msgid "No stashes found"
+msgstr "未找到储藏条目"
+
+msgid "No tags"
+msgstr "没有标签"
+
+msgid "No tracked file has changes"
+msgstr "没有已跟踪的文件有更改"
+
+msgid "No tracked file has staged changes"
+msgstr "没有已跟踪的文件有已暂存的更改"
+
+msgid "No uncommitted changes"
+msgstr "没有未提交的更改"
+
+msgid "No unstaged changes"
+msgstr "没有未暂存的更改"
+
+msgid "Not available on a detached HEAD. Switch to a branch first."
+msgstr "在游离 HEAD 上不可用。请先切换到某个分支。"
+
+msgid "Not available while several files are selected"
+msgstr "选中多个文件时不可用"
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base (a change that came in while resolving a conflict, for example). The base is on the left, the MR branch on the right."
+msgstr "开发分支上未更改，但 MR 分支与基准不同（例如解决冲突时引入的更改）。左侧为基准，右侧为 MR 分支。"
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base. The MR branch was not created from the tip of its base, so it may only lack the base's newer changes (or the change came in while resolving a conflict). The base is on the left, the MR branch on the right."
+msgstr "开发分支上未更改，但 MR 分支与基准不同。MR 分支不是从基准的末端创建的，因此可能只是缺少基准较新的更改（也可能是解决冲突时引入的更改）。左侧为基准，右侧为 MR 分支。"
+
+msgid "Not every commit could be checked for being left out. Create the MR branch anyway?"
+msgstr "未能检查所有提交是否有遗漏。仍要创建 MR 分支吗？"
+
+msgid "Not from the development branch"
+msgstr "不来自开发分支"
+
+msgid "Not from the development branch (came in while resolving conflicts, for example)"
+msgstr "不来自开发分支（例如解决冲突时引入）"
+
+msgid "Not from the development branch (includes newer base changes the MR branch lacks)"
+msgstr "不来自开发分支（包括 MR 分支缺少的较新基准更改）"
+
+msgid "Nothing has been put away on the shelf (the stash)"
+msgstr "储藏区（stash）中没有任何内容"
+
+msgid "Nothing has changed. Reorder the commits or choose an action."
+msgstr "没有任何更改。请重新排序提交或选择一个操作。"
+
+msgid "Nothing is missing"
+msgstr "没有遗漏"
+
+msgid "Nothing is missing, but {count} file needs a look"
+msgid_plural "Nothing is missing, but {count} files need a look"
+msgstr[0] "没有遗漏，但有 {count} 个文件需要查看"
+
+msgid "Once you have a fix that belongs in a commit a few back, pick that commit in the Git Graph and press \"Add Current Changes (fixup)\". You can also drag files from the Git panel onto the commit's row."
+msgstr "准备好属于之前几个提交的修正后，在提交图中选中该提交并点击“添加当前更改（fixup）”。也可以将 Git 面板中的文件拖到该提交的行上。"
+
+msgid "Only downloads the latest from the remote (the shared server). Your files and branches do not change"
+msgstr "仅从远程（共享服务器）下载最新内容。你的文件和分支不会改变"
+
+msgid "Only for new files Git does not manage yet (untracked)"
+msgstr "仅适用于 Git 尚未管理的新文件（未跟踪）"
+
+msgid "Only the staged changes ({count} file)"
+msgid_plural "Only the staged changes ({count} files)"
+msgstr[0] "仅已暂存的更改（{count} 个文件）"
+
+msgid "Open Commit Modal"
+msgstr "打开提交对话框"
+
+msgid "Open Commit Permalink"
+msgstr "打开提交永久链接"
+
+msgid "Open Diff"
+msgstr "打开差异"
+
+msgid "Open File Diff"
+msgstr "打开文件差异"
+
+msgid "Open File in Project"
+msgstr "在项目中打开文件"
+
+msgid "Open Git Graph"
+msgstr "打开提交图"
+
+msgid "Open a directory first"
+msgstr "请先打开一个文件夹"
+
+msgid "Open repo in new project"
+msgstr "在新项目中打开仓库"
+
+msgid "Opens a diff of just this file (before and after the change) in a tab of its own"
+msgstr "在单独的标签页中打开仅此文件的差异（更改前后）"
+
+msgid "Opens a guide that explains Git's terms and the steps of common operations"
+msgstr "打开一个指南，介绍 Git 的术语和常用操作的步骤"
+
+msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
+msgstr "打开用于改写最后一次提交消息的界面。对于较早的提交，在提交图中选中它并点击“改写消息”（从该处起的提交的 SHA 会变化）。"
+
+msgid "Opens the current file itself in the editor, rather than the diff"
+msgstr "在编辑器中打开当前文件本身，而不是差异"
+
+msgid "Opens the difference between this file before and after the change (the diff) in the tab that shows all changes together"
+msgstr "在汇总显示所有更改的标签页中，打开此文件更改前后的区别（差异）"
+
+msgid "Opens the list of changes put on the shelf (the stash), where you can look inside, pop or drop them"
+msgstr "打开储藏区（stash）中的更改列表，可在其中查看内容、弹出或删除"
+
+msgid "Opens the list of commits that changed this file, newest first"
+msgstr "打开更改过此文件的提交列表，最新的在前"
+
+msgid "Operation was canceled"
+msgstr "操作已取消"
+
+msgid "Operations that did not fit in the row. Open it to see each one explained beside it"
+msgstr "该行中放不下的操作。打开后可在每个操作旁边看到说明"
+
+msgid "Optionally provide a stash message"
+msgstr "提供储藏消息（可选）"
+
+msgid "Other staged changes are not included (after the rewrite they are left unstaged)."
+msgstr "不包括其他已暂存的更改（改写后它们会保持未暂存状态）。"
+
+msgid "Outside the development branch"
+msgstr "开发分支之外"
+
+msgid "Overwrites the remote branch with your history, without checking"
+msgstr "不做检查，直接用你的历史记录覆盖远程分支"
+
+msgid "Overwrites the remote branch with your history. Stops if someone else pushed commits after your last fetch"
+msgstr "用你的历史记录覆盖远程分支。如果在你上次提取之后有其他人推送了提交，则会停止"
+
+msgid "Packed the branches and tags ({seconds} s)"
+msgstr "已打包分支和标签（{seconds} 秒）"
+
+msgid "Packing…"
+msgstr "正在打包…"
+
+msgid "Packs the refs (branches and tags) stored as separate files into one file."
+msgstr "将以单独文件存储的 ref（分支和标签）打包为一个文件。"
+
+msgid "Packs the {count} or more refs (branches and tags) stored as separate files into one file."
+msgstr "将以单独文件存储的 {count} 个或更多 ref（分支和标签）打包为一个文件。"
+
+msgid "Packs the {formatted} ref (branch or tag) stored as a separate file into one file."
+msgid_plural "Packs the {formatted} refs (branches and tags) stored as separate files into one file."
+msgstr[0] "将以单独文件存储的 {formatted} 个 ref（分支和标签）打包为一个文件。"
+
+msgid "Part of a name or email address"
+msgstr "名称或电子邮件地址的一部分"
+
+msgid "Paste"
+msgstr "粘贴"
+
+msgid "Path History"
+msgstr "路径历史记录"
+
+msgid "Pick a commit and the buttons for it show above"
+msgstr "选中一个提交后，其操作按钮会显示在上方"
+
+msgid "Pick a commit in the Git Graph and press \"Check Out\" to put the working tree in that commit's state (detached HEAD). Commits made from there belong to no branch, so to keep working, use \"Branch from Here\". To go back, switch to the original branch from the branch list."
+msgstr "在提交图中选中一个提交并点击“签出”，可将工作树置于该提交的状态（游离 HEAD）。在此状态下创建的提交不属于任何分支，因此若要继续工作，请使用“从此处创建分支”。若要返回，请从分支列表切换到原分支。"
+
+msgid "Pick a commit in the Git Graph, then press \"Revert\" to make a commit that undoes its changes, or \"Reset to This Commit ▾\" to move the branch back (hard throws the changes away). After a rewrite, \"Undo…\" on the notification or the reflog brings things back."
+msgstr "在提交图中选中一个提交，然后点击“还原”以创建撤销其更改的提交，或点击“重置到此提交 ▾”将分支移回（hard 会丢弃更改）。改写之后，可通过通知中的“撤销…”或 reflog 恢复。"
+
+msgid "Pick a commit to get its operations here (right-clicking offers the same)"
+msgstr "选中一个提交即可在此处获得其操作（右键点击也提供相同操作）"
+
+msgid "Pick an unbroken range"
+msgstr "请选择一个连续的范围"
+
+msgid "Pick an unbroken range. A range that contains a merge commit cannot be rewritten."
+msgstr "请选择一个连续的范围。包含合并提交的范围无法改写。"
+
+msgid "Pick at least two commits to reorder."
+msgstr "请至少选择两个要重新排序的提交。"
+
+msgid "Pick commits on the current branch"
+msgstr "请选择当前分支上的提交"
+
+msgid "Pick commits on the current branch."
+msgstr "请选择当前分支上的提交。"
+
+msgid "Pick the commit in the Git Graph and press \"Cherry-Pick\" to add its changes to the current branch as a new commit. With several picked through Ctrl / Shift, \"Cherry-Pick N Commits\" adds them oldest first. You can also drag a row onto a branch name. Changes to the same places can end in a conflict."
+msgstr "在提交图中选中该提交并点击“拣选”，即可将其更改作为新提交添加到当前分支。通过 Ctrl / Shift 选中多个时，“拣选 N 个提交”会按从旧到新的顺序添加。也可以将行拖到分支名称上。对相同位置的更改可能会导致冲突。"
+
+msgid "Pick the commit to add your current changes to, then press \"Add Current Changes (fixup)\" above."
+msgstr "选中要添加当前更改的提交，然后点击上方的“添加当前更改（fixup）”。"
+
+msgid "Pick which remote to fetch"
+msgstr "选择要提取的远程"
+
+msgid "Pick which remote to push to"
+msgstr "选择要推送到的远程"
+
+msgid "Pick which remote to remove"
+msgstr "选择要删除的远程"
+
+msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
+msgstr "选择另一个要工作的分支（一条工作线）。文件会变为该分支的内容"
+
+msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
+msgstr "从已注册的远程中选择一个，仅下载其最新内容。文件不会改变"
+
+msgid "Pop"
+msgstr "弹出"
+
+msgid "Pop Stash"
+msgstr "弹出储藏"
+
+msgid "Pop stash@{{{}}}?"
+msgstr "弹出 stash@{{{}}}？"
+
+msgid "Possibly missing"
+msgstr "可能有遗漏"
+
+msgid "Previous tip: {} (recoverable from the reflog)"
+msgstr "之前的末端：{}（可从 reflog 恢复）"
+
+msgid "Problems the checks would have stopped can get into the commit"
+msgstr "本应被检查拦下的问题可能会进入提交"
+
+msgid "Publish"
+msgstr "发布"
+
+msgid "Publish branch to remote"
+msgstr "将分支发布到远程"
+
+msgid "Pull"
+msgstr "拉取"
+
+msgid "Pull (Rebase)"
+msgstr "拉取（变基）"
+
+msgid "Pull in Progress…"
+msgstr "正在拉取…"
+
+msgid "Pull: Already up to date"
+msgstr "拉取：已是最新"
+
+msgid "Push"
+msgstr "推送"
+
+msgid "Push To"
+msgstr "推送到指定远程"
+
+msgid "Push committed changes to remote"
+msgstr "将已提交更改推送到远程"
+
+msgid "Push in Progress…"
+msgstr "正在推送…"
+
+msgid "Push: Everything is up-to-date"
+msgstr "推送：全部已是最新"
+
+msgid "Pushed {} to {}"
+msgstr "已将 {} 推送到 {}"
+
+msgid "Put Back"
+msgstr "放回"
+
+msgid "Puts all changes together in one list, without splitting them"
+msgstr "将所有更改放在一个列表中，不进行拆分"
+
+msgid "Puts all uncommitted changes, newly created files (untracked) included, away on a temporary shelf (the stash) and returns the files to the last commit. \"Stash Pop\" brings them back later"
+msgstr "将所有未提交的更改（包括新创建的文件，即未跟踪的文件）放入临时储藏区（stash），并将文件恢复到最后一次提交的状态。之后可用“弹出储藏”取回"
+
+msgid "Puts only the changes to files Git manages (tracked) away on the shelf (the stash). Newly created files are kept"
+msgstr "仅将 Git 管理的文件（已跟踪）的更改放入储藏区（stash）。新创建的文件保留"
+
+msgid "Puts only the staged changes away on the shelf (the stash). Unstaged changes stay in the files"
+msgstr "仅将已暂存的更改放入储藏区（stash）。未暂存的更改保留在文件中"
+
+msgid "Puts the changes last put on the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "将最后放入储藏区（stash）的更改放回文件中，并从储藏区中删除"
+
+msgid "Puts these changes from the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "将储藏区（stash）中的这些更改放回文件中，并从储藏区中删除"
+
+msgid "Re-publish branch to remote"
+msgstr "将分支重新发布到远程"
+
+msgid "Rebuilds the last commit from your changes and message (Git panel)"
+msgstr "用你的更改和消息重建最后一次提交（Git 面板）"
+
+msgid "Received {count} file change from {remote}"
+msgid_plural "Received {count} file changes from {remote}"
+msgstr[0] "已从 {remote} 收到 {count} 个文件更改"
+
+msgid "Records the names of the people you worked with in \"Co-authored-by\" lines of the commit message"
+msgstr "在提交消息的“Co-authored-by”行中记录与你合作的人的名字"
+
+msgid "Recreate an MR branch"
+msgstr "重新创建 MR 分支"
+
+msgid "Recreate the existing {branch_name} (needs a force push)"
+msgstr "重新创建现有的 {branch_name}（需要强制推送）"
+
+msgid "Recreated the MR branch {merge_request_branch}\nPrevious MR branch: {} (recoverable from the reflog)"
+msgstr "已重新创建 MR 分支 {merge_request_branch}\n之前的 MR 分支：{}（可从 reflog 恢复）"
+
+msgid "Ref {ref_name}"
+msgstr "引用 {ref_name}"
+
+msgid "Registers a folder owned by another user as a place Git may work in"
+msgstr "将其他用户拥有的文件夹注册为 Git 可以工作的位置"
+
+msgid "Registers a server to push to and fetch from (a remote) by name and URL"
+msgstr "按名称和 URL 注册用于推送和提取的服务器（远程）"
+
+msgid "Remote Branches"
+msgstr "远程分支"
+
+msgid "Remote Name"
+msgstr "远程名称"
+
+msgid "Remote branch (a copy of a branch on the server)"
+msgstr "远程分支（服务器上分支的副本）"
+
+msgid "Remote name can't be empty"
+msgstr "远程名称不能为空"
+
+msgid "Remote up to date"
+msgstr "远程已是最新"
+
+msgid "Remove Remote…"
+msgstr "删除远程…"
+
+msgid "Remove co-authored-by"
+msgstr "移除 co-authored-by"
+
+msgid "Remove the remote {remote_name}?"
+msgstr "要删除远程 {remote_name} 吗？"
+
+msgid "Remove this condition and search again"
+msgstr "移除此条件并重新搜索"
+
+msgid "Removed the remote {remote_name}."
+msgstr "已删除远程 {remote_name}。"
+
+msgid "Removes every stage mark in this folder. The changes stay in the files"
+msgstr "移除此文件夹中的所有暂存标记。更改保留在文件中"
+
+msgid "Removes every stage mark. The changes stay in the files and just no longer go into the next commit"
+msgstr "移除所有暂存标记。更改保留在文件中，只是不再纳入下一次提交"
+
+msgid "Removes the exclusion mark and makes the commit \"unplaced\" again"
+msgstr "移除排除标记，使该提交重新变为“未放置”"
+
+msgid "Removes the stage mark of this change (hunk). The change stays in the file"
+msgstr "移除此更改（差异块）的暂存标记。更改保留在文件中"
+
+msgid "Removes the stage marks of every change under this heading. The changes stay in the files"
+msgstr "移除此标题下所有更改的暂存标记。更改保留在文件中"
+
+msgid "Removes this commit and its changes from history"
+msgstr "从历史记录中删除此提交及其更改"
+
+msgid "Removes this file's stage mark. The changes stay in the file"
+msgstr "移除此文件的暂存标记。更改保留在文件中"
+
+msgid "Rename Branch ({})"
+msgstr "重命名分支（{}）"
+
+msgid "Reorder / Squash / Drop the {count} Selected Commit…"
+msgid_plural "Reorder / Squash / Drop the {count} Selected Commits…"
+msgstr[0] "重新排序 / 压缩 / 删除选中的 {count} 个提交…"
+
+msgid "Reorder / Squash / Drop — {reason}"
+msgstr "重新排序 / 压缩 / 删除——{reason}"
+
+msgid "Reorder commits: done\nPrevious tip: {short_old} (can be restored from the reflog)"
+msgstr "重新排序提交：已完成\n之前的末端：{short_old}（可从 reflog 恢复）"
+
+msgid "Reorder commits: done."
+msgstr "重新排序提交：已完成。"
+
+msgid "Reorders, squashes or drops the picked range"
+msgstr "对所选范围重新排序、压缩（squash）或删除（drop）"
+
+msgid "Repository not found."
+msgstr "未找到仓库。"
+
+msgid "Republish"
+msgstr "重新发布"
+
+msgid "Reset (Discard Changes)"
+msgstr "重置（放弃更改）"
+
+msgid "Reset the local branch to the remote?"
+msgstr "要将本地分支重置为远程状态吗？"
+
+msgid "Reset the local branch to {target_ref}."
+msgstr "已将本地分支重置为 {target_ref}。"
+
+msgid "Reset to Remote"
+msgstr "重置为远程状态"
+
+msgid "Reset to Remote…"
+msgstr "重置为远程状态…"
+
+msgid "Reset to This Commit (hard: {summary})…"
+msgstr "重置到此提交（hard：{summary}）…"
+
+msgid "Reset to This Commit (mixed: {summary})"
+msgstr "重置到此提交（mixed：{summary}）"
+
+msgid "Reset to This Commit (soft: {summary})"
+msgstr "重置到此提交（soft：{summary}）"
+
+msgid "Reset to {short}?"
+msgstr "要重置到 {short} 吗？"
+
+msgid "Reset to {} ({flag})."
+msgstr "已重置到 {}（{flag}）。"
+
+msgid "Reset {branch} to this commit?"
+msgstr "要将 {branch} 重置到此提交吗？"
+
+msgid "Resets the branch, discarding later and uncommitted changes"
+msgstr "重置分支，放弃之后的更改和未提交的更改"
+
+msgid "Resets the current branch {branch} to {short_sha}.\n- Undo Commits Only (--soft): the changes stay staged\n- Unstage Too (--mixed): the changes stay in the working tree\n- Discard Everything (--hard): uncommitted changes are lost too"
+msgstr "将当前分支 {branch} 重置到 {short_sha}。\n- 仅撤销提交（--soft）：更改保留为已暂存\n- 同时取消暂存（--mixed）：更改保留在工作树中\n- 全部放弃（--hard）：未提交的更改也会丢失"
+
+msgid "Resolve Merge Conflict with Agent"
+msgid_plural "Resolve Merge Conflicts with Agent"
+msgstr[0] "使用智能体解决合并冲突"
+
+msgid "Resolve the conflicts, stage them, then press \"Continue\"."
+msgstr "请解决冲突并暂存，然后点击“继续”。"
+
+msgid "Resolve with Agent"
+msgstr "使用智能体解决"
+
+msgid "Resolves the conflict with only the lower side (the >>>>>>> side, theirs). The upper side is thrown away. During a merge that is the side being merged in; during a rebase, your commit being replayed"
+msgstr "仅使用下侧（>>>>>>> 一侧，theirs）解决冲突，丢弃上侧。合并时，这是被合并进来的一侧；变基时，这是正在重新应用的你的提交"
+
+msgid "Resolves the conflict with only the upper side (the <<<<<<< side, ours). The lower side is thrown away. During a merge that is the branch you are on; during a rebase, the branch being rebased onto"
+msgstr "仅使用上侧（<<<<<<< 一侧，ours）解决冲突，丢弃下侧。合并时，这是你所在的分支；变基时，这是变基的目标分支"
+
+msgid "Restore"
+msgstr "还原"
+
+msgid "Restore All"
+msgstr "全部还原"
+
+msgid "Restore All Changes"
+msgstr "还原所有更改"
+
+msgid "Restore File"
+msgstr "还原文件"
+
+msgid "Restore Hunk"
+msgstr "还原差异块"
+
+msgid "Restore Selected Hunks"
+msgstr "还原所选差异块"
+
+msgid "Restore Tracked Files"
+msgstr "还原已跟踪的文件"
+
+msgid "Restore selected hunk"
+msgstr "还原所选差异块"
+
+msgid "Returns each tracked file that has staged changes to its content in the last commit, unstaged changes included. Files with only unstaged changes and newly created files (untracked) are kept"
+msgstr "将每个含有已暂存更改的已跟踪文件恢复为最后一次提交中的内容，包括其未暂存的更改。仅含未暂存更改的文件和新创建的文件（未跟踪）会保留"
+
+msgid "Revert This Commit"
+msgstr "还原此提交"
+
+msgid "Reverted {}."
+msgstr "已还原 {}。"
+
+msgid "Review Diff"
+msgstr "审阅差异"
+
+msgid "Reword Message…"
+msgstr "改写消息…"
+
+msgid "Reword the Message of {}"
+msgstr "改写 {} 的消息"
+
+msgid "Reworded the message of {}."
+msgstr "已改写 {} 的消息。"
+
+msgid "Rewrite"
+msgstr "改写"
+
+msgid "Rewrite History…"
+msgstr "改写历史记录…"
+
+msgid "Rewrite the selected commits like this?"
+msgstr "要这样改写选中的提交吗？"
+
+msgid "Run `git fetch --unshallow` to download the full history"
+msgstr "运行 `git fetch --unshallow` 以下载完整历史记录"
+
+msgid "Run `git fetch --unshallow` to download the full history, then show this commit's changes."
+msgstr "运行 `git fetch --unshallow` 以下载完整历史记录，然后显示此提交的更改。"
+
+msgid "Runs git pack-refs --all. The branches and tags themselves do not change. With tens of thousands of them it takes about a minute, and other Git operations wait meanwhile."
+msgstr "运行 git pack-refs --all。分支和标签本身不会改变。若有数万个，大约需要一分钟，期间其他 Git 操作会等待。"
+
+msgid "Runs git remote add."
+msgstr "运行 git remote add。"
+
+msgid "Runs git reset {flag} {short}.\n{kept}"
+msgstr "运行 git reset {flag} {short}。\n{kept}"
+
+msgid "Same contents as on the development branch."
+msgstr "内容与开发分支上的相同。"
+
+msgid "Saved the patch file: {destination}"
+msgstr "已保存补丁文件：{destination}"
+
+msgid "Saves the staged changes as a single record with a message (a commit). With nothing staged, all tracked changes go in"
+msgstr "将已暂存的更改连同消息保存为一条记录（提交）。若没有暂存任何内容，则纳入所有已跟踪的更改"
+
+msgid "Search"
+msgstr "搜索"
+
+msgid "Search by Conditions"
+msgstr "按条件搜索"
+
+msgid "Search by conditions such as the author, a tag or a period"
+msgstr "按作者、标签或时间段等条件搜索"
+
+msgid "Search commits… (e.g. author:alice file:src/ since:2w)"
+msgstr "搜索提交…（例如 author:alice file:src/ since:2w）"
+
+msgid "Search for a tag in the Git Graph's \"Tags\" and pick it to jump to its commit. To add a tag, right-click the commit's row and choose \"Tag Here…\" (an empty message makes a lightweight tag)."
+msgstr "在提交图的“标签”中搜索标签，选中即可跳转到其提交。若要添加标签，右键点击提交所在行并选择“在此处添加标签…”（消息留空则创建轻量标签）。"
+
+msgid "Search in the Git Graph's search box. Add author: tag: branch: file: since: until: change: merge: to narrow it down (for example author:alice file:src/main.rs since:2026-01-01)."
+msgstr "在提交图的搜索框中搜索。添加 author: tag: branch: file: since: until: change: merge: 可缩小范围（例如 author:alice file:src/main.rs since:2026-01-01）。"
+
+msgid "Search tags… (newest first)"
+msgstr "搜索标签…（最新的在前）"
+
+msgid "Searches the tags (names given to commits) and jumps to the commit of the one you pick"
+msgstr "搜索标签（为提交指定的名称），并跳转到所选标签的提交"
+
+msgid "Searching… {count} commit"
+msgid_plural "Searching… {count} commits"
+msgstr[0] "正在搜索… {count} 个提交"
+
+msgid "See Docs"
+msgstr "查看文档"
+
+msgid "See an older commit as it was (checkout)"
+msgstr "查看较早提交时的状态（签出）"
+
+msgid "Select Base Branch"
+msgstr "选择基准分支"
+
+msgid "Select Next Match"
+msgstr "选择下一个匹配项"
+
+msgid "Select Previous Match"
+msgstr "选择上一个匹配项"
+
+msgid "Select a Patch File to Apply"
+msgstr "选择要应用的补丁文件"
+
+msgid "Select a repository..."
+msgstr "选择仓库..."
+
+msgid "Select a stash…"
+msgstr "选择储藏…"
+
+msgid "Select as Repository Destination"
+msgstr "选为仓库目标位置"
+
+msgid "Selected Branch"
+msgstr "所选分支"
+
+msgid "Selection Actions…"
+msgstr "选区操作…"
+
+msgid "Selects the next unplaced commit in the graph, starting from the oldest. Press again for the one after it."
+msgstr "从最早的开始，选中图中下一个未放置的提交。再次点击可转到其后的一个。"
+
+msgid "Send Review to Agent ({})"
+msgstr "将审阅意见发送至智能体（{}）"
+
+msgid "Send all review comments to the Agent panel"
+msgstr "将所有审阅评论发送至智能体面板"
+
+msgid "Send this diff for your last agent to review."
+msgstr "将此差异发送给上一个智能体进行审阅。"
+
+msgid "Sends a branch that disappeared from the remote there again and links it again"
+msgstr "将已从远程消失的分支再次推送到远程，并重新建立关联"
+
+msgid "Sends this branch to the remote for the first time and links it as the branch to push to and pull from from now on"
+msgstr "首次将此分支推送到远程，并将其关联为今后推送和拉取的分支"
+
+msgid "Sends your commits to the remote. Changes you have not committed are not sent"
+msgstr "将你的提交推送到远程。未提交的更改不会被推送"
+
+msgid "Separate conditions with spaces to find the commits that match all of them. Put a value that contains spaces in \"…\"."
+msgstr "用空格分隔多个条件，即可查找满足所有条件的提交。包含空格的值请放在 \"…\" 中。"
+
+msgid "Separates the changes marked to go into the next commit (staged) from the changes not marked yet (unstaged)"
+msgstr "将已标记为纳入下一次提交的更改（已暂存）与尚未标记的更改（未暂存）分开显示"
+
+msgid "Separates the files Git manages (tracked) from the new files it does not manage yet (untracked)"
+msgstr "将 Git 管理的文件（已跟踪）与其尚未管理的新文件（未跟踪）分开显示"
+
+msgid "Shallow clone boundary: earlier history is missing, so these lines may come from an older commit."
+msgstr "浅克隆边界：缺少更早的历史记录，因此这些行可能来自更早的提交。"
+
+msgid "Show Changes Only"
+msgstr "仅显示更改"
+
+msgid "Show Flat View"
+msgstr "显示平铺视图"
+
+msgid "Show Full File"
+msgstr "显示完整文件"
+
+msgid "Show Git Output"
+msgstr "显示 Git 输出"
+
+msgid "Show Tree View"
+msgstr "显示树状视图"
+
+msgid "Show every file at this commit as added. This can be slow in large repositories."
+msgstr "将此提交中的所有文件显示为新增。在大型仓库中可能较慢。"
+
+msgid "Show in Git Graph"
+msgstr "在提交图中显示"
+
+msgid "Show this file's full contents at this commit as added."
+msgstr "将此提交中此文件的完整内容显示为新增。"
+
+msgid "Show {hidden_count} More"
+msgstr "再显示 {hidden_count} 个"
+
+msgid "Show:"
+msgstr "显示："
+
+msgid "Shows a diff of only the changes not staged yet (which do not go into the next commit)"
+msgstr "以差异形式仅显示尚未暂存的更改（不会纳入下一次提交）"
+
+msgid "Shows a diff of only the staged changes (which go into the next commit)"
+msgstr "以差异形式仅显示已暂存的更改（将纳入下一次提交）"
+
+msgid "Shows both your branches (local) and the copies of the server's branches (remote)"
+msgstr "同时显示你的分支（本地）和服务器分支的副本（远程）"
+
+msgid "Shows only the branches in your repository. These are the ones you can commit to"
+msgstr "仅显示你仓库中的分支。这些是你可以提交到的分支"
+
+msgid "Shows only the copies of the server's branches that the last fetch brought in (origin/… and so on)"
+msgstr "仅显示上次提取带来的服务器分支副本（origin/… 等）"
+
+msgid "Shows the changed files in a single column, without splitting them by folder"
+msgstr "将已更改的文件显示为单列，不按文件夹拆分"
+
+msgid "Shows the diff (before and after) of the uncommitted changes together in one tab"
+msgstr "在一个标签页中汇总显示未提交更改的差异（更改前后）"
+
+msgid "Shows what these changes put on the shelf (the stash) contain, as a diff. Does not pop them"
+msgstr "以差异形式显示储藏区（stash）中这些更改的内容。不会弹出"
+
+msgid "Signoff"
+msgstr "签名确认"
+
+msgid "Skip Hooks"
+msgstr "跳过钩子"
+
+msgid "Skipped a commit of the {}."
+msgstr "已跳过 {} 中的一个提交。"
+
+msgid "Skips the commit it stopped at and moves on to the next commit"
+msgstr "跳过当前停下的提交，继续下一个提交"
+
+msgid "Some branches could not be loaded"
+msgstr "部分分支无法加载"
+
+msgid "Some branches could not be loaded: {error}"
+msgstr "无法加载部分分支：{error}"
+
+msgid "Some files have conflicts. Resolve them first."
+msgstr "部分文件存在冲突。请先解决冲突。"
+
+msgid "Sort By"
+msgstr "排序方式"
+
+msgid "Sorts by file name, regardless of the folder"
+msgstr "按文件名排序，不考虑文件夹"
+
+msgid "Sorts by location, folders included (the path). Files in the same folder end up next to each other"
+msgstr "按包含文件夹的位置（路径）排序。同一文件夹中的文件会相邻"
+
+msgid "Squash into One — {reason}"
+msgstr "压缩为一个——{reason}"
+
+msgid "Squash the selected commits into one?"
+msgstr "要将选中的提交压缩为一个吗？"
+
+msgid "Squash the {count} Selected Commit into One"
+msgid_plural "Squash the {count} Selected Commits into One"
+msgstr[0] "将选中的 {count} 个提交压缩为一个"
+
+msgid "Squash the {count} Selected Commit into One Commit on a New MR Branch…"
+msgid_plural "Squash the {count} Selected Commits into One Commit on a New MR Branch…"
+msgstr[0] "将选中的 {count} 个提交压缩为新 MR 分支上的一个提交…"
+
+msgid "Squash {count} commit"
+msgid_plural "Squash {count} commits"
+msgstr[0] "压缩 {count} 个提交"
+
+msgid "Squash, reorder or drop commits (squash / drop)"
+msgstr "压缩、重新排序或删除提交（squash / drop）"
+
+msgid "Squashed the commits (squash)."
+msgstr "已压缩提交（squash）。"
+
+msgid "Stage"
+msgstr "暂存"
+
+msgid "Stage All"
+msgstr "全部暂存"
+
+msgid "Stage All Changes"
+msgstr "暂存所有更改"
+
+msgid "Stage File"
+msgstr "暂存文件"
+
+msgid "Stage Folder"
+msgstr "暂存文件夹"
+
+msgid "Stage Hunk"
+msgstr "暂存差异块"
+
+msgid "Stage Selected Hunks"
+msgstr "暂存所选差异块"
+
+msgid "Stage and Go to Next Hunk"
+msgstr "暂存并转到下一个差异块"
+
+msgid "Stage {count} Files"
+msgstr "暂存 {count} 个文件"
+
+msgid "Staged"
+msgstr "已暂存"
+
+msgid "Staged & Unstaged"
+msgstr "已暂存与未暂存"
+
+msgid "Staged Changes"
+msgstr "已暂存的更改"
+
+msgid "Staged changes (git diff --cached)"
+msgstr "已暂存的更改（git diff --cached）"
+
+msgid "Starts using Git in this folder (creates a .git folder). The existing files do not change"
+msgstr "开始在此文件夹中使用 Git（创建 .git 文件夹）。现有文件不会改变"
+
+msgid "Stash All"
+msgstr "全部储藏"
+
+msgid "Stash Pop"
+msgstr "弹出储藏"
+
+msgid "Stash Staged"
+msgstr "储藏已暂存的更改"
+
+msgid "Stash Tracked"
+msgstr "储藏已跟踪的更改"
+
+msgid "Stash has changed, drop aborted"
+msgstr "储藏已更改，已中止删除"
+
+msgid "Stash has changed, not applying"
+msgstr "储藏已更改，不予应用"
+
+msgid "Stash has changed, pop aborted"
+msgstr "储藏已更改，已中止弹出"
+
+msgid "Stashes"
+msgstr "储藏"
+
+msgid "Still on the scratch branch \"{}\"."
+msgstr "仍在临时分支“{}”上。"
+
+msgid "Stop Excluding and Mark as Unplaced"
+msgstr "停止排除并标记为未放置"
+
+msgid "Stop Excluding {count} Commit from MR"
+msgid_plural "Stop Excluding {count} Commits from MR"
+msgstr[0] "停止从 MR 中排除 {count} 个提交"
+
+msgid "Stop and Go Back"
+msgstr "停止并返回"
+
+msgid "Stop and Go Back…"
+msgstr "停止并返回…"
+
+msgid "Stop creating the MR branch?"
+msgstr "要停止创建 MR 分支吗？"
+
+msgid "Stopped at {count} commit."
+msgid_plural "Stopped at {count} commits."
+msgstr[0] "已在 {count} 个提交处停止。"
+
+msgid "Stops the search. The commits found so far stay"
+msgstr "停止搜索。目前已找到的提交会保留"
+
+msgid "Successfully pulled from {}"
+msgstr "已成功从 {} 拉取"
+
+msgid "Successfully rebased from {}"
+msgstr "已成功基于 {} 变基"
+
+msgid "Switch"
+msgstr "切换"
+
+msgid "Switch Active Repository"
+msgstr "切换活动仓库"
+
+msgid "Switch Branch"
+msgstr "切换分支"
+
+msgid "Switch from the branch list. Type a name that is not in the list to create a new branch. To start from an older commit, pick that commit in the Git Graph and press \"Branch from Here\"."
+msgstr "从分支列表中切换。输入列表中没有的名称即可创建新分支。若要从较早的提交开始，在提交图中选中该提交并点击“从此处创建分支”。"
+
+msgid "Switch or type to create a branch…"
+msgstr "切换分支，或输入以创建分支…"
+
+msgid "Switch to {branch} and then cherry-pick {count} commit?"
+msgid_plural "Switch to {branch} and then cherry-pick {count} commits?"
+msgstr[0] "要切换到 {branch} 然后拣选 {count} 个提交吗？"
+
+msgid "Switch to {branch} and then cherry-pick?"
+msgstr "要切换到 {branch} 然后拣选吗？"
+
+msgid "Switched the graph to all branches: the commit was not among the rows loaded for the branch it was showing."
+msgstr "已将图切换为显示所有分支：该提交不在当前所显示分支已加载的行中。"
+
+msgid "Switches to this commit (detached HEAD: not on any branch)"
+msgstr "切换到此提交（游离 HEAD：不在任何分支上）"
+
+msgid "Switches to {branch}, then adds the changes of {sha} as a new commit (checkout + cherry-pick)."
+msgstr "切换到 {branch}，然后将 {sha} 的更改作为新提交添加（checkout + cherry-pick）。"
+
+msgid "Switches to {branch}, then cherry-picks {count} commit: adds it, oldest first, as a new commit (checkout + cherry-pick)."
+msgid_plural "Switches to {branch}, then cherry-picks {count} commits: adds them, oldest first, as new commits (checkout + cherry-pick)."
+msgstr[0] "切换到 {branch}，然后拣选 {count} 个提交：按从旧到新的顺序将其作为新提交添加（checkout + cherry-pick）。"
+
+msgid "Synchronized with remotes"
+msgstr "已与远程同步"
+
+msgid "Synchronized with {}"
+msgstr "已与 {} 同步"
+
+msgid "Tag (a marker given to a particular commit)"
+msgstr "标签（为特定提交添加的标记）"
+
+msgid "Tag Here…"
+msgstr "在此处添加标签…"
+
+msgid "Tag name (e.g. v1.2.3)"
+msgstr "标签名称（例如 v1.2.3）"
+
+msgid "Take Out of the Box"
+msgstr "移出收集箱"
+
+msgid "Text of added or removed lines (slow)"
+msgstr "添加或删除的行的文本（较慢）"
+
+msgid "The Git panel has another repository selected. Switch the Git panel to this repository, then amend."
+msgstr "Git 面板中选中了其他仓库。请将 Git 面板切换到此仓库，然后再修正提交。"
+
+msgid "The MR branch \"{}\" is half created (on the scratch branch \"{}\")."
+msgstr "MR 分支“{}”尚未创建完成（位于临时分支“{}”上）。"
+
+msgid "The MR branch matches the development branch, but the base changed this file too and differs from it. Merging the MR may undo the base's change. The base is on the left, the MR branch on the right."
+msgstr "MR 分支与开发分支一致，但基准也更改了此文件且与之不同。合并 MR 可能会撤销基准的更改。左侧为基准，右侧为 MR 分支。"
+
+msgid "The MR branch was not created from the tip of its base (the base is at least {MAX_COUNTED_BASE_COMMITS} commits ahead)"
+msgstr "MR 分支不是从基准的末端创建的（基准领先至少 {MAX_COUNTED_BASE_COMMITS} 个提交）"
+
+msgid "The MR branch was not created from the tip of its base (the base is {count} commit ahead)"
+msgid_plural "The MR branch was not created from the tip of its base (the base is {count} commits ahead)"
+msgstr[0] "MR 分支不是从基准的末端创建的（基准领先 {count} 个提交）"
+
+msgid "The MR has the same contents as the base (fine if the base already took the same change)"
+msgstr "MR 的内容与基准相同（如果基准已包含相同的更改，则没有问题）"
+
+msgid "The SHAs of the later commits change"
+msgstr "之后的提交的 SHA 会变化"
+
+msgid "The Zed server on the remote host is too old for the MR check (it refuses git rev-parse). Update Zed on the remote host."
+msgstr "远程主机上的 ForgeKairos 服务器版本过旧，无法进行 MR 检查（它拒绝 git rev-parse）。请更新远程主机上的 ForgeKairos。"
+
+msgid "The Zed server on the remote host is too old for this operation. Update the server."
+msgstr "远程主机上的 ForgeKairos 服务器版本过旧，无法执行此操作。请更新服务器。"
+
+msgid "The Zed server on the remote host is too old to pack branches and tags."
+msgstr "远程主机上的 ForgeKairos 服务器版本过旧，无法打包分支和标签。"
+
+msgid "The Zed server on the remote host is too old, so this ran as a force push with a lease. Reconnect to update the server."
+msgstr "远程主机上的 ForgeKairos 服务器版本过旧，因此已按强制推送（--force-with-lease）执行。请重新连接以更新服务器。"
+
+msgid "The author's name or email address contains \"alice\""
+msgstr "作者的名称或电子邮件地址包含“alice”"
+
+msgid "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
+msgstr "基准分支“{merge_request_branch}”不能作为 MR 分支。请使用其他名称。"
+
+msgid "The box is empty. Drag commits into it."
+msgstr "收集箱为空。请将提交拖入其中。"
+
+msgid "The changes of {short} are undone, and every commit after it gets a new SHA.\nIf the branch was pushed, it needs a force push afterwards."
+msgstr "{short} 的更改将被撤销，其后的每个提交都会获得新的 SHA。\n如果该分支已推送，之后需要强制推送。"
+
+msgid "The changes stay in the working tree."
+msgstr "更改保留在工作树中。"
+
+msgid "The changes stay staged."
+msgstr "更改保持已暂存状态。"
+
+msgid "The commit {} is not in the graph. Refresh the graph and try again."
+msgstr "提交 {} 不在图中。请刷新图后重试。"
+
+msgid "The commits that touched it are not in the loaded history (the newest {MAX_MERGE_REQUEST_HISTORY_COMMITS} commits)."
+msgstr "涉及它的提交不在已加载的历史记录中（最新的 {MAX_MERGE_REQUEST_HISTORY_COMMITS} 个提交）。"
+
+msgid "The commits were not put in the box because no development branch is chosen. Choose a development branch first."
+msgstr "由于未选择开发分支，提交未放入收集箱。请先选择开发分支。"
+
+msgid "The conditions you enter are written into the search box."
+msgstr "你输入的条件会写入搜索框。"
+
+msgid "The development branch has no commits newer than the base."
+msgstr "开发分支中没有比基准更新的提交。"
+
+msgid "The development branch was rewritten (or merged into the base), so {count} commit was taken out of the box."
+msgid_plural "The development branch was rewritten (or merged into the base), so {count} commits were taken out of the box."
+msgstr[0] "开发分支已被改写（或已合并到基准），因此已将 {count} 个提交移出收集箱。"
+
+msgid "The development branch's range could not be read, so left-out commits were not checked."
+msgstr "无法读取开发分支的范围，因此未检查遗漏的提交。"
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits, so older commits were not checked for being left out."
+msgstr "开发分支的范围超过 {MAX_RANGE_COMMITS} 个提交，因此未检查更早的提交是否有遗漏。"
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits. Check that the base is right (older commits are not shown)."
+msgstr "开发分支的范围超过 {MAX_RANGE_COMMITS} 个提交。请检查基准是否正确（不显示更早的提交）。"
+
+msgid "The development branch's range is too wide (more than {MAX_RANGE_COMMITS} commits). Check that the base is right."
+msgstr "开发分支的范围过大（超过 {MAX_RANGE_COMMITS} 个提交）。请检查基准是否正确。"
+
+msgid "The dragged order could not be reproduced, so the list opened in the original order."
+msgstr "无法重现拖动后的顺序，因此列表以原始顺序打开。"
+
+msgid "The excluded commit {} was not found."
+msgstr "未找到被排除的提交 {}。"
+
+msgid "The existing \"{}\" ({previous}) is recreated to point at the new commit. If it was pushed, it needs a force push."
+msgstr "现有的“{}”（{previous}）将重新创建并指向新提交。如果它已推送，则需要强制推送。"
+
+msgid "The folder of the patch file was removed from the project."
+msgstr "补丁文件所在的文件夹已从项目中移除。"
+
+msgid "The git account \"{id}\" is not in effect on the remote host ({reason}), so commits are refused there. Update the remote server, or pick Git's Own Configuration."
+msgstr "Git 账户“{id}”在远程主机上未生效（{reason}），因此在该主机上的提交会被拒绝。请更新远程服务器，或选择“Git 自身的配置”。"
+
+msgid "The git account \"{id}\" picked for this repository cannot be used ({reason}), so it commits and pushes as git is configured."
+msgstr "为此仓库选择的 Git 账户“{id}”无法使用（{reason}），因此将按照 git 的配置进行提交和推送。"
+
+msgid "The git command was interrupted."
+msgstr "git 命令已中断。"
+
+msgid "The latest commit (git format-patch -1 HEAD)"
+msgstr "最新的提交（git format-patch -1 HEAD）"
+
+msgid "The list is in the order you dragged the commits into. Run it as it is or adjust it here."
+msgstr "列表按你拖动提交后的顺序排列。可直接运行，也可在此调整。"
+
+msgid "The local {base} is {count} commit behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgid_plural "The local {base} is {count} commits behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgstr[0] "本地的 {base} 落后于远程（{remote}）{count} 个提交。请使用 {remote} 作为基准，或先拉取。"
+
+msgid "The merge ran into conflicts. Resolve them, then commit."
+msgstr "合并时发生冲突。请解决冲突后再提交。"
+
+msgid "The message of {} is empty. Enter a message."
+msgstr "{} 的消息为空。请输入消息。"
+
+msgid "The newest {MAX_RANGE_COMMITS} commits are all placed or excluded, but older commits were not checked."
+msgstr "最新的 {MAX_RANGE_COMMITS} 个提交均已放置或排除，但未检查更早的提交。"
+
+msgid "The oldest commit is at the top. Drag the rows or use ↑↓ to reorder them, choose to fold, reword or drop, then run the rewrite."
+msgstr "最早的提交在顶部。拖动行或使用 ↑↓ 重新排序，选择并入、改写消息或删除，然后运行改写。"
+
+msgid "The original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "原分支未知，因此“中止”不会返回原分支。中止后请自行切换到原分支。"
+
+msgid "The overwritten commits disappear from the remote branch"
+msgstr "被覆盖的提交将从远程分支中消失"
+
+msgid "The rebase finished, but the \"{fixup_subject}\" commit was not squashed into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "变基已完成，但“{fixup_subject}”提交未压缩到 {short} 中。之前的末端：{}（可从 reflog 恢复）"
+
+msgid "The rebase stopped while folding into {short} (a conflict, for example). Continue or abort it from the Git panel's banner. Even after aborting, the changes stay at the tip as the \"{fixup_subject}\" commit ({}). Skipping that commit takes the changes out of the history (recoverable from git reflog). Previous tip: {}"
+msgstr "并入 {short} 时变基已停止（例如发生冲突）。请从 Git 面板的横幅中继续或中止。即使中止，更改仍会作为“{fixup_subject}”提交（{}）保留在末端。跳过该提交会将更改从历史记录中移除（可从 git reflog 恢复）。之前的末端：{}"
+
+msgid "The remote host may still commit as the git account picked before, as it did not take the change ({reason}), so commits are refused there. Pick an account again, or reconnect to the remote server."
+msgstr "远程主机未接受更改（{reason}），可能仍会以之前选择的 Git 账户提交，因此在该主机上的提交会被拒绝。请重新选择账户，或重新连接到远程服务器。"
+
+msgid "The replayed commits of yours get new SHAs"
+msgstr "重新应用的你的提交会获得新的 SHA"
+
+msgid "The repository could not be found, so the files cannot go into the commit."
+msgstr "找不到仓库，因此无法将文件放入提交。"
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
+msgstr "上一次尝试的临时分支“{scratch_branch}”仍然存在。请检查其内容并删除，然后重试。"
+
+msgid "The scratch branch \"{}\" has moved away from the commit of the MR branch \"{}\", so it is not deleted. Check its contents, then switch to \"{}\" yourself."
+msgstr "临时分支“{}”已偏离 MR 分支“{}”的提交，因此不会被删除。请检查其内容，然后自行切换到“{}”。"
+
+msgid "The skipped commit's changes are not brought in"
+msgstr "被跳过的提交的更改不会被引入"
+
+msgid "The tip commit of the current branch is not known, so nothing can be reordered."
+msgstr "当前分支的末端提交未知，因此无法重新排序。"
+
+msgid "The top commit cannot be folded into a previous one. Put the commit to fold into above it."
+msgstr "顶部的提交无法并入上一个提交。请将要并入的目标提交放在它的上方。"
+
+msgid "The {count} chosen file (staged or not, as it is now)"
+msgid_plural "The {count} chosen files (staged or not, as they are now)"
+msgstr[0] "所选的 {count} 个文件（无论是否已暂存，按当前状态）"
+
+msgid "The {count} commit becomes one, and its SHA changes (squash).\nMessage after squashing: {first_line}"
+msgid_plural "The {count} commits become one, and each SHA changes (squash).\nMessage after squashing: {first_line}"
+msgstr[0] "{count} 个提交将合为一个，每个 SHA 都会变化（squash）。\n压缩后的消息：{first_line}"
+
+msgid "There are no changes to put in the commit. Untracked files can be put in once they are staged."
+msgstr "没有可放入提交的更改。未跟踪的文件在暂存后即可放入。"
+
+msgid "There are no changes to stage"
+msgstr "没有可暂存的更改"
+
+msgid "There are no changes to stash"
+msgstr "没有可储藏的更改"
+
+msgid "There are no commits yet, or none in the chosen range. Try widening the range with \"Show\" above."
+msgstr "尚无提交，或所选范围内没有提交。请尝试通过上方的“显示”扩大范围。"
+
+msgid "There are no commits yet. You can only amend once there is a commit."
+msgstr "尚无提交。只有存在提交时才能修正提交。"
+
+msgid "There are no files to fold in."
+msgstr "没有要并入的文件。"
+
+msgid "There are no staged changes"
+msgstr "没有已暂存的更改"
+
+msgid "There are no tags."
+msgstr "没有标签。"
+
+msgid "There are no untracked files"
+msgstr "没有未跟踪的文件"
+
+msgid "There are still conflicts. You must stage these before committing"
+msgstr "仍存在冲突。提交前必须先暂存这些更改。"
+
+msgid "There are uncommitted changes, so it cannot be undone. Commit or stash them, then try again."
+msgstr "存在未提交的更改，因此无法撤销。请提交或储藏后重试。"
+
+msgid "There are uncommitted changes. Commit or stash them before creating the MR branch (the box stays as it is)."
+msgstr "存在未提交的更改。请在创建 MR 分支之前提交或储藏（收集箱保持不变）。"
+
+msgid "There is no active repository."
+msgstr "没有活动的仓库。"
+
+msgid "There is no remote to remove."
+msgstr "没有可删除的远程。"
+
+msgid "There were no changes to put in a patch file."
+msgstr "没有可放入补丁文件的更改。"
+
+msgid "They are the rows with a small ● in the graph. Drag them into the box, or set them aside with \"Exclude from MR\" in the right-click menu."
+msgstr "这些是图中带有小 ● 的行。请将它们拖入收集箱，或通过右键菜单中的“从 MR 中排除”将其搁置。"
+
+msgid "This branch has no upstream, so whether it was pushed was not checked."
+msgstr "此分支没有上游，因此未检查是否已推送。"
+
+msgid "This cannot be undone"
+msgstr "此操作无法撤销"
+
+msgid "This commit is at the boundary of a shallow clone."
+msgstr "此提交位于浅克隆的边界。"
+
+msgid "This commit was already pushed to {}."
+msgstr "此提交已推送到 {}。"
+
+msgid "This commit's SHA changes"
+msgstr "此提交的 SHA 会变化"
+
+msgid "This file changed on the base too, and an excluded commit touched it. The diff mixes both."
+msgstr "基准上也更改了此文件，且被排除的提交也涉及了它。差异中混合了两者。"
+
+msgid "This file changed on the base too, so the diff includes the base's changes (usually fine)."
+msgstr "基准上也更改了此文件，因此差异中包含基准的更改（通常没有问题）。"
+
+msgid "This is the tip of the current branch. There is nothing to pick."
+msgstr "这是当前分支的末端。没有可拣选的内容。"
+
+msgid "This remote host's server does not support git accounts ({reason}); update it to pick one. The project commits and pushes as git is configured on the host."
+msgstr "此远程主机的服务器不支持 Git 账户（{reason}）；请更新后再选择。该项目将按照主机上的 git 配置进行提交和推送。"
+
+msgid "This throws away the current tip {short_new} and goes back to {short_old} (git reset --hard).\nThe commits the reorder made can then only be found through the reflog."
+msgstr "这会丢弃当前末端 {short_new} 并返回 {short_old}（git reset --hard）。\n之后，重新排序所产生的提交只能通过 reflog 找到。"
+
+msgid "This will update your most recent commit."
+msgstr "这将更新你最近的提交。"
+
+msgid "Throws away these changes on the shelf (the stash) without putting them back into the files"
+msgstr "丢弃储藏区（stash）中的这些更改，而不将其放回文件"
+
+msgid "To create it under the same MR branch name, check \"Recreate the existing …\". An MR branch that was already pushed needs a force push (with lease) once recreated. The old MR branch can be restored from the reflog."
+msgstr "若要使用相同的 MR 分支名称创建，请勾选“重新创建现有的 …”。已推送的 MR 分支在重新创建后需要强制推送（--force-with-lease）。旧的 MR 分支可从 reflog 恢复。"
+
+msgid "To work here, create a branch first"
+msgstr "若要在此工作，请先创建分支"
+
+msgid "Toggle Branch Picker"
+msgstr "切换分支选择器"
+
+msgid "Toggle Folder"
+msgstr "展开/折叠文件夹"
+
+msgid "Toggle Staged"
+msgstr "切换暂存状态"
+
+msgid "Toggle Stash Picker"
+msgstr "切换储藏选择器"
+
+msgid "Toggle {} Tab"
+msgstr "切换 {} 标签页"
+
+msgid "Too large to show."
+msgstr "内容过大，无法显示。"
+
+msgid "Tracked"
+msgstr "已跟踪"
+
+msgid "Tracked & Untracked"
+msgstr "已跟踪与未跟踪"
+
+msgid "Trash"
+msgstr "移至回收站"
+
+msgid "Trash File"
+msgstr "将文件移至回收站"
+
+msgid "Trash Untracked Files"
+msgstr "将未跟踪文件移至回收站"
+
+msgid "Trash these files?"
+msgstr "要将这些文件移至回收站吗？"
+
+msgid "Trash {count} Files"
+msgstr "将 {count} 个文件移至回收站"
+
+msgid "Trash {}?"
+msgstr "要将 {} 移至回收站吗？"
+
+msgid "Tree"
+msgstr "树"
+
+msgid "Trust Directory"
+msgstr "信任目录"
+
+msgid "Try It"
+msgstr "试一试"
+
+msgid "Unable to construct pull request URL"
+msgstr "无法构建拉取请求 URL"
+
+msgid "Unable to initialize a git repository"
+msgstr "无法初始化 git 仓库"
+
+msgid "Uncommit"
+msgstr "撤销提交"
+
+msgid "Uncommitted Changes"
+msgstr "未提交的更改"
+
+msgid "Uncommitted changes and your commits that are not on the remote are thrown away and cannot be undone"
+msgstr "未提交的更改和远程上没有的你的提交将被丢弃，且无法撤销"
+
+msgid "Uncommitted changes cannot be recovered"
+msgstr "未提交的更改无法恢复"
+
+msgid "Undo Commits Only (--soft)"
+msgstr "仅撤销提交（--soft）"
+
+msgid "Undo a mistake (reset / revert / undo)"
+msgstr "撤销错误操作（reset / revert / 撤销）"
+
+msgid "Undoes every unstaged change and returns the files to their staged content. Newly created files are kept"
+msgstr "撤销所有未暂存的更改，并将文件恢复为已暂存的内容。新创建的文件保留"
+
+msgid "Undoes the edits in this change (hunk) and returns the file to its staged content"
+msgstr "撤销此更改（差异块）中的编辑，并将文件恢复为已暂存的内容"
+
+msgid "Undoes the last commit and returns its changes to the staged, uncommitted state. The files' contents do not change"
+msgstr "撤销最后一次提交，并将其更改恢复为已暂存、未提交的状态。文件内容不会改变"
+
+msgid "Undo…"
+msgstr "撤销…"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Unregisters a remote. Your local record of that remote's branches goes too. The data on the server is not deleted"
+msgstr "取消注册远程。你本地关于该远程分支的记录也会一并删除。服务器上的数据不会被删除"
+
+msgid "Unresolved conflicts remain, but whether a rebase caused them could not be confirmed. Check which changes would be lost before pressing \"Abort\"."
+msgstr "仍有未解决的冲突，但无法确认是否由变基引起。在点击“中止”之前，请检查哪些更改会丢失。"
+
+msgid "Unstage"
+msgstr "取消暂存"
+
+msgid "Unstage All"
+msgstr "全部取消暂存"
+
+msgid "Unstage All Changes"
+msgstr "取消暂存所有更改"
+
+msgid "Unstage File"
+msgstr "取消暂存文件"
+
+msgid "Unstage Folder"
+msgstr "取消暂存文件夹"
+
+msgid "Unstage Hunk"
+msgstr "取消暂存差异块"
+
+msgid "Unstage Selected Hunks"
+msgstr "取消暂存所选差异块"
+
+msgid "Unstage Too (--mixed)"
+msgstr "同时取消暂存（--mixed）"
+
+msgid "Unstage and Go to Next Hunk"
+msgstr "取消暂存并转到下一个差异块"
+
+msgid "Unstage {count} Files"
+msgstr "取消暂存 {count} 个文件"
+
+msgid "Unstaged"
+msgstr "未暂存"
+
+msgid "Unstaged Changes"
+msgstr "未暂存的更改"
+
+msgid "Unstaged edits are lost"
+msgstr "未暂存的编辑将丢失"
+
+msgid "Unsupported remote URL: {}"
+msgstr "不支持的远程 URL：{}"
+
+msgid "Untracked"
+msgstr "未跟踪"
+
+msgid "Untracked files are not included unless they are staged."
+msgstr "未跟踪的文件除非已暂存，否则不会包含在内。"
+
+msgid "Use Both"
+msgstr "同时使用"
+
+msgid "Use {}"
+msgstr "使用 {}"
+
+msgid "Using the Git Graph"
+msgstr "使用提交图"
+
+msgid "Using the MR box (add, exclude, create and compare)"
+msgstr "使用 MR 收集箱（添加、排除、创建并比较）"
+
+msgid "View"
+msgstr "查看"
+
+msgid "View Branch Diff"
+msgstr "查看分支差异"
+
+msgid "View Changes"
+msgstr "查看更改"
+
+msgid "View Commit"
+msgstr "查看提交"
+
+msgid "View Commit Diff"
+msgstr "查看提交差异"
+
+msgid "View Diff"
+msgstr "查看差异"
+
+msgid "View File"
+msgstr "查看文件"
+
+msgid "View File History"
+msgstr "查看文件历史记录"
+
+msgid "View Log"
+msgstr "查看日志"
+
+msgid "View Merge Request"
+msgstr "查看合并请求"
+
+msgid "View Options"
+msgstr "视图选项"
+
+msgid "View Stash"
+msgstr "查看储藏"
+
+msgid "View as MR Check…"
+msgstr "以 MR 检查方式查看…"
+
+msgid "View commit failed"
+msgstr "查看提交失败"
+
+msgid "View on {}"
+msgstr "在 {} 中查看"
+
+msgid "Went back to {short_old}."
+msgstr "已返回 {short_old}。"
+
+msgid "Went back to {short_old}. The folded changes are staged."
+msgstr "已返回 {short_old}。并入的更改已暂存。"
+
+msgid "Went back to {} and deleted the scratch branch \"{}\"."
+msgstr "已返回 {} 并删除临时分支“{}”。"
+
+msgid "Whatever you resolved along the way is thrown away"
+msgstr "过程中解决的所有内容都将被丢弃"
+
+msgid "When on, the last message is filled in and committing replaces the last commit"
+msgstr "开启后，会填入最后一次的消息，提交时将替换最后一次提交"
+
+msgid "Where the MR goes. The MR branch is created from here"
+msgstr "MR 的目标。MR 分支从此处创建"
+
+msgid "Where the commits come from. Used to check for left-out commits and for the final comparison"
+msgstr "提交的来源。用于检查遗漏的提交以及最终比较"
+
+msgid "Where would you like to initialize this git repository?"
+msgstr "要在哪里初始化此 Git 仓库？"
+
+msgid "With tens of thousands of them this takes about a minute, and other Git operations wait meanwhile. No data changes."
+msgstr "若有数万个，大约需要一分钟，期间其他 Git 操作会等待。数据不会改变。"
+
+msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
+msgstr "在冲突已解决并暂存后，继续完成中途停止的操作的剩余部分"
+
+msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
+msgstr "写入一个仅包含更改的文本文件（补丁）。可选择工作树、已暂存的更改或最后一次提交。文件本身不会改变"
+
+msgid "Writes to your user's Git settings as a whole (--global)"
+msgstr "写入你的用户的整体 Git 设置（--global）"
+
+msgid "You do not have write access to this project"
+msgstr "你没有此项目的写入权限"
+
+msgid "You must resolve conflicts before committing"
+msgstr "提交前必须解决冲突"
+
+msgid "and {left_out} more"
+msgstr "以及其他 {left_out} 个"
+
+msgid "and {more} more"
+msgstr "以及其他 {more} 个"
+
+msgid "author:alice"
+msgstr "author:alice"
+
+msgid "branch:feature"
+msgstr "branch:feature"
+
+msgid "change:foo"
+msgstr "change:foo"
+
+msgid "cherry-pick / squash / create an MR branch (also on right-click)"
+msgstr "cherry-pick / squash / 创建 MR 分支（右键点击也可使用）"
+
+msgid "discard the changes too"
+msgstr "同时放弃更改"
+
+msgid "e.g. 2026-09-30"
+msgstr "例如 2026-09-30"
+
+msgid "e.g. 2w, 2026-09-01"
+msgstr "例如 2w、2026-09-01"
+
+msgid "e.g. feature/login"
+msgstr "例如 feature/login"
+
+msgid "e.g. mr/new-feature"
+msgstr "例如 mr/new-feature"
+
+msgid "e.g. src/ or *.rs"
+msgstr "例如 src/ 或 *.rs"
+
+msgid "e.g. v1.2"
+msgstr "例如 v1.2"
+
+msgid "file:src/"
+msgstr "file:src/"
+
+msgid "git push --force overwrites {branch_name} on the remote.\nWithout a lease, commits others pushed since the last fetch are lost as well."
+msgstr "git push --force 会覆盖远程上的 {branch_name}。\n由于不带 lease，自上次提取以来他人推送的提交也会丢失。"
+
+msgid "git push --force-with-lease overwrites {branch_name} on the remote.\nIf others pushed commits since the last fetch, it stops without overwriting them."
+msgstr "git push --force-with-lease 会覆盖远程上的 {branch_name}。\n如果自上次提取以来他人推送了提交，则会停止，不会覆盖这些提交。"
+
+msgid "keep the changes staged"
+msgstr "将更改保留为已暂存"
+
+msgid "merge:no"
+msgstr "merge:no"
+
+msgid "project has no worktrees"
+msgstr "项目没有工作树"
+
+msgid "since:2w  until:2026-09-01"
+msgstr "since:2w  until:2026-09-01"
+
+msgid "tag:v1.2"
+msgstr "tag:v1.2"
+
+msgid "unstage only, keep the files"
+msgstr "仅取消暂存，保留文件"
+
+msgid "{branch} is checked out in another worktree ({path}), so it cannot be moved."
+msgstr "{branch} 已在另一个工作树（{path}）中签出，因此无法移动。"
+
+msgid "{branch}, which is not checked out, will point to {short_sha}. The working tree does not change."
+msgstr "未签出的 {branch} 将指向 {short_sha}。工作树不会改变。"
+
+msgid "{count} Changed File"
+msgid_plural "{count} Changed Files"
+msgstr[0] "{count} 个已更改的文件"
+
+msgid "{count} Commit Selected"
+msgid_plural "{count} Commits Selected"
+msgstr[0] "已选择 {count} 个提交"
+
+msgid "{count} base change possibly missing"
+msgid_plural "{count} base changes possibly missing"
+msgstr[0] "可能缺少 {count} 个基准更改"
+
+msgid "{count} branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "有 {count} 个分支和标签以单独文件存储。打包后可提升 Git 速度。"
+
+msgid "{count} commit"
+msgid_plural "{count} commits"
+msgstr[0] "{count} 个提交"
+
+msgid "{count} commit is already in the box."
+msgid_plural "{count} commits are already in the box."
+msgstr[0] "{count} 个提交已在收集箱中。"
+
+msgid "{count} commit is not placed. Create the MR branch anyway?"
+msgid_plural "{count} commits are not placed. Create the MR branch anyway?"
+msgstr[0] "有 {count} 个提交未放置。仍要创建 MR 分支吗？"
+
+msgid "{count} commit:"
+msgid_plural "{count} commits:"
+msgstr[0] "{count} 个提交："
+
+msgid "{count} excluded commit."
+msgid_plural "{count} excluded commits."
+msgstr[0] "{count} 个被排除的提交。"
+
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count} 个文件"
+
+msgid "{count} file changed on the development branch: {matched} matching / {mismatched} not matching"
+msgid_plural "{count} files changed on the development branch: {matched} matching / {mismatched} not matching"
+msgstr[0] "开发分支上有 {count} 个文件已更改：{matched} 个匹配 / {mismatched} 个不匹配"
+
+msgid "{count} file differs. Choose it from the list on the left to show the contents side by side."
+msgid_plural "{count} files differ. Choose one from the list on the left to show the contents side by side."
+msgstr[0] "{count} 个文件存在差异。从左侧列表中选择文件即可并排显示内容。"
+
+msgid "{count} file possibly missing"
+msgid_plural "{count} files possibly missing"
+msgstr[0] "可能遗漏了 {count} 个文件"
+
+msgid "{count} merge commit (not included)"
+msgid_plural "{count} merge commits (not included)"
+msgstr[0] "{count} 个合并提交（不包含）"
+
+msgid "{count} more commit"
+msgid_plural "{count} more commits"
+msgstr[0] "另外 {count} 个提交"
+
+msgid "{count} or more branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "有 {count} 个或更多分支和标签以单独文件存储。打包后可提升 Git 速度。"
+
+msgid "{count} selected"
+msgid_plural "{count} selected"
+msgstr[0] "已选择 {count} 个"
+
+msgid "{count} unplaced commit"
+msgid_plural "{count} unplaced commits"
+msgstr[0] "{count} 个未放置的提交"
+
+msgid "{explanation}."
+msgstr "{explanation}。"
+
+msgid "{explanation}. Caution: {caution}."
+msgstr "{explanation}。注意：{caution}。"
+
+msgid "{headline}: could not run\n{error}"
+msgstr "{headline}：无法运行\n{error}"
+
+msgid "{headline}: done"
+msgstr "{headline}：已完成"
+
+msgid "{headline}: failed\n{failure}"
+msgstr "{headline}：失败\n{failure}"
+
+msgid "{hedge}Creating the MR branch stopped on the scratch branch \"{scratch_branch}\". {resolve}\n{abort}\nOnce \"Continue\" has applied the remaining commits, \"Next Steps\" in the Git Graph's \"MR Box\" updates the MR branch and goes back to the original branch."
+msgstr "{hedge}创建 MR 分支时已停在临时分支“{scratch_branch}”上。{resolve}\n{abort}\n通过“继续”应用剩余的提交后，提交图“MR 收集箱”中的“后续步骤”会更新 MR 分支并返回原分支。"
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\n\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch (the partly rewritten commits stay only in git reflog).\nIf you carry on with \"Continue\", you have to move the original branch onto the result yourself (git rebase --onto)."
+msgstr "{hedge}改写提交时已停在临时分支“{scratch_branch}”上。{resolve}\n“中止”会返回原分支“{origin_branch}”并删除此临时分支（部分改写的提交仅保留在 git reflog 中）。\n如果通过“继续”完成剩余操作，则需要自行将原分支移到结果上（git rebase --onto）。"
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\nThe original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "{hedge}改写提交时已停在临时分支“{scratch_branch}”上。{resolve}\n原分支未知，因此“中止”不会返回原分支。中止后请自行切换到原分支。"
+
+msgid "{hidden} more (keep typing to narrow them down)"
+msgstr "另外 {hidden} 个（继续输入以缩小范围）"
+
+msgid "{merge_request_base} and {source} have no common ancestor (unrelated histories). The MR check cannot run."
+msgstr "{merge_request_base} 与 {source} 没有共同祖先（不相关的历史记录）。无法运行 MR 检查。"
+
+msgid "{merge_request_base} and {source} have {} common ancestors (a criss-cross merge). The MR check cannot tell where to compare from, so it cannot run."
+msgstr "{merge_request_base} 与 {source} 有 {} 个共同祖先（交叉合并）。MR 检查无法确定从何处开始比较，因此无法运行。"
+
+msgid "{reason}."
+msgstr "{reason}。"
+
+msgid "{}\nHowever, {}"
+msgstr "{}\n但是，{}"
+
+msgid "{}\nRuns git {} --abort. If no rebase is running, git refuses; if one is, whatever was partly resolved is lost."
+msgstr "{}\n运行 git {} --abort。如果没有正在进行的变基，git 会拒绝；如果有，部分解决的内容将丢失。"
+
+msgid "{} Excluded"
+msgstr "已排除 {} 个"
+
+msgid "{} also changed on the base"
+msgstr "{} 个在基准上也有更改"
+
+msgid "{} and {} have the same contents."
+msgstr "{} 与 {} 的内容相同。"
+
+msgid "{} excluded"
+msgstr "已排除 {} 个"
+
+msgid "{} more omitted"
+msgstr "另外 {} 个已省略"
+
+msgid "{} of the excluded commits are not in the recent history of the development branch (at most {MAX_EXCLUDED_COMMIT_LOOKUPS} can be looked up at once)."
+msgstr "被排除的提交中有 {} 个不在开发分支的近期历史记录中（一次最多可查找 {MAX_EXCLUDED_COMMIT_LOOKUPS} 个）。"
+
+msgid "{} possibly missing"
+msgstr "可能遗漏 {} 个"
+
+msgid "{} stopped partway"
+msgstr "{} 已中途停止"
+
+msgctxt "amend checkbox"
+msgid "Amend"
+msgstr "修正提交"
+
+msgctxt "commit action"
+msgid "Add Current Changes (fixup)"
+msgstr "添加当前更改（fixup）"
+
+msgctxt "commit action"
+msgid "Add to MR Box"
+msgstr "加入 MR 收集箱"
+
+msgctxt "commit action"
+msgid "Add to MR Box ({count} Commit)"
+msgid_plural "Add to MR Box ({count} Commits)"
+msgstr[0] "加入 MR 收集箱（{count} 个提交）"
+
+msgctxt "commit action"
+msgid "Amend Last Commit"
+msgstr "修正最后一次提交"
+
+msgctxt "commit action"
+msgid "Branch from Here"
+msgstr "从此处创建分支"
+
+msgctxt "commit action"
+msgid "Check Out"
+msgstr "签出"
+
+msgctxt "commit action"
+msgid "Cherry-Pick"
+msgstr "拣选"
+
+msgctxt "commit action"
+msgid "Cherry-Pick {count} Commit"
+msgid_plural "Cherry-Pick {count} Commits"
+msgstr[0] "拣选 {count} 个提交"
+
+msgctxt "commit action"
+msgid "Exclude from MR"
+msgstr "从 MR 中排除"
+
+msgctxt "commit action"
+msgid "More"
+msgstr "更多"
+
+msgctxt "commit action"
+msgid "Reorder / Squash / Drop…"
+msgstr "重新排序 / 压缩 / 删除…"
+
+msgctxt "commit action"
+msgid "Reset to This Commit"
+msgstr "重置到此提交"
+
+msgctxt "commit action"
+msgid "Revert"
+msgstr "还原"
+
+msgctxt "commit action"
+msgid "Reword Message"
+msgstr "改写消息"
+
+msgctxt "commit action"
+msgid "Stop Excluding from MR"
+msgstr "停止从 MR 中排除"
+
+msgctxt "commit button"
+msgid "Commit"
+msgstr "提交"
+
+msgctxt "commit modal"
+msgid "Signoff"
+msgstr "签名确认"
+
+msgctxt "commit search"
+msgid "Advanced"
+msgstr "高级"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "作者"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "分支"
+
+msgctxt "commit search"
+msgid "Changed Text"
+msgstr "更改的文本"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "文件"
+
+msgctxt "commit search"
+msgid "Merges"
+msgstr "合并提交"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "起始"
+
+msgctxt "commit search"
+msgid "Stop"
+msgstr "停止"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "标签"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "截止"
+
+msgctxt "file status"
+msgid "Added"
+msgstr "已添加"
+
+msgctxt "file status"
+msgid "Deleted"
+msgstr "已删除"
+
+msgctxt "file status"
+msgid "Modified"
+msgstr "已修改"
+
+msgctxt "git fetch"
+msgid "Fetching…"
+msgstr "正在提取…"
+
+msgctxt "git graph hints"
+msgid "Guide"
+msgstr "指南"
+
+msgctxt "git graph toolbar"
+msgid "Compare…"
+msgstr "比较…"
+
+msgctxt "git graph toolbar"
+msgid "Create MR"
+msgstr "创建 MR"
+
+msgctxt "git graph toolbar"
+msgid "Tags"
+msgstr "标签"
+
+msgctxt "git history"
+msgid "Drop"
+msgstr "删除"
+
+msgctxt "git history"
+msgid "Go Back"
+msgstr "返回"
+
+msgctxt "git operation"
+msgid "Abort (--abort)"
+msgstr "中止（--abort）"
+
+msgctxt "git operation"
+msgid "Add Current Changes (fixup)"
+msgstr "添加当前更改（fixup）"
+
+msgctxt "git operation"
+msgid "Add Remote (remote add)"
+msgstr "添加远程（remote add）"
+
+msgctxt "git operation"
+msgid "Add to .git/info/exclude"
+msgstr "添加到 .git/info/exclude"
+
+msgctxt "git operation"
+msgid "Add to .gitignore"
+msgstr "添加到 .gitignore"
+
+msgctxt "git operation"
+msgid "All Branches"
+msgstr "所有分支"
+
+msgctxt "git operation"
+msgid "Amend Last Commit"
+msgstr "修正最后一次提交"
+
+msgctxt "git operation"
+msgid "Apply Patch File (apply)"
+msgstr "应用补丁文件（apply）"
+
+msgctxt "git operation"
+msgid "Branch from Here"
+msgstr "从此处创建分支"
+
+msgctxt "git operation"
+msgid "Check Out"
+msgstr "签出"
+
+msgctxt "git operation"
+msgid "Cherry-Pick"
+msgstr "拣选"
+
+msgctxt "git operation"
+msgid "Cherry-Pick Selected"
+msgstr "拣选所选提交"
+
+msgctxt "git operation"
+msgid "Co-Authors (Co-authored-by)"
+msgstr "共同作者（Co-authored-by）"
+
+msgctxt "git operation"
+msgid "Commit"
+msgstr "提交"
+
+msgctxt "git operation"
+msgid "Compare"
+msgstr "比较"
+
+msgctxt "git operation"
+msgid "Continue (--continue)"
+msgstr "继续（--continue）"
+
+msgctxt "git operation"
+msgid "Copy Path"
+msgstr "复制路径"
+
+msgctxt "git operation"
+msgid "Copy Relative Path"
+msgstr "复制相对路径"
+
+msgctxt "git operation"
+msgid "Create MR"
+msgstr "创建 MR"
+
+msgctxt "git operation"
+msgid "Create Patch File (diff)"
+msgstr "创建补丁文件（diff）"
+
+msgctxt "git operation"
+msgid "Create from Default Branch"
+msgstr "从默认分支创建"
+
+msgctxt "git operation"
+msgid "Delete Branch (branch -d)"
+msgstr "删除分支（branch -d）"
+
+msgctxt "git operation"
+msgid "Discard Changes (restore)"
+msgstr "放弃更改（restore）"
+
+msgctxt "git operation"
+msgid "Discard Tracked Changes (restore)"
+msgstr "放弃已跟踪的更改（restore）"
+
+msgctxt "git operation"
+msgid "Distance from Tag"
+msgstr "距标签的距离"
+
+msgctxt "git operation"
+msgid "Drop"
+msgstr "删除"
+
+msgctxt "git operation"
+msgid "Drop Stash (stash drop)"
+msgstr "删除储藏（stash drop）"
+
+msgctxt "git operation"
+msgid "Exclude from MR"
+msgstr "从 MR 中排除"
+
+msgctxt "git operation"
+msgid "Fetch"
+msgstr "提取"
+
+msgctxt "git operation"
+msgid "Fetch From (fetch)"
+msgstr "从指定远程提取（fetch）"
+
+msgctxt "git operation"
+msgid "File History (log)"
+msgstr "文件历史记录（log）"
+
+msgctxt "git operation"
+msgid "Filter Branches"
+msgstr "筛选分支"
+
+msgctxt "git operation"
+msgid "Force Delete Branch (branch -D)"
+msgstr "强制删除分支（branch -D）"
+
+msgctxt "git operation"
+msgid "Force Push (push --force-with-lease)"
+msgstr "强制推送（push --force-with-lease）"
+
+msgctxt "git operation"
+msgid "Force Push Without Lease (push --force)"
+msgstr "不带 lease 强制推送（push --force）"
+
+msgctxt "git operation"
+msgid "Git Guide"
+msgstr "Git 指南"
+
+msgctxt "git operation"
+msgid "Group by Staged and Unstaged"
+msgstr "按已暂存和未暂存分组"
+
+msgctxt "git operation"
+msgid "Group by Tracked and Untracked"
+msgstr "按已跟踪和未跟踪分组"
+
+msgctxt "git operation"
+msgid "Initialize Repository (init)"
+msgstr "初始化仓库（init）"
+
+msgctxt "git operation"
+msgid "List View"
+msgstr "列表视图"
+
+msgctxt "git operation"
+msgid "Local Branches"
+msgstr "本地分支"
+
+msgctxt "git operation"
+msgid "MR Box"
+msgstr "MR 收集箱"
+
+msgctxt "git operation"
+msgid "Merge Branch"
+msgstr "合并分支"
+
+msgctxt "git operation"
+msgid "More"
+msgstr "更多"
+
+msgctxt "git operation"
+msgid "Move File to Trash"
+msgstr "将文件移至回收站"
+
+msgctxt "git operation"
+msgid "Move Untracked Files to Trash"
+msgstr "将未跟踪的文件移至回收站"
+
+msgctxt "git operation"
+msgid "No Grouping"
+msgstr "不分组"
+
+msgctxt "git operation"
+msgid "Open Diff"
+msgstr "打开差异"
+
+msgctxt "git operation"
+msgid "Open File Diff"
+msgstr "打开文件差异"
+
+msgctxt "git operation"
+msgid "Pop This Stash (stash pop)"
+msgstr "弹出此储藏（stash pop）"
+
+msgctxt "git operation"
+msgid "Publish (push --set-upstream)"
+msgstr "发布（push --set-upstream）"
+
+msgctxt "git operation"
+msgid "Pull"
+msgstr "拉取"
+
+msgctxt "git operation"
+msgid "Pull with Rebase (pull --rebase)"
+msgstr "变基拉取（pull --rebase）"
+
+msgctxt "git operation"
+msgid "Push"
+msgstr "推送"
+
+msgctxt "git operation"
+msgid "Push To (push)"
+msgstr "推送到指定远程（push）"
+
+msgctxt "git operation"
+msgid "Remote Branches"
+msgstr "远程分支"
+
+msgctxt "git operation"
+msgid "Remove Remote (remote remove)"
+msgstr "删除远程（remote remove）"
+
+msgctxt "git operation"
+msgid "Reorder / Squash / Drop"
+msgstr "重新排序 / 压缩 / 删除"
+
+msgctxt "git operation"
+msgid "Republish (push --set-upstream)"
+msgstr "重新发布（push --set-upstream）"
+
+msgctxt "git operation"
+msgid "Reset to Remote (reset --hard)"
+msgstr "重置为远程状态（reset --hard）"
+
+msgctxt "git operation"
+msgid "Reset to This Commit"
+msgstr "重置到此提交"
+
+msgctxt "git operation"
+msgid "Reset: hard"
+msgstr "重置：hard"
+
+msgctxt "git operation"
+msgid "Reset: mixed"
+msgstr "重置：mixed"
+
+msgctxt "git operation"
+msgid "Reset: soft"
+msgstr "重置：soft"
+
+msgctxt "git operation"
+msgid "Restore All (restore)"
+msgstr "全部还原（restore）"
+
+msgctxt "git operation"
+msgid "Restore File (restore)"
+msgstr "还原文件（restore）"
+
+msgctxt "git operation"
+msgid "Restore Hunk (restore)"
+msgstr "还原差异块（restore）"
+
+msgctxt "git operation"
+msgid "Revert"
+msgstr "还原"
+
+msgctxt "git operation"
+msgid "Reword Message"
+msgstr "改写消息"
+
+msgctxt "git operation"
+msgid "Show"
+msgstr "显示"
+
+msgctxt "git operation"
+msgid "Show Diff"
+msgstr "显示差异"
+
+msgctxt "git operation"
+msgid "Signoff"
+msgstr "签名确认"
+
+msgctxt "git operation"
+msgid "Skip (--skip)"
+msgstr "跳过（--skip）"
+
+msgctxt "git operation"
+msgid "Skip Hooks (--no-verify)"
+msgstr "跳过钩子（--no-verify）"
+
+msgctxt "git operation"
+msgid "Sort by Name"
+msgstr "按名称排序"
+
+msgctxt "git operation"
+msgid "Sort by Path"
+msgstr "按路径排序"
+
+msgctxt "git operation"
+msgid "Squash into One"
+msgstr "压缩为一个"
+
+msgctxt "git operation"
+msgid "Stage All"
+msgstr "全部暂存"
+
+msgctxt "git operation"
+msgid "Stage All in Section"
+msgstr "暂存此部分的全部内容"
+
+msgctxt "git operation"
+msgid "Stage File"
+msgstr "暂存文件"
+
+msgctxt "git operation"
+msgid "Stage Folder"
+msgstr "暂存文件夹"
+
+msgctxt "git operation"
+msgid "Stage Hunk"
+msgstr "暂存差异块"
+
+msgctxt "git operation"
+msgid "Staged Changes"
+msgstr "已暂存的更改"
+
+msgctxt "git operation"
+msgid "Stash All"
+msgstr "全部储藏"
+
+msgctxt "git operation"
+msgid "Stash Pop"
+msgstr "弹出储藏"
+
+msgctxt "git operation"
+msgid "Stash Staged (stash --staged)"
+msgstr "储藏已暂存的更改（stash --staged）"
+
+msgctxt "git operation"
+msgid "Stash Tracked"
+msgstr "储藏已跟踪的更改"
+
+msgctxt "git operation"
+msgid "Stop Excluding from MR"
+msgstr "停止从 MR 中排除"
+
+msgctxt "git operation"
+msgid "Switch Branch"
+msgstr "切换分支"
+
+msgctxt "git operation"
+msgid "Tag"
+msgstr "标签"
+
+msgctxt "git operation"
+msgid "Tags"
+msgstr "标签"
+
+msgctxt "git operation"
+msgid "Toggle Staged"
+msgstr "切换暂存状态"
+
+msgctxt "git operation"
+msgid "Tree View"
+msgstr "树状视图"
+
+msgctxt "git operation"
+msgid "Trust Directory (safe.directory)"
+msgstr "信任目录（safe.directory）"
+
+msgctxt "git operation"
+msgid "Uncommit (reset --soft)"
+msgstr "撤销提交（reset --soft）"
+
+msgctxt "git operation"
+msgid "Unstage All"
+msgstr "全部取消暂存"
+
+msgctxt "git operation"
+msgid "Unstage All in Section"
+msgstr "取消暂存此部分的全部内容"
+
+msgctxt "git operation"
+msgid "Unstage File"
+msgstr "取消暂存文件"
+
+msgctxt "git operation"
+msgid "Unstage Folder"
+msgstr "取消暂存文件夹"
+
+msgctxt "git operation"
+msgid "Unstage Hunk"
+msgstr "取消暂存差异块"
+
+msgctxt "git operation"
+msgid "Unstaged Changes"
+msgstr "未暂存的更改"
+
+msgctxt "git operation"
+msgid "Use Both"
+msgstr "同时使用"
+
+msgctxt "git operation"
+msgid "Use Ours"
+msgstr "使用我方（ours）"
+
+msgctxt "git operation"
+msgid "Use Theirs"
+msgstr "使用对方（theirs）"
+
+msgctxt "git operation"
+msgid "View File"
+msgstr "查看文件"
+
+msgctxt "git operation"
+msgid "View Options"
+msgstr "视图选项"
+
+msgctxt "git operation"
+msgid "View Stash"
+msgstr "查看储藏"
+
+msgctxt "git operation"
+msgid "View Stash List (stash list)"
+msgstr "查看储藏列表（stash list）"
+
+msgctxt "git panel view options"
+msgid "Name"
+msgstr "名称"
+
+msgctxt "git panel view options"
+msgid "None"
+msgstr "无"
+
+msgctxt "git panel view options"
+msgid "Path"
+msgstr "路径"
+
+msgctxt "git panel view options"
+msgid "View"
+msgstr "查看"
+
+msgctxt "git prompt"
+msgid "Cherry-Pick"
+msgstr "拣选"
+
+msgctxt "git prompt"
+msgid "Go Back"
+msgstr "返回"
+
+msgctxt "git prompt"
+msgid "Move"
+msgstr "移动"
+
+msgctxt "git prompt"
+msgid "Rewrite"
+msgstr "改写"
+
+msgctxt "git prompt"
+msgid "Squash"
+msgstr "压缩"
+
+msgctxt "git prompt"
+msgid "Switch and Cherry-Pick"
+msgstr "切换并拣选"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "拣选（cherry-pick）"
+
+msgctxt "git result"
+msgid "Edit commits"
+msgstr "编辑提交"
+
+msgctxt "git result"
+msgid "Move branch"
+msgstr "移动分支"
+
+msgctxt "git result"
+msgid "Reorder commits"
+msgstr "重新排序提交"
+
+msgctxt "git result"
+msgid "Reset branch"
+msgstr "重置分支"
+
+msgctxt "git result"
+msgid "Squash"
+msgstr "压缩"
+
+msgctxt "git result"
+msgid "Squash commits"
+msgstr "压缩提交"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "切换分支"
+
+msgctxt "git rewrite"
+msgid "Keep"
+msgstr "保留"
+
+msgctxt "git rewrite"
+msgid "Move Down"
+msgstr "下移"
+
+msgctxt "git rewrite"
+msgid "Move Up"
+msgstr "上移"
+
+msgctxt "git rewrite"
+msgid "Reword"
+msgstr "改写消息"
+
+msgctxt "git sequencer"
+msgid "Abort"
+msgstr "中止"
+
+msgctxt "git sequencer"
+msgid "Continue"
+msgstr "继续"
+
+msgctxt "git sequencer"
+msgid "Skip"
+msgstr "跳过"
+
+msgctxt "git sequencer prompt"
+msgid "Abort"
+msgstr "中止"
+
+msgctxt "git sequencer prompt"
+msgid "Cancel"
+msgstr "取消"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "log source"
+msgid "All Branches"
+msgstr "所有分支"
+
+msgctxt "log source"
+msgid "File History"
+msgstr "文件历史记录"
+
+msgctxt "merge commits"
+msgid "Exclude"
+msgstr "排除"
+
+msgctxt "merge commits"
+msgid "Include"
+msgstr "包含"
+
+msgctxt "merge commits"
+msgid "Only"
+msgstr "仅"
+
+msgctxt "merge request box"
+msgid "Base"
+msgstr "基准"
+
+msgctxt "merge request box"
+msgid "Create"
+msgstr "创建"
+
+msgctxt "merge request box"
+msgid "Message"
+msgstr "消息"
+
+msgctxt "merge request check"
+msgid "All"
+msgstr "全部"
+
+msgctxt "pack refs"
+msgid "Pack"
+msgstr "打包"
+
+msgctxt "remove remote"
+msgid "Remove"
+msgstr "删除"
+
+msgctxt "two sentences"
+msgid "{0} {1}"
+msgstr "{0}{1}"

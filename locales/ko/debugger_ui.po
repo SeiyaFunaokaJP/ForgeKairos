@@ -1,0 +1,410 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(child)"
+msgstr "(자식)"
+
+msgid "1 byte"
+msgstr "1바이트"
+
+msgid "16 bytes"
+msgstr "16바이트"
+
+msgid "2 bytes"
+msgstr "2바이트"
+
+msgid "32 bytes"
+msgstr "32바이트"
+
+msgid "4 bytes"
+msgstr "4바이트"
+
+msgid "64 bytes"
+msgstr "64바이트"
+
+msgid "8 bytes"
+msgstr "8바이트"
+
+msgid "Allows inspection of memory contents"
+msgstr "메모리 내용을 검사할 수 있습니다"
+
+msgid "Attach"
+msgstr "연결"
+
+msgid "Attach the debugger to a running process"
+msgstr "실행 중인 프로세스에 디버거를 연결합니다"
+
+msgid "Breakpoints"
+msgstr "중단점"
+
+msgid "Build failed"
+msgstr "빌드 실패"
+
+msgid "Change Address of Currently Viewed Memory"
+msgstr "현재 표시 중인 메모리의 주소 변경"
+
+msgid "Close Panel"
+msgstr "패널 닫기"
+
+msgid "Console"
+msgstr "콘솔"
+
+msgid "Continue Program"
+msgstr "프로그램 계속 실행"
+
+msgid "Continue Thread"
+msgstr "스레드 계속"
+
+msgid "Copy Name"
+msgstr "이름 복사"
+
+msgid "Copy Value"
+msgstr "값 복사"
+
+msgid "Could not find a valid locator for a build task and configure is invalid with error: {}"
+msgstr "빌드 작업에 유효한 로케이터를 찾을 수 없으며 구성도 잘못되었습니다. 오류: {}"
+
+msgid "Could not resolve task variables within a debug scenario"
+msgstr "디버그 시나리오 내의 작업 변수를 확인하지 못했습니다"
+
+msgid "Current State"
+msgstr "현재 상태"
+
+msgid "Debug"
+msgstr "디버그"
+
+msgid "Debug Adapter `{adapter_name}` does not support writing to memory"
+msgstr "디버그 어댑터 `{adapter_name}`은(는) 메모리 쓰기를 지원하지 않습니다"
+
+msgid "Debug Panel"
+msgstr "디버그 패널"
+
+msgid "Debug terminal"
+msgstr "디버그 터미널"
+
+msgid "Debugger"
+msgstr "디버거"
+
+msgid "Debugger Docs"
+msgstr "디버거 문서"
+
+msgid "Debugger Extensions"
+msgstr "디버거 확장 프로그램"
+
+msgid "Debugger:"
+msgstr "디버거:"
+
+msgid "Detach"
+msgstr "분리"
+
+msgid "Disable Breakpoint"
+msgstr "중단점 비활성화"
+
+msgid "Disable Data Breakpoint"
+msgstr "데이터 중단점 비활성화"
+
+msgid "Disable Exception Breakpoint"
+msgstr "예외 중단점 비활성화"
+
+msgid "Disable a breakpoint without removing it from the list"
+msgstr "목록에서 제거하지 않고 중단점 비활성화"
+
+msgid "Displays program output and allows manual input of debugger commands"
+msgstr "프로그램 출력을 표시하고 디버거 명령을 수동으로 입력할 수 있습니다"
+
+msgid "Displays the call stack, letting you navigate between function calls"
+msgstr "호출 스택을 표시하여 함수 호출 간 이동할 수 있습니다"
+
+msgid "Edit Memory at a Selected Address"
+msgstr "선택한 주소의 메모리 편집"
+
+msgid "Edit Value"
+msgstr "값 편집"
+
+msgid "Edit debug.json"
+msgstr "debug.json 편집"
+
+msgid "Edit in debug.json"
+msgstr "debug.json에서 편집"
+
+msgid "Enable Breakpoint"
+msgstr "중단점 활성화"
+
+msgid "Enable Data Breakpoint"
+msgstr "데이터 중단점 활성화"
+
+msgid "Enable Exception Breakpoint"
+msgstr "예외 중단점 활성화"
+
+msgid "Evaluate"
+msgstr "평가"
+
+msgid "Evaluate an expression"
+msgstr "표현식을 평가하세요"
+
+msgid "Exception Breakpoints cannot be removed from the breakpoint list"
+msgstr "예외 중단점은 중단점 목록에서 제거할 수 없습니다"
+
+msgid "Failed to edit debug.json"
+msgstr "debug.json을 편집하지 못했습니다"
+
+msgid "Find a debug task, or debug a command"
+msgstr "디버그 작업을 찾거나 명령을 디버그하세요"
+
+msgid "Frames"
+msgstr "프레임"
+
+msgid "Go To Memory"
+msgstr "메모리로 이동"
+
+msgid "Go To Selected Address"
+msgstr "선택한 주소로 이동"
+
+msgid "Go to Memory Address / Expression"
+msgstr "메모리 주소 / 표현식으로 이동"
+
+msgid "Language: {name}"
+msgstr "언어: {name}"
+
+msgid "Launch"
+msgstr "시작"
+
+msgid "Launch Custom"
+msgstr "사용자 지정 시작"
+
+msgid "Launch a new process with a debugger"
+msgstr "디버거로 새 프로세스를 시작합니다"
+
+msgid "Lists all active breakpoints set in the code"
+msgstr "코드에 설정된 모든 활성 중단점을 나열합니다"
+
+msgid "Lists all source files currently loaded and used by the debugger"
+msgstr "디버거가 현재 불러와 사용 중인 모든 소스 파일을 나열합니다"
+
+msgid "Memory View"
+msgstr "메모리 뷰"
+
+msgid "Modules"
+msgstr "모듈"
+
+msgid "New Session"
+msgstr "새 세션"
+
+msgid "No"
+msgstr "아니요"
+
+msgid "No Breakpoints Set"
+msgstr "설정된 중단점 없음"
+
+msgid "No process selected with config that contains {}"
+msgstr "{}을(를) 포함하는 구성에 대해 선택된 프로세스가 없습니다"
+
+msgid "Open Debug Adapter Logs"
+msgstr "디버그 어댑터 로그 열기"
+
+msgid "Open Documentation"
+msgstr "문서 열기"
+
+msgid "Pause Program"
+msgstr "프로그램 일시 중지"
+
+msgid "Program"
+msgstr "프로그램"
+
+msgid "Provides an interactive terminal session within the debugging environment"
+msgstr "디버깅 환경 내에서 대화형 터미널 세션을 제공합니다"
+
+msgid "Re-enable a breakpoint"
+msgstr "중단점 다시 활성화"
+
+msgid "Remove Breakpoint"
+msgstr "중단점 제거"
+
+msgid "Remove Watch"
+msgstr "조사식 제거"
+
+msgid "Remove breakpoint from a breakpoint list"
+msgstr "중단점 목록에서 중단점 제거"
+
+msgid "Remove data breakpoint from a breakpoint list"
+msgstr "중단점 목록에서 데이터 중단점 제거"
+
+msgid "Rerun"
+msgstr "다시 실행"
+
+msgid "Rerun Session"
+msgstr "세션 다시 실행"
+
+msgid "Restart Stack Frame"
+msgstr "스택 프레임 다시 시작"
+
+msgid "Run"
+msgstr "실행"
+
+msgid "Run predefined task"
+msgstr "미리 정의된 작업 실행"
+
+msgid "Select Debugger"
+msgstr "디버거 선택"
+
+msgid "Select a Debug Session"
+msgstr "디버그 세션 선택"
+
+msgid "Select the process you want to attach the debugger to"
+msgstr "디버거를 연결할 프로세스를 선택하세요"
+
+msgid "Set Condition"
+msgstr "조건 설정"
+
+msgid "Set Data Breakpoint"
+msgstr "데이터 중단점 설정"
+
+msgid "Set Hit Condition"
+msgstr "적중 조건 설정"
+
+msgid "Set Log Message"
+msgstr "로그 메시지 설정"
+
+msgid "Set condition to evaluate when a breakpoint is hit. Program execution will stop only when the condition is met."
+msgstr "중단점에 도달했을 때 평가할 조건을 설정합니다. 조건이 충족된 경우에만 프로그램 실행이 중지됩니다."
+
+msgid "Set expression that controls how many hits of the breakpoint are ignored."
+msgstr "중단점 적중을 몇 번 무시할지 제어하는 표현식을 설정합니다."
+
+msgid "Set log message to display (instead of stopping) when a breakpoint is hit."
+msgstr "중단점에 도달했을 때 (중지 대신) 표시할 로그 메시지를 설정합니다."
+
+msgid "Show all stack frames"
+msgstr "모든 스택 프레임 표시"
+
+msgid "Show stack frames from your project"
+msgstr "프로젝트의 스택 프레임 표시"
+
+msgid "Show {} more{}"
+msgstr "{}개 더 표시{}"
+
+msgid "Shows all modules or libraries loaded by the program"
+msgstr "프로그램이 로드한 모든 모듈 또는 라이브러리를 표시합니다"
+
+msgid "Shows current values of local and global variables in the current stack frame"
+msgstr "현재 스택 프레임에서 로컬 및 전역 변수의 현재 값을 표시합니다"
+
+msgid "Sources"
+msgstr "소스"
+
+msgid "Spawn"
+msgstr "실행"
+
+msgid "Start"
+msgstr "시작"
+
+msgid "Start Debug Session"
+msgstr "디버그 세션 시작"
+
+msgid "Start a predefined debug scenario"
+msgstr "미리 정의된 디버그 시나리오 시작"
+
+msgid "Step Back in Session History"
+msgstr "세션 기록에서 이전 단계로 이동"
+
+msgid "Step In"
+msgstr "한 단계씩 들어가기"
+
+msgid "Step Out"
+msgstr "한 단계씩 나가기"
+
+msgid "Step Over"
+msgstr "프로시저 단위 실행"
+
+msgid "Stop on Entry"
+msgstr "진입 시 중지"
+
+msgid "Terminal"
+msgstr "터미널"
+
+msgid "Terminate All Threads"
+msgstr "모든 스레드 종료"
+
+msgid "Terminate Thread"
+msgstr "스레드 종료"
+
+msgid "This Debug Session is still running. Are you sure you want to terminate it?"
+msgstr "이 디버그 세션이 아직 실행 중입니다. 정말 종료하시겠습니까?"
+
+msgid "Toggle Data Breakpoint"
+msgstr "데이터 중단점 전환"
+
+msgid "Toggle {} Data Breakpoint"
+msgstr "{} 데이터 중단점 전환"
+
+msgid "Unknown Session"
+msgstr "알 수 없는 세션"
+
+msgid "Variables"
+msgstr "변수"
+
+msgid "Watch Expression"
+msgstr "조사식에 추가"
+
+msgid "Watch Variable"
+msgstr "변수 조사식 추가"
+
+msgid "Working Directory"
+msgstr "작업 디렉터리"
+
+msgid "Worktree parent path: {parent_dir}"
+msgstr "워크트리 상위 경로: {parent_dir}"
+
+msgid "Write to Selected Memory Range"
+msgstr "선택한 메모리 범위에 쓰기"
+
+msgid "Yes"
+msgstr "예"
+
+msgid "Zed cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+msgstr "ForgeKairos가 이 디버그 시나리오를 실행하는 방법을 결정할 수 없습니다. `build` 필드가 제공되지 않았으며, 디버그 어댑터가 제공된 구성을 수락하지 않습니다. 이유: {error}"
+
+msgid "history-{}"
+msgstr "기록-{}"
+
+msgid "in {d}/"
+msgstr "{d}/ 내"
+
+msgid "in {f}"
+msgstr "{f} 내"
+
+msgid "no active worktree"
+msgstr "활성 워크트리 없음"
+
+msgid "no scenario to save"
+msgstr "저장할 시나리오 없음"
+
+msgid "no task contexts"
+msgstr "작업 컨텍스트 없음"
+
+msgctxt "data breakpoint access"
+msgid "Read"
+msgstr "읽기"
+
+msgctxt "data breakpoint access"
+msgid "Read/Write"
+msgstr "읽기/쓰기"
+
+msgctxt "data breakpoint access"
+msgid "Write"
+msgstr "쓰기"
+
+msgctxt "debugger pane zoom"
+msgid "Expand"
+msgstr "확대"
+
+msgctxt "debugger pane zoom"
+msgid "Minimize"
+msgstr "최소화"

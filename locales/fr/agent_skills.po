@@ -1,0 +1,48 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Failed to read SKILL.md metadata: {}"
+msgstr "Échec de la lecture des métadonnées de SKILL.md : {}"
+
+msgid "Failed to read file: {}"
+msgstr "Échec de la lecture du fichier : {}"
+
+msgid "Invalid YAML frontmatter"
+msgstr "Front matter YAML non valide"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "Le fichier SKILL.md dépasse la taille maximale de {} Ko"
+
+msgid "SKILL.md missing closing frontmatter delimiter (---)"
+msgstr "Le délimiteur de fin du front matter (---) est absent de SKILL.md"
+
+msgid "SKILL.md must start with YAML frontmatter (---)"
+msgstr "SKILL.md doit commencer par un front matter YAML (---)"
+
+msgid "Skill description cannot be empty"
+msgstr "La description de la compétence ne peut pas être vide"
+
+msgid "Skill description is {actual_len} characters, exceeding the {max_len}-character limit. The skill was loaded, but long descriptions may consume more model-context tokens."
+msgstr "La description de la compétence comporte {actual_len} caractères, ce qui dépasse la limite de {max_len} caractères. La compétence a été chargée, mais les descriptions longues peuvent consommer davantage de jetons de contexte du modèle."
+
+msgid "Skill description must be at most 1024 characters"
+msgstr "La description de la compétence ne doit pas dépasser 1024 caractères"
+
+msgid "Skill name cannot be empty"
+msgstr "Le nom de la compétence ne peut pas être vide"
+
+msgid "Skill name must be at most 64 characters"
+msgstr "Le nom de la compétence ne doit pas dépasser 64 caractères"
+
+msgid "Skill name must contain only lowercase letters, numbers, and hyphens"
+msgstr "Le nom de la compétence ne doit contenir que des lettres minuscules, des chiffres et des traits d'union"
+
+msgid "Skill name must not start or end with a hyphen"
+msgstr "Le nom de la compétence ne doit pas commencer ni se terminer par un trait d'union"

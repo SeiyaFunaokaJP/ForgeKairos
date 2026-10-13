@@ -149,6 +149,9 @@ msgstr "絶対パスのフォルダーを入力してください。"
 msgid "Explore Extensions"
 msgstr "拡張機能を探す"
 
+msgid "Failed to copy file permalink: {err}"
+msgstr "ファイルの永続リンクをコピーできませんでした: {err}"
+
 msgid "Failed to join channel"
 msgstr "チャンネルに参加できませんでした"
 
@@ -157,6 +160,9 @@ msgstr "プロジェクトに参加できませんでした"
 
 msgid "Failed to load the database file."
 msgstr "データベースファイルを読み込めませんでした。"
+
+msgid "Failed to open file permalink: {err}"
+msgstr "ファイルの永続リンクを開けませんでした: {err}"
 
 msgid "Failed to save"
 msgstr "保存できませんでした"

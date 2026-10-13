@@ -1,0 +1,721 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " (environment variables: {names})"
+msgstr " （环境变量：{names}）"
+
+msgid " (headers: {names})"
+msgstr " （标头：{names}）"
+
+msgid "(the language server's default executable)"
+msgstr "（语言服务器的默认可执行文件）"
+
+msgid "A commit that is not in the history of the current branch cannot be rewritten. Switch to a branch that has it, then try again."
+msgstr "不在当前分支历史中的提交无法改写。请切换到包含该提交的分支，然后重试。"
+
+msgid "A detached HEAD cannot be reordered. Switch to a branch first."
+msgstr "游离 HEAD 无法重新排序。请先切换到某个分支。"
+
+msgid "A git account named \"{id}\" already exists"
+msgstr "名为“{id}”的 Git 账户已存在"
+
+msgid "A launch of language server \"{name}\", which this IDE does not know, cannot be approved"
+msgstr "无法批准启动此 IDE 不认识的语言服务器“{name}”"
+
+msgid "A launch request from the remote host does not say where it is defined"
+msgstr "来自远程主机的启动请求未说明其定义位置"
+
+msgid "A launch request from the remote host has no name or program"
+msgstr "来自远程主机的启动请求没有名称或程序"
+
+msgid "A merge commit is among the commits newer than the chosen range, so it cannot be rewritten (rewriting would break that merge). Choose only commits newer than the merge."
+msgstr "比所选范围更新的提交中包含合并提交，因此无法改写（改写会破坏该合并）。请只选择比该合并更新的提交。"
+
+msgid "A merge is in progress. Finish or abort the merge, then try again."
+msgstr "合并正在进行中。请完成或中止合并，然后重试。"
+
+msgid "A merge stopped partway. Finish or abort the merge first."
+msgstr "合并在中途停止。请先完成或中止合并。"
+
+msgid "A range with a merge commit cannot be rewritten. Choose a range without merges."
+msgstr "包含合并提交的范围无法改写。请选择不含合并的范围。"
+
+msgid "A range with the first commit cannot be reordered. Choose again from the commit after it."
+msgstr "包含第一个提交的范围无法重新排序。请从其后一个提交开始重新选择。"
+
+msgid "A warning from the remote host has no program name"
+msgstr "来自远程主机的警告没有程序名称"
+
+msgid "Agents can't be started in a sandbox in a project that has no folder open."
+msgstr "在未打开任何文件夹的项目中，无法在沙盒中启动智能体。"
+
+msgid "An account name may use only letters, digits, '-', '_' and '.'"
+msgstr "账户名称只能使用字母、数字、“-”、“_”和“.”"
+
+msgid "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch} (needs a force push)\"."
+msgstr "分支“{merge_request_branch}”已存在。要重新创建，请勾选“重新创建现有的 {merge_request_branch}（需要强制推送）”。"
+
+msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+msgstr "无法在游离 HEAD 上创建 MR 分支。请先切换到某个分支。"
+
+msgid "Cannot interpret the push option {option}."
+msgstr "无法解析推送选项 {option}。"
+
+msgid "Cannot read the merge filter ({merges})."
+msgstr "无法读取合并筛选器（{merges}）。"
+
+msgid "Cannot read this as a commit SHA: {sha}"
+msgstr "无法将此读取为提交 SHA：{sha}"
+
+msgid "Cannot start in folders that span several WSL distributions ({existing}, {root_distro})."
+msgstr "无法在跨越多个 WSL 发行版（{existing}、{root_distro}）的文件夹中启动。"
+
+msgid "Commit {sha} was not found."
+msgstr "找不到提交 {sha}。"
+
+msgid "Commit {short} is included twice. Check the list."
+msgstr "提交 {short} 被包含了两次。请检查列表。"
+
+msgid "Commit {short} is not in the range to rewrite. Choose the range again."
+msgstr "提交 {short} 不在要改写的范围内。请重新选择范围。"
+
+msgid "Could not build the commands for the rewrite."
+msgstr "无法构建用于改写的命令。"
+
+msgid "Could not check the created MR branch \"{merge_request_branch}\"."
+msgstr "无法检查已创建的 MR 分支“{merge_request_branch}”。"
+
+msgid "Could not check the current branch: {error}"
+msgstr "无法检查当前分支：{error}"
+
+msgid "Could not check whether the commit is on the current branch: {error}"
+msgstr "无法检查该提交是否在当前分支上：{error}"
+
+msgid "Could not check {path}."
+msgstr "无法检查 {path}。"
+
+msgid "Could not confirm the launch approval with the IDE"
+msgstr "无法向 IDE 确认启动批准"
+
+msgid "Could not create the directory to install tools in: {path}"
+msgstr "无法创建用于安装工具的目录：{path}"
+
+msgid "Could not create the download location for language servers (check the free disk space and permissions): {path}: {error}"
+msgstr "无法创建语言服务器的下载位置（请检查可用磁盘空间和权限）：{path}：{error}"
+
+msgid "Could not create the working directory {directory} of the MCP server"
+msgstr "无法创建 MCP 服务器的工作目录 {directory}"
+
+msgid "Could not create {path}."
+msgstr "无法创建 {path}。"
+
+msgid "Could not download Node.js for Linux ({url}). Check that the editor's allowlist of connections includes `nodejs.org`."
+msgstr "无法下载 Linux 版 Node.js（{url}）。请检查编辑器的连接允许列表中是否包含 `nodejs.org`。"
+
+msgid "Could not download {archive_url}."
+msgstr "无法下载 {archive_url}。"
+
+msgid "Could not download {tool}"
+msgstr "无法下载 {tool}"
+
+msgid "Could not examine the changes to fold in: {error}"
+msgstr "无法检查要并入的更改：{error}"
+
+msgid "Could not examine the commits after the range to rewrite: {error}"
+msgstr "无法检查要改写范围之后的提交：{error}"
+
+msgid "Could not examine the files the rewrite changes: {error}"
+msgstr "无法检查改写会更改的文件：{error}"
+
+msgid "Could not examine the ignored local files: {error}"
+msgstr "无法检查已忽略的本地文件：{error}"
+
+msgid "Could not examine the range to rewrite: {error}"
+msgstr "无法检查要改写的范围：{error}"
+
+msgid "Could not examine the rewritten range: {error}"
+msgstr "无法检查已改写的范围：{error}"
+
+msgid "Could not examine the state of the working tree: {error}"
+msgstr "无法检查工作树的状态：{error}"
+
+msgid "Could not fetch the release information of {project} {version}"
+msgstr "无法获取 {project} {version} 的发布信息"
+
+msgid "Could not fetch the release information of {project} {version} (HTTP {status})"
+msgstr "无法获取 {project} {version} 的发布信息（HTTP {status}）"
+
+msgid "Could not get the author of the original commit: cannot interpret the output of git log."
+msgstr "无法获取原始提交的作者：无法解析 git log 的输出。"
+
+msgid "Could not get the author of the original commit: {error}"
+msgstr "无法获取原始提交的作者：{error}"
+
+msgid "Could not get the commits in the range to rewrite: {error}"
+msgstr "无法获取要改写范围内的提交：{error}"
+
+msgid "Could not get the list of tags: {error}"
+msgstr "无法获取标签列表：{error}"
+
+msgid "Could not install `{package_spec}` inside the WSL sandbox. Check that the editor's allowlist of connections includes `{NPM_REGISTRY_HOST}`."
+msgstr "无法在 WSL 沙盒中安装 `{package_spec}`。请检查编辑器的连接允许列表中是否包含 `{NPM_REGISTRY_HOST}`。"
+
+msgid "Could not interpret the output of git describe: {described}"
+msgstr "无法解析 git describe 的输出：{described}"
+
+msgid "Could not look up the default branch"
+msgstr "无法查找默认分支"
+
+msgid "Could not make {destination} executable"
+msgstr "无法将 {destination} 设为可执行"
+
+msgid "Could not move {file_name} to {destination}"
+msgstr "无法将 {file_name} 移动到 {destination}"
+
+msgid "Could not open {path} (it has to be a real folder, not a link)."
+msgstr "无法打开 {path}（它必须是实际的文件夹，而不是链接）。"
+
+msgid "Could not open {path}."
+msgstr "无法打开 {path}。"
+
+msgid "Could not parse the release information of {project} {version}"
+msgstr "无法解析 {project} {version} 的发布信息"
+
+msgid "Could not prepare the agent's settings folder on the remote host: {error}"
+msgstr "无法在远程主机上准备智能体的设置文件夹：{error}"
+
+msgid "Could not prepare the commands that build the MR branch."
+msgstr "无法准备用于构建 MR 分支的命令。"
+
+msgid "Could not read the commit subject: {error}"
+msgstr "无法读取提交主题：{error}"
+
+msgid "Could not read the release information of {project} {version}"
+msgstr "无法读取 {project} {version} 的发布信息"
+
+msgid "Could not resolve HEAD: {error}"
+msgstr "无法解析 HEAD：{error}"
+
+msgid "Could not revoke the launch approval"
+msgstr "无法撤销启动批准"
+
+msgid "Could not save the launch approval"
+msgstr "无法保存启动批准"
+
+msgid "Couldn't find any locator for task `{}`. Specify the `attach` or `launch` arguments in your debug scenario definition"
+msgstr "找不到任务 `{}` 的任何定位器。请在调试场景定义中指定 `attach` 或 `launch` 参数"
+
+msgid "Couldn't remove the token from the credential store"
+msgstr "无法从凭据存储中删除令牌"
+
+msgid "Couldn't write the token to the credential store"
+msgstr "无法将令牌写入凭据存储"
+
+msgid "Debugging is not yet supported via collab"
+msgstr "尚不支持通过协作进行调试"
+
+msgid "Distributions for the WSL architecture `{other}` are not supported, so the agent cannot start inside the sandbox."
+msgstr "不支持 WSL 架构 `{other}` 的发行包，因此无法在沙盒中启动智能体。"
+
+msgid "Downloading Node.js for Linux…"
+msgstr "正在下载 Linux 版 Node.js…"
+
+msgid "Downloading the agent for Linux…"
+msgstr "正在下载 Linux 版智能体…"
+
+msgid "Failed to exchange authorization code for tokens"
+msgstr "使用授权码交换令牌失败"
+
+msgid "Failed to parse tasks file content as a JSON array: {e}"
+msgstr "无法将任务文件内容解析为 JSON 数组：{e}"
+
+msgid "Failed to persist OAuth session in keychain"
+msgstr "无法将 OAuth 会话保存到密钥链"
+
+msgid "Failed to resolve OAuth client registration"
+msgstr "无法解析 OAuth 客户端注册"
+
+msgid "Failed to set breakpoints for {failed_path}"
+msgstr "为 {failed_path} 设置断点失败"
+
+msgid "Failed to set breakpoints for {failed_path} and {count} other path"
+msgid_plural "Failed to set breakpoints for {failed_path} and {count} other paths"
+msgstr[0] "为 {failed_path} 及其他 {count} 个路径设置断点失败"
+
+msgid "Failed to set local debug scenarios in {path}:\n{message}"
+msgstr "在 {path} 中设置本地调试场景失败：\n{message}"
+
+msgid "Failed to set local settings in {path}:\n{message}"
+msgstr "在 {path} 中应用本地设置失败：\n{message}"
+
+msgid "Failed to set local tasks in {path}:\n{message}"
+msgstr "在 {path} 中设置本地任务失败：\n{message}"
+
+msgid "Failed to start OAuth callback server"
+msgstr "启动 OAuth 回调服务器失败"
+
+msgid "Formatter `{command}` failed with exit code {code}"
+msgstr "格式化程序 `{command}` 失败，退出代码为 {code}"
+
+msgid "Formatter `{command}` failed with exit code {code}."
+msgstr "格式化程序 `{command}` 失败，退出代码为 {code}。"
+
+msgid "Formatter `{command}` terminated abnormally"
+msgstr "格式化程序 `{command}` 异常终止"
+
+msgid "Formatter `{command}` terminated abnormally."
+msgstr "格式化程序 `{command}` 异常终止。"
+
+msgid "Formatter `{command}` was not found"
+msgstr "找不到格式化程序 `{command}`"
+
+msgid "Formatter `{command}` was not found. It is not installed on the remote host ({host}). \"Install on Remote\" in the notification installs it in the remote home directory without administrator rights."
+msgstr "找不到格式化程序 `{command}`。远程主机（{host}）上未安装该程序。通知中的“在远程上安装”可在无需管理员权限的情况下将其安装到远程主目录中。"
+
+msgid "Formatter `{command}` was not found. It is not installed on the remote host ({host}). Put `{command}` in a directory on PATH on the remote host."
+msgstr "找不到格式化程序 `{command}`。远程主机（{host}）上未安装该程序。请将 `{command}` 放到远程主机上 PATH 中的目录里。"
+
+msgid "Formatter `{command}` was not found. It is not on PATH."
+msgstr "找不到格式化程序 `{command}`。它不在 PATH 中。"
+
+msgid "Formatter `{command}` was not found. Searched these places and PATH: {places}."
+msgstr "找不到格式化程序 `{command}`。已搜索以下位置和 PATH：{places}。"
+
+msgid "Formatter `{missing_command}` was not found, so the language server ({server_name}) formatted the file."
+msgstr "找不到格式化程序 `{missing_command}`，因此已由语言服务器（{server_name}）格式化该文件。"
+
+msgid "Formatting failed: {error}"
+msgstr "格式化失败：{error}"
+
+msgid "Go toolchain"
+msgstr "Go 工具链"
+
+msgid "Ignored while \"Allow Running Outside the Sandbox\" is off (Settings > AI > Sandbox)."
+msgstr "在“允许在沙盒外运行”关闭时会被忽略（设置 > AI > 沙盒）。"
+
+msgid "Language server `{name}` cannot format"
+msgstr "语言服务器 `{name}` 无法格式化"
+
+msgid "Language server `{name}` is not running or does not support formatting."
+msgstr "语言服务器 `{name}` 未运行或不支持格式化。"
+
+msgid "Loading the launch approvals"
+msgstr "正在加载启动批准"
+
+msgid "MCP server \"{id}\" has no project definition that an approval could apply to"
+msgstr "MCP 服务器“{id}”没有可应用批准的项目定义"
+
+msgid "MCP server \"{id}\" is defined in the project settings, and this definition has not been approved yet"
+msgstr "MCP 服务器“{id}”是在项目设置中定义的，且此定义尚未获得批准"
+
+msgid "MCP server \"{id}\" is waiting for approval. A server defined in the project settings does not start until what it runs is checked and allowed on the \"MCP Servers\" page of the settings."
+msgstr "MCP 服务器“{id}”正在等待批准。在项目设置中定义的服务器，在设置的“MCP 服务器”页面中检查并允许其运行内容之前不会启动。"
+
+msgid "No download location is set for language servers"
+msgstr "未设置语言服务器的下载位置"
+
+msgid "No language server can format a selection"
+msgstr "没有可以格式化选区的语言服务器"
+
+msgid "No language server can format this file"
+msgstr "没有可以格式化此文件的语言服务器"
+
+msgid "No language server can format this file."
+msgstr "没有可以格式化此文件的语言服务器。"
+
+msgid "No language server can format this file. Install a language server on the remote host ({host})."
+msgstr "没有可以格式化此文件的语言服务器。请在远程主机（{host}）上安装语言服务器。"
+
+msgid "No open file uses the restarted language servers, so they will start when you open a file."
+msgstr "没有打开的文件使用已重启的语言服务器，因此它们将在你打开文件时启动。"
+
+msgid "No running language server can format a selection in this file. The whole file can be formatted."
+msgstr "没有正在运行的语言服务器可以格式化此文件中的选区。可以格式化整个文件。"
+
+msgid "Node.js for Linux is a zip archive (unexpected)."
+msgstr "Linux 版 Node.js 是 zip 压缩包（不符合预期）。"
+
+msgid "Node.js is not distributed for the WSL architecture `{other}`, so the agent cannot start inside the sandbox."
+msgstr "没有为 WSL 架构 `{other}` 发布的 Node.js，因此无法在沙盒中启动智能体。"
+
+msgid "None of the locators for task `{}` completed successfully"
+msgstr "任务 `{}` 的所有定位器均未成功完成"
+
+msgid "Not available on a detached HEAD. Switch to a branch first."
+msgstr "在游离 HEAD 上不可用。请先切换到某个分支。"
+
+msgid "OAuth callback server received an invalid request"
+msgstr "OAuth 回调服务器收到无效请求"
+
+msgid "On this OS, the agent's settings folder cannot be created for the sandbox."
+msgstr "在此操作系统上，无法为沙盒创建智能体的设置文件夹。"
+
+msgid "Open Tasks Documentation"
+msgstr "打开任务文档"
+
+msgid "Placing Node.js for Linux in WSL…"
+msgstr "正在将 Linux 版 Node.js 放置到 WSL 中…"
+
+msgid "Placing the agent for Linux in WSL…"
+msgstr "正在将 Linux 版智能体放置到 WSL 中…"
+
+msgid "Running npm install inside the sandbox…"
+msgstr "正在沙盒中运行 npm install…"
+
+msgid "Server returned 401 Unauthorized on a non-HTTP transport"
+msgstr "服务器在非 HTTP 传输上返回了 401 Unauthorized"
+
+msgid "Server returned 401 Unauthorized. Check your configured Authorization header."
+msgstr "服务器返回了 401 Unauthorized。请检查所配置的 Authorization 标头。"
+
+msgid "Some changes could not be put back, so they were kept in the stash (stash@{{0}}). Restore them from the stash in the Git panel."
+msgstr "部分更改无法恢复，因此已保存在储藏中（stash@{{0}}）。请在 Git 面板中从储藏还原它们。"
+
+msgid "Some files have conflicts. Resolve them, then try again."
+msgstr "部分文件存在冲突。请解决冲突，然后重试。"
+
+msgid "Some files have unresolved conflicts. Resolve them first."
+msgstr "部分文件存在未解决的冲突。请先解决冲突。"
+
+msgid "Starting MCP server `{id}` timed out. See the Zed log for details."
+msgstr "启动 MCP 服务器 `{id}` 超时。有关详细信息，请参阅 ForgeKairos 日志。"
+
+msgid "Starting language server \"{server_name}\" was called off, so the approval of its executable is not awaited"
+msgstr "语言服务器“{server_name}”的启动已取消，因此不再等待其可执行文件的批准"
+
+msgid "Starting this MCP server needs approval"
+msgstr "启动此 MCP 服务器需要批准"
+
+msgid "The IDE cannot approve launches"
+msgstr "IDE 无法批准启动"
+
+msgid "The IDE cannot check the launch approval, so the external formatter \"{command}\" was not run ({reason})"
+msgstr "IDE 无法检查启动批准，因此未运行外部格式化程序“{command}”（{reason}）"
+
+msgid "The IDE did not answer within {seconds} seconds"
+msgstr "IDE 在 {seconds} 秒内未响应"
+
+msgid "The IDE is not answering launch requests (asked again once the IDE answers or reconnects)"
+msgstr "IDE 未响应启动请求（IDE 响应或重新连接后会再次询问）"
+
+msgid "The IDE is not responding, so the approval of the executable of language server \"{server_name}\" cannot be checked. It starts once the IDE responds ({reason})"
+msgstr "IDE 未响应，因此无法检查语言服务器“{server_name}”可执行文件的批准。IDE 响应后它将启动（{reason}）"
+
+msgid "The MCP server command the remote host returned does not match the approved definition"
+msgstr "远程主机返回的 MCP 服务器命令与已批准的定义不一致"
+
+msgid "The MCP server stopped"
+msgstr "MCP 服务器已停止"
+
+msgid "The MCP server store was dropped"
+msgstr "MCP 服务器存储已被丢弃"
+
+msgid "The Windows program `{path}` cannot run inside the WSL sandbox. Set the absolute path of a Linux program (such as `/usr/local/bin/...`) in the agent's settings, or start it outside the sandbox."
+msgstr "Windows 程序 `{path}` 无法在 WSL 沙盒中运行。请在智能体的设置中指定 Linux 程序的绝对路径（例如 `/usr/local/bin/...`），或在沙盒外启动它。"
+
+msgid "The Zed server on the remote host is too old for this rewrite. Update Zed on the remote host."
+msgstr "远程主机上的 ForgeKairos 服务器版本过旧，无法执行此改写。请更新远程主机上的 ForgeKairos。"
+
+msgid "The Zed server on the remote host is too old to search with these conditions. Update Zed on the remote host."
+msgstr "远程主机上的 ForgeKairos 服务器版本过旧，无法按这些条件搜索。请更新远程主机上的 ForgeKairos。"
+
+msgid "The agent sandbox the remote host prepared does not fit this editor's policy: {error}"
+msgstr "远程主机准备的智能体沙盒不符合此编辑器的策略：{error}"
+
+msgid "The agent's executable `{command}` has to be a relative path starting with `./`."
+msgstr "智能体的可执行文件 `{command}` 必须是以 `./` 开头的相对路径。"
+
+msgid "The approval of the executable of language server \"{server_name}\" was revoked, so it is not started"
+msgstr "语言服务器“{server_name}”的可执行文件的批准已被撤销，因此不会启动"
+
+msgid "The base \"{base}\" was not found."
+msgstr "未找到基准“{base}”。"
+
+msgid "The base already has every change of the commits in the MR box. There is no difference to make an MR of."
+msgstr "基准已包含 MR 收集箱中各提交的全部更改。没有可用于创建 MR 的差异。"
+
+msgid "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
+msgstr "基准分支“{merge_request_branch}”不能作为 MR 分支。请使用其他名称。"
+
+msgid "The checked-out branch has changed to \"{current}\" (expected \"{branch}\"). Try again."
+msgstr "签出的分支已变为“{current}”（预期为“{branch}”）。请重试。"
+
+msgid "The chosen files have no changes."
+msgstr "所选文件没有更改。"
+
+msgid "The connected remote host does not support file transfer. Update the Zed server on the remote host."
+msgstr "所连接的远程主机不支持文件传输。请更新远程主机上的 ForgeKairos 服务器。"
+
+msgid "The connection to the remote host is closed"
+msgstr "与远程主机的连接已关闭"
+
+msgid "The content has changed. Check it again"
+msgstr "内容已更改。请重新检查"
+
+msgid "The database that records launch approvals is not open"
+msgstr "记录启动批准的数据库未打开"
+
+msgid "The download of language server {name} did not finish within {seconds} seconds. The download continues, so wait a while and then restart the language server."
+msgstr "语言服务器 {name} 的下载未在 {seconds} 秒内完成。下载仍在继续，请稍候再重启语言服务器。"
+
+msgid "The downloaded distribution did not contain {file_name} ({archive})"
+msgstr "下载的分发包中不包含 {file_name}（{archive}）"
+
+msgid "The executable of language server \"{server_name}\" from the project settings is not allowed, so it is not started"
+msgstr "项目设置中的语言服务器“{server_name}”的可执行文件未被允许，因此不会启动"
+
+msgid "The first commit cannot be dropped. The repository's first commit has no parent."
+msgstr "无法删除第一个提交。仓库的第一个提交没有父提交。"
+
+msgid "The git account picked for this repository is not in effect on the remote host ({reason}), so nothing was done. Update the remote server, or pick \"Git's Own Configuration\" for this repository."
+msgstr "为此仓库选择的 Git 账户在远程主机上未生效（{reason}），因此未执行任何操作。请更新远程服务器，或为此仓库选择“Git 自身的配置”。"
+
+msgid "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started"
+msgstr "无法检查启动批准，因此不会启动项目设置中的语言服务器“{server_name}”的可执行文件"
+
+msgid "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started ({reason})"
+msgstr "无法检查启动批准，因此不会启动项目设置中的语言服务器“{server_name}”的可执行文件（{reason}）"
+
+msgid "The launch approval key from the remote host is malformed"
+msgstr "来自远程主机的启动批准密钥格式不正确"
+
+msgid "The launch definition has a string longer than {MAX_STRING_BYTES} bytes"
+msgstr "启动定义中有长度超过 {MAX_STRING_BYTES} 字节的字符串"
+
+msgid "The launch definition has too many arguments ({count}, at most {MAX_ARGUMENTS})"
+msgstr "启动定义的参数过多（{count} 个，上限 {MAX_ARGUMENTS} 个）"
+
+msgid "The launch definition has too many entries (at most {MAX_LIST_ENTRIES})"
+msgstr "启动定义的条目过多（上限 {MAX_LIST_ENTRIES} 个）"
+
+msgid "The launch definition is too large ({total_bytes} bytes, at most {MAX_TOTAL_BYTES} bytes)"
+msgstr "启动定义过大（{total_bytes} 字节，上限 {MAX_TOTAL_BYTES} 字节）"
+
+msgid "The listed commits do not match the actual range (the git history). Commits may have been added to or removed from the range. Refresh the graph and choose again."
+msgstr "列出的提交与实际范围（Git 历史记录）不一致。范围内可能有提交被添加或移除。请刷新提交图后重新选择。"
+
+msgid "The oldest commit of the chosen range is not in the history of the newest one. Choose the range again."
+msgstr "所选范围中最旧的提交不在最新提交的历史记录中。请重新选择范围。"
+
+msgid "The project identifier {project_key} is invalid."
+msgstr "项目标识符 {project_key} 无效。"
+
+msgid "The project is closed"
+msgstr "项目已关闭"
+
+msgid "The range to rewrite has \"{subject}\". This operation would fold fixup! / squash! commits in along with it, so deal with them first, then try again."
+msgstr "要改写的范围中包含“{subject}”。此操作会将 fixup! / squash! 提交一并并入，请先处理这些提交，然后重试。"
+
+msgid "The remote host asked about a kind of launch this IDE does not know"
+msgstr "远程主机询问了此 IDE 不认识的启动类型"
+
+msgid "The remote host does not ask about connecting to URLs"
+msgstr "远程主机不会询问 URL 连接"
+
+msgid "The remote host does not ask about launching MCP servers"
+msgstr "远程主机不会询问 MCP 服务器的启动"
+
+msgid "The remote host is disconnected, so the revocation reaches it when it reconnects"
+msgstr "远程主机已断开连接，撤销将在重新连接时传达给它"
+
+msgid "The remote host is not responding."
+msgstr "远程主机没有响应。"
+
+msgid "The remote host sent a kind of warning this IDE cannot show"
+msgstr "远程主机发送了此 IDE 无法显示的警告类型"
+
+msgid "The remote server did not answer"
+msgstr "远程服务器没有应答"
+
+msgid "The remote server is too old to run git with hooks turned off, so the AI cannot run git commands there. Update the remote server to let it."
+msgstr "远程服务器版本过旧，无法在禁用钩子的情况下运行 Git，因此 AI 无法在其上运行 Git 命令。要允许此操作，请更新远程服务器。"
+
+msgid "The scratch branch \"{scratch_branch}\" does not start at the base, so it cannot go into the MR branch."
+msgstr "临时分支“{scratch_branch}”不是从基准开始的，因此无法并入 MR 分支。"
+
+msgid "The scratch branch \"{scratch_branch}\" has unstaged changes. Stage or discard them, then try again."
+msgstr "临时分支“{scratch_branch}”有未暂存的更改。请暂存或放弃这些更改，然后重试。"
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
+msgstr "上一次尝试的临时分支“{scratch_branch}”仍然存在。请检查其内容并删除，然后重试。"
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous rewrite is still there. Check its contents and delete it, then try again."
+msgstr "上次改写的临时分支“{scratch_branch}”仍然存在。请检查其内容并删除，然后重试。"
+
+msgid "The token contains a line break or a control character"
+msgstr "令牌包含换行符或控制字符"
+
+msgid "The token is empty"
+msgstr "令牌为空"
+
+msgid "The working directory of the launch the remote host asked about ({working_directory}) is not where the worktree ({known}) is"
+msgstr "远程主机询问的启动的工作目录（{working_directory}）与工作树（{known}）所在位置不一致"
+
+msgid "The worktree the remote host asked about (ID {id}) is not in this project"
+msgstr "远程主机询问的工作树（ID {id}）不在此项目中"
+
+msgid "The worktree the remote host asked about ({requested}) does not match the worktree this IDE has open under the same ID ({known})"
+msgstr "远程主机询问的工作树（{requested}）与此 IDE 以相同 ID 打开的工作树（{known}）不一致"
+
+msgid "The {kind} stopped partway. Continue or abort it in the Git panel's banner first."
+msgstr "{kind} 中途停止。请先在 Git 面板的横幅中继续或中止。"
+
+msgid "The {kind} stopped partway. Continue or abort it in the Git panel, then try again."
+msgstr "{kind} 中途停止。请在 Git 面板中继续或中止，然后重试。"
+
+msgid "There are no changes to put in the commit (untracked files go in only once staged)."
+msgstr "没有可放入提交的更改（未跟踪的文件只有在暂存后才会被包含）。"
+
+msgid "There are no staged changes."
+msgstr "没有已暂存的更改。"
+
+msgid "There are uncommitted changes. Commit or stash them before creating the MR branch."
+msgstr "存在未提交的更改。请在创建 MR 分支前提交或储藏这些更改。"
+
+msgid "There is no download information for Node.js for Linux ({architecture})."
+msgstr "没有适用于 Linux（{architecture}）的 Node.js 下载信息。"
+
+msgid "There is no folder to open."
+msgstr "没有可打开的文件夹。"
+
+msgid "There is no git account named \"{id}\" any more"
+msgstr "名为“{id}”的 Git 账户已不存在"
+
+msgid "This agent has no distribution for {platform_key}, so it cannot start inside the WSL sandbox (available: {available})."
+msgstr "此智能体没有适用于 {platform_key} 的分发包，因此无法在 WSL 沙盒中启动（可用：{available}）。"
+
+msgid "This distribution is a zip archive, so it cannot be unpacked in the WSL sandbox (the WSL distribution has no `unzip`). Choose an agent with a tar.gz distribution for Linux, or start it outside the sandbox."
+msgstr "此分发包是 zip 压缩包，无法在 WSL 沙盒中解压（WSL 发行版中没有 `unzip`）。请选择提供适用于 Linux 的 tar.gz 分发包的智能体，或在沙盒外启动。"
+
+msgid "This distribution's format cannot be unpacked in the WSL sandbox. Choose an agent with a tar.gz distribution for Linux, or start it outside the sandbox."
+msgstr "此分发包的格式无法在 WSL 沙盒中解压。请选择提供适用于 Linux 的 tar.gz 分发包的智能体，或在沙盒外启动。"
+
+msgid "This project is not connected to a remote host."
+msgstr "此项目未连接到远程主机。"
+
+msgid "Too many approved launches were asked about by the remote host (at most {MAX_REMEMBERED_LAUNCHES})"
+msgstr "远程主机询问的已批准启动过多（上限 {MAX_REMEMBERED_LAUNCHES} 个）"
+
+msgid "Too many launches are waiting for approval in the IDE"
+msgstr "IDE 中等待批准的启动过多"
+
+msgid "Too many launches are waiting for approval in the IDE, so the approval of the executable of language server \"{server_name}\" cannot be asked for yet. It is asked for once fewer are waiting ({reason})"
+msgstr "IDE 中等待批准的启动过多，因此暂时无法请求批准语言服务器“{server_name}”的可执行文件。等待数量减少后将会请求（{reason}）"
+
+msgid "Too many launches from the remote host are waiting for approval (at most {MAX_PENDING_LAUNCHES})"
+msgstr "来自远程主机的等待批准的启动过多（上限 {MAX_PENDING_LAUNCHES} 个）"
+
+msgid "`{package_name}` is not installed in WSL."
+msgstr "WSL 中未安装 `{package_name}`。"
+
+msgid "git commit-tree did not return a new commit."
+msgstr "git commit-tree 没有返回新提交。"
+
+msgid "gopls (the Go language server) is built with the Go toolchain, so go is needed first. Ask an administrator, or unpack the official distribution and put it on PATH."
+msgstr "gopls（Go 语言服务器）需要使用 Go 工具链构建，因此需要先安装 go。请联系管理员，或解压官方分发包并将其添加到 PATH。"
+
+msgid "{path} belongs to another account."
+msgstr "{path} 属于其他账户。"
+
+msgid "{path} can be modified by other accounts."
+msgstr "{path} 可被其他账户修改。"
+
+msgid "{path} contains a NUL byte."
+msgstr "{path} 包含 NUL 字节。"
+
+msgid "{path} has an unexpected path component."
+msgstr "{path} 包含意外的路径组成部分。"
+
+msgid "{path} is not a folder."
+msgstr "{path} 不是文件夹。"
+
+msgid "{path} is not a regular file (it must not be a link)."
+msgstr "{path} 不是普通文件（不能是链接）。"
+
+msgid "{path} is not below the settings folder."
+msgstr "{path} 不在设置文件夹下。"
+
+msgid "{path} is not below {base}."
+msgstr "{path} 不在 {base} 下。"
+
+msgid "{project} {version} has no distribution for this environment ({os} {arch})"
+msgstr "{project} {version} 没有适用于此环境（{os} {arch}）的分发包"
+
+msgid "{tool_id} is not in the list of tools that can be installed"
+msgstr "{tool_id} 不在可安装的工具列表中"
+
+msgid "{tool} can only be installed by the machine that has the files"
+msgstr "{tool} 只能由拥有这些文件的计算机安装"
+
+msgid "{tool} is not a tool that can be downloaded and installed"
+msgstr "{tool} 不是可下载并安装的工具"
+
+msgid "{what} did not finish within {seconds} seconds. Wait a while and try again, and if that does not help, restart WSL with `wsl --shutdown`."
+msgstr "{what} 未在 {seconds} 秒内完成。请稍候重试；如果仍无效，请使用 `wsl --shutdown` 重启 WSL。"
+
+msgctxt "dev tool purpose"
+msgid "Diagnostics"
+msgstr "诊断"
+
+msgctxt "dev tool purpose"
+msgid "Formatting"
+msgstr "格式化"
+
+msgctxt "dev tool purpose"
+msgid "Type Checking"
+msgstr "类型检查"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "wsl sandbox step"
+msgid "Checking Node.js in WSL"
+msgstr "检查 WSL 中的 Node.js"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the WSL architecture"
+msgstr "检查 WSL 架构"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the agent's executable"
+msgstr "检查智能体的可执行文件"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the agent's runtime in WSL"
+msgstr "检查 WSL 中智能体的运行环境"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the data folder in WSL"
+msgstr "检查 WSL 中的数据文件夹"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the installed npm package"
+msgstr "检查已安装的 npm 包"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the npm package"
+msgstr "检查 npm 包"
+
+msgctxt "wsl sandbox step"
+msgid "Checking the npm package's executable"
+msgstr "检查 npm 包的可执行文件"
+
+msgctxt "wsl sandbox step"
+msgid "Placing Node.js for Linux in WSL"
+msgstr "将 Linux 版 Node.js 放置到 WSL 中"
+
+msgctxt "wsl sandbox step"
+msgid "Placing the agent for Linux in WSL"
+msgstr "将 Linux 版智能体放置到 WSL 中"
+
+msgctxt "wsl sandbox step"
+msgid "npm install inside the sandbox"
+msgstr "在沙盒中执行 npm install"

@@ -1,0 +1,60 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Clear Filter"
+msgstr "Limpar filtro"
+
+msgid "Copy Path"
+msgstr "Copiar caminho"
+
+msgid "Copy Relative Path"
+msgstr "Copiar caminho relativo"
+
+msgid "Fold Directory"
+msgstr "Agrupar diretório"
+
+msgid "Lines {}- {}"
+msgstr "Linhas {}- {}"
+
+msgid "No matches for query"
+msgstr "Nenhuma correspondência para a consulta"
+
+msgid "No outlines available"
+msgstr "Nenhuma estrutura disponível"
+
+msgid "Open in Terminal"
+msgstr "Abrir no terminal"
+
+msgid "Outline Panel"
+msgstr "Painel de estrutura"
+
+msgid "Pin Active Outline"
+msgstr "Fixar estrutura ativa"
+
+msgid "Search buffer symbols…"
+msgstr "Pesquisar símbolos do buffer…"
+
+msgid "Searching:"
+msgstr "Pesquisando:"
+
+msgid "Toggle Panel With"
+msgstr "Alternar painel com"
+
+msgid "Unfold Directory"
+msgstr "Desagrupar diretório"
+
+msgid "Unknown buffer"
+msgstr "Buffer desconhecido"
+
+msgid "Unpin Outline"
+msgstr "Desafixar estrutura"
+
+msgid "Untitled"
+msgstr "Sem título"

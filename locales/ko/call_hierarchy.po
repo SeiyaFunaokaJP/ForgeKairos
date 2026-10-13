@@ -1,0 +1,53 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Fetching call hierarchy…"
+msgstr "호출 계층 가져오는 중…"
+
+msgid "No callable symbol under the cursor"
+msgstr "커서 아래에 호출 가능한 심볼 없음"
+
+msgid "No incoming calls found"
+msgstr "수신 호출을 찾을 수 없음"
+
+msgid "No matches"
+msgstr "일치 항목 없음"
+
+msgid "No outgoing calls found"
+msgstr "발신 호출을 찾을 수 없음"
+
+msgid "Search calls from `{}`..."
+msgstr "`{}`에서의 호출 검색..."
+
+msgid "Search calls to `{}`..."
+msgstr "`{}`(으)로의 호출 검색..."
+
+msgid "Search incoming calls..."
+msgstr "수신 호출 검색..."
+
+msgid "Search outgoing calls..."
+msgstr "발신 호출 검색..."
+
+msgid "Show Callees"
+msgstr "피호출자 표시"
+
+msgid "Show Callers"
+msgstr "호출자 표시"
+
+msgid "Switch Direction"
+msgstr "방향 전환"
+
+msgid "{path}:{line_number} ({count} call)"
+msgid_plural "{path}:{line_number} ({count} calls)"
+msgstr[0] "{path}:{line_number} (호출 {count}개)"
+
+msgctxt "call hierarchy"
+msgid "Back"
+msgstr "뒤로"

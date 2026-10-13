@@ -1,0 +1,165 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Add to Allowlist and Update"
+msgstr "Zur Zulassungsliste hinzufügen und aktualisieren"
+
+msgid "Agentic"
+msgstr "Agentisch"
+
+msgid "Application menu"
+msgstr "Anwendungsmenü"
+
+msgid "Branch & Stash"
+msgstr "Branch & Stash"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Classic"
+msgstr "Klassisch"
+
+msgid "Click to Follow"
+msgstr "Zum Folgen klicken"
+
+msgid "Close Announcement Banner"
+msgstr "Ankündigungsbanner schließen"
+
+msgid "Connected to: {host}"
+msgstr "Verbindung zu {host} hergestellt"
+
+msgid "Connecting to: {host}"
+msgstr "Verbindung zu {host} wird hergestellt"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "Verbindungsversuch zu {host} fehlgeschlagen. Erneuter Versuch..."
+
+msgid "Create Branch"
+msgstr "Branch erstellen"
+
+msgid "Creating {}…"
+msgstr "{} wird erstellt…"
+
+msgid "Currently Checked Out: {}"
+msgstr "Aktuell ausgecheckt: {}"
+
+msgid "Currently In Use: {}"
+msgstr "Aktuell in Verwendung: {}"
+
+msgid "Custom"
+msgstr "Benutzerdefiniert"
+
+msgid "Detached HEAD: {}"
+msgstr "Detached HEAD: {}"
+
+msgid "Dev Container"
+msgstr "Dev-Container"
+
+msgid "Disconnected"
+msgstr "Getrennt"
+
+msgid "Disconnected from {host}"
+msgstr "Verbindung zu {host} getrennt"
+
+msgid "Downloading the update needs network access"
+msgstr "Zum Herunterladen des Updates ist Netzwerkzugriff erforderlich"
+
+msgid "Extensions"
+msgstr "Erweiterungen"
+
+msgid "Icon Themes…"
+msgstr "Symboldesigns…"
+
+msgid "Introducing:"
+msgstr "Neu:"
+
+msgid "It won't show again for this feature"
+msgstr "Wird für diese Funktion nicht mehr angezeigt"
+
+msgid "Keymap"
+msgstr "Keymap"
+
+msgid "Loading {}…"
+msgstr "{} wird geladen…"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "Verbindung zu {host} unterbrochen. Wird wiederhergestellt..."
+
+msgid "Mark this project as trusted and unlock all features"
+msgstr "Dieses Projekt als vertrauenswürdig markieren und alle Funktionen freischalten"
+
+msgid "Open Application Menu"
+msgstr "Anwendungsmenü öffnen"
+
+msgid "Open Recent Project"
+msgstr "Zuletzt verwendetes Projekt öffnen"
+
+msgid "Organization"
+msgstr "Organisation"
+
+msgid "Panel Layout"
+msgstr "Panel-Layout"
+
+msgid "Please restart Zed to Collaborate"
+msgstr "ForgeKairos neu starten, um zusammenzuarbeiten"
+
+msgid "Please update Zed to Collaborate"
+msgstr "ForgeKairos aktualisieren, um zusammenzuarbeiten"
+
+msgid "Recent Projects"
+msgstr "Zuletzt verwendete Projekte"
+
+msgid "Remote Project"
+msgstr "Remote-Projekt"
+
+msgid "Restart to update Zed"
+msgstr "ForgeKairos zum Aktualisieren neu starten"
+
+msgid "Restricted Mode"
+msgstr "Eingeschränkter Modus"
+
+msgid "Settings"
+msgstr "Einstellungen"
+
+msgid "Sign In"
+msgstr "Anmelden"
+
+msgid "Sign Out"
+msgstr "Abmelden"
+
+msgid "Signing in…"
+msgstr "Anmeldung läuft…"
+
+msgid "Themes…"
+msgstr "Designs…"
+
+msgid "To download version {version}, these hosts must be added to the network allowlist:\n\n{hosts}\n\nOnce added, connections to them are always allowed. You can remove them at any time on the Network page of the settings."
+msgstr "Um Version {version} herunterzuladen, müssen diese Hosts zur Netzwerk-Zulassungsliste hinzugefügt werden:\n\n{hosts}\n\nNach dem Hinzufügen sind Verbindungen zu ihnen immer zugelassen. Sie können sie jederzeit auf der Seite „Netzwerk“ der Einstellungen entfernen."
+
+msgid "Toggle AI chat"
+msgstr "KI-Chat ein-/ausblenden"
+
+msgid "Update Needs Permission"
+msgstr "Update erfordert Berechtigung"
+
+msgid "Updating..."
+msgstr "Wird aktualisiert..."
+
+msgid "User menu"
+msgstr "Benutzermenü"
+
+msgid "Worktree"
+msgstr "Worktree"
+
+msgid "You're in Restricted Mode"
+msgstr "Sie befinden sich im eingeschränkten Modus"
+
+msgid "{} is sharing this project. Click to follow."
+msgstr "{} teilt dieses Projekt. Klicken, um zu folgen."

@@ -1,0 +1,61 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Confirm Selections"
+msgstr "Confirmar selecciones"
+
+msgid "Create Dev Container"
+msgstr "Crear contenedor de desarrollo"
+
+msgid "Error Creating Dev Container Definition"
+msgstr "Error al crear la definición del contenedor de desarrollo"
+
+msgid "Error Retrieving Templates"
+msgstr "Error al obtener las plantillas"
+
+msgid "Go Back"
+msgstr "Volver"
+
+msgid "Multiple containers match this project's dev container labels ({ids}). Zed can't decide which to connect to. Stop and remove the stale one(s) with `docker stop <id>` and `docker rm <id>`, then try again."
+msgstr "Varios contenedores coinciden con las etiquetas de contenedor de desarrollo de este proyecto ({ids}). ForgeKairos no puede decidir a cuál conectarse. Detenga y elimine los obsoletos con `docker stop <id>` y `docker rm <id>` e inténtelo de nuevo."
+
+msgid "Overwrite"
+msgstr "Sobrescribir"
+
+msgid "Overwrite Existing Configuration?"
+msgstr "¿Sobrescribir la configuración existente?"
+
+msgid "Querying features..."
+msgstr "Consultando características..."
+
+msgid "Querying template registry..."
+msgstr "Consultando el registro de plantillas..."
+
+msgid "Search for Dev Container Templates"
+msgstr "Buscar plantillas de contenedor de desarrollo"
+
+msgid "Select Feature"
+msgstr "Seleccionar característica"
+
+msgid "Select a template"
+msgstr "Seleccione una plantilla"
+
+msgid "Select features to add"
+msgstr "Seleccione las características que desea agregar"
+
+msgid "Template Option: "
+msgstr "Opción de plantilla: "
+
+msgctxt "dev container wizard"
+msgid "Continue"
+msgstr "Continuar"

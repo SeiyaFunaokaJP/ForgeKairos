@@ -1,0 +1,30 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Another connection took over this shell"
+msgstr "Otra conexión tomó el control de este shell"
+
+msgid "Could not open standard input"
+msgstr "No se pudo abrir la entrada estándar"
+
+msgid "Could not run {program} on the remote. Check that it is installed."
+msgstr "No se pudo ejecutar {program} en el remoto. Compruebe que esté instalado."
+
+msgid "No operation was specified"
+msgstr "No se especificó ninguna operación"
+
+msgid "Older output was omitted"
+msgstr "Se omitió la salida más antigua"
+
+msgid "The previous shell was no longer running. Starting a new shell"
+msgstr "El shell anterior ya no se estaba ejecutando. Iniciando un shell nuevo"
+
+msgid "The shell exited while disconnected (exit code {code})"
+msgstr "El shell terminó mientras estaba desconectado (código de salida {code})"
+
+msgid "{program} cannot be run on the remote."
+msgstr "No se puede ejecutar {program} en el remoto."

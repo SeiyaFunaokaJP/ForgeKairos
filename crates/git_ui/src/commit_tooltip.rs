@@ -526,9 +526,9 @@ pub(crate) fn shallow_boundary_notice(
                     )
                     .child(
                         div().flex_1().min_w_0().child(
-                            Label::new(
-                                "Shallow clone boundary: earlier history is missing, so these lines may come from an older commit.",
-                            )
+                            Label::new(i18n::t!(
+                                "Shallow clone boundary: earlier history is missing, so these lines may come from an older commit."
+                            ))
                             .size(LabelSize::Small)
                             .line_height_style(LineHeightStyle::UiLabel),
                         ),
@@ -543,17 +543,17 @@ pub(crate) fn shallow_boundary_notice(
                             Button::new(
                                 "fetch-unshallow",
                                 if in_flight {
-                                    "Fetching…"
+                                    i18n::tc!("git fetch", "Fetching…")
                                 } else {
-                                    "Fetch Missing History"
+                                    i18n::t!("Fetch Missing History")
                                 },
                             )
                             .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
                             .disabled(in_flight)
-                            .tooltip(Tooltip::text(
-                                "Run `git fetch --unshallow` to download the full history",
-                            ))
+                            .tooltip(Tooltip::text(i18n::t!(
+                                "Run `git fetch --unshallow` to download the full history"
+                            )))
                             .on_click(move |_, window, cx| {
                                 cx.stop_propagation();
                                 fetch_unshallow(
@@ -622,7 +622,7 @@ pub(crate) fn fetch_unshallow(
                 Ok(_) => {
                     workspace.update(cx, |workspace, cx| {
                         let toast = StatusToast::new(
-                            "Fetched the missing commit history",
+                            i18n::t!("Fetched the missing commit history"),
                             cx,
                             |this, _| {
                                 this.icon(

@@ -470,26 +470,96 @@ pub fn available_locales(user_locales_directory: Option<&Path>) -> Vec<LocaleInf
     locales
 }
 
+/// The script a Chinese tag is written in: its script subtag, or else the one its
+/// region uses. `None` for any other language.
+fn chinese_script(tag: &str) -> Option<&'static str> {
+    let mut subtags = tag.split('-');
+    if !subtags.next()?.eq_ignore_ascii_case("zh") {
+        return None;
+    }
+    let mut script = "Hans";
+    for subtag in subtags {
+        if subtag.eq_ignore_ascii_case("Hant") {
+            return Some("Hant");
+        }
+        if subtag.eq_ignore_ascii_case("Hans") {
+            return Some("Hans");
+        }
+        if ["TW", "HK", "MO"]
+            .iter()
+            .any(|region| subtag.eq_ignore_ascii_case(region))
+        {
+            script = "Hant";
+        }
+    }
+    Some(script)
+}
+
+/// The tags that show `request` as it is, most specific first. Operating systems
+/// name Chinese by its region (`zh-TW`, `zh_CN.UTF-8`) or not at all (`zh`), while
+/// translations are made per script, so the script's tag is tried before the bare
+/// language, which says nothing about the script.
+fn candidates(request: &str) -> Vec<String> {
+    let mut candidates: Vec<String> = fallback_chain(request)
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    if let Some(script) = chinese_script(request) {
+        let scripted = format!("zh-{script}");
+        if !candidates
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(&scripted))
+        {
+            let bare = candidates.len() - 1;
+            if bare == 0 {
+                candidates.push(scripted);
+            } else {
+                candidates.insert(bare, scripted);
+            }
+        }
+    }
+    candidates
+}
+
+/// The one available variant of the language `request` asks for (`pt-BR` for `pt-PT`),
+/// when none of its own tags is available. Chinese stays within its script, and with
+/// several variants none is preferred over the others.
+fn only_variant<'a>(request: &str, available: &'a [LocaleInfo]) -> Option<&'a LocaleInfo> {
+    let language = base_language(request);
+    let script = chinese_script(request);
+    let mut variants = available.iter().filter(|locale| {
+        base_language(&locale.tag).eq_ignore_ascii_case(language)
+            && chinese_script(&locale.tag) == script
+    });
+    let variant = variants.next()?;
+    variants.next().is_none().then_some(variant)
+}
+
 /// Picks the language to show from `requested` (most preferred first): the first one
-/// that is available, trying `pt` when `pt-BR` is not. English is always available
-/// without a catalog, so a request for English that comes before any available
-/// language returns `None`, as does a list with nothing available.
+/// that is available, trying `pt` when `pt-BR` is not, the script of Chinese named by
+/// its region (`zh-TW` → `zh-Hant`), and else the only available variant of the
+/// language (`pt-PT` → `pt-BR`). English is always available without a catalog, so a
+/// request for English that comes before any available language returns `None`, as
+/// does a list with nothing available.
 pub fn negotiate(requested: &[String], available: &[LocaleInfo]) -> Option<String> {
     for request in requested {
         let request = normalize_tag(request);
         if !is_valid_tag(&request) {
             continue;
         }
-        for candidate in fallback_chain(&request) {
+        for candidate in candidates(&request) {
             if let Some(locale) = available
                 .iter()
-                .find(|locale| locale.tag.eq_ignore_ascii_case(candidate))
+                .find(|locale| locale.tag.eq_ignore_ascii_case(&candidate))
             {
                 return Some(locale.tag.clone());
             }
         }
-        if base_language(&request).eq_ignore_ascii_case("en") {
+        if base_language(&request).eq_ignore_ascii_case(ENGLISH) {
             return None;
+        }
+        if let Some(locale) = only_variant(&request, available) {
+            return Some(locale.tag.clone());
         }
     }
     None
@@ -821,45 +891,156 @@ mod tests {
         );
     }
 
+    /// The languages the operating systems report, as `sys_locale` spells them, against
+    /// the languages ForgeKairos ships.
+    #[test]
+    fn system_locales_map_to_the_shipped_languages() {
+        let shipped = [
+            info("de"),
+            info("es"),
+            info("fr"),
+            info("ja"),
+            info("ko"),
+            info("pt-BR"),
+            info("zh-Hans"),
+            info("zh-Hant"),
+        ];
+        for (system, expected) in [
+            // Windows
+            ("zh-CN", "zh-Hans"),
+            ("zh-SG", "zh-Hans"),
+            ("zh-TW", "zh-Hant"),
+            ("zh-HK", "zh-Hant"),
+            ("zh-MO", "zh-Hant"),
+            ("ko-KR", "ko"),
+            ("de-AT", "de"),
+            ("de-CH", "de"),
+            ("fr-CA", "fr"),
+            ("es-MX", "es"),
+            ("es-419", "es"),
+            ("pt-BR", "pt-BR"),
+            ("pt-PT", "pt-BR"),
+            ("ja-JP", "ja"),
+            // macOS
+            ("zh-Hans-CN", "zh-Hans"),
+            ("zh-Hans-HK", "zh-Hans"),
+            ("zh-Hant-TW", "zh-Hant"),
+            ("zh-Hant-CN", "zh-Hant"),
+            ("zh-Hans", "zh-Hans"),
+            ("zh-Hant", "zh-Hant"),
+            ("pt", "pt-BR"),
+            // Linux
+            ("zh_CN.UTF-8", "zh-Hans"),
+            ("zh_TW.UTF-8", "zh-Hant"),
+            ("zh_HK.Big5-HKSCS", "zh-Hant"),
+            ("zh", "zh-Hans"),
+            ("pt_PT.UTF-8", "pt-BR"),
+            ("ko_KR.UTF-8", "ko"),
+            ("de_DE@euro", "de"),
+            ("fr_BE.UTF-8", "fr"),
+        ] {
+            assert_eq!(
+                negotiate(&requested(&[system]), &shipped).as_deref(),
+                Some(expected),
+                "{system}"
+            );
+        }
+        for not_shipped in ["en-US", "en_GB.UTF-8", "C", "POSIX", "sv-SE", "it"] {
+            assert_eq!(
+                negotiate(&requested(&[not_shipped]), &shipped),
+                None,
+                "{not_shipped}"
+            );
+        }
+        assert_eq!(
+            negotiate(&requested(&["it-IT", "zh-TW", "ja"]), &shipped).as_deref(),
+            Some("zh-Hant"),
+            "the first language that is shipped wins"
+        );
+    }
+
+    #[test]
+    fn regions_and_scripts_fall_back_without_crossing_scripts() {
+        // Only Simplified Chinese: Traditional readers get English, not the other script.
+        let simplified = [info("ja"), info("zh-Hans")];
+        assert_eq!(negotiate(&requested(&["zh-TW"]), &simplified), None);
+        assert_eq!(negotiate(&requested(&["zh-Hant-HK"]), &simplified), None);
+        assert_eq!(
+            negotiate(&requested(&["zh-TW", "ja"]), &simplified).as_deref(),
+            Some("ja")
+        );
+        // A directory named by region (the user's own `zh_TW`) serves its script.
+        let regional = [info("zh-CN"), info("zh-TW")];
+        assert_eq!(
+            negotiate(&requested(&["zh-Hant"]), &regional).as_deref(),
+            Some("zh-TW")
+        );
+        assert_eq!(
+            negotiate(&requested(&["zh-Hans-SG"]), &regional).as_deref(),
+            Some("zh-CN")
+        );
+        assert_eq!(
+            negotiate(&requested(&["zh"]), &regional).as_deref(),
+            Some("zh-CN")
+        );
+        // An exact match comes first, also for the bare language.
+        let bare = [info("zh"), info("zh-Hans"), info("zh-Hant")];
+        assert_eq!(negotiate(&requested(&["zh"]), &bare).as_deref(), Some("zh"));
+        assert_eq!(
+            negotiate(&requested(&["zh-TW"]), &bare).as_deref(),
+            Some("zh-Hant")
+        );
+        // With several variants of the language, none is picked for another one.
+        let two_variants = [info("pt-BR"), info("pt-AO")];
+        assert_eq!(negotiate(&requested(&["pt-PT"]), &two_variants), None);
+        assert_eq!(
+            negotiate(&requested(&["pt-AO"]), &two_variants).as_deref(),
+            Some("pt-AO")
+        );
+        // English never falls to another English.
+        let user_english = [info("en-GB")];
+        assert_eq!(negotiate(&requested(&["en-US"]), &user_english), None);
+    }
+
     #[test]
     fn user_directory_is_listed_loaded_and_overrides_the_bundle() {
         let directory = tempfile::tempdir().expect("create a temporary directory");
         let root = directory.path();
         write(
-            &root.join("fr/x.po"),
+            &root.join("qaa/x.po"),
             "msgid \"\"\nmsgstr \"\"\n\"Language: fr\\n\"\n\"X-Language-Name: Français\\n\"\n\"Plural-Forms: nplurals=2; plural=(n > 1);\\n\"\n\nmsgid \"Open\"\nmsgstr \"Ouvrir\"\n\nmsgid \"{count} file\"\nmsgid_plural \"{count} files\"\nmsgstr[0] \"{count} fichier\"\nmsgstr[1] \"{count} fichiers\"\n",
         );
         write(
-            &root.join("fr/y.po"),
+            &root.join("qaa/y.po"),
             "msgid \"Close\"\nmsgstr \"Fermer\"\n",
         );
-        write(&root.join("fr/notes.txt"), "not a PO file");
+        write(&root.join("qaa/notes.txt"), "not a PO file");
         write(
             &root.join("ja/override.po"),
             "msgid \"i18n_catalog test: Hello\"\nmsgstr \"ユーザーのこんにちは\"\n",
         );
-        std::fs::create_dir_all(root.join("de")).expect("create an empty language directory");
+        std::fs::create_dir_all(root.join("qab")).expect("create an empty language directory");
         std::fs::create_dir_all(root.join("..bad")).expect("create a directory");
 
         let locales = available_locales(Some(root));
         let french = locales
             .iter()
-            .find(|locale| locale.tag == "fr")
-            .expect("fr should be listed");
+            .find(|locale| locale.tag == "qaa")
+            .expect("qaa should be listed");
         assert_eq!(french.display_name, "Français");
-        assert_eq!(french.source, LocaleSource::User(root.join("fr")));
+        assert_eq!(french.source, LocaleSource::User(root.join("qaa")));
         let japanese = locales
             .iter()
             .find(|locale| locale.tag == "ja")
             .expect("ja should be listed");
         assert_eq!(japanese.source, LocaleSource::Both);
         assert_eq!(japanese.display_name, "日本語");
-        assert!(locales.iter().all(|locale| locale.tag != "de"));
+        assert!(locales.iter().all(|locale| locale.tag != "qab"));
         assert!(locales.iter().all(|locale| !locale.tag.contains("bad")));
 
-        let catalog = load("fr", Some(root))
+        let catalog = load("qaa", Some(root))
             .expect("loading should not fail")
-            .expect("fr has files");
+            .expect("qaa has files");
         assert_eq!(catalog.lookup(None, "Open"), Some("Ouvrir"));
         assert_eq!(catalog.lookup(None, "Close"), Some("Fermer"));
         assert_eq!(
@@ -874,7 +1055,7 @@ mod tests {
             catalog.lookup_plural(None, "{count} file", "{count} files", 2),
             Some("{count} fichiers")
         );
-        let again = load("FR", Some(root)).expect("load").expect("cached");
+        let again = load("QAA", Some(root)).expect("load").expect("cached");
         assert!(std::ptr::eq(catalog, again));
 
         let japanese = load("ja-JP", Some(root)).expect("load").expect("ja exists");
@@ -889,7 +1070,7 @@ mod tests {
             Some("さようなら (同梱)")
         );
 
-        assert!(load("de", Some(root)).expect("load").is_none());
+        assert!(load("qab", Some(root)).expect("load").is_none());
         assert!(load("../ja", Some(root)).is_err());
     }
 
@@ -898,26 +1079,26 @@ mod tests {
         let directory = tempfile::tempdir().expect("create a temporary directory");
         let root = directory.path();
         write(
-            &root.join("pt_BR/a.po"),
+            &root.join("qac_BR/a.po"),
             "msgid \"Open\"\nmsgstr \"Abrir (BR)\"\n",
         );
         write(
-            &root.join("pt/a.po"),
+            &root.join("qac/a.po"),
             "msgid \"Open\"\nmsgstr \"Abrir (PT)\"\n\nmsgid \"Close\"\nmsgstr \"Fechar (PT)\"\n",
         );
-        let catalog = load("pt-BR", Some(root))
+        let catalog = load("qac-BR", Some(root))
             .expect("load")
-            .expect("pt-BR exists");
-        assert_eq!(catalog.layers(), ["user/pt-BR", "user/pt", "embedded/en"]);
+            .expect("qac-BR exists");
+        assert_eq!(catalog.layers(), ["user/qac-BR", "user/qac", "embedded/en"]);
         assert_eq!(catalog.lookup(None, "Open"), Some("Abrir (BR)"));
         assert_eq!(catalog.lookup(None, "Close"), Some("Fechar (PT)"));
 
         let tags: Vec<_> = available_locales(Some(root))
             .into_iter()
             .map(|locale| locale.tag)
-            .filter(|tag| tag.starts_with("pt"))
+            .filter(|tag| tag.starts_with("qac"))
             .collect();
-        assert_eq!(tags, ["pt", "pt-BR"]);
+        assert_eq!(tags, ["qac", "qac-BR"]);
     }
 
     #[test]

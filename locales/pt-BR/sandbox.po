@@ -1,0 +1,535 @@
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "A zip archive cannot be extracted in the WSL sandbox (the distro has no `unzip`). Specify a Linux archive in a format such as tar.gz."
+msgstr "Um arquivo zip não pode ser extraído no sandbox do WSL (a distribuição não tem `unzip`). Especifique um arquivo para Linux em um formato como tar.gz."
+
+msgid "Could not check the agent executable"
+msgstr "Não foi possível verificar o executável do agente"
+
+msgid "Could not check the agent executable in {distro} ({error})."
+msgstr "Não foi possível verificar o executável do agente em {distro} ({error})."
+
+msgid "Could not check the agent executable in {distro}."
+msgstr "Não foi possível verificar o executável do agente em {distro}."
+
+msgid "Could not check the agent executable in {distro}{details}. Run `wsl --update` and try again."
+msgstr "Não foi possível verificar o executável do agente em {distro}{details}. Execute `wsl --update` e tente novamente."
+
+msgid "Could not check the agent runtime in {distro} ({error})."
+msgstr "Não foi possível verificar o ambiente de execução do agente em {distro} ({error})."
+
+msgid "Could not check the agent runtime in {distro}{details}."
+msgstr "Não foi possível verificar o ambiente de execução do agente em {distro}{details}."
+
+msgid "Could not check the always-protected path `{path}` ({error}). Commands never run without that protection, so stopping."
+msgstr "Não foi possível verificar o caminho sempre protegido `{path}` ({error}). Comandos nunca são executados sem essa proteção, então a operação foi interrompida."
+
+msgid "Could not check the npm package"
+msgstr "Não foi possível verificar o pacote npm"
+
+msgid "Could not check the npm package executable"
+msgstr "Não foi possível verificar o executável do pacote npm"
+
+msgid "Could not check the npm package executable in {distro}."
+msgstr "Não foi possível verificar o executável do pacote npm em {distro}."
+
+msgid "Could not check the path shown read-only `{path}` ({error}). Nothing unchecked is shown, so stopping."
+msgstr "Não foi possível verificar o caminho exposto como somente leitura `{path}` ({error}). Nada que não tenha sido verificado é exposto, então a operação foi interrompida."
+
+msgid "Could not check the sandbox helper in {distro} ({error})."
+msgstr "Não foi possível verificar o auxiliar do sandbox em {distro} ({error})."
+
+msgid "Could not check the sandbox helper in {distro}{details}. Run `wsl --update` and try again."
+msgstr "Não foi possível verificar o auxiliar do sandbox em {distro}{details}. Execute `wsl --update` e tente novamente."
+
+msgid "Could not copy the {file} to {distro} ({error})."
+msgstr "Não foi possível copiar {file} para {distro} ({error})."
+
+msgid "Could not copy the {file} to {distro}{details}. Check the free space in WSL and that the home directory is writable."
+msgstr "Não foi possível copiar {file} para {distro}{details}. Verifique o espaço livre no WSL e se é possível gravar no diretório pessoal."
+
+msgid "Could not create the IDE integration lock file (check the owner and permissions of {path} {home}, and that it is not a symbolic link)."
+msgstr "Não foi possível criar o arquivo de bloqueio da integração com o IDE (verifique o proprietário e as permissões de {path} {home} e se não é um link simbólico)."
+
+msgid "Could not create the IDE integration's rendezvous socket (check the owner and permissions of {path} {home})."
+msgstr "Não foi possível criar o soquete de encontro da integração com o IDE (verifique o proprietário e as permissões de {path} {home})."
+
+msgid "Could not create the agent settings folder"
+msgstr "Não foi possível criar a pasta de configurações do agente"
+
+msgid "Could not create the agent settings folder in {distro}."
+msgstr "Não foi possível criar a pasta de configurações do agente em {distro}."
+
+msgid "Could not create the npm working folder"
+msgstr "Não foi possível criar a pasta de trabalho do npm"
+
+msgid "Could not create the npm working folder in {distro}."
+msgstr "Não foi possível criar a pasta de trabalho do npm em {distro}."
+
+msgid "Could not create the sandbox in WSL"
+msgstr "Não foi possível criar o sandbox no WSL"
+
+msgid "Could not extract the agent runtime"
+msgstr "Não foi possível extrair o ambiente de execução do agente"
+
+msgid "Could not find Zed's data folder in {distro}{details}."
+msgstr "Não foi possível encontrar a pasta de dados do ForgeKairos em {distro}{details}."
+
+msgid "Could not find the architecture of {distro}{details}."
+msgstr "Não foi possível determinar a arquitetura de {distro}{details}."
+
+msgid "Could not find the home directory of {distro}{details}."
+msgstr "Não foi possível encontrar o diretório pessoal de {distro}{details}."
+
+msgid "Could not finish {description} in {distro}{details}"
+msgstr "Não foi possível concluir {description} em {distro}{details}"
+
+msgid "Could not handle the processes in the sandbox in {distro}:{detail}"
+msgstr "Não foi possível gerenciar os processos no sandbox em {distro}:{detail}"
+
+msgid "Could not install the agent runtime"
+msgstr "Não foi possível instalar o ambiente de execução do agente"
+
+msgid "Could not install the npm package"
+msgstr "Não foi possível instalar o pacote npm"
+
+msgid "Could not pass the connection details to the IDE integration relay"
+msgstr "Não foi possível passar os detalhes da conexão ao retransmissor da integração com o IDE"
+
+msgid "Could not pass the connection details to the IDE integration relay."
+msgstr "Não foi possível passar os detalhes da conexão para o retransmissor da integração com o IDE."
+
+msgid "Could not pass the path of the {description} to the sandbox: {path}"
+msgstr "Não foi possível passar para o sandbox o caminho ({description}): {path}"
+
+msgid "Could not read inside the writable path `{path}` ({error}). The paths to protect cannot be separated out, so stopping."
+msgstr "Não foi possível ler o conteúdo do caminho gravável `{path}` ({error}). Os caminhos a proteger não podem ser separados, então a operação foi interrompida."
+
+msgid "Could not read the bundled sandbox helper `{path}` ({error}). Reinstall Zed."
+msgstr "Não foi possível ler o auxiliar do sandbox incluído `{path}` ({error}). Reinstale o ForgeKairos."
+
+msgid "Could not read the {file} `{path}` ({error}). {fix}"
+msgstr "Não foi possível ler {file} `{path}` ({error}). {fix}"
+
+msgid "Could not resolve the paths in {distro} ({error})."
+msgstr "Não foi possível resolver os caminhos em {distro} ({error})."
+
+msgid "Could not resolve the paths in {distro}{details}. Run `wsl --update` and try again."
+msgstr "Não foi possível resolver os caminhos em {distro}{details}. Execute `wsl --update` e tente novamente."
+
+msgid "Could not resolve the writable path `{path}` on Windows."
+msgstr "Não foi possível resolver o caminho gravável `{path}` no Windows."
+
+msgid "Could not resolve the writable path `{path}`.{details}"
+msgstr "Não foi possível resolver o caminho gravável `{path}`.{details}"
+
+msgid "Could not run `npm install {package_spec}` in the sandbox{details}"
+msgstr "Não foi possível executar `npm install {package_spec}` no sandbox{details}"
+
+msgid "Could not run the sandbox helper in {distro}{details} ({error}). Update WSL with `wsl --update` and try again."
+msgstr "Não foi possível executar o auxiliar do sandbox em {distro}{details} ({error}). Atualize o WSL com `wsl --update` e tente novamente."
+
+msgid "Could not start WSL for {description} ({error}). Run `wsl --update` or restart Windows, then try again."
+msgstr "Não foi possível iniciar o WSL para {description} ({error}). Execute `wsl --update` ou reinicie o Windows e tente novamente."
+
+msgid "Could not start the IDE integration relay (unknown reason: {other})."
+msgstr "Não foi possível iniciar o retransmissor da integração com o IDE (motivo desconhecido: {other})."
+
+msgid "Could not start the IDE integration relay (wsl.exe)"
+msgstr "Não foi possível iniciar o retransmissor da integração com o IDE (wsl.exe)"
+
+msgid "Download it again."
+msgstr "Baixe-o novamente."
+
+msgid "Download the agent again."
+msgstr "Baixe o agente novamente."
+
+msgid "No WSL distro is registered. Add one with `wsl --install -d Ubuntu` or similar (any distro works, but it must run on WSL 2)."
+msgstr "Nenhuma distribuição do WSL está registrada. Adicione uma com `wsl --install -d Ubuntu` ou similar (qualquer distribuição serve, mas ela precisa rodar no WSL 2)."
+
+msgid "No default WSL distro is set. List the distros with `wsl --list --verbose` and make a WSL 2 distro the default with `wsl --set-default <name>`."
+msgstr "Nenhuma distribuição padrão do WSL está definida. Liste as distribuições com `wsl --list --verbose` e torne uma distribuição do WSL 2 a padrão com `wsl --set-default <name>`."
+
+msgid "Reinstall Zed."
+msgstr "Reinstale o ForgeKairos."
+
+msgid "Set the environment variable `ZED_WSL_SANDBOX_HELPER` to an absolute path inside WSL (UTF-8)."
+msgstr "Defina a variável de ambiente `ZED_WSL_SANDBOX_HELPER` como um caminho absoluto dentro do WSL (UTF-8)."
+
+msgid "The IDE integration relay could not be started because the home directory {home} could not be determined."
+msgstr "Não foi possível iniciar o retransmissor da integração com o IDE porque não foi possível determinar o diretório pessoal {home}."
+
+msgid "The IDE integration relay could not set up its signal handling."
+msgstr "O retransmissor da integração com o IDE não conseguiu configurar o tratamento de sinais."
+
+msgid "The IDE integration relay exited before it was ready."
+msgstr "O retransmissor da integração com o IDE foi encerrado antes de ficar pronto."
+
+msgid "The IDE integration relay for this configuration is already running"
+msgstr "O retransmissor da integração com o IDE para esta configuração já está em execução"
+
+msgid "The IDE integration relay was not ready within {seconds} seconds."
+msgstr "O retransmissor da integração com o IDE não ficou pronto em {seconds} segundos."
+
+msgid "The IDE integration relay was started with invalid arguments (internal error)."
+msgstr "O retransmissor da integração com o IDE foi iniciado com argumentos inválidos (erro interno)."
+
+msgid "The IDE lock file is larger than {limit} bytes (internal error)"
+msgstr "O arquivo de bloqueio do IDE tem mais de {limit} bytes (erro interno)"
+
+msgid "The IDE port inside the sandbox is 0 (internal error)"
+msgstr "A porta do IDE dentro do sandbox é 0 (erro interno)"
+
+msgid "The WSL distro `{name}` is not registered. Check its name with `wsl --list --verbose`."
+msgstr "A distribuição do WSL `{name}` não está registrada. Verifique o nome dela com `wsl --list --verbose`."
+
+msgid "The WSL distro `{name}` runs on WSL 1, but the sandbox needs WSL 2. Convert it with `wsl --set-version {name} 2`, or make a WSL 2 distro the default with `wsl --set-default <name>`."
+msgstr "A distribuição do WSL `{name}` roda no WSL 1, mas o sandbox precisa do WSL 2. Converta-a com `wsl --set-version {name} 2` ou torne uma distribuição do WSL 2 a padrão com `wsl --set-default <name>`."
+
+msgid "The WSL sandbox helper returned a canonical path that is not UTF-8 (internal error)"
+msgstr "O auxiliar do sandbox do WSL retornou um caminho canônico que não está em UTF-8 (erro interno)"
+
+msgid "The agent executable was installed in {distro}, but it could not be verified. Try again."
+msgstr "O executável do agente foi instalado em {distro}, mas não foi possível verificá-lo. Tente novamente."
+
+msgid "The agent folder name is not a single name (internal error): {folder_name}"
+msgstr "O nome da pasta do agente não é um nome único (erro interno): {folder_name}"
+
+msgid "The agent runtime was extracted in {distro}, but it could not be verified. Try again."
+msgstr "O ambiente de execução do agente foi extraído em {distro}, mas não foi possível verificá-lo. Tente novamente."
+
+msgid "The agent runtime was installed in {distro}, but it could not be verified. Try again."
+msgstr "O ambiente de execução do agente foi instalado em {distro}, mas não foi possível verificá-lo. Tente novamente."
+
+msgid "The bundled sandbox helper `{path}` is damaged ({error}). Reinstall Zed."
+msgstr "O auxiliar do sandbox incluído `{path}` está danificado ({error}). Reinstale o ForgeKairos."
+
+msgid "The home directory could not be determined, so the paths shown read-only cannot be checked. Stopping without building the sandbox."
+msgstr "Não foi possível determinar o diretório pessoal, então os caminhos expostos como somente leitura não podem ser verificados. Interrompendo sem criar o sandbox."
+
+msgid "The home directory could not be determined, so the paths that are always protected (credentials, shell startup files, settings folders) cannot be settled. Stopping without building the sandbox."
+msgstr "Não foi possível determinar o diretório pessoal, então os caminhos sempre protegidos (credenciais, arquivos de inicialização do shell, pastas de configurações) não podem ser definidos. Interrompendo sem criar o sandbox."
+
+msgid "The home directory could not be determined, so the paths that must not be read (credentials, agent settings) cannot be settled. Stopping without building the sandbox."
+msgstr "Não foi possível determinar o diretório pessoal, então os caminhos que não podem ser lidos (credenciais, configurações do agente) não podem ser definidos. Interrompendo sem criar o sandbox."
+
+msgid "The npm package was installed in {distro}, but it could not be verified. Try again."
+msgstr "O pacote npm foi instalado em {distro}, mas não foi possível verificá-lo. Tente novamente."
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only because it overlaps `{entry}`, which must not be read."
+msgstr "O caminho `{path}` (na verdade `{canonical}`) não pode ser exposto como somente leitura porque se sobrepõe a `{entry}`, que não pode ser lido."
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only. Only the agent installations (`external_agents`) and Node.js (`node`) inside Zed's data folder (`{data_directory}`) can be shown (credentials and Zed's database, settings and logs are never shown)."
+msgstr "O caminho `{path}` (na verdade `{canonical}`) não pode ser exposto como somente leitura. Somente as instalações de agentes (`external_agents`) e o Node.js (`node`) dentro da pasta de dados do ForgeKairos (`{data_directory}`) podem ser expostos (credenciais e o banco de dados, as configurações e os logs do ForgeKairos nunca são expostos)."
+
+msgid "The path is in the WSL distro `{requested}`, but this session runs in `{session}`."
+msgstr "O caminho está na distribuição do WSL `{requested}`, mas esta sessão roda em `{session}`."
+
+msgid "The path shown read-only `{path}` was replaced after it was checked and now points somewhere else (`{canonical}`). Stopping for safety."
+msgstr "O caminho exposto como somente leitura `{path}` foi substituído depois de verificado e agora aponta para outro lugar (`{canonical}`). Interrompendo por segurança."
+
+msgid "The project identifier is invalid (internal error): {project_key}"
+msgstr "O identificador do projeto é inválido (erro interno): {project_key}"
+
+msgid "The readable path was not resolved (internal error)"
+msgstr "O caminho legível não foi resolvido (erro interno)"
+
+msgid "The readable path was passed on unresolved (internal error)"
+msgstr "O caminho legível foi repassado sem ser resolvido (erro interno)"
+
+msgid "The sandbox cannot be created because the kernel of {distro} does not support Landlock. Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again."
+msgstr "O sandbox não pode ser criado porque o kernel de {distro} não oferece suporte ao Landlock. Atualize o WSL com `wsl --update`, reinicie-o com `wsl --shutdown` e tente novamente."
+
+msgid "The sandbox cannot be created because {distro} cannot create user namespaces ({reason}). Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again (WSL 2 is required)."
+msgstr "O sandbox não pode ser criado porque {distro} não consegue criar namespaces de usuário ({reason}). Atualize o WSL com `wsl --update`, reinicie-o com `wsl --shutdown` e tente novamente (o WSL 2 é necessário)."
+
+msgid "The sandbox helper was installed in {distro}, but it could not be verified. Try again."
+msgstr "O auxiliar do sandbox foi instalado em {distro}, mas não foi possível verificá-lo. Tente novamente."
+
+msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build.ps1` puts them in `target\\debug` (searched: {searched})."
+msgstr "Os auxiliares do sandbox (`{server_name}` e `{slirp_name}`) não foram encontrados onde o ForgeKairos está instalado. Reinstale o ForgeKairos. Em um build de desenvolvimento, `script/build.ps1` os coloca em `target\\debug` (locais pesquisados: {searched})."
+
+msgid "The terminal's working folder was not resolved (internal error)"
+msgstr "A pasta de trabalho do terminal não foi resolvida (erro interno)"
+
+msgid "The terminal's working folder was passed on unresolved (internal error)"
+msgstr "A pasta de trabalho do terminal foi repassada sem ser resolvida (erro interno)"
+
+msgid "The writable path `{writable}` overlaps the always-protected path `{protected}` (writing to credentials, shell startup files and settings folders cannot be allowed)."
+msgstr "O caminho gravável `{writable}` se sobrepõe ao caminho sempre protegido `{protected}` (não é possível permitir a gravação em credenciais, arquivos de inicialização do shell e pastas de configurações)."
+
+msgid "The writable path was not resolved (internal error)"
+msgstr "O caminho gravável não foi resolvido (erro interno)"
+
+msgid "The writable path was passed on unresolved (internal error)"
+msgstr "O caminho gravável foi repassado sem ser resolvido (erro interno)"
+
+msgid "The {description} contains a component that cannot be used (internal error): {segment} in {relative}"
+msgstr "Há um componente que não pode ser usado no valor informado como {description} (erro interno): {segment} em {relative}"
+
+msgid "The {description} is not a relative path (internal error): {path}"
+msgstr "O valor informado como {description} não é um caminho relativo (erro interno): {path}"
+
+msgid "The {description} is not a relative path below the data directory (internal error): {relative}"
+msgstr "O valor informado como {description} não é um caminho relativo dentro do diretório de dados (erro interno): {relative}"
+
+msgid "The {description} is not an absolute Linux path (internal error): {path}"
+msgstr "O valor informado como {description} não é um caminho absoluto do Linux (erro interno): {path}"
+
+msgid "The {description} points outside the package (internal error): {path}"
+msgstr "O valor informado como {description} aponta para fora do pacote (erro interno): {path}"
+
+msgid "The {description} points to nothing (internal error): {path}"
+msgstr "O valor informado como {description} não aponta para nada (erro interno): {path}"
+
+msgid "The {file} `{name}` copied to {distro} does not match the original ({sent} bytes sent, {received} bytes received). Try again. If that does not help, check the free space in WSL."
+msgstr "Após a cópia para {distro}, {file} `{name}` não corresponde ao original ({sent} bytes enviados, {received} bytes recebidos). Tente novamente. Se não resolver, verifique o espaço livre no WSL."
+
+msgid "The {file} `{path}` is damaged ({error}). {fix}"
+msgstr "Há um dano em {file} `{path}` ({error}). {fix}"
+
+msgid "WSL is not installed. On Windows, agent commands run in a sandbox inside WSL 2. Open PowerShell as an administrator, run `wsl --install`, and restart the computer."
+msgstr "O WSL não está instalado. No Windows, os comandos do agente são executados em um sandbox dentro do WSL 2. Abra o PowerShell como administrador, execute `wsl --install` e reinicie o computador."
+
+msgid "Writing to `{path}` cannot be allowed"
+msgstr "Não é possível permitir a gravação em `{path}`"
+
+msgid "Writing to `{path}` cannot be allowed: it is a whole WSL distro, not a folder inside one."
+msgstr "Não é possível permitir a gravação em `{path}`: é uma distribuição do WSL inteira, não uma pasta dentro dela."
+
+msgid "Writing to `{path}` cannot be allowed: it resolves to `{resolved}`, which is not a path on a Windows drive."
+msgstr "Não é possível permitir a gravação em `{path}`: ele é resolvido como `{resolved}`, que não é um caminho em uma unidade do Windows."
+
+msgid "Writing to `{path}` cannot be allowed: only a path on a Windows drive (`C:\\...`), an absolute WSL path (`/...`), or a folder inside a WSL distro (`\\\\wsl.localhost\\<distro>\\...`) can be given."
+msgstr "Não é possível permitir a gravação em `{path}`: só é possível informar um caminho em uma unidade do Windows (`C:\\...`), um caminho absoluto do WSL (`/...`) ou uma pasta dentro de uma distribuição do WSL (`\\\\wsl.localhost\\<distro>\\...`)."
+
+msgid "`sha256sum` is missing in {distro}, so it cannot be verified that the agent executable has not been replaced. Install coreutils and try again."
+msgstr "`sha256sum` não existe em {distro}, então não é possível verificar se o executável do agente não foi substituído. Instale o coreutils e tente novamente."
+
+msgid "`sha256sum` is missing in {distro}, so it cannot be verified that the sandbox helper has not been replaced. Install coreutils and try again."
+msgstr "`sha256sum` não existe em {distro}, então não é possível verificar se o auxiliar do sandbox não foi substituído. Instale o coreutils e tente novamente."
+
+msgid "ended by a signal"
+msgstr "encerrado por um sinal"
+
+msgid "exit code {code}"
+msgstr "código de saída {code}"
+
+msgid "the WSL distro `{distro}`"
+msgstr "a distribuição do WSL `{distro}`"
+
+msgid "the default WSL distro"
+msgstr "a distribuição padrão do WSL"
+
+msgid "{count} IDE integration relays are already running, so no more can be started. Close the agent threads and terminals you are not using and try again."
+msgstr "{count} retransmissores da integração com o IDE já estão em execução, então não é possível iniciar mais. Feche as conversas de agente e os terminais que você não está usando e tente novamente."
+
+msgid "{exit_status}, error output: {stderr}"
+msgstr "{exit_status}, saída de erro: {stderr}"
+
+msgid "{exit_status}, npm output: {tail}"
+msgstr "{exit_status}, saída do npm: {tail}"
+
+msgid "{what} in {distro}{reason}{details}."
+msgstr "{what} em {distro}{reason}{details}."
+
+msgctxt "ide bridge host"
+msgid "in WSL"
+msgstr "no WSL"
+
+msgctxt "ide bridge host"
+msgid "on the remote host"
+msgstr "no host remoto"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "wsl sandbox file"
+msgid "agent executable"
+msgstr "o executável do agente"
+
+msgctxt "wsl sandbox file"
+msgid "agent runtime archive"
+msgstr "o arquivo compactado do ambiente de execução do agente"
+
+msgctxt "wsl sandbox file"
+msgid "bundled sandbox helper"
+msgstr "o auxiliar do sandbox incluído"
+
+msgctxt "wsl sandbox file"
+msgid "downloaded agent runtime archive"
+msgstr "o arquivo compactado baixado do ambiente de execução do agente"
+
+msgctxt "wsl sandbox file"
+msgid "sandbox helper"
+msgstr "o auxiliar do sandbox"
+
+msgctxt "wsl sandbox path"
+msgid "IDE bridge's own folder"
+msgstr "pasta exclusiva da ponte do IDE"
+
+msgctxt "wsl sandbox path"
+msgid "IDE lock file"
+msgstr "arquivo de bloqueio do IDE"
+
+msgctxt "wsl sandbox path"
+msgid "IDE rendezvous socket"
+msgstr "soquete de encontro do IDE"
+
+msgctxt "wsl sandbox path"
+msgid "Node.js installation folder"
+msgstr "pasta de instalação do Node.js"
+
+msgctxt "wsl sandbox path"
+msgid "agent folder name"
+msgstr "nome da pasta do agente"
+
+msgctxt "wsl sandbox path"
+msgid "entry in the agent folder"
+msgstr "entrada na pasta do agente"
+
+msgctxt "wsl sandbox path"
+msgid "npm package destination"
+msgstr "destino do pacote npm"
+
+msgctxt "wsl sandbox path"
+msgid "npm package executable"
+msgstr "executável do pacote npm"
+
+msgctxt "wsl sandbox path"
+msgid "npm package installation folder"
+msgstr "pasta de instalação do pacote npm"
+
+msgctxt "wsl sandbox path"
+msgid "npm package name"
+msgstr "nome do pacote npm"
+
+msgctxt "wsl sandbox path"
+msgid "npm working folder"
+msgstr "pasta de trabalho do npm"
+
+msgctxt "wsl sandbox path"
+msgid "runtime destination"
+msgstr "destino do ambiente de execução"
+
+msgctxt "wsl sandbox path"
+msgid "runtime executable"
+msgstr "executável do ambiente de execução"
+
+msgctxt "wsl sandbox path"
+msgid "runtime folder"
+msgstr "pasta do ambiente de execução"
+
+msgctxt "wsl sandbox step"
+msgid "checking Zed's data folder"
+msgstr "a verificação da pasta de dados do ForgeKairos"
+
+msgctxt "wsl sandbox step"
+msgid "checking the WSL architecture"
+msgstr "a verificação da arquitetura do WSL"
+
+msgctxt "wsl sandbox step"
+msgid "checking the agent executable"
+msgstr "a verificação do executável do agente"
+
+msgctxt "wsl sandbox step"
+msgid "checking the agent runtime"
+msgstr "a verificação do ambiente de execução do agente"
+
+msgctxt "wsl sandbox step"
+msgid "checking the home directory"
+msgstr "a verificação do diretório pessoal"
+
+msgctxt "wsl sandbox step"
+msgid "checking the npm package"
+msgstr "a verificação do pacote npm"
+
+msgctxt "wsl sandbox step"
+msgid "checking the npm package executable"
+msgstr "a verificação do executável do pacote npm"
+
+msgctxt "wsl sandbox step"
+msgid "checking the sandbox helper"
+msgstr "a verificação do auxiliar do sandbox"
+
+msgctxt "wsl sandbox step"
+msgid "cleaning up after the IDE integration"
+msgstr "a limpeza após a integração com o IDE"
+
+msgctxt "wsl sandbox step"
+msgid "copying the agent executable"
+msgstr "a cópia do executável do agente"
+
+msgctxt "wsl sandbox step"
+msgid "copying the agent runtime"
+msgstr "a cópia do ambiente de execução do agente"
+
+msgctxt "wsl sandbox step"
+msgid "copying the sandbox helper"
+msgstr "a cópia do auxiliar do sandbox"
+
+msgctxt "wsl sandbox step"
+msgid "creating the agent settings folder"
+msgstr "a criação da pasta de configurações do agente"
+
+msgctxt "wsl sandbox step"
+msgid "creating the npm working folder"
+msgstr "a criação da pasta de trabalho do npm"
+
+msgctxt "wsl sandbox step"
+msgid "extracting the agent runtime"
+msgstr "a extração do ambiente de execução do agente"
+
+msgctxt "wsl sandbox step"
+msgid "installing the agent executable"
+msgstr "a instalação do executável do agente"
+
+msgctxt "wsl sandbox step"
+msgid "installing the agent runtime"
+msgstr "a instalação do ambiente de execução do agente"
+
+msgctxt "wsl sandbox step"
+msgid "installing the npm package"
+msgstr "a instalação do pacote npm"
+
+msgctxt "wsl sandbox step"
+msgid "installing the sandbox helper"
+msgstr "a instalação do auxiliar do sandbox"
+
+msgctxt "wsl sandbox step"
+msgid "listing the processes in the sandbox"
+msgstr "a listagem dos processos no sandbox"
+
+msgctxt "wsl sandbox step"
+msgid "removing a partly copied file"
+msgstr "a remoção de um arquivo copiado parcialmente"
+
+msgctxt "wsl sandbox step"
+msgid "removing the npm working folder"
+msgstr "a remoção da pasta de trabalho do npm"
+
+msgctxt "wsl sandbox step"
+msgid "resolving paths"
+msgstr "a resolução dos caminhos"
+
+msgctxt "wsl sandbox step"
+msgid "resolving the writable path"
+msgstr "a resolução do caminho gravável"
+
+msgctxt "wsl sandbox step"
+msgid "running npm install in the sandbox"
+msgstr "a execução do npm install no sandbox"
+
+msgctxt "wsl sandbox step"
+msgid "stopping the processes in the sandbox"
+msgstr "a interrupção dos processos no sandbox"
+
+msgctxt "wsl sandbox step"
+msgid "testing the sandbox helper"
+msgstr "o teste do auxiliar do sandbox"

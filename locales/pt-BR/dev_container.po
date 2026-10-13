@@ -1,0 +1,61 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Confirm Selections"
+msgstr "Confirmar seleções"
+
+msgid "Create Dev Container"
+msgstr "Criar Dev Container"
+
+msgid "Error Creating Dev Container Definition"
+msgstr "Erro ao criar a definição do Dev Container"
+
+msgid "Error Retrieving Templates"
+msgstr "Erro ao obter os modelos"
+
+msgid "Go Back"
+msgstr "Voltar"
+
+msgid "Multiple containers match this project's dev container labels ({ids}). Zed can't decide which to connect to. Stop and remove the stale one(s) with `docker stop <id>` and `docker rm <id>`, then try again."
+msgstr "Vários contêineres correspondem aos rótulos de dev container deste projeto ({ids}). O ForgeKairos não consegue decidir a qual se conectar. Pare e remova os obsoletos com `docker stop <id>` e `docker rm <id>` e tente novamente."
+
+msgid "Overwrite"
+msgstr "Sobrescrever"
+
+msgid "Overwrite Existing Configuration?"
+msgstr "Sobrescrever configuração existente?"
+
+msgid "Querying features..."
+msgstr "Consultando recursos..."
+
+msgid "Querying template registry..."
+msgstr "Consultando registro de modelos..."
+
+msgid "Search for Dev Container Templates"
+msgstr "Pesquisar modelos de Dev Container"
+
+msgid "Select Feature"
+msgstr "Selecionar recurso"
+
+msgid "Select a template"
+msgstr "Selecionar um modelo"
+
+msgid "Select features to add"
+msgstr "Selecionar recursos a adicionar"
+
+msgid "Template Option: "
+msgstr "Opção de modelo: "
+
+msgctxt "dev container wizard"
+msgid "Continue"
+msgstr "Continuar"

@@ -1103,7 +1103,7 @@ impl RunningState {
                 }).ok();
 
                 let Some(process_id) = rx.await.ok().flatten() else {
-                    bail!("No process selected with config that contains {}", PROCESS_ID_PLACEHOLDER.as_str())
+                    bail!(i18n::t!("No process selected with config that contains {}", PROCESS_ID_PLACEHOLDER.as_str()))
                 };
 
                 Self::substitute_process_id_in_config(&mut config, process_id);
@@ -1144,7 +1144,7 @@ impl RunningState {
                     }
                 };
                 let Some(mut task) = task_template.resolve_task("debug-build-task", &task_context) else {
-                    anyhow::bail!("Could not resolve task variables within a debug scenario");
+                    anyhow::bail!(i18n::t!("Could not resolve task variables within a debug scenario"));
                 };
 
                 let locator_name = if let Some(locator_name) = locator_name {
@@ -1231,7 +1231,7 @@ impl RunningState {
                     .context("Failed to wait for completed task")?;
 
                 if !exit_status.success() {
-                    anyhow::bail!("Build failed");
+                    anyhow::bail!(i18n::t!("Build failed"));
                 }
                 Some((task.resolved.clone(), locator_name, extra_config))
             } else {
@@ -1242,7 +1242,7 @@ impl RunningState {
             } else if let Some((task, locator_name, extra_config)) = build_output {
                 let locator_name =
                     locator_name.with_context(|| {
-                        format!("Could not find a valid locator for a build task and configure is invalid with error: {}", request_type.err()
+                        i18n::t!("Could not find a valid locator for a build task and configure is invalid with error: {}", request_type.err()
                             .map(|err| err.to_string())
                             .unwrap_or_default())
                     })?;

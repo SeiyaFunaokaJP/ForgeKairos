@@ -1,0 +1,84 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Buffer Diagnostics"
+msgstr "缓冲区诊断"
+
+msgid "Buffer Diagnostics - {}"
+msgstr "缓冲区诊断 - {}"
+
+msgid "Buffer Search"
+msgstr "缓冲区搜索"
+
+msgid "Copy Diagnostic"
+msgstr "复制诊断信息"
+
+msgid "Diagnostics"
+msgstr "诊断"
+
+msgid "Exclude Warnings"
+msgstr "排除警告"
+
+msgid "Expand Diagnostics"
+msgstr "展开诊断"
+
+msgid "Include Warnings"
+msgstr "包含警告"
+
+msgid "Inline Assist"
+msgstr "内联辅助"
+
+msgid "Next Diagnostic"
+msgstr "下一个诊断"
+
+msgid "No errors in workspace"
+msgstr "工作区中无错误"
+
+msgid "No errors in {file}"
+msgstr "{file} 中没有错误"
+
+msgid "No problems"
+msgstr "没有问题"
+
+msgid "No problems in workspace"
+msgstr "工作区中无问题"
+
+msgid "No problems in {file}"
+msgstr "{file} 中没有问题"
+
+msgid "Open File"
+msgstr "打开文件"
+
+msgid "Project Diagnostics"
+msgstr "项目诊断"
+
+msgid "Project diagnostics: no problems"
+msgstr "项目诊断：没有问题"
+
+msgid "Project diagnostics: {}"
+msgstr "项目诊断：{}"
+
+msgid "Refresh Diagnostics"
+msgstr "刷新诊断"
+
+msgid "Show {count} warning"
+msgid_plural "Show {count} warnings"
+msgstr[0] "显示 {count} 个警告"
+
+msgid "Stop Diagnostics Update"
+msgstr "停止诊断更新"
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "{count} 个错误"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "{count} 个警告"

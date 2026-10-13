@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Delete from Recent Tasks"
+msgstr "从最近任务中删除"
+
+msgid "Find a task, or run a command"
+msgstr "查找任务，或运行命令"
+
+msgid "Find a task, or run a command in the central pane"
+msgstr "查找任务，或在中央窗格中运行命令"
+
+msgid "Rerun"
+msgstr "重新运行"
+
+msgid "Rerun Last Task"
+msgstr "重新运行上一个任务"
+
+msgid "Rerun Without History"
+msgstr "重新运行（无历史记录）"
+
+msgid "Spawn"
+msgstr "启动"
+
+msgid "Spawn Oneshot"
+msgstr "启动一次性任务"
+
+msgid "Spawn Oneshot Without History"
+msgstr "启动一次性任务（无历史记录）"
+
+msgid "Spawn Without History"
+msgstr "启动（无历史记录）"

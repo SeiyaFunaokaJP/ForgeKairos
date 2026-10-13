@@ -1,0 +1,24 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add Keybinding…"
+msgstr "添加键绑定…"
+
+msgid "Change Keybinding…"
+msgstr "更改键绑定…"
+
+msgid "Execute a command..."
+msgstr "执行命令..."
+
+msgid "Remove from Command History"
+msgstr "从命令历史记录中删除"
+
+msgid "Run"
+msgstr "运行"

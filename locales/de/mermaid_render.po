@@ -1,0 +1,3125 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "A Note has no target."
+msgstr "Eine Note hat kein Ziel."
+
+msgid "A `%%{{` directive is on the same line as a statement or a comment (Mermaid cuts out only the directive and reads the rest as a statement). Write the directive on a line of its own, or edit it as text."
+msgstr "Eine `%%{{`-Direktive steht in derselben Zeile wie eine Anweisung oder ein Kommentar (Mermaid schneidet nur die Direktive aus und liest den Rest als Anweisung). Schreiben Sie die Direktive in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "A `%%{{` inside a comment runs on to the next line ({line}). Mermaid does not read the lines in between, so the structured editor cannot handle it."
+msgstr "Ein `%%{{` in einem Kommentar reicht bis in die nächste Zeile ({line}). Mermaid liest die Zeilen dazwischen nicht, daher kann der strukturierte Editor dies nicht verarbeiten."
+
+msgid "A `block` group is not closed with `end`. Edit it as text."
+msgstr "Eine `block`-Gruppe wird nicht mit `end` geschlossen. Bearbeiten Sie das Diagramm als Text."
+
+msgid "A `section` without a name is not supported by the structured editor ({statement}). Give it a name, or edit it as text."
+msgstr "Eine `section` ohne Namen wird vom strukturierten Editor nicht unterstützt ({statement}). Geben Sie ihr einen Namen oder bearbeiten Sie das Diagramm als Text."
+
+msgid "A `section` without a name is not supported by the structured editor ({trimmed}). Give it a name, or edit it as text."
+msgstr "Eine `section` ohne Namen wird vom strukturierten Editor nicht unterstützt ({trimmed}). Geben Sie ihr einen Namen oder bearbeiten Sie das Diagramm als Text."
+
+msgid "A comment (`%%`) on a line of data `{name}` is lost in the structured editor. Move the comment to a line of its own outside the block, then open it again."
+msgstr "Ein Kommentar (`%%`) in einer Datenzeile `{name}` geht im strukturierten Editor verloren. Verschieben Sie den Kommentar in eine eigene Zeile außerhalb des Blocks und öffnen Sie das Diagramm dann erneut."
+
+msgid "A comment at the end of a frame line is lost in the structured editor ({line}). Move the comment to a line of its own, then open it again."
+msgstr "Ein Kommentar am Ende einer Frame-Zeile geht im strukturierten Editor verloren ({line}). Verschieben Sie den Kommentar in eine eigene Zeile und öffnen Sie das Diagramm dann erneut."
+
+msgid "A comment in the middle or at the end of a statement is lost in the structured editor ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "Ein Kommentar in der Mitte oder am Ende einer Anweisung geht im strukturierten Editor verloren ({trimmed}). Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "A comment inside a `curve` that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside, or edit it as text."
+msgstr "Ein Kommentar in einer `curve`, die sich über mehrere Zeilen erstreckt, geht im strukturierten Editor verloren ({trimmed}). Verschieben Sie den Kommentar nach außen oder bearbeiten Sie das Diagramm als Text."
+
+msgid "A comment inside a statement that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside the statement, or edit it as text."
+msgstr "Ein Kommentar in einer Anweisung, die sich über mehrere Zeilen erstreckt, geht im strukturierten Editor verloren ({trimmed}). Verschieben Sie den Kommentar aus der Anweisung heraus oder bearbeiten Sie das Diagramm als Text."
+
+msgid "A comment must be a single line that starts with `%%`."
+msgstr "Ein Kommentar muss eine einzelne Zeile sein, die mit `%%` beginnt."
+
+msgid "A date cannot be written into `{other}` of `dateFormat`"
+msgstr "In `{other}` von `dateFormat` kann kein Datum geschrieben werden"
+
+msgid "A deactivate has no target."
+msgstr "Ein deactivate hat kein Ziel."
+
+msgid "A field of 0 bits cannot be written ({statement})."
+msgstr "Ein Feld mit 0 Bits kann nicht geschrieben werden ({statement})."
+
+msgid "A frame whose name contains %% cannot be handled by the structured editor ({line})."
+msgstr "Ein Frame, dessen Name %% enthält, kann vom strukturierten Editor nicht verarbeitet werden ({line})."
+
+msgid "A group without an ID cannot have a label or a width. Give it an ID."
+msgstr "Eine Gruppe ohne ID kann keine Beschriftung und keine Breite haben. Geben Sie ihr eine ID."
+
+msgid "A line of the Sankey diagram has a fourth column ({}). Write only the three columns `source,target,value`."
+msgstr "Eine Zeile des Sankey-Diagramms hat eine vierte Spalte ({}). Schreiben Sie nur die drei Spalten `source,target,value`."
+
+msgid "A line that contains `end note` cannot be written in the text of a note ({trimmed}). Edit it as text."
+msgstr "Eine Zeile, die `end note` enthält, kann nicht in den Text einer Notiz geschrieben werden ({trimmed}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "A multi-line `@{{` is supported only when its first line ends with `@{{` and the lines after it are written as `key: value`."
+msgstr "Ein mehrzeiliges `@{{` wird nur unterstützt, wenn seine erste Zeile mit `@{{` endet und die folgenden Zeilen als `key: value` geschrieben sind."
+
+msgid "A node label cannot contain line breaks."
+msgstr "Eine Knotenbeschriftung darf keine Zeilenumbrüche enthalten."
+
+msgid "A node name cannot contain line breaks."
+msgstr "Ein Knotenname darf keine Zeilenumbrüche enthalten."
+
+msgid "A space is needed after `:` ({trimmed})."
+msgstr "Nach `:` ist ein Leerzeichen erforderlich ({trimmed})."
+
+msgid "A statement follows `%%{{…}}%%` on the same line (line {}). Put the directive on its own line, then open it."
+msgstr "Auf `%%{{…}}%%` folgt in derselben Zeile eine Anweisung (Zeile {}). Schreiben Sie die Direktive in eine eigene Zeile und öffnen Sie das Diagramm dann."
+
+msgid "A statement follows `%%{{…}}%%` on the same line ({}). Put the directive and the statement on separate lines, then open the editor."
+msgstr "Auf `%%{{…}}%%` folgt in derselben Zeile eine Anweisung ({}). Schreiben Sie die Direktive und die Anweisung in getrennte Zeilen und öffnen Sie dann den Editor."
+
+msgid "A {what} has an empty ID."
+msgstr "Ein Element vom Typ {what} hat eine leere ID."
+
+msgid "Aggregation (left is whole)"
+msgstr "Aggregation (links ist das Ganze)"
+
+msgid "Aggregation (right is whole)"
+msgstr "Aggregation (rechts ist das Ganze)"
+
+msgid "Alternative (alt)"
+msgstr "Alternative (alt)"
+
+msgid "An `accTitle` after `title` becomes the diagram's title, so `title` is not used."
+msgstr "Ein `accTitle` nach `title` wird zum Titel des Diagramms, daher wird `title` nicht verwendet."
+
+msgid "An activate has no target."
+msgstr "Ein activate hat kein Ziel."
+
+msgid "An arrow has no receiver."
+msgstr "Ein Pfeil hat keinen Empfänger."
+
+msgid "An arrow has no sender."
+msgstr "Ein Pfeil hat keinen Absender."
+
+msgid "An empty `\"\"` after `-->` is not supported by the structured editor. Remove it, or edit it as text."
+msgstr "Ein leeres `\"\"` nach `-->` wird vom strukturierten Editor nicht unterstützt. Entfernen Sie es oder bearbeiten Sie das Diagramm als Text."
+
+msgid "An empty label `[\"\"]` is not supported by the structured editor ({line}). Write a label or remove `[\"\"]`, then open it again."
+msgstr "Eine leere Beschriftung `[\"\"]` wird vom strukturierten Editor nicht unterstützt ({line}). Schreiben Sie eine Beschriftung oder entfernen Sie `[\"\"]` und öffnen Sie das Diagramm dann erneut."
+
+msgid "An item outside any group is indented. Use “Move into the Group Above” to put it into a group."
+msgstr "Ein Element außerhalb jeder Gruppe ist eingerückt. Verwenden Sie „In die Gruppe darüber verschieben“, um es in eine Gruppe zu verschieben."
+
+msgid "Arrow"
+msgstr "Pfeil"
+
+msgid "Association (line only)"
+msgstr "Assoziation (nur Linie)"
+
+msgid "Association (pointing left)"
+msgstr "Assoziation (nach links zeigend)"
+
+msgid "Association (pointing right)"
+msgstr "Assoziation (nach rechts zeigend)"
+
+msgid "At the same time (and)"
+msgstr "Gleichzeitig (and)"
+
+msgid "Automation (pcr)"
+msgstr "Automatisierung (pcr)"
+
+msgid "Background (rect)"
+msgstr "Hintergrund (rect)"
+
+msgid "Bang )) (("
+msgstr "Knall )) (("
+
+msgid "Because of how `%%{{…}}%%` or similar is written, what the structured editor reads does not match the diagram Mermaid draws. Edit it as text."
+msgstr "Aufgrund der Schreibweise von `%%{{…}}%%` o. Ä. stimmt das, was der strukturierte Editor liest, nicht mit dem Diagramm überein, das Mermaid zeichnet. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Both inline data and a data reference are written ({line}). Keep only one, then open it again."
+msgstr "Sowohl Inline-Daten als auch eine Datenreferenz sind angegeben ({line}). Behalten Sie nur eines davon und öffnen Sie das Diagramm dann erneut."
+
+msgid "Bottom to top (BT)"
+msgstr "Von unten nach oben (BT)"
+
+msgid "Box (participant)"
+msgstr "Kasten (participant)"
+
+msgid "Branch `{name}` is referenced by operation {list}. Delete it first, or point it at another branch."
+msgid_plural "Branch `{name}` is referenced by operations {list}. Delete them first, or point them at another branch."
+msgstr[0] "Der Branch `{name}` wird von Operation {list} referenziert. Löschen Sie sie zuerst oder richten Sie sie auf einen anderen Branch aus."
+msgstr[1] "Der Branch `{name}` wird von den Operationen {list} referenziert. Löschen Sie sie zuerst oder richten Sie sie auf einen anderen Branch aus."
+
+msgid "Break (break)"
+msgstr "Abbruch (break)"
+
+msgid "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated."
+msgstr "{what} kann nicht gelöscht werden, da die Daten der Aufgaben, die darauf verweisen, nicht berechnet werden können."
+
+msgid "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated. The diagram cannot be drawn with its current content ({error}). Fix the fields outlined in red first."
+msgstr "{what} kann nicht gelöscht werden, da die Daten der Aufgaben, die darauf verweisen, nicht berechnet werden können. Das Diagramm kann mit seinem aktuellen Inhalt nicht gezeichnet werden ({error}). Korrigieren Sie zuerst die rot umrandeten Felder."
+
+msgid "Cannot delete {what}."
+msgstr "{what} kann nicht gelöscht werden."
+
+msgid "Cannot delete {what}: the end of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+msgstr "{what} kann nicht gelöscht werden: Das Ende der Aufgabe `{task}`, die darauf verweist, würde sich ändern. Schreiben Sie zuerst `after` / `until` von `{task}` als Datum um."
+
+msgid "Cannot delete {what}: the end of task `{}` would have to be written as a date, which is not possible ({error})."
+msgstr "{what} kann nicht gelöscht werden: Das Ende der Aufgabe `{}` müsste als Datum geschrieben werden, was nicht möglich ist ({error})."
+
+msgid "Cannot delete {what}: the start of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+msgstr "{what} kann nicht gelöscht werden: Der Beginn der Aufgabe `{task}`, die darauf verweist, würde sich ändern. Schreiben Sie zuerst `after` / `until` von `{task}` als Datum um."
+
+msgid "Cannot delete {what}: the start of task `{}` would have to be written as a date, which is not possible ({error})."
+msgstr "{what} kann nicht gelöscht werden: Der Beginn der Aufgabe `{}` müsste als Datum geschrieben werden, was nicht möglich ist ({error})."
+
+msgid "Central connections written with `()` are not supported by the structured editor. Edit it as text."
+msgstr "Mit `()` geschriebene zentrale Verbindungen werden vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Choice (option)"
+msgstr "Auswahlmöglichkeit (option)"
+
+msgid "Choice <<choice>>"
+msgstr "Verzweigung <<choice>>"
+
+msgid "Choose the commit to cherry-pick."
+msgstr "Wählen Sie den Commit für den Cherry-Pick aus."
+
+msgid "Circle (( ))"
+msgstr "Kreis (( ))"
+
+msgid "Circle ((point))"
+msgstr "Kreis ((Punkt))"
+
+msgid "Circle end"
+msgstr "Kreisende"
+
+msgid "Close a one-line `namespace` with `}}` on the same line ({statement}). Split it into several lines, or edit it as text."
+msgstr "Schließen Sie einen einzeiligen `namespace` mit `}}` in derselben Zeile ({statement}). Teilen Sie ihn auf mehrere Zeilen auf oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Close the arrow block in `{line}` with `]>`."
+msgstr "Schließen Sie den Pfeilblock in `{line}` mit `]>`."
+
+msgid "Close the arrow direction in `{line}` with `)`."
+msgstr "Schließen Sie die Pfeilrichtung in `{line}` mit `)`."
+
+msgid "Cloud"
+msgstr "Cloud"
+
+msgid "Cloud ) ("
+msgstr "Wolke ) ("
+
+msgid "Command (cmd)"
+msgstr "Befehl (cmd)"
+
+msgid "Comments at the end of a statement (from `#` or `%%` onward) would be lost in the structured editor ({}). Move the comment to its own line, or enclose values that contain `#` in `\"`."
+msgstr "Kommentare am Ende einer Anweisung (ab `#` oder `%%`) würden im strukturierten Editor verloren gehen ({}). Verschieben Sie den Kommentar in eine eigene Zeile oder setzen Sie Werte, die `#` enthalten, in `\"`."
+
+msgid "Comments inside an attribute block would be lost in the structured editor ({statement}). Move the comment out of the block, or edit it as text."
+msgstr "Kommentare in einem Attributblock würden im strukturierten Editor verloren gehen ({statement}). Verschieben Sie den Kommentar aus dem Block heraus oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Commit `{id}` is referenced by the cherry-pick at operation {list}. Delete it first."
+msgid_plural "Commit `{id}` is referenced by the cherry-picks at operations {list}. Delete them first."
+msgstr[0] "Der Commit `{id}` wird vom Cherry-Pick bei Operation {list} referenziert. Löschen Sie diesen zuerst."
+msgstr[1] "Der Commit `{id}` wird von den Cherry-Picks bei den Operationen {list} referenziert. Löschen Sie diese zuerst."
+
+msgid "Component diagram"
+msgstr "Komponentendiagramm"
+
+msgid "Composite states are nested too deeply. Edit it as text."
+msgstr "Zusammengesetzte Zustände sind zu tief verschachtelt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Composition (left is whole)"
+msgstr "Komposition (links ist das Ganze)"
+
+msgid "Composition (right is whole)"
+msgstr "Komposition (rechts ist das Ganze)"
+
+msgid "Container diagram"
+msgstr "Containerdiagramm"
+
+msgid "Contains (contains)"
+msgstr "Enthält (contains)"
+
+msgid "Context diagram"
+msgstr "Kontextdiagramm"
+
+msgid "Copies (copies)"
+msgstr "Kopiert (copies)"
+
+msgid "Could not determine which item the end-of-line comment ({comment}) belongs to. Move the comment to its own line, or edit it as text."
+msgstr "Es konnte nicht ermittelt werden, zu welchem Element der Zeilenendkommentar ({comment}) gehört. Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Could not find the details of participant `{model_id}`."
+msgstr "Die Details des Teilnehmers `{model_id}` wurden nicht gefunden."
+
+msgid "Could not find the entity on the left side of a relationship."
+msgstr "Die Entität auf der linken Seite einer Beziehung wurde nicht gefunden."
+
+msgid "Could not find the entity on the right side of a relationship."
+msgstr "Die Entität auf der rechten Seite einer Beziehung wurde nicht gefunden."
+
+msgid "Could not read `{other}` as a requirement field."
+msgstr "`{other}` konnte nicht als Anforderungsfeld gelesen werden."
+
+msgid "Could not read `{other}` as an element field."
+msgstr "`{other}` konnte nicht als Elementfeld gelesen werden."
+
+msgid "Could not read `{rest}` after the `)` of `{statement}`."
+msgstr "`{rest}` nach der `)` von `{statement}` konnte nicht gelesen werden."
+
+msgid "Could not read `{rest}` after the `class` statement ({statement})."
+msgstr "`{rest}` nach der `class`-Anweisung konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read `{rest}` after the relation ({statement})."
+msgstr "`{rest}` nach der Beziehung konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read `{statement}` as a C4 diagram statement. Edit it as text."
+msgstr "`{statement}` konnte nicht als Anweisung eines C4-Diagramms gelesen werden. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Could not read `{statement}` as a class assignment."
+msgstr "`{statement}` konnte nicht als Klassenzuweisung gelesen werden."
+
+msgid "Could not read `{statement}` as a relationship."
+msgstr "`{statement}` konnte nicht als Beziehung gelesen werden."
+
+msgid "Could not read `{statement}` as a requirement diagram statement. Edit it as text."
+msgstr "`{statement}` konnte nicht als Anweisung eines Anforderungsdiagramms gelesen werden. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Could not read `{statement}` as an item of a block (`{opening}`)."
+msgstr "`{statement}` konnte nicht als Element eines Blocks gelesen werden (`{opening}`)."
+
+msgid "Could not read `{statement}`. A class diagram statement is one of `class A`, `A : member`, `A --> B`, `<<annotation>> A` and `note for A \"…\"`."
+msgstr "`{statement}` konnte nicht gelesen werden. Eine Anweisung eines Klassendiagramms ist eine von `class A`, `A : member`, `A --> B`, `<<annotation>> A` und `note for A \"…\"`."
+
+msgid "Could not read `{trailing}` after the `\"` of `{input}`."
+msgstr "`{trailing}` nach dem `\"` von `{input}` konnte nicht gelesen werden."
+
+msgid "Could not read `{value}` of `{name}` ({line}). {number_rule}"
+msgstr "`{value}` von `{name}` konnte nicht gelesen werden ({line}). {number_rule}"
+
+msgid "Could not read `{}` after `<<annotation>> ClassName` ({statement})."
+msgstr "`{}` nach `<<annotation>> ClassName` konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read `{}` after `]` ({statement})."
+msgstr "`{}` nach `]` konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read `{}` after axis `{id}` ({line})."
+msgstr "`{}` nach der Achse `{id}` konnte nicht gelesen werden ({line})."
+
+msgid "Could not read `{}` after the note ({statement})."
+msgstr "`{}` nach der Notiz konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read `{}` after the quotes ({statement})."
+msgstr "`{}` nach den Anführungszeichen konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read `{}` after the range ({statement})."
+msgstr "`{}` nach dem Bereich konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read `{}` as a risk."
+msgstr "`{}` konnte nicht als Risiko gelesen werden."
+
+msgid "Could not read `{}` as a verification method."
+msgstr "`{}` konnte nicht als Verifizierungsmethode gelesen werden."
+
+msgid "Could not read `{}` in `{statement}`."
+msgstr "`{}` in `{statement}` konnte nicht gelesen werden."
+
+msgid "Could not read `{}` the way Mermaid does. Edit it as text."
+msgstr "`{}` konnte nicht so gelesen werden, wie Mermaid es tut. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Could not read both ends of `{statement}`."
+msgstr "Die beiden Enden von `{statement}` konnten nicht gelesen werden."
+
+msgid "Could not read both ends of `{}`."
+msgstr "Die beiden Enden von `{}` konnten nicht gelesen werden."
+
+msgid "Could not read the ID of an edge end ({statement})."
+msgstr "Die ID eines Kantenendes konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the ID of the junction ({statement})."
+msgstr "Die ID der Verbindungsstelle konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the ID of the service ({statement})."
+msgstr "Die ID des Dienstes konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the alias of `{text}` (write the alias as the first argument, without `$…=`)."
+msgstr "Der Alias von `{text}` konnte nicht gelesen werden (schreiben Sie den Alias als erstes Argument, ohne `$…=`)."
+
+msgid "Could not read the axis ID ({line})."
+msgstr "Die Achsen-ID konnte nicht gelesen werden ({line})."
+
+msgid "Could not read the class name ({statement})."
+msgstr "Der Klassenname konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the class name `{keyword}` applies to ({statement}). Names enclosed in `` ` `` are not supported by the structured editor. Edit it as text."
+msgstr "Der Klassenname, auf den sich `{keyword}` bezieht, konnte nicht gelesen werden ({statement}). In `` ` `` eingeschlossene Namen werden vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Could not read the curve ID ({line})."
+msgstr "Die Kurven-ID konnte nicht gelesen werden ({line})."
+
+msgid "Could not read the date and time"
+msgstr "Datum und Uhrzeit konnten nicht gelesen werden"
+
+msgid "Could not read the end `{end}` ({statement})."
+msgstr "Das Ende `{end}` konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the group ID ({statement})."
+msgstr "Die Gruppen-ID konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the group ID after `in` ({statement})."
+msgstr "Die Gruppen-ID nach `in` konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the one-line `namespace` ({statement})."
+msgstr "Der einzeilige `namespace` konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the position of a Note."
+msgstr "Die Position einer Note konnte nicht gelesen werden."
+
+msgid "Could not read the range `{min} --> {max}` as numbers ({statement})."
+msgstr "Der Bereich `{min} --> {max}` konnte nicht als Zahlen gelesen werden ({statement})."
+
+msgid "Could not read the start `{text}` ({statement})."
+msgstr "Der Beginn `{text}` konnte nicht gelesen werden ({statement})."
+
+msgid "Could not read the target of the style assignment ({text})."
+msgstr "Das Ziel der Stilzuweisung konnte nicht gelesen werden ({text})."
+
+msgid "Could not read the targets `{}` of `{keyword}`. Write IDs made of ASCII letters, digits, `_` and `-`, separated by spaces."
+msgstr "Die Ziele `{}` von `{keyword}` konnten nicht gelesen werden. Schreiben Sie IDs aus ASCII-Buchstaben, Ziffern, `_` und `-`, durch Leerzeichen getrennt."
+
+msgid "Could not read the task fields `{}` ({statement}). Of `tags, ID, start, end`, write 1 to 3 fields, not counting the tags."
+msgstr "Die Aufgabenfelder `{}` konnten nicht gelesen werden ({statement}). Schreiben Sie von `tags, ID, start, end` 1 bis 3 Felder, die Tags nicht mitgezählt."
+
+msgid "Could not read the value `{entry}` of curve `{curve}` ({line}). {number_rule}"
+msgstr "Der Wert `{entry}` der Kurve `{curve}` konnte nicht gelesen werden ({line}). {number_rule}"
+
+msgid "Could not read the x-axis ticks ({statement})."
+msgstr "Die Teilstriche der X-Achse konnten nicht gelesen werden ({statement})."
+
+msgid "Could not read the y-axis range ({statement}). Write it as `0 --> 100`."
+msgstr "Der Bereich der Y-Achse konnte nicht gelesen werden ({statement}). Schreiben Sie ihn als `0 --> 100`."
+
+msgid "Could not read this as a Gantt chart line ({statement}). Write it as `task name :start, end`."
+msgstr "Dies konnte nicht als Zeile eines Gantt-Diagramms gelesen werden ({statement}). Schreiben Sie sie als `task name :start, end`."
+
+msgid "Could not read this as a kanban node ({node_part}). Edit it as text."
+msgstr "Dies konnte nicht als Kanban-Knoten gelesen werden ({node_part}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Could not read this as a radar chart statement ({trimmed}). Edit it as text."
+msgstr "Dies konnte nicht als Anweisung eines Radardiagramms gelesen werden ({trimmed}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Could not read this as a style assignment ({text})."
+msgstr "Dies konnte nicht als Stilzuweisung gelesen werden ({text})."
+
+msgid "Could not read this as an XY chart statement ({statement}). Edit it as text."
+msgstr "Dies konnte nicht als Anweisung eines XY-Diagramms gelesen werden ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Cross end"
+msgstr "Kreuzende"
+
+msgid "Curve `{id}` mixes values with and without axis names ({line})."
+msgstr "Die Kurve `{id}` mischt Werte mit und ohne Achsennamen ({line})."
+
+msgid "Curve `{}` has a value for `{axis}`, but there is no such axis ({line}). Mermaid does not draw this value, so remove it or add the axis, then open it again."
+msgstr "Die Kurve `{}` hat einen Wert für `{axis}`, aber diese Achse gibt es nicht ({line}). Mermaid zeichnet diesen Wert nicht. Entfernen Sie ihn oder fügen Sie die Achse hinzu und öffnen Sie das Diagramm dann erneut."
+
+msgid "Curve `{}` has no value for axis `{}` ({line})."
+msgstr "Die Kurve `{}` hat keinen Wert für die Achse `{}` ({line})."
+
+msgid "Curve `{}` has no values. Write at least one value (Mermaid does not accept an empty curve)."
+msgstr "Die Kurve `{}` hat keine Werte. Schreiben Sie mindestens einen Wert (Mermaid akzeptiert keine leere Kurve)."
+
+msgid "Curve `{}` has two values for axis `{axis}` ({line}). Mermaid draws only the first one, so keep one, then open it again."
+msgstr "Die Kurve `{}` hat zwei Werte für die Achse `{axis}` ({line}). Mermaid zeichnet nur den ersten. Behalten Sie einen davon und öffnen Sie das Diagramm dann erneut."
+
+msgid "Curve `{}` writes its values with axis names, but there are no axes."
+msgstr "Die Kurve `{}` schreibt ihre Werte mit Achsennamen, aber es gibt keine Achsen."
+
+msgid "Curve `{}` writes its values with axis names, so every axis needs a value."
+msgstr "Die Kurve `{}` schreibt ihre Werte mit Achsennamen, daher benötigt jede Achse einen Wert."
+
+msgid "Curve `{}`: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value)."
+msgstr "Kurve `{}`: Wert {} ist leer. Werte in der Mitte dürfen nicht leer sein (leere Zellen am Ende gelten als kein Wert)."
+
+msgid "Cylinder [( )]"
+msgstr "Zylinder [( )]"
+
+msgid "Dashed (line only)"
+msgstr "Gestrichelt (nur Linie)"
+
+msgid "Data `{name}` cannot be handled by the structured editor. Start it with the line `data {name} {{` and end it with a line that is only `}}` at the start (Mermaid does not accept a one-line block)."
+msgstr "Die Daten `{name}` können vom strukturierten Editor nicht verarbeitet werden. Beginnen Sie sie mit der Zeile `data {name} {{` und beenden Sie sie mit einer Zeile, die nur `}}` am Anfang enthält (Mermaid akzeptiert keinen einzeiligen Block)."
+
+msgid "Data `{name}` has no contents."
+msgstr "Die Daten `{name}` haben keinen Inhalt."
+
+msgid "Database"
+msgstr "Datenbank"
+
+msgid "Database [(store)]"
+msgstr "Datenbank [(Speicher)]"
+
+msgid "Dependency (pointing left)"
+msgstr "Abhängigkeit (nach links zeigend)"
+
+msgid "Dependency (pointing right)"
+msgstr "Abhängigkeit (nach rechts zeigend)"
+
+msgid "Deployment diagram"
+msgstr "Verteilungsdiagramm"
+
+msgid "Derives (derives)"
+msgstr "Leitet ab (derives)"
+
+msgid "Diagrams that use edge IDs (`{target}@`) are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "Diagramme, die Kanten-IDs verwenden (`{target}@`), werden vom strukturierten Editor nicht unterstützt ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Diagrams where the edge ID `{id}` is the same as a node or group ID are not supported by the structured editor. Edit it as text."
+msgstr "Diagramme, in denen die Kanten-ID `{id}` mit einer Knoten- oder Gruppen-ID übereinstimmt, werden vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Diagrams with a class on an edge ({edge}) are not supported by the structured editor. Edit it as text."
+msgstr "Diagramme mit einer Klasse an einer Kante ({edge}) werden vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Diagrams with a duplicate edge ID `{id}` are not supported by the structured editor. Edit it as text."
+msgstr "Diagramme mit einer doppelten Kanten-ID `{id}` werden vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Diamond { }"
+msgstr "Raute { }"
+
+msgid "Disk"
+msgstr "Datenträger"
+
+msgid "Dotted arrow"
+msgstr "Gepunkteter Pfeil"
+
+msgid "Dotted arrow (reply)"
+msgstr "Gepunkteter Pfeil (Antwort)"
+
+msgid "Dotted async"
+msgstr "Gepunktet asynchron"
+
+msgid "Dotted bidirectional"
+msgstr "Gepunktet bidirektional"
+
+msgid "Dotted cross"
+msgstr "Gepunktetes Kreuz"
+
+msgid "Dotted line"
+msgstr "Gepunktete Linie"
+
+msgid "Double Circle ((( )))"
+msgstr "Doppelkreis ((( )))"
+
+msgid "Double circle (((end)))"
+msgstr "Doppelkreis (((Ende)))"
+
+msgid "Dynamic diagram"
+msgstr "Dynamisches Diagramm"
+
+msgid "Ellipse (-ellipse-)"
+msgstr "Ellipse (-Ellipse-)"
+
+msgid "Enclose the HTML attributes in `{text}` in `'` (Mermaid rewrites `\"` to `'`, which changes where the values are separated)."
+msgstr "Setzen Sie die HTML-Attribute in `{text}` in `'` (Mermaid schreibt `\"` in `'` um, wodurch sich ändert, wo die Werte getrennt werden)."
+
+msgid "Enclose the label in `{line}` in `\"` (labels in a block diagram need quotes)."
+msgstr "Setzen Sie die Beschriftung in `{line}` in `\"` (Beschriftungen in einem Blockdiagramm benötigen Anführungszeichen)."
+
+msgid "Enter the end of task `{}` (a date or a duration such as `5d`)."
+msgstr "Geben Sie das Ende der Aufgabe `{}` ein (ein Datum oder eine Dauer wie `5d`)."
+
+msgid "Enter the start date of task `{}`."
+msgstr "Geben Sie das Startdatum der Aufgabe `{}` ein."
+
+msgid "Entity `{name}` is not defined."
+msgstr "Die Entität `{name}` ist nicht definiert."
+
+msgid "Entity `{}` is defined twice."
+msgstr "Die Entität `{}` ist doppelt definiert."
+
+msgid "Event (evt)"
+msgstr "Ereignis (evt)"
+
+msgid "Every section after the first needs a name (without one, it merges with the section above)."
+msgstr "Jeder Abschnitt nach dem ersten benötigt einen Namen (ohne Namen wird er mit dem Abschnitt darüber zusammengeführt)."
+
+msgid "Exactly one"
+msgstr "Genau eins"
+
+msgid "Flag > ]"
+msgstr "Flagge > ]"
+
+msgid "Flag >note]"
+msgstr "Flagge >Notiz]"
+
+msgid "For an `accDescr {{ … }}` closed on one line, Mermaid reads up to the next `}}` line as the description ({trimmed}). Split it over several lines, or edit it as text."
+msgstr "Bei einem in einer Zeile geschlossenen `accDescr {{ … }}` liest Mermaid bis zur nächsten `}}`-Zeile als Beschreibung ({trimmed}). Teilen Sie es auf mehrere Zeilen auf oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Foreign key (FK)"
+msgstr "Fremdschlüssel (FK)"
+
+msgid "Fork <<fork>>"
+msgstr "Gabelung <<fork>>"
+
+msgid "Frame `{}` has both inline data and a data reference. Keep only one."
+msgstr "Der Frame `{}` hat sowohl Inline-Daten als auch eine Datenreferenz. Behalten Sie nur eines davon."
+
+msgid "Frame `{}` refers to the data `{reference}`, which does not exist."
+msgstr "Der Frame `{}` verweist auf die Daten `{reference}`, die nicht vorhanden sind."
+
+msgid "Give the point two coordinates, `[x, y]` (Mermaid skips any from the third on)."
+msgstr "Geben Sie dem Punkt zwei Koordinaten, `[x, y]` (Mermaid überspringt alle ab der dritten)."
+
+msgid "Hexagon {{ }}"
+msgstr "Sechseck {{ }}"
+
+msgid "Hexagon {{{{prepare}}}}"
+msgstr "Sechseck {{{{Vorbereitung}}}}"
+
+msgid "High"
+msgstr "Hoch"
+
+msgid "IDs referred to by `after` / `until` can only contain ASCII letters, digits, `_` and `-` (`{reference}` in task `{}`)."
+msgstr "Von `after` / `until` referenzierte IDs dürfen nur ASCII-Buchstaben, Ziffern, `_` und `-` enthalten (`{reference}` in der Aufgabe `{}`)."
+
+msgid "Inheritance (left is parent)"
+msgstr "Vererbung (links ist die Basisklasse)"
+
+msgid "Inheritance (right is parent)"
+msgstr "Vererbung (rechts ist die Basisklasse)"
+
+msgid "Inside the boundary `{alias}`, write `title`, `accTitle` and the like after the first element (Mermaid does not accept them otherwise)."
+msgstr "Schreiben Sie innerhalb der Grenze `{alias}` `title`, `accTitle` u. Ä. nach dem ersten Element (andernfalls akzeptiert Mermaid sie nicht)."
+
+msgid "Internet"
+msgstr "Internet"
+
+msgid "Inverted Trapezoid [\\ /]"
+msgstr "Umgekehrtes Trapez [\\ /]"
+
+msgid "Invisible (for alignment)"
+msgstr "Unsichtbar (zur Ausrichtung)"
+
+msgid "It cannot contain `%%` or line breaks, and it cannot be empty."
+msgstr "Es darf weder `%%` noch Zeilenumbrüche enthalten und nicht leer sein."
+
+msgid "It is not closed with `]` ({statement})."
+msgstr "Es ist nicht mit `]` geschlossen ({statement})."
+
+msgid "Items cannot be placed under the item `{}`, which has a value. To put items inside it, leave its value empty."
+msgstr "Unter dem Element `{}`, das einen Wert hat, können keine Elemente platziert werden. Um Elemente darin abzulegen, lassen Sie seinen Wert leer."
+
+msgid "Join <<join>>"
+msgstr "Zusammenführung <<join>>"
+
+msgid "Junction `{}` cannot have an icon or a title."
+msgstr "Die Verbindungsstelle `{}` kann kein Symbol und keinen Titel haben."
+
+msgid "Lavender"
+msgstr "Lavendel"
+
+msgid "Lean Left [\\ \\]"
+msgstr "Nach links geneigt [\\ \\]"
+
+msgid "Lean Right [/ /]"
+msgstr "Nach rechts geneigt [/ /]"
+
+msgid "Left to right (LR)"
+msgstr "Von links nach rechts (LR)"
+
+msgid "Light blue"
+msgstr "Hellblau"
+
+msgid "Light gray"
+msgstr "Hellgrau"
+
+msgid "Light green"
+msgstr "Hellgrün"
+
+msgid "Light pink"
+msgstr "Hellrosa"
+
+msgid "Light yellow"
+msgstr "Hellgelb"
+
+msgid "Line Only"
+msgstr "Nur Linie"
+
+msgid "Line only"
+msgstr "Nur Linie"
+
+msgid "Loop (loop)"
+msgstr "Schleife (loop)"
+
+msgid "Low"
+msgstr "Niedrig"
+
+msgid "Maximum (max)"
+msgstr "Maximum (max)"
+
+msgid "Medium"
+msgstr "Mittel"
+
+msgid "Mermaid and the structured editor read this diagram differently. Edit it as text."
+msgstr "Mermaid und der strukturierte Editor lesen dieses Diagramm unterschiedlich. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid cannot read `{word}` on the frame line ({line}). Names cannot contain spaces, so remove it or make it one word, then open it again."
+msgstr "Mermaid kann `{word}` in der Frame-Zeile nicht lesen ({line}). Namen dürfen keine Leerzeichen enthalten. Entfernen Sie es oder machen Sie ein Wort daraus und öffnen Sie das Diagramm dann erneut."
+
+msgid "Mermaid cannot read the `:` after the edge in `{line}`."
+msgstr "Mermaid kann den `:` nach der Kante in `{line}` nicht lesen."
+
+msgid "Mermaid cannot read the coordinate `{value}` (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
+msgstr "Mermaid kann die Koordinate `{value}` nicht lesen (0 bis 1: nur `0`, `1` oder eine Dezimalzahl, die mit `0.` beginnt)."
+
+msgid "Mermaid collapses the spaces in the unquoted `{text}` when drawing it ({statement}). Enclose it in `\"`, like `\"{text}\"`, then open it again."
+msgstr "Mermaid fasst beim Zeichnen die Leerzeichen im nicht in Anführungszeichen gesetzten `{text}` zusammen ({statement}). Setzen Sie es in `\"`, etwa `\"{text}\"`, und öffnen Sie das Diagramm dann erneut."
+
+msgid "Mermaid could not parse this diagram ({error}). Edit it as text."
+msgstr "Mermaid konnte dieses Diagramm nicht parsen ({error}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid could not read the diagram written back ({error}). Edit it as text."
+msgstr "Mermaid konnte das zurückgeschriebene Diagramm nicht lesen ({error}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid could not read this as a diagram"
+msgstr "Mermaid konnte dies nicht als Diagramm lesen"
+
+msgid "Mermaid could not read this as a diagram."
+msgstr "Mermaid konnte dies nicht als Diagramm lesen."
+
+msgid "Mermaid does not accept `{tail}` on the `treeView-beta` line. Edit it as text."
+msgstr "Mermaid akzeptiert `{tail}` in der `treeView-beta`-Zeile nicht. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid does not know the type `{type_keyword}` and only draws it as a red box ({line}). Use one of ui / pcr / cmd / evt / rmo."
+msgstr "Mermaid kennt den Typ `{type_keyword}` nicht und zeichnet ihn nur als roten Kasten ({line}). Verwenden Sie einen von ui / pcr / cmd / evt / rmo."
+
+msgid "Mermaid does not read the pair `{start_delimiter}…{end_delimiter}` in `{line}` as a shape (it is drawn as a plain box). Change it to `[ ]` or another shape, then open the editor again."
+msgstr "Mermaid liest das Paar `{start_delimiter}…{end_delimiter}` in `{line}` nicht als Form (es wird als einfacher Kasten gezeichnet). Ändern Sie es in `[ ]` oder eine andere Form und öffnen Sie den Editor dann erneut."
+
+msgid "Mermaid draws a line of only `%%` as a period, so the structured editor does not support it. Delete it or edit it as text."
+msgstr "Mermaid zeichnet eine Zeile, die nur `%%` enthält, als Zeitraum, daher wird sie vom strukturierten Editor nicht unterstützt. Löschen Sie sie oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid ignores `{}` after `\"{name}\"`, so it is not supported by the structured editor."
+msgstr "Mermaid ignoriert `{}` nach `\"{name}\"`, daher wird dies vom strukturierten Editor nicht unterstützt."
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the `axisFormat` value `{value}`. Edit it as text."
+msgstr "Mermaid ignoriert im `axisFormat`-Wert `{value}` alles ab `#` oder `;`. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the `dateFormat` value `{value}`. Edit it as text."
+msgstr "Mermaid ignoriert im `dateFormat`-Wert `{value}` alles ab `#` oder `;`. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the fields of a task ({statement}). Edit it as text."
+msgstr "Mermaid ignoriert in den Feldern einer Aufgabe alles ab `#` oder `;` ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid read this kanban board as {} nodes, but the structured editor read {}. Edit it as text."
+msgstr "Mermaid hat dieses Kanban-Board als {} Knoten gelesen, der strukturierte Editor jedoch als {}. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid read this treemap as {} items, but the structured editor read {}. Edit it as text."
+msgstr "Mermaid hat diese Treemap als {} Elemente gelesen, der strukturierte Editor jedoch als {}. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid reads `{line}` as an edge that continues from the block on the previous line. Write an edge on the same line as the blocks at both of its ends."
+msgstr "Mermaid liest `{line}` als Kante, die vom Block in der vorherigen Zeile fortgesetzt wird. Schreiben Sie eine Kante in dieselbe Zeile wie die Blöcke an ihren beiden Enden."
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a cause, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+msgstr "Mermaid liest `{rest}` nach der Direktive `%%{{…}}%%` als Ursache, aber der strukturierte Editor würde es zusammen mit dem Kommentar verschieben. Schreiben Sie die Direktive in eine eigene Zeile."
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a node, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+msgstr "Mermaid liest `{rest}` nach der Direktive `%%{{…}}%%` als Knoten, aber der strukturierte Editor würde es zusammen mit dem Kommentar verschieben. Schreiben Sie die Direktive in eine eigene Zeile."
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a statement, but the structured editor would move it along with the comments. Put the directive on a line of its own."
+msgstr "Mermaid liest `{rest}` nach der Direktive `%%{{…}}%%` als Anweisung, aber der strukturierte Editor würde es zusammen mit den Kommentaren verschieben. Schreiben Sie die Direktive in eine eigene Zeile."
+
+msgid "Mermaid reads `{tail}` on the `{keyword}` line as the text of the effect, but written back it would become a comment. Edit it as text."
+msgstr "Mermaid liest `{tail}` in der `{keyword}`-Zeile als Text der Wirkung, aber beim Zurückschreiben würde es zu einem Kommentar. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid reads `{trimmed}` as a character reference, so it cannot be kept as a comment. Edit it as text."
+msgstr "Mermaid liest `{trimmed}` als Zeichenreferenz, daher kann es nicht als Kommentar erhalten bleiben. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid reads the `\"` of `<tag attribute=\"…\">` as `'`, which changes which quotes pair up ({line}). Enclose the attribute in `'`."
+msgstr "Mermaid liest das `\"` von `<tag attribute=\"…\">` als `'`, wodurch sich ändert, welche Anführungszeichen zusammengehören ({line}). Setzen Sie das Attribut in `'`."
+
+msgid "Mermaid reads the rest of the `eventmodeling` line ({tail}) as the first frame. Move it to the next line, then open it again."
+msgstr "Mermaid liest den Rest der `eventmodeling`-Zeile ({tail}) als ersten Frame. Verschieben Sie ihn in die nächste Zeile und öffnen Sie das Diagramm dann erneut."
+
+msgid "Mermaid reads the second `space` in `{line}` as a block named `space`. The structured editor does not support it."
+msgstr "Mermaid liest das zweite `space` in `{line}` als Block namens `space`. Der strukturierte Editor unterstützt dies nicht."
+
+msgid "Mermaid removes the `;` that follows `:#…` after `style` or `classDef` before reading the line, so writing it back would change its meaning ({trimmed}). Add a space after the `:`, or edit it as text."
+msgstr "Mermaid entfernt das `;`, das nach `style` oder `classDef` auf `:#…` folgt, bevor die Zeile gelesen wird, daher würde das Zurückschreiben ihre Bedeutung ändern ({trimmed}). Fügen Sie nach dem `:` ein Leerzeichen ein oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips `{after}` after `direction {}` ({statement}). Remove it, then open it again."
+msgstr "Mermaid überspringt `{after}` nach `direction {}` ({statement}). Entfernen Sie es und öffnen Sie das Diagramm dann erneut."
+
+msgid "Mermaid skips `{tail}` after `::icon(…)` ({rest}). Delete it or edit it as text."
+msgstr "Mermaid überspringt `{tail}` nach `::icon(…)` ({rest}). Löschen Sie es oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips `{tail}` after `@{{ … }}`. Remove it or edit it as text."
+msgstr "Mermaid überspringt `{tail}` nach `@{{ … }}`. Entfernen Sie es oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips a line without a task name ({trimmed}). Give it a name, or edit it as text."
+msgstr "Mermaid überspringt eine Zeile ohne Aufgabennamen ({trimmed}). Geben Sie ihr einen Namen oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips a period from its `#` on as a comment ({trimmed}). Delete the `#`, or edit it as text."
+msgstr "Mermaid überspringt einen Zeitraum ab seinem `#` als Kommentar ({trimmed}). Löschen Sie das `#` oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips everything after a `%%` in the middle of a line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "Mermaid überspringt alles nach einem `%%` in der Mitte einer Zeile ({trimmed}). Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips everything from `#` or `;` on ({trimmed}). Remove it, or edit it as text."
+msgstr "Mermaid überspringt alles ab `#` oder `;` ({trimmed}). Entfernen Sie es oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips everything from the third `:` on ({trimmed}). Remove the `:`, or edit it as text."
+msgstr "Mermaid überspringt alles ab dem dritten `:` ({trimmed}). Entfernen Sie den `:` oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips everything in a section name from `:` on ({trimmed}). Delete the `:`, or edit it as text."
+msgstr "Mermaid überspringt in einem Abschnittsnamen alles ab `:` ({trimmed}). Löschen Sie den `:` oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid skips what follows the `;` in `{statement}`. Delete it or edit it as text."
+msgstr "Mermaid überspringt, was auf das `;` in `{statement}` folgt. Löschen Sie es oder bearbeiten Sie das Diagramm als Text."
+
+msgid "Mermaid would no longer read the comment after `{statement}` as a comment. Close the quotes (`\"` `'`), or stop using the tag attribute `=\"…\"`."
+msgstr "Mermaid würde den Kommentar nach `{statement}` nicht mehr als Kommentar lesen. Schließen Sie die Anführungszeichen (`\"` `'`) oder verwenden Sie das Tag-Attribut `=\"…\"` nicht mehr."
+
+msgid "Minimum (min)"
+msgstr "Minimum (min)"
+
+msgid "Names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "In `` ` `` eingeschlossene Namen werden vom strukturierten Editor nicht unterstützt ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "None (transparent)"
+msgstr "Keine (transparent)"
+
+msgid "Normal State"
+msgstr "Normaler Zustand"
+
+msgid "Nothing can be written after the `{{` of `{statement}`."
+msgstr "Nach dem `{{` von `{statement}` darf nichts geschrieben werden."
+
+msgid "One of the people has an empty name ({trimmed}). Remove it, or edit it as text."
+msgstr "Eine der Personen hat einen leeren Namen ({trimmed}). Entfernen Sie sie oder bearbeiten Sie das Diagramm als Text."
+
+msgid "One or more"
+msgstr "Eins oder mehr"
+
+msgid "Only boundaries can have `{{` ({statement}). Edit it as text."
+msgstr "Nur Grenzen können `{{` haben ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Only class declarations, notes and nested `namespace`s can be written inside a `namespace` ({line})."
+msgstr "Innerhalb eines `namespace` können nur Klassendeklarationen, Notizen und verschachtelte `namespace`s geschrieben werden ({line})."
+
+msgid "Operation {number} (branch): branch `{}` already exists (to switch to it, use a checkout)."
+msgstr "Operation {number} (branch): Der Branch `{}` ist bereits vorhanden (verwenden Sie zum Wechseln einen Checkout)."
+
+msgid "Operation {number} (checkout): branch `{}` has not been created yet (create it with a branch operation first)."
+msgstr "Operation {number} (checkout): Der Branch `{}` wurde noch nicht erstellt (erstellen Sie ihn zuerst mit einer branch-Operation)."
+
+msgid "Operation {number} (cherry-pick): `{parent}` is not a direct parent of `{}`."
+msgstr "Operation {number} (cherry-pick): `{parent}` ist kein direkter Vorgänger von `{}`."
+
+msgid "Operation {number} (cherry-pick): `{}` is a merge commit, so specify its parent."
+msgstr "Operation {number} (cherry-pick): `{}` ist ein Merge-Commit, geben Sie daher seinen Vorgänger an."
+
+msgid "Operation {number} (cherry-pick): `{}` is already on the current branch `{current}`."
+msgstr "Operation {number} (cherry-pick): `{}` befindet sich bereits im aktuellen Branch `{current}`."
+
+msgid "Operation {number} (cherry-pick): commit `{}` does not come before it."
+msgstr "Operation {number} (cherry-pick): Der Commit `{}` steht nicht davor."
+
+msgid "Operation {number} (cherry-pick): the current branch `{current}` has no commits yet."
+msgstr "Operation {number} (cherry-pick): Der aktuelle Branch `{current}` hat noch keine Commits."
+
+msgid "Operation {number} (commit): the ID `{id}` is used more than once."
+msgstr "Operation {number} (commit): Die ID `{id}` wird mehrfach verwendet."
+
+msgid "Operation {number} (merge): `{current}` has no commits since it branched off `{other}`, so it cannot be merged."
+msgstr "Operation {number} (merge): `{current}` hat seit der Abzweigung von `{other}` keine Commits, daher kann nicht zusammengeführt werden."
+
+msgid "Operation {number} (merge): branch `{other}` cannot be merged into itself."
+msgstr "Operation {number} (merge): Der Branch `{other}` kann nicht mit sich selbst zusammengeführt werden."
+
+msgid "Operation {number} (merge): branch `{other}` has no commits yet."
+msgstr "Operation {number} (merge): Der Branch `{other}` hat noch keine Commits."
+
+msgid "Operation {number} (merge): branch `{other}` has not been created yet."
+msgstr "Operation {number} (merge): Der Branch `{other}` wurde noch nicht erstellt."
+
+msgid "Operation {number} (merge): the ID `{id}` is already in use."
+msgstr "Operation {number} (merge): Die ID `{id}` wird bereits verwendet."
+
+msgid "Operation {number} (merge): the current branch `{current}` has no commits yet."
+msgstr "Operation {number} (merge): Der aktuelle Branch `{current}` hat noch keine Commits."
+
+msgid "Operation {number} (merge): the heads of `{current}` and `{other}` are the same commit."
+msgstr "Operation {number} (merge): Die Spitzen von `{current}` und `{other}` sind derselbe Commit."
+
+msgid "Operation {}: {problem}"
+msgstr "Operation {}: {problem}"
+
+msgid "Optional (opt)"
+msgstr "Optional (opt)"
+
+msgid "Other: {name}"
+msgstr "Sonstiges: {name}"
+
+msgid "Otherwise (else)"
+msgstr "Andernfalls (else)"
+
+msgid "Overlapping parallel (par_over)"
+msgstr "Überlappend parallel (par_over)"
+
+msgid "Parallel (par)"
+msgstr "Parallel (par)"
+
+msgid "Parallelogram (reversed) [\\output\\]"
+msgstr "Parallelogramm (umgekehrt) [\\Ausgabe\\]"
+
+msgid "Parallelogram [/input/]"
+msgstr "Parallelogramm [/Eingabe/]"
+
+msgid "Parent (u)"
+msgstr "Übergeordnet (u)"
+
+msgid "Participant `{id}` is created twice with `create`."
+msgstr "Der Teilnehmer `{id}` wird zweimal mit `create` erstellt."
+
+msgid "Participant `{id}` is destroyed twice with `destroy`."
+msgstr "Der Teilnehmer `{id}` wird zweimal mit `destroy` zerstört."
+
+msgid "Participant `{id}` is not declared."
+msgstr "Der Teilnehmer `{id}` ist nicht deklariert."
+
+msgid "Participant `{}` has a config object (`@{{ … }}`), so it cannot have an alias (as)."
+msgstr "Der Teilnehmer `{}` hat ein Konfigurationsobjekt (`@{{ … }}`), daher kann er keinen Alias (as) haben."
+
+msgid "Participant `{}` has a config object (`@{{ … }}`), so it must be a box (participant)."
+msgstr "Der Teilnehmer `{}` hat ein Konfigurationsobjekt (`@{{ … }}`), daher muss er ein Kasten (participant) sein."
+
+msgid "Participant `{}` is created with `create`, so it cannot be put in a box."
+msgstr "Der Teilnehmer `{}` wird mit `create` erstellt, daher kann er nicht in eine box gesetzt werden."
+
+msgid "Participant `{}` is declared twice."
+msgstr "Der Teilnehmer `{}` ist doppelt deklariert."
+
+msgid "Participant `{}` refers to a box that does not exist."
+msgstr "Der Teilnehmer `{}` verweist auf eine box, die nicht vorhanden ist."
+
+msgid "Participants in the same box must be next to each other."
+msgstr "Teilnehmer in derselben box müssen nebeneinander stehen."
+
+msgid "Periods before the first section are not drawn when there are sections. Name them as a section, or move the periods into a section below."
+msgstr "Zeiträume vor dem ersten Abschnitt werden nicht gezeichnet, wenn es Abschnitte gibt. Benennen Sie sie als Abschnitt oder verschieben Sie die Zeiträume in einen Abschnitt darunter."
+
+msgid "Point `{}` has a style `{}` that cannot be used (separate `radius: 10`, `color: #ff0000`, `stroke-color: #000` and `stroke-width: 2px` with commas)."
+msgstr "Der Punkt `{}` hat einen Stil `{}`, der nicht verwendet werden kann (trennen Sie `radius: 10`, `color: #ff0000`, `stroke-color: #000` und `stroke-width: 2px` durch Kommas)."
+
+msgid "Primary key (PK)"
+msgstr "Primärschlüssel (PK)"
+
+msgid "Read by the structured editor, this diagram would become a different packet than Mermaid reads. Edit it as text."
+msgstr "Vom strukturierten Editor gelesen, würde dieses Diagramm ein anderes Paket ergeben, als Mermaid liest. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Read by the structured editor, this diagram would differ from what Mermaid reads (for example in the order of `text`). Edit it as text."
+msgstr "Vom strukturierten Editor gelesen, würde dieses Diagramm von dem abweichen, was Mermaid liest (zum Beispiel in der Reihenfolge von `text`). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Read by the structured editor, this diagram would have different flows than Mermaid reads. Edit it as text."
+msgstr "Vom strukturierten Editor gelesen, hätte dieses Diagramm andere Abläufe, als Mermaid liest. Bearbeiten Sie das Diagramm als Text."
+
+msgid "Read model (rmo)"
+msgstr "Lesemodell (rmo)"
+
+msgid "Realization (left is abstract)"
+msgstr "Realisierung (links ist abstrakt)"
+
+msgid "Realization (right is abstract)"
+msgstr "Realisierung (rechts ist abstrakt)"
+
+msgid "Rectangle [process]"
+msgstr "Rechteck [Prozess]"
+
+msgid "Refines (refines)"
+msgstr "Verfeinert (refines)"
+
+msgid "Rhombus {{condition}}"
+msgstr "Raute {{Bedingung}}"
+
+msgid "Right to left (RL)"
+msgstr "Von rechts nach links (RL)"
+
+msgid "Risk: High"
+msgstr "Risiko: Hoch"
+
+msgid "Risk: Low"
+msgstr "Risiko: Niedrig"
+
+msgid "Risk: Medium"
+msgstr "Risiko: Mittel"
+
+msgid "Rounded ( )"
+msgstr "Abgerundet ( )"
+
+msgid "Rounded (process)"
+msgstr "Abgerundet (Prozess)"
+
+msgid "Satisfies (satisfies)"
+msgstr "Erfüllt (satisfies)"
+
+msgid "Screen (ui)"
+msgstr "Bildschirm (ui)"
+
+msgid "Series {number} has no values. Mermaid cannot draw a series without values."
+msgstr "Die Reihe {number} hat keine Werte. Mermaid kann keine Reihe ohne Werte zeichnen."
+
+msgid "Series {number}: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value)."
+msgstr "Reihe {number}: Wert {} ist leer. Werte in der Mitte dürfen nicht leer sein (leere Zellen am Ende gelten als kein Wert)."
+
+msgid "Server"
+msgstr "Server"
+
+msgid "Several statements separated by `;` are not supported by the structured editor ({trimmed}). Write one per line."
+msgstr "Mehrere durch `;` getrennte Anweisungen werden vom strukturierten Editor nicht unterstützt ({trimmed}). Schreiben Sie eine pro Zeile."
+
+msgid "Solid arrow (call)"
+msgstr "Durchgezogener Pfeil (Aufruf)"
+
+msgid "Solid async"
+msgstr "Durchgezogen asynchron"
+
+msgid "Solid bidirectional"
+msgstr "Durchgezogen bidirektional"
+
+msgid "Solid cross (failure)"
+msgstr "Durchgezogenes Kreuz (Fehler)"
+
+msgid "Solid line"
+msgstr "Durchgezogene Linie"
+
+msgid "Some names are read by Mermaid as the same node (for example after it removes HTML tags). Edit it as text."
+msgstr "Einige Namen werden von Mermaid als derselbe Knoten gelesen (zum Beispiel nach dem Entfernen von HTML-Tags). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Square [ ]"
+msgstr "Quadrat [ ]"
+
+msgid "Stadium ([ ])"
+msgstr "Stadion ([ ])"
+
+msgid "Stadium ([start])"
+msgstr "Stadion ([Start])"
+
+msgid "Start a new line after `{{` ({statement}). Mermaid cannot read a member block written on one line either."
+msgstr "Beginnen Sie nach `{{` eine neue Zeile ({statement}). Auch Mermaid kann einen in einer Zeile geschriebenen Member-Block nicht lesen."
+
+msgid "Start a new line after `{{` ({statement}). The structured editor does not support a composite state written on one line."
+msgstr "Beginnen Sie nach `{{` eine neue Zeile ({statement}). Der strukturierte Editor unterstützt keinen in einer Zeile geschriebenen zusammengesetzten Zustand."
+
+msgid "Start it with an ASCII letter or `_`, and use only ASCII letters, digits, `_` and `-` (it cannot end with `-`)."
+msgstr "Beginnen Sie mit einem ASCII-Buchstaben oder `_` und verwenden Sie nur ASCII-Buchstaben, Ziffern, `_` und `-` (am Ende darf kein `-` stehen)."
+
+msgid "Statements written after `%%{{ … }}%%` on the same line are not supported by the structured editor ({}). Move the statement to the next line, then open it again."
+msgstr "Anweisungen, die in derselben Zeile nach `%%{{ … }}%%` stehen, werden vom strukturierten Editor nicht unterstützt ({}). Verschieben Sie die Anweisung in die nächste Zeile und öffnen Sie das Diagramm dann erneut."
+
+msgid "Stick figure (actor)"
+msgstr "Strichmännchen (actor)"
+
+msgid "Style class names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "In `` ` `` eingeschlossene Stilklassennamen werden vom strukturierten Editor nicht unterstützt ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Style classes applied with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "Mit `:::` angewendete Stilklassen werden vom strukturierten Editor nicht unterstützt ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "Subroutine [[ ]]"
+msgstr "Unterprogramm [[ ]]"
+
+msgid "Subroutine [[process]]"
+msgstr "Unterprogramm [[Prozess]]"
+
+msgid "Task `{}` cannot list the people `{}` (names cannot contain `:`, `,`, `#`, `;` or line breaks, and cannot be empty)."
+msgstr "Die Aufgabe `{}` kann die Personen `{}` nicht aufführen (Namen dürfen weder `:`, `,`, `#`, `;` noch Zeilenumbrüche enthalten und nicht leer sein)."
+
+msgid "Task `{}` has a score of {}. Use a score from 1 to 5."
+msgstr "Die Aufgabe `{}` hat die Bewertung {}. Verwenden Sie eine Bewertung von 1 bis 5."
+
+msgid "That operation no longer exists."
+msgstr "Diese Operation ist nicht mehr vorhanden."
+
+msgid "The ID `{id}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty; tag names such as `done` cannot be used either)."
+msgstr "Die ID `{id}` kann nicht verwendet werden (`,`, `#`, `;` und Zeilenumbrüche sind nicht zulässig, und sie darf nicht leer sein; Tag-Namen wie `done` können ebenfalls nicht verwendet werden)."
+
+msgid "The ID `{id}` cannot be used (letters, digits, `_` and `-`, starting and ending with a letter, digit or `_`. IDs that start with a capital L, R, T or B, IDs that start with `title`, and `group`, `service`, `junction`, `in`, `align`, `row`, `column`, `accTitle` and `accDescr` are not allowed)."
+msgstr "Die ID `{id}` kann nicht verwendet werden (Buchstaben, Ziffern, `_` und `-`, beginnend und endend mit einem Buchstaben, einer Ziffer oder `_`. IDs, die mit einem großen L, R, T oder B beginnen, IDs, die mit `title` beginnen, sowie `group`, `service`, `junction`, `in`, `align`, `row`, `column`, `accTitle` und `accDescr` sind nicht zulässig)."
+
+msgid "The ID `{id}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "Die ID `{id}` kann nicht verwendet werden (kein `\"`, `%%` und keine Zeilenumbrüche)."
+
+msgid "The ID `{id}` cannot be used (spaces and the symbols ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` are not allowed, nor are end / space / columns / class / classDef / style / block / root)."
+msgstr "Die ID `{id}` kann nicht verwendet werden (Leerzeichen und die Symbole ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` sind nicht zulässig, ebenso wenig end / space / columns / class / classDef / style / block / root)."
+
+msgid "The ID `{id}` is not supported by the structured editor ({statement}). `,`, `#`, `;` and line breaks cannot be used, and tag names such as `done` cannot be IDs."
+msgstr "Die ID `{id}` wird vom strukturierten Editor nicht unterstützt ({statement}). `,`, `#`, `;` und Zeilenumbrüche können nicht verwendet werden, und Tag-Namen wie `done` können keine IDs sein."
+
+msgid "The ID `{id}` is used by two tasks. Mermaid uses only the later one as the target of `after`, so change one of the IDs."
+msgstr "Die ID `{id}` wird von zwei Aufgaben verwendet. Mermaid verwendet nur die spätere als Ziel von `after`. Ändern Sie daher eine der IDs."
+
+msgid "The ID `{id}` is used twice. Groups, services and junctions all need different IDs."
+msgstr "Die ID `{id}` wird zweimal verwendet. Gruppen, Dienste und Verbindungsstellen benötigen alle unterschiedliche IDs."
+
+msgid "The ID `{id}` is used twice. Mermaid does not place the second one, so give it a different ID."
+msgstr "Die ID `{id}` wird zweimal verwendet. Mermaid platziert die zweite nicht. Geben Sie ihr daher eine andere ID."
+
+msgid "The ID `{reference}` that task `{}` refers to does not exist."
+msgstr "Die ID `{reference}`, auf die die Aufgabe `{}` verweist, ist nicht vorhanden."
+
+msgid "The ID `{}` is used in two places. Columns and cards all need different IDs."
+msgstr "Die ID `{}` wird an zwei Stellen verwendet. Spalten und Karten benötigen alle unterschiedliche IDs."
+
+msgid "The Markdown label in `{line}` is not closed (a ` is needed before the `\"`)."
+msgstr "Die Markdown-Beschriftung in `{line}` ist nicht geschlossen (vor dem `\"` ist ein ` erforderlich)."
+
+msgid "The `\"` of `{input}` is not closed."
+msgstr "Das `\"` von `{input}` ist nicht geschlossen."
+
+msgid "The `\"` of the label in `{line}` is not closed."
+msgstr "Das `\"` der Beschriftung in `{line}` ist nicht geschlossen."
+
+msgid "The `)` of `{statement}` is missing."
+msgstr "Die `)` von `{statement}` fehlt."
+
+msgid "The `]` of `[\"display name\"]` is missing ({statement})."
+msgstr "Die `]` von `[\"display name\"]` fehlt ({statement})."
+
+msgid "The `accTitle` after `title` is used as the diagram's title. Move `accTitle` before `title`, or edit it as text."
+msgstr "Das `accTitle` nach `title` wird als Titel des Diagramms verwendet. Verschieben Sie `accTitle` vor `title` oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The `after` of task `{}` has no target."
+msgstr "Das `after` der Aufgabe `{}` hat kein Ziel."
+
+msgid "The `click` line is above task `{id}`. Mermaid does not add links to tasks written after `click`, so move task `{id}` above the `click` line."
+msgstr "Die `click`-Zeile steht über der Aufgabe `{id}`. Mermaid fügt Aufgaben, die nach `click` geschrieben sind, keine Links hinzu. Verschieben Sie daher die Aufgabe `{id}` über die `click`-Zeile."
+
+msgid "The `namespace`s are nested too deeply. Edit it as text."
+msgstr "Die `namespace`s sind zu tief verschachtelt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The `text` line is not under any set ({trimmed})."
+msgstr "Die `text`-Zeile steht unter keiner Menge ({trimmed})."
+
+msgid "The `until` of task `{}` has no target."
+msgstr "Das `until` der Aufgabe `{}` hat kein Ziel."
+
+msgid "The `x-axis` ticks are written after a series (bar / line). Mermaid places the values of the series written before them at 1, 2, 3…, so reordering them in the structured editor would change the chart. Move `x-axis` before the series, then open it again."
+msgstr "Die `x-axis`-Teilstriche sind nach einer Reihe (bar / line) geschrieben. Mermaid platziert die Werte der davor geschriebenen Reihen bei 1, 2, 3…, daher würde ein Umordnen im strukturierten Editor das Diagramm ändern. Verschieben Sie `x-axis` vor die Reihen und öffnen Sie das Diagramm dann erneut."
+
+msgid "The `{header}` line is not supported by the structured editor (leave only the heading, such as `C4Context`, on the line)."
+msgstr "Die `{header}`-Zeile wird vom strukturierten Editor nicht unterstützt (lassen Sie nur die Überschrift, etwa `C4Context`, in der Zeile)."
+
+msgid "The `{id}` that `{line}` refers to is not placed before this line. Mermaid then does not place `{id}`, so write this after the line that places the block."
+msgstr "Das `{id}`, auf das `{line}` verweist, ist nicht vor dieser Zeile platziert. Mermaid platziert `{id}` dann nicht. Schreiben Sie dies daher nach der Zeile, die den Block platziert."
+
+msgid "The `{keyword}` statement is not supported by the structured editor (line {}). Edit it as text."
+msgstr "Die `{keyword}`-Anweisung wird vom strukturierten Editor nicht unterstützt (Zeile {}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "The `{opening}` block is not closed with `}}`."
+msgstr "Der `{opening}`-Block ist nicht mit `}}` geschlossen."
+
+msgid "The `{separator}` in the description cannot be written as it is ({statement}). Write `:` as `#58;` and `;` as `#59;`, or edit it as text."
+msgstr "Das `{separator}` in der Beschreibung kann nicht unverändert geschrieben werden ({statement}). Schreiben Sie `:` als `#58;` und `;` als `#59;` oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The `{{` of a `namespace` has no matching `}}`."
+msgstr "Zum `{{` eines `namespace` gibt es kein passendes `}}`."
+
+msgid "The `{{` of the data is not closed ({line})."
+msgstr "Das `{{` der Daten ist nicht geschlossen ({line})."
+
+msgid "The `{}` block is not closed with `end`."
+msgstr "Der `{}`-Block ist nicht mit `end` geschlossen."
+
+msgid "The alias `{alias}` cannot be used (spaces, `\"` `,` `(` `)` `{{` `}}` and names starting with `$` are not allowed)."
+msgstr "Der Alias `{alias}` kann nicht verwendet werden (Leerzeichen, `\"` `,` `(` `)` `{{` `}}` und Namen, die mit `$` beginnen, sind nicht zulässig)."
+
+msgid "The alias `{alias}` is declared twice. Use a different name."
+msgstr "Der Alias `{alias}` ist doppelt deklariert. Verwenden Sie einen anderen Namen."
+
+msgid "The amount “{value}” of {source} → {target} cannot be used (only a number of 0 or more)."
+msgstr "Die Menge „{value}“ von {source} → {target} kann nicht verwendet werden (nur eine Zahl ab 0)."
+
+msgid "The arrow direction `{word}` in `{line}` cannot be read (right / left / up / down / x / y)."
+msgstr "Die Pfeilrichtung `{word}` in `{line}` kann nicht gelesen werden (right / left / up / down / x / y)."
+
+msgid "The arrow of frame `{}` points to itself."
+msgstr "Der Pfeil des Frames `{}` zeigt auf sich selbst."
+
+msgid "The attributes of entity `{}` need both a type and a name."
+msgstr "Die Attribute der Entität `{}` benötigen sowohl einen Typ als auch einen Namen."
+
+msgid "The axis ID `{}` cannot be used. {id_rule}"
+msgstr "Die Achsen-ID `{}` kann nicht verwendet werden. {id_rule}"
+
+msgid "The block `{id}` is placed twice ({line}). Mermaid ignores the second one, so merge them into one, then open the editor again."
+msgstr "Der Block `{id}` ist zweimal platziert ({line}). Mermaid ignoriert den zweiten. Führen Sie sie daher zu einem zusammen und öffnen Sie den Editor dann erneut."
+
+msgid "The block right after `space` in `{line}` cannot have a width (Mermaid cannot read it)."
+msgstr "Der Block direkt nach `space` in `{line}` kann keine Breite haben (Mermaid kann sie nicht lesen)."
+
+msgid "The boundary `{alias}` is empty. Mermaid cannot draw an empty boundary, so put at least one element in it or delete the boundary."
+msgstr "Die Grenze `{alias}` ist leer. Mermaid kann keine leere Grenze zeichnen. Fügen Sie daher mindestens ein Element hinzu oder löschen Sie die Grenze."
+
+msgid "The bracket of block `{id}` in `{line}` is not closed."
+msgstr "Die Klammer des Blocks `{id}` in `{line}` ist nicht geschlossen."
+
+msgid "The branch name `{name}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "Der Branch-Name `{name}` kann nicht verwendet werden (kein `\"`, `%%` und keine Zeilenumbrüche)."
+
+msgid "The branch name is empty."
+msgstr "Der Branch-Name ist leer."
+
+msgid "The cause `{cause}` cannot be written ({rules})."
+msgstr "Die Ursache `{cause}` kann nicht geschrieben werden ({rules})."
+
+msgid "The cause `{}` is two or more levels deeper than its parent."
+msgstr "Die Ursache `{}` liegt zwei oder mehr Ebenen tiefer als ihr übergeordnetes Element."
+
+msgid "The class `{classes}` of {what} `{}` cannot be written."
+msgstr "Die Klasse `{classes}` von {what} `{}` kann nicht geschrieben werden."
+
+msgid "The class `{class}` of the item `{}` cannot be used."
+msgstr "Die Klasse `{class}` des Elements `{}` kann nicht verwendet werden."
+
+msgid "The class name `{class_name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
+msgstr "Der Klassenname `{class_name}` kann nicht verwendet werden (nur ASCII-Buchstaben, Ziffern und `_`, und er darf nicht leer sein)."
+
+msgid "The class name `{}` cannot be used (only ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "Der Klassenname `{}` kann nicht verwendet werden (nur ASCII-Buchstaben, Ziffern und `_`, beginnend mit einem Buchstaben oder `_`)."
+
+msgid "The classDef name `{name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
+msgstr "Der classDef-Name `{name}` kann nicht verwendet werden (nur ASCII-Buchstaben, Ziffern und `_`, und er darf nicht leer sein)."
+
+msgid "The classes `{classes}` of the node `{}` cannot be written (line breaks and `%%{{` are not allowed, and they cannot be empty)."
+msgstr "Die Klassen `{classes}` des Knotens `{}` können nicht geschrieben werden (Zeilenumbrüche und `%%{{` sind nicht zulässig, und sie dürfen nicht leer sein)."
+
+msgid "The comment at the end of a statement ({comment}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "Der Kommentar am Ende einer Anweisung ({comment}) würde im strukturierten Editor verloren gehen. Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The comment at the end of the `erDiagram` line ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "Der Kommentar am Ende der `erDiagram`-Zeile ({statement}) würde im strukturierten Editor verloren gehen. Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The comment at the end of the line of {what} `{}` cannot be kept with the line written this way (use `\"` in the title in pairs)."
+msgstr "Der Kommentar am Zeilenende von {what} `{}` kann bei dieser Schreibweise der Zeile nicht erhalten bleiben (verwenden Sie `\"` im Titel paarweise)."
+
+msgid "The comment at the end of the line that closes an attribute block ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "Der Kommentar am Ende der Zeile, die einen Attributblock schließt ({statement}), würde im strukturierten Editor verloren gehen. Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The comment line ({}) inside data `{name}` is lost in the structured editor. Move it outside the block, then open it again."
+msgstr "Die Kommentarzeile ({}) in den Daten `{name}` geht im strukturierten Editor verloren. Verschieben Sie sie aus dem Block heraus und öffnen Sie das Diagramm dann erneut."
+
+msgid "The concurrency separator `--` can be written only inside a composite state (`state X {{ … }}`)."
+msgstr "Das Nebenläufigkeitstrennzeichen `--` kann nur innerhalb eines zusammengesetzten Zustands (`state X {{ … }}`) geschrieben werden."
+
+msgid "The config object (`@{{ … }}`) of participant `{id}` spans several lines, which is not supported by the structured editor. Edit it as text."
+msgstr "Das Konfigurationsobjekt (`@{{ … }}`) des Teilnehmers `{id}` erstreckt sich über mehrere Zeilen, was vom strukturierten Editor nicht unterstützt wird. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The config object of participant `{}` must be on one line and must not contain `}}`."
+msgstr "Das Konfigurationsobjekt des Teilnehmers `{}` muss in einer Zeile stehen und darf kein `}}` enthalten."
+
+msgid "The contents of data `{}` must start on the {{ line and end with a line that is only }} at the start of the line (it cannot be written on one line; no %%)."
+msgstr "Der Inhalt der Daten `{}` muss in der {{-Zeile beginnen und mit einer Zeile enden, die nur }} am Zeilenanfang enthält (er kann nicht in einer Zeile geschrieben werden; kein %%)."
+
+msgid "The coordinates of the point have no `]`."
+msgstr "Den Koordinaten des Punkts fehlt die `]`."
+
+msgid "The curve ID `{}` cannot be used. {id_rule}"
+msgstr "Die Kurven-ID `{}` kann nicht verwendet werden. {id_rule}"
+
+msgid "The data `{data}` of frame `{}` cannot be written (a single line enclosed in {{ }}; no %%)."
+msgstr "Die Daten `{data}` des Frames `{}` können nicht geschrieben werden (eine einzelne Zeile in {{ }}; kein %%)."
+
+msgid "The data name `{name}` cannot be handled by the structured editor."
+msgstr "Der Datenname `{name}` kann vom strukturierten Editor nicht verarbeitet werden."
+
+msgid "The data name `{}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "Der Datenname `{}` kann nicht verwendet werden (ASCII-Buchstaben, Ziffern und `_`, beginnend mit einem Buchstaben oder `_`)."
+
+msgid "The data name `{}` is used more than once."
+msgstr "Der Datenname `{}` wird mehrfach verwendet."
+
+msgid "The data reference `[[{reference}]]` cannot be handled by the structured editor ({line})."
+msgstr "Die Datenreferenz `[[{reference}]]` kann vom strukturierten Editor nicht verarbeitet werden ({line})."
+
+msgid "The diagram contains an unsupported attribute key `{key}`. Edit it as text."
+msgstr "Das Diagramm enthält einen nicht unterstützten Attributschlüssel `{key}`. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The diagram contains an unsupported cardinality."
+msgstr "Das Diagramm enthält eine nicht unterstützte Kardinalität."
+
+msgid "The diagram contains an unsupported relationship type `{other}`."
+msgstr "Das Diagramm enthält einen nicht unterstützten Beziehungstyp `{other}`."
+
+msgid "The diagram contains an unsupported statement (type {other}). Edit it as text."
+msgstr "Das Diagramm enthält eine nicht unterstützte Anweisung (Typ {other}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "The edge `{}` → `{}` stays inside one group, so it cannot use “Group Edge”."
+msgstr "Die Kante `{}` → `{}` bleibt innerhalb einer Gruppe, daher kann sie „Gruppenrand“ nicht verwenden."
+
+msgid "The edge end `{}` does not exist. Choose the ID of a service or junction."
+msgstr "Das Kantenende `{}` ist nicht vorhanden. Wählen Sie die ID eines Dienstes oder einer Verbindungsstelle."
+
+msgid "The edge end `{}` is a group. Connect edges to services or junctions (to leave from the border of a group, use “Group Edge”)."
+msgstr "Das Kantenende `{}` ist eine Gruppe. Verbinden Sie Kanten mit Diensten oder Verbindungsstellen (um vom Rand einer Gruppe auszugehen, verwenden Sie „Gruppenrand“)."
+
+msgid "The edge label `{label}` cannot be written (`\"` and line breaks are not allowed)."
+msgstr "Die Kantenbeschriftung `{label}` kann nicht geschrieben werden (`\"` und Zeilenumbrüche sind nicht zulässig)."
+
+msgid "The edge line `{}` cannot be written."
+msgstr "Die Kantenlinie `{}` kann nicht geschrieben werden."
+
+msgid "The effect (the problem) is empty. Enter the effect before writing causes."
+msgstr "Die Wirkung (das Problem) ist leer. Geben Sie die Wirkung ein, bevor Sie Ursachen schreiben."
+
+msgid "The effect `{effect}` cannot be written ({rules})."
+msgstr "Die Wirkung `{effect}` kann nicht geschrieben werden ({rules})."
+
+msgid "The end `{end}` of a relationship is a boundary. Relationships can only connect elements."
+msgstr "Das Ende `{end}` einer Beziehung ist eine Grenze. Beziehungen können nur Elemente verbinden."
+
+msgid "The end `{text}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "Das Ende `{text}` der Aufgabe `{}` kann nicht verwendet werden (`,`, `#`, `;` und Zeilenumbrüche sind nicht zulässig, und es darf nicht leer sein)."
+
+msgid "The end bit comes before the start bit ({statement})."
+msgstr "Das Endbit steht vor dem Startbit ({statement})."
+
+msgid "The end cannot be `after` ({statement}). Mermaid reads it as a duration of 0."
+msgstr "Das Ende kann nicht `after` sein ({statement}). Mermaid liest es als Dauer von 0."
+
+msgid "The end is before the start"
+msgstr "Das Ende liegt vor dem Beginn"
+
+msgid "The entity name cannot be empty."
+msgstr "Der Entitätsname darf nicht leer sein."
+
+msgid "The event `{event}` of the period `{}` cannot be written (a space right after `:`, a `:` at the end, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "Das Ereignis `{event}` des Zeitraums `{}` kann nicht geschrieben werden (ein Leerzeichen direkt nach `:`, ein `:` am Ende, `%%{{` und Zeilenumbrüche sind nicht zulässig, und es darf nicht leer sein)."
+
+msgid "The field does not continue from the previous field ({statement}). Start it at bit {next_bit}."
+msgstr "Das Feld schließt nicht an das vorherige Feld an ({statement}). Lassen Sie es bei Bit {next_bit} beginnen."
+
+msgid "The first node of a mindmap must be the root."
+msgstr "Der erste Knoten einer Mindmap muss die Wurzel sein."
+
+msgid "The first task `{}` needs a start date (there is no previous task)."
+msgstr "Die erste Aufgabe `{}` benötigt ein Startdatum (es gibt keine vorherige Aufgabe)."
+
+msgid "The flows form a cycle ({}). A Sankey diagram cannot draw a cycle."
+msgstr "Die Abläufe bilden einen Zyklus ({}). Ein Sankey-Diagramm kann keinen Zyklus zeichnen."
+
+msgid "The frame line has no {what} ({line}). Write it as `tf number type name`."
+msgstr "In der Frame-Zeile fehlt „{what}“ ({line}). Schreiben Sie sie als `tf number type name`."
+
+msgid "The frame number `{name}` cannot be handled by the structured editor ({line})."
+msgstr "Die Frame-Nummer `{name}` kann vom strukturierten Editor nicht verarbeitet werden ({line})."
+
+msgid "The frame number `{}` cannot be used (1 to 3 ASCII digits)."
+msgstr "Die Frame-Nummer `{}` kann nicht verwendet werden (1 bis 3 ASCII-Ziffern)."
+
+msgid "The frame number `{}` is used more than once."
+msgstr "Die Frame-Nummer `{}` wird mehrfach verwendet."
+
+msgid "The group in `{line}` cannot have an arrow shape."
+msgstr "Die Gruppe in `{line}` kann keine Pfeilform haben."
+
+msgid "The icon `{icon}` of the node `{}` cannot be written (`)`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "Das Symbol `{icon}` des Knotens `{}` kann nicht geschrieben werden (`)`, `%%{{` und Zeilenumbrüche sind nicht zulässig, und es darf nicht leer sein)."
+
+msgid "The icon `{icon}` of {what} `{}` cannot be written."
+msgstr "Das Symbol `{icon}` von {what} `{}` kann nicht geschrieben werden."
+
+msgid "The icon `{rest}` is not supported by the structured editor."
+msgstr "Das Symbol `{rest}` wird vom strukturierten Editor nicht unterstützt."
+
+msgid "The icon of `{id}` cannot be written (a name uses only letters, digits, `_`, `-` and `:`; to show text, enclose it in quotes)."
+msgstr "Das Symbol von `{id}` kann nicht geschrieben werden (ein Name verwendet nur Buchstaben, Ziffern, `_`, `-` und `:`; um Text anzuzeigen, setzen Sie ihn in Anführungszeichen)."
+
+msgid "The item `{}` could not be read the same way Mermaid reads it. Edit it as text."
+msgstr "Das Element `{}` konnte nicht so gelesen werden, wie Mermaid es liest. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The item `{}` is two or more levels deeper than its parent."
+msgstr "Das Element `{}` liegt zwei oder mehr Ebenen tiefer als sein übergeordnetes Element."
+
+msgid "The item name `{}` cannot be written (line breaks, `%%{{`, `=\"` and `#…;` are not allowed, and it cannot contain both `\"` and `'`)."
+msgstr "Der Elementname `{}` kann nicht geschrieben werden (Zeilenumbrüche, `%%{{`, `=\"` und `#…;` sind nicht zulässig, und er darf nicht sowohl `\"` als auch `'` enthalten)."
+
+msgid "The label `{label}` of arrow `{id}` cannot be written (`\"` and line breaks are not allowed)."
+msgstr "Die Beschriftung `{label}` des Pfeils `{id}` kann nicht geschrieben werden (`\"` und Zeilenumbrüche sind nicht zulässig)."
+
+msgid "The label `{label}` of axis `{}` cannot be written. {label_rule}"
+msgstr "Die Beschriftung `{label}` der Achse `{}` kann nicht geschrieben werden. {label_rule}"
+
+msgid "The label `{label}` of block `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
+msgstr "Die Beschriftung `{label}` des Blocks `{id}` kann nicht geschrieben werden (`\"` und Zeilenumbrüche sind nicht zulässig, und eine Beschriftung, die mit ` beginnt, muss mit ` enden)."
+
+msgid "The label `{label}` of curve `{}` cannot be written. {label_rule}"
+msgstr "Die Beschriftung `{label}` der Kurve `{}` kann nicht geschrieben werden. {label_rule}"
+
+msgid "The label `{label}` of group `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
+msgstr "Die Beschriftung `{label}` der Gruppe `{id}` kann nicht geschrieben werden (`\"` und Zeilenumbrüche sind nicht zulässig, und eine Beschriftung, die mit ` beginnt, muss mit ` enden)."
+
+msgid "The label `{label}` of quadrant {} cannot be written (no `\"` or line breaks, and no whitespace at either end)."
+msgstr "Die Beschriftung `{label}` des Quadranten {} kann nicht geschrieben werden (kein `\"`, keine Zeilenumbrüche und kein Leerraum an den Enden)."
+
+msgid "The label `{title}` of the edge `{}` → `{}` cannot be written ({label_rule})."
+msgstr "Die Beschriftung `{title}` der Kante `{}` → `{}` kann nicht geschrieben werden ({label_rule})."
+
+msgid "The label `{}` cannot be written in the default shape (`(` `)` `[` `{{` `}}` and `%%` are not allowed, and it cannot have spaces at either end or start with `::icon(` or `:::`). Change the shape."
+msgstr "Die Beschriftung `{}` kann in der Standardform nicht geschrieben werden (`(` `)` `[` `{{` `}}` und `%%` sind nicht zulässig, und sie darf keine Leerzeichen an den Enden haben und nicht mit `::icon(` oder `:::` beginnen). Ändern Sie die Form."
+
+msgid "The label `{}` cannot be written in this shape (the closing bracket and `\"` cannot be used together)."
+msgstr "Die Beschriftung `{}` kann in dieser Form nicht geschrieben werden (die schließende Klammer und `\"` können nicht zusammen verwendet werden)."
+
+msgid "The label `{}` cannot contain `%%{{` (Mermaid cuts out everything up to `}}%%`)."
+msgstr "Die Beschriftung `{}` darf kein `%%{{` enthalten (Mermaid schneidet alles bis `}}%%` aus)."
+
+msgid "The label is not written as `[\"…\"]` ({line})."
+msgstr "Die Beschriftung ist nicht als `[\"…\"]` geschrieben ({line})."
+
+msgid "The label of node `{node_part}` is not closed. Labels that span several lines are not supported by the structured editor. Edit it as text."
+msgstr "Die Beschriftung des Knotens `{node_part}` ist nicht geschlossen. Beschriftungen, die sich über mehrere Zeilen erstrecken, werden vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The label of the node `{statement}` is not closed. The structured editor does not support a label that spans several lines. Edit it as text."
+msgstr "Die Beschriftung des Knotens `{statement}` ist nicht geschlossen. Der strukturierte Editor unterstützt keine Beschriftung, die sich über mehrere Zeilen erstreckt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The label “{label}” of “{name}” cannot be used (`\"`, line breaks and spaces at either end are not allowed)."
+msgstr "Die Beschriftung „{label}“ von „{name}“ kann nicht verwendet werden (`\"`, Zeilenumbrüche und Leerzeichen an den Enden sind nicht zulässig)."
+
+msgid "The label “{}” cannot be used (`%%` and line breaks are not allowed)."
+msgstr "Die Beschriftung „{}“ kann nicht verwendet werden (`%%` und Zeilenumbrüche sind nicht zulässig)."
+
+msgid "The lane `{namespace}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "Die Bahn `{namespace}` kann nicht verwendet werden (ASCII-Buchstaben, Ziffern und `_`, beginnend mit einem Buchstaben oder `_`)."
+
+msgid "The line with the end-of-line comment ({comment}) has two or more statements, or it could not be determined which item the comment belongs to. Put one statement on each line, or edit it as text."
+msgstr "Die Zeile mit dem Zeilenendkommentar ({comment}) enthält zwei oder mehr Anweisungen, oder es konnte nicht ermittelt werden, zu welchem Element der Kommentar gehört. Schreiben Sie eine Anweisung pro Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The member block of `class` has no matching `}}` ({statement})."
+msgstr "Zum Member-Block von `class` gibt es kein passendes `}}` ({statement})."
+
+msgid "The memberships of group `{}` form a loop. Remove one of them."
+msgstr "Die Zugehörigkeiten der Gruppe `{}` bilden eine Schleife. Entfernen Sie eine davon."
+
+msgid "The message `{message}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "Die Nachricht `{message}` kann nicht verwendet werden (kein `\"`, `%%` und keine Zeilenumbrüche)."
+
+msgid "The message after `create {created}` must be sent to `{created}`."
+msgstr "Die Nachricht nach `create {created}` muss an `{created}` gesendet werden."
+
+msgid "The message after `destroy {destroyed}` must involve `{destroyed}`."
+msgstr "Die Nachricht nach `destroy {destroyed}` muss `{destroyed}` betreffen."
+
+msgid "The metadata `{text}` is not supported by the structured editor (only `key: value`, with a single-line string as the value). Edit it as text."
+msgstr "Die Metadaten `{text}` werden vom strukturierten Editor nicht unterstützt (nur `key: value` mit einer einzeiligen Zeichenfolge als Wert). Bearbeiten Sie das Diagramm als Text."
+
+msgid "The name `{name}` is used twice."
+msgstr "Der Name `{name}` wird zweimal verwendet."
+
+msgid "The name `{}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`. It can be split with `.`, but without a lane a name cannot contain exactly one `.`)."
+msgstr "Der Name `{}` kann nicht verwendet werden (ASCII-Buchstaben, Ziffern und `_`, beginnend mit einem Buchstaben oder `_`. Er kann mit `.` unterteilt werden, aber ohne Bahn darf ein Name nicht genau einen `.` enthalten)."
+
+msgid "The name `{}` has a lane, so it cannot contain `.`."
+msgstr "Der Name `{}` hat eine Bahn, daher darf er keinen `.` enthalten."
+
+msgid "The name `{}` of series {number} cannot be written. {text_rule}"
+msgstr "Der Name `{}` der Reihe {number} kann nicht geschrieben werden. {text_rule}"
+
+msgid "The name is empty ({statement})."
+msgstr "Der Name ist leer ({statement})."
+
+msgid "The name of the node `{}` cannot be written (`\"` and `'` cannot both be used)."
+msgstr "Der Name des Knotens `{}` kann nicht geschrieben werden (`\"` und `'` können nicht beide verwendet werden)."
+
+msgid "The name of the node `{}` cannot be written (when an HTML tag attribute is enclosed in `\"`, Mermaid rewrites it to `'` and the name is cut off)."
+msgstr "Der Name des Knotens `{}` kann nicht geschrieben werden (wenn ein HTML-Tag-Attribut in `\"` steht, schreibt Mermaid es in `'` um und der Name wird abgeschnitten)."
+
+msgid "The name of the node `{}` cannot contain `%%{{` (Mermaid cuts it out as a directive)."
+msgstr "Der Name des Knotens `{}` darf kein `%%{{` enthalten (Mermaid schneidet es als Direktive aus)."
+
+msgid "The node `{name}` is nested too deeply (Mermaid allows up to {MAX_TREE_VIEW_DEPTH} levels)."
+msgstr "Der Knoten `{name}` ist zu tief verschachtelt (Mermaid erlaubt bis zu {MAX_TREE_VIEW_DEPTH} Ebenen)."
+
+msgid "The node `{}` is two or more levels deeper than its parent."
+msgstr "Der Knoten `{}` liegt zwei oder mehr Ebenen tiefer als sein übergeordnetes Element."
+
+msgid "The node name “{name}” cannot be used (it cannot be empty, have spaces at either end, or contain line breaks or `\"\"`)."
+msgstr "Der Knotenname „{name}“ kann nicht verwendet werden (er darf nicht leer sein, keine Leerzeichen an den Enden haben und weder Zeilenumbrüche noch `\"\"` enthalten)."
+
+msgid "The number of columns must be a whole number of 1 or more, or auto."
+msgstr "Die Anzahl der Spalten muss eine ganze Zahl ab 1 oder auto sein."
+
+msgid "The number of columns of a group must be a whole number of 1 or more, or auto."
+msgstr "Die Anzahl der Spalten einer Gruppe muss eine ganze Zahl ab 1 oder auto sein."
+
+msgid "The operations right after branch `{}` run on this branch. Delete them first, or move them to another branch."
+msgstr "Die Operationen direkt nach dem Branch `{}` werden in diesem Branch ausgeführt. Löschen Sie sie zuerst oder verschieben Sie sie in einen anderen Branch."
+
+msgid "The order of the `create` statements does not match the order of the participants. Order the participants as they are created."
+msgstr "Die Reihenfolge der `create`-Anweisungen stimmt nicht mit der Reihenfolge der Teilnehmer überein. Ordnen Sie die Teilnehmer in der Reihenfolge an, in der sie erstellt werden."
+
+msgid "The overlap “{name}” contains the same set twice."
+msgstr "Die Überschneidung „{name}“ enthält dieselbe Menge zweimal."
+
+msgid "The overlap “{name}” is written before the set “{missing}”. Place an overlap after the sets it uses."
+msgstr "Die Überschneidung „{name}“ steht vor der Menge „{missing}“. Platzieren Sie eine Überschneidung nach den Mengen, die sie verwendet."
+
+msgid "The overlap “{name}” is written twice."
+msgstr "Die Überschneidung „{name}“ ist doppelt geschrieben."
+
+msgid "The participant id `{model_id}` contains characters Mermaid uses internally, so it is not supported by the structured editor. Edit it as text."
+msgstr "Die Teilnehmer-ID `{model_id}` enthält Zeichen, die Mermaid intern verwendet, daher wird sie vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The participant type `{other}` is not supported by the structured editor. Edit it as text."
+msgstr "Der Teilnehmertyp `{other}` wird vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The period `{}` cannot be written (`:`, `#`, `%%{{` and line breaks are not allowed, and it cannot be empty or start with `title`, `section`, `accTitle`, `accDescr` or `%%`)."
+msgstr "Der Zeitraum `{}` kann nicht geschrieben werden (`:`, `#`, `%%{{` und Zeilenumbrüche sind nicht zulässig, und er darf nicht leer sein und nicht mit `title`, `section`, `accTitle`, `accDescr` oder `%%` beginnen)."
+
+msgid "The point name `{}` cannot be written (no `\"` or line breaks; it cannot be empty or start or end with whitespace)."
+msgstr "Der Punktname `{}` kann nicht geschrieben werden (kein `\"` und keine Zeilenumbrüche; er darf nicht leer sein und nicht mit Leerraum beginnen oder enden)."
+
+msgid "The quote of `state \"description\"` is not closed ({statement})."
+msgstr "Das Anführungszeichen von `state \"description\"` ist nicht geschlossen ({statement})."
+
+msgid "The quotes around the display name are not closed ({statement})."
+msgstr "Die Anführungszeichen um den Anzeigenamen sind nicht geschlossen ({statement})."
+
+msgid "The quotes around the multiplicity are not closed ({statement})."
+msgstr "Die Anführungszeichen um die Multiplizität sind nicht geschlossen ({statement})."
+
+msgid "The quotes around the note text are not closed ({statement})."
+msgstr "Die Anführungszeichen um den Notiztext sind nicht geschlossen ({statement})."
+
+msgid "The quotes in `@{{{inner}}}` are not closed."
+msgstr "Die Anführungszeichen in `@{{{inner}}}` sind nicht geschlossen."
+
+msgid "The same item has two end-of-line comments ({comment}). Merge them into one, or edit it as text."
+msgstr "Dasselbe Element hat zwei Zeilenendkommentare ({comment}). Führen Sie sie zu einem zusammen oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The score `{score_text}` is not supported by the structured editor ({trimmed}). Use a whole number from 1 to 5, or edit it as text."
+msgstr "Die Bewertung `{score_text}` wird vom strukturierten Editor nicht unterstützt ({trimmed}). Verwenden Sie eine ganze Zahl von 1 bis 5 oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The section name `{name}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "Der Abschnittsname `{name}` kann nicht verwendet werden (`:`, `%%{{` und Zeilenumbrüche sind nicht zulässig, und er darf nicht leer sein)."
+
+msgid "The section name `{name}` cannot be used (line breaks and `%%{{` are not allowed)."
+msgstr "Der Abschnittsname `{name}` kann nicht verwendet werden (Zeilenumbrüche und `%%{{` sind nicht zulässig)."
+
+msgid "The section name `{name}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty)."
+msgstr "Der Abschnittsname `{name}` kann nicht verwendet werden (kein `:`, `#`, `;` und keine Zeilenumbrüche, und er darf nicht leer sein)."
+
+msgid "The section name `{name}` is used twice. Mermaid draws the periods of both in one section of that name, so rename one."
+msgstr "Der Abschnittsname `{name}` wird zweimal verwendet. Mermaid zeichnet die Zeiträume beider in einem Abschnitt dieses Namens. Benennen Sie daher einen davon um."
+
+msgid "The series has no values ({statement})."
+msgstr "Die Reihe hat keine Werte ({statement})."
+
+msgid "The series value `{value}` cannot be read as a number ({statement})."
+msgstr "Der Reihenwert `{value}` kann nicht als Zahl gelesen werden ({statement})."
+
+msgid "The series values are not written as `[1, 2, 3]` ({statement})."
+msgstr "Die Reihenwerte sind nicht als `[1, 2, 3]` geschrieben ({statement})."
+
+msgid "The set ID “{id}” cannot be used (it cannot be empty, contain `\"` or line breaks, or have spaces at either end)."
+msgstr "Die Mengen-ID „{id}“ kann nicht verwendet werden (sie darf nicht leer sein, weder `\"` noch Zeilenumbrüche enthalten und keine Leerzeichen an den Enden haben)."
+
+msgid "The set “{id}” is written twice."
+msgstr "Die Menge „{id}“ ist doppelt geschrieben."
+
+msgid "The set “{missing}” of the overlap “{name}” does not exist."
+msgstr "Die Menge „{missing}“ der Überschneidung „{name}“ ist nicht vorhanden."
+
+msgid "The shape of `{}` is changed inside an edge ({line}). Write the shape where the block is placed."
+msgstr "Die Form von `{}` wird innerhalb einer Kante geändert ({line}). Schreiben Sie die Form dort, wo der Block platziert wird."
+
+msgid "The side of an edge is one of L R T B ({statement})."
+msgstr "Die Seite einer Kante ist eine von L R T B ({statement})."
+
+msgid "The size could not be read as a number ({statement})."
+msgstr "Die Größe konnte nicht als Zahl gelesen werden ({statement})."
+
+msgid "The size “{size}” of “{name}” cannot be used (only a number of 0 or more)."
+msgstr "Die Größe „{size}“ von „{name}“ kann nicht verwendet werden (nur eine Zahl ab 0)."
+
+msgid "The source `{source}` of the arrow to frame `{}` is not in an earlier frame."
+msgstr "Die Quelle `{source}` des Pfeils zum Frame `{}` befindet sich nicht in einem früheren Frame."
+
+msgid "The start `{date}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "Der Beginn `{date}` der Aufgabe `{}` kann nicht verwendet werden (`,`, `#`, `;` und Zeilenumbrüche sind nicht zulässig, und er darf nicht leer sein)."
+
+msgid "The start cannot be `until` ({statement})."
+msgstr "Der Beginn kann nicht `until` sein ({statement})."
+
+msgid "The structured editor cannot handle `{header}` (write only `venn-beta` on its line, and the statements from the next line on)."
+msgstr "Der strukturierte Editor kann `{header}` nicht verarbeiten (schreiben Sie nur `venn-beta` in diese Zeile und die Anweisungen ab der nächsten Zeile)."
+
+msgid "The structured editor cannot handle a statement written after `%%{{ … }}%%` on the same line ({statement}). Move the statement to the next line, then open the editor again."
+msgstr "Der strukturierte Editor kann eine Anweisung, die in derselben Zeile nach `%%{{ … }}%%` steht, nicht verarbeiten ({statement}). Verschieben Sie die Anweisung in die nächste Zeile und öffnen Sie den Editor dann erneut."
+
+msgid "The structured editor cannot handle the amount “{value}” ({}). Write a number of 0 or more."
+msgstr "Der strukturierte Editor kann die Menge „{value}“ nicht verarbeiten ({}). Schreiben Sie eine Zahl ab 0."
+
+msgid "The structured editor cannot keep the comment at the end of this line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "Der strukturierte Editor kann den Kommentar am Ende dieser Zeile nicht erhalten ({trimmed}). Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The structured editor does not support `:::` without a class ({trimmed})."
+msgstr "Der strukturierte Editor unterstützt `:::` ohne Klasse nicht ({trimmed})."
+
+msgid "The structured editor does not support `{id}` in `{line}`. {}"
+msgstr "Der strukturierte Editor unterstützt `{id}` in `{line}` nicht. {}"
+
+msgid "The structured editor does not support `{line}` (it could not be read as a block)."
+msgstr "Der strukturierte Editor unterstützt `{line}` nicht (es konnte nicht als Block gelesen werden)."
+
+msgid "The structured editor does not support `{line}` (write it as `class ID1,ID2 className`)."
+msgstr "Der strukturierte Editor unterstützt `{line}` nicht (schreiben Sie es als `class ID1,ID2 className`)."
+
+msgid "The structured editor does not support `{line}` (write it as `style ID style`)."
+msgstr "Der strukturierte Editor unterstützt `{line}` nicht (schreiben Sie es als `style ID style`)."
+
+msgid "The structured editor does not support `{rest}` on the `pie` line. Edit it as text."
+msgstr "Der strukturierte Editor unterstützt `{rest}` in der `pie`-Zeile nicht. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The structured editor does not support `{statement}` (only the form `classDef name style;`). Edit it as text."
+msgstr "Der strukturierte Editor unterstützt `{statement}` nicht (nur die Form `classDef name style;`). Bearbeiten Sie das Diagramm als Text."
+
+msgid "The structured editor does not support `{tail}` on the `mindmap` line. Write the nodes on the following lines."
+msgstr "Der strukturierte Editor unterstützt `{tail}` in der `mindmap`-Zeile nicht. Schreiben Sie die Knoten in die folgenden Zeilen."
+
+msgid "The structured editor does not support `{tail}` on the `timeline` line. Edit it as text."
+msgstr "Der strukturierte Editor unterstützt `{tail}` in der `timeline`-Zeile nicht. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The structured editor does not support `{tail}` on the `{header}` line (Mermaid cannot draw this diagram)."
+msgstr "Der strukturierte Editor unterstützt `{tail}` in der `{header}`-Zeile nicht (Mermaid kann dieses Diagramm nicht zeichnen)."
+
+msgid "The structured editor does not support `{tail}` on the `{}` line. Write it on the next line."
+msgstr "Der strukturierte Editor unterstützt `{tail}` in der `{}`-Zeile nicht. Schreiben Sie es in die nächste Zeile."
+
+msgid "The structured editor does not support `{tail}` written right after `end`. Write it on the next line."
+msgstr "Der strukturierte Editor unterstützt `{tail}` direkt nach `end` nicht. Schreiben Sie es in die nächste Zeile."
+
+msgid "The structured editor does not support `{trimmed}`. Put a space after `title`."
+msgstr "Der strukturierte Editor unterstützt `{trimmed}` nicht. Setzen Sie nach `title` ein Leerzeichen."
+
+msgid "The structured editor does not support `{}` written right after `%%{{ … }}%%`. Write it on the next line."
+msgstr "Der strukturierte Editor unterstützt `{}` direkt nach `%%{{ … }}%%` nicht. Schreiben Sie es in die nächste Zeile."
+
+msgid "The structured editor does not support `{}` written right after the group heading in `{line}`. Write it on the next line."
+msgstr "Der strukturierte Editor unterstützt `{}` direkt nach der Gruppenüberschrift in `{line}` nicht. Schreiben Sie es in die nächste Zeile."
+
+msgid "The structured editor does not support a `%%` comment in the middle of a line ({line}). Write the comment on a line of its own."
+msgstr "Der strukturierte Editor unterstützt keinen `%%`-Kommentar in der Mitte einer Zeile ({line}). Schreiben Sie den Kommentar in eine eigene Zeile."
+
+msgid "The structured editor does not support a `%%{{ … }}%%` that spans several lines. Write it on one line at the top of the diagram."
+msgstr "Der strukturierte Editor unterstützt kein `%%{{ … }}%%`, das sich über mehrere Zeilen erstreckt. Schreiben Sie es in eine Zeile am Anfang des Diagramms."
+
+msgid "The structured editor does not support a line that contains `%%{{`, because Mermaid cuts it out as a directive ({tail})."
+msgstr "Der strukturierte Editor unterstützt keine Zeile, die `%%{{` enthält, da Mermaid sie als Direktive ausschneidet ({tail})."
+
+msgid "The structured editor does not support the `{open}` shape of the node `{statement}` (Mermaid draws it in the default shape). Edit it as text."
+msgstr "Der strukturierte Editor unterstützt die `{open}`-Form des Knotens `{statement}` nicht (Mermaid zeichnet ihn in der Standardform). Bearbeiten Sie das Diagramm als Text."
+
+msgid "The structured editor does not support the class name in `{line}`."
+msgstr "Der strukturierte Editor unterstützt den Klassennamen in `{line}` nicht."
+
+msgid "The structured editor does not support the icon `{trimmed}`."
+msgstr "Der strukturierte Editor unterstützt das Symbol `{trimmed}` nicht."
+
+msgid "The structured editor does not support the value `{token}` of the item `{name}` (Mermaid skips everything from a `_` or a second `.` on)."
+msgstr "Der strukturierte Editor unterstützt den Wert `{token}` des Elements `{name}` nicht (Mermaid überspringt alles ab einem `_` oder einem zweiten `.`)."
+
+msgid "The structured editor does not support this diagram. Edit it as text."
+msgstr "Der strukturierte Editor unterstützt dieses Diagramm nicht. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The structured editor would lose the comment at the end of the `treeView-beta` line. Move the comment to a line of its own, or edit it as text."
+msgstr "Der strukturierte Editor würde den Kommentar am Ende der `treeView-beta`-Zeile verlieren. Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+msgstr "Der strukturierte Editor würde den Kommentar am Ende der Anweisung verlieren ({statement}). Verschieben Sie den Kommentar in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The structured editor would write statements that follow each other on one line ({trimmed}) back twice. Put the statements on separate lines, or edit it as text."
+msgstr "Der strukturierte Editor würde Anweisungen, die in einer Zeile aufeinanderfolgen ({trimmed}), doppelt zurückschreiben. Schreiben Sie die Anweisungen in getrennte Zeilen oder bearbeiten Sie das Diagramm als Text."
+
+msgid "The style `{key}` cannot be used (use one of {})."
+msgstr "Der Stil `{key}` kann nicht verwendet werden (verwenden Sie einen von {})."
+
+msgid "The style `{style}` of the class `{name}` cannot be written (separate `name:value` pairs with `,`; `;` and `%%` are not allowed)."
+msgstr "Der Stil `{style}` der Klasse `{name}` kann nicht geschrieben werden (trennen Sie `name:value`-Paare mit `,`; `;` und `%%` sind nicht zulässig)."
+
+msgid "The style of `{target}` cannot contain line breaks."
+msgstr "Der Stil von `{target}` darf keine Zeilenumbrüche enthalten."
+
+msgid "The style of classDef `{name}` cannot contain line breaks."
+msgstr "Der Stil der classDef `{name}` darf keine Zeilenumbrüche enthalten."
+
+msgid "The tag `{tag}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "Das Tag `{tag}` kann nicht verwendet werden (kein `\"`, `%%` und keine Zeilenumbrüche)."
+
+msgid "The task name `{}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot start with `%%`)."
+msgstr "Der Aufgabenname `{}` kann nicht verwendet werden (`:`, `%%{{` und Zeilenumbrüche sind nicht zulässig, und er darf nicht mit `%%` beginnen)."
+
+msgid "The task name `{}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty. It also cannot start with `title `, `section `, `accTitle`, `accDescr` or `%%`)."
+msgstr "Der Aufgabenname `{}` kann nicht verwendet werden (kein `:`, `#`, `;` und keine Zeilenumbrüche, und er darf nicht leer sein. Er darf auch nicht mit `title `, `section `, `accTitle`, `accDescr` oder `%%` beginnen)."
+
+msgid "The text is empty ({statement})."
+msgstr "Der Text ist leer ({statement})."
+
+msgid "The tick count (ticks) `{ticks}` is too large. Use {MAX_TICKS} or less."
+msgstr "Die Anzahl der Teilstriche (ticks) `{ticks}` ist zu groß. Verwenden Sie höchstens {MAX_TICKS}."
+
+msgid "The title `{title}` cannot be used (line breaks and `%%` are not allowed, and it cannot be empty)."
+msgstr "Der Titel `{title}` kann nicht verwendet werden (Zeilenumbrüche und `%%` sind nicht zulässig, und er darf nicht leer sein)."
+
+msgid "The title `{title}` cannot be written (line breaks and `%%` are not allowed, and it cannot be empty or have spaces at either end)."
+msgstr "Der Titel `{title}` kann nicht geschrieben werden (Zeilenumbrüche und `%%` sind nicht zulässig, und er darf nicht leer sein und keine Leerzeichen an den Enden haben)."
+
+msgid "The title `{title}` cannot be written (line breaks, `%%`, `=\"` and `#…;` are not allowed)."
+msgstr "Der Titel `{title}` kann nicht geschrieben werden (Zeilenumbrüche, `%%`, `=\"` und `#…;` sind nicht zulässig)."
+
+msgid "The title `{title}` cannot be written (no `%%`, `;` or line breaks, and it cannot start or end with whitespace)."
+msgstr "Der Titel `{title}` kann nicht geschrieben werden (kein `%%`, `;` und keine Zeilenumbrüche, und er darf nicht mit Leerraum beginnen oder enden)."
+
+msgid "The title `{title}` cannot be written in a pie chart (`%%` is not allowed)."
+msgstr "Der Titel `{title}` kann in einem Kreisdiagramm nicht geschrieben werden (`%%` ist nicht zulässig)."
+
+msgid "The title `{title}` of {what} `{}` cannot be written (no line breaks, `%%{{`, `=\"` or `#…;`, and closing brackets cannot be used together with `\"`)."
+msgstr "Der Titel `{title}` von {what} `{}` kann nicht geschrieben werden (keine Zeilenumbrüche, kein `%%{{`, `=\"` oder `#…;`, und schließende Klammern können nicht zusammen mit `\"` verwendet werden)."
+
+msgid "The title `{}` cannot be written. {text_rule}"
+msgstr "Der Titel `{}` kann nicht geschrieben werden. {text_rule}"
+
+msgid "The title cannot be empty or contain line breaks or `%%` (and cannot start or end with whitespace)."
+msgstr "Der Titel darf nicht leer sein und weder Zeilenumbrüche noch `%%` enthalten (und nicht mit Leerraum beginnen oder enden)."
+
+msgid "The title cannot contain `%%` or line breaks (and cannot start or end with whitespace)."
+msgstr "Der Titel darf weder `%%` noch Zeilenumbrüche enthalten (und nicht mit Leerraum beginnen oder enden)."
+
+msgid "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+msgstr "Der Titel darf weder `%%` noch Zeilenumbrüche enthalten (und keine Leerzeichen an den Enden)."
+
+msgid "The title cannot contain line breaks or `%%{{` (and cannot be empty)."
+msgstr "Der Titel darf weder Zeilenumbrüche noch `%%{{` enthalten (und nicht leer sein)."
+
+msgid "The title cannot contain line breaks or `%%{{`, and it cannot be empty or have spaces at either end."
+msgstr "Der Titel darf weder Zeilenumbrüche noch `%%{{` enthalten, und er darf nicht leer sein und keine Leerzeichen an den Enden haben."
+
+msgid "The title cannot contain line breaks, `#` or `;` (and cannot start or end with whitespace)."
+msgstr "Der Titel darf weder Zeilenumbrüche, `#` noch `;` enthalten (und nicht mit Leerraum beginnen oder enden)."
+
+msgid "The title could not be read the same way Mermaid reads it. Edit it as text."
+msgstr "Der Titel konnte nicht so gelesen werden, wie Mermaid ihn liest. Bearbeiten Sie das Diagramm als Text."
+
+msgid "The title of `{id}` cannot be written ({label_rule})."
+msgstr "Der Titel von `{id}` kann nicht geschrieben werden ({label_rule})."
+
+msgid "The title of {what} `{}` is empty."
+msgstr "Der Titel von {what} `{}` ist leer."
+
+msgid "The total number of bits ({total}) is too large. Mermaid can draw up to {MAX_PACKET_BITS} bits."
+msgstr "Die Gesamtzahl der Bits ({total}) ist zu groß. Mermaid kann bis zu {MAX_PACKET_BITS} Bits zeichnen."
+
+msgid "The value `{value}` of curve `{}` cannot be written. {number_rule}"
+msgstr "Der Wert `{value}` der Kurve `{}` kann nicht geschrieben werden. {number_rule}"
+
+msgid "The value `{value}` of series {number} is not a number (for example 12, -3.5, .5)."
+msgstr "Der Wert `{value}` der Reihe {number} ist keine Zahl (zum Beispiel 12, -3.5, .5)."
+
+msgid "The value `{value}` of style `{key}` cannot be used."
+msgstr "Der Wert `{value}` des Stils `{key}` kann nicht verwendet werden."
+
+msgid "The value `{value}` of the item `{}` cannot be read as a number (a number of 0 or more; `,` as a thousands separator and `.` as the decimal point are allowed)."
+msgstr "Der Wert `{value}` des Elements `{}` kann nicht als Zahl gelesen werden (eine Zahl ab 0; `,` als Tausendertrennzeichen und `.` als Dezimalzeichen sind zulässig)."
+
+msgid "The value of `{keyword}` cannot contain line breaks."
+msgstr "Der Wert von `{keyword}` darf keine Zeilenumbrüche enthalten."
+
+msgid "The values of curve `{id}` are not written as `{{1, 2, 3}}` ({line})."
+msgstr "Die Werte der Kurve `{id}` sind nicht als `{{1, 2, 3}}` geschrieben ({line})."
+
+msgid "The width in `{line}` must be a whole number of 1 or more."
+msgstr "Die Breite in `{line}` muss eine ganze Zahl ab 1 sein."
+
+msgid "The width of {what} must be 1 or more."
+msgstr "Die Breite von {what} muss mindestens 1 sein."
+
+msgid "The x axis has an empty category ({statement})."
+msgstr "Die X-Achse hat eine leere Kategorie ({statement})."
+
+msgid "The x axis has no categories. Add a category, or set the x-axis “Scale” to “None (1, 2, 3…)”."
+msgstr "Die X-Achse hat keine Kategorien. Fügen Sie eine Kategorie hinzu oder setzen Sie die „Skala“ der X-Achse auf „Keine (1, 2, 3…)“."
+
+msgid "The x-axis category `{}` cannot be written. {text_rule}"
+msgstr "Die Kategorie `{}` der X-Achse kann nicht geschrieben werden. {text_rule}"
+
+msgid "The x-axis name `{}` cannot be written. {text_rule}"
+msgstr "Der Name `{}` der X-Achse kann nicht geschrieben werden. {text_rule}"
+
+msgid "The y axis cannot have categories ({statement})."
+msgstr "Die Y-Achse kann keine Kategorien haben ({statement})."
+
+msgid "The y-axis name `{}` cannot be written. {text_rule}"
+msgstr "Der Name `{}` der Y-Achse kann nicht geschrieben werden. {text_rule}"
+
+msgid "The year {} cannot be written with 2 digits"
+msgstr "Das Jahr {} kann nicht zweistellig geschrieben werden"
+
+msgid "The year {} cannot be written with 4 digits"
+msgstr "Das Jahr {} kann nicht vierstellig geschrieben werden"
+
+msgid "The {axis} `{value}` of point `{}` cannot be used (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
+msgstr "{axis} `{value}` des Punkts `{}` kann nicht verwendet werden (0 bis 1: nur `0`, `1` oder eine Dezimalzahl, die mit `0.` beginnt)."
+
+msgid "The {name} label cannot be written (no `\"` or line breaks, and no whitespace at either end)."
+msgstr "Die Beschriftung {name} kann nicht geschrieben werden (kein `\"`, keine Zeilenumbrüche und kein Leerraum an den Enden)."
+
+msgid "The {what} ID `{}` cannot be used (no brackets, `\"`, `%%`, `@{{`, `#…;` or whitespace at either end)."
+msgstr "Die ID `{}` für {what} kann nicht verwendet werden (keine Klammern, kein `\"`, `%%`, `@{{`, `#…;` und kein Leerraum an den Enden)."
+
+msgid "The {what} `{}` has a value for `{}` that cannot be written (no `}}`, `\"`, `%%`, `#…;`, line breaks or whitespace at either end)."
+msgstr "{what} `{}` hat einen Wert für `{}`, der nicht geschrieben werden kann (kein `}}`, `\"`, `%%`, `#…;`, keine Zeilenumbrüche und kein Leerraum an den Enden)."
+
+msgid "There are more `end`s than blocks."
+msgstr "Es gibt mehr `end`s als Blöcke."
+
+msgid "There are two `columns` at the same level. Mermaid uses only the last one, so merge them into one."
+msgstr "Es gibt zwei `columns` auf derselben Ebene. Mermaid verwendet nur das letzte. Führen Sie sie daher zu einem zusammen."
+
+msgid "There are two `title`s. Only the last one is used."
+msgstr "Es gibt zwei `title`s. Nur der letzte wird verwendet."
+
+msgid "There are two arrows from `{source}` to `{}`."
+msgstr "Es gibt zwei Pfeile von `{source}` nach `{}`."
+
+msgid "There are two roots (`{}`). A mindmap has only one root, and the other nodes are indented deeper than the root."
+msgstr "Es gibt zwei Wurzeln (`{}`). Eine Mindmap hat nur eine Wurzel, und die anderen Knoten sind tiefer eingerückt als die Wurzel."
+
+msgid "There are two roots (`{}`). A mindmap has only one root."
+msgstr "Es gibt zwei Wurzeln (`{}`). Eine Mindmap hat nur eine Wurzel."
+
+msgid "There are unreadable characters after the `}}` of curve `{id}` ({line})."
+msgstr "Nach der `}}` der Kurve `{id}` stehen nicht lesbare Zeichen ({line})."
+
+msgid "There is a `%%{{` in the middle of a statement ({line}). Mermaid cuts `%%{{ … }}%%` out and joins what is before and after it, so the structured editor cannot handle it."
+msgstr "In der Mitte einer Anweisung steht ein `%%{{` ({line}). Mermaid schneidet `%%{{ … }}%%` aus und verbindet, was davor und danach steht, daher kann der strukturierte Editor dies nicht verarbeiten."
+
+msgid "There is a `%%{{` that is never closed ({line}). Mermaid does not read anything after it, so the structured editor cannot handle it."
+msgstr "Es gibt ein `%%{{`, das nie geschlossen wird ({line}). Mermaid liest danach nichts mehr, daher kann der strukturierte Editor dies nicht verarbeiten."
+
+msgid "There is a `[` inside `[` ({statement})."
+msgstr "Innerhalb von `[` steht ein `[` ({statement})."
+
+msgid "There is a `}}` without a matching `{{`."
+msgstr "Es gibt ein `}}` ohne passendes `{{`."
+
+msgid "There is a `}}` without a matching boundary (line {}). Edit it as text."
+msgstr "Es gibt ein `}}` ohne passende Grenze (Zeile {}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "There is a `}}` without a matching boundary."
+msgstr "Es gibt ein `}}` ohne passende Grenze."
+
+msgid "There is a boundary that is not closed (`}}` is missing). Edit it as text."
+msgstr "Es gibt eine Grenze, die nicht geschlossen ist (`}}` fehlt). Bearbeiten Sie das Diagramm als Text."
+
+msgid "There is a boundary that is not closed."
+msgstr "Es gibt eine Grenze, die nicht geschlossen ist."
+
+msgid "There is a node with an empty label ({trimmed})."
+msgstr "Es gibt einen Knoten mit leerer Beschriftung ({trimmed})."
+
+msgid "There is a node with an empty label."
+msgstr "Es gibt einen Knoten mit leerer Beschriftung."
+
+msgid "There is a requirement or element with an empty name."
+msgstr "Es gibt eine Anforderung oder ein Element mit leerem Namen."
+
+msgid "There is a requirement or element without a name ({text})."
+msgstr "Es gibt eine Anforderung oder ein Element ohne Namen ({text})."
+
+msgid "There is a style assignment without a target."
+msgstr "Es gibt eine Stilzuweisung ohne Ziel."
+
+msgid "There is an `end` without a matching `block`. Mermaid draws it as a block named `end`."
+msgstr "Es gibt ein `end` ohne passenden `block`. Mermaid zeichnet es als Block namens `end`."
+
+msgid "There is an empty cause."
+msgstr "Es gibt eine leere Ursache."
+
+msgid "There is an empty event ({trimmed}). Delete it, or edit it as text."
+msgstr "Es gibt ein leeres Ereignis ({trimmed}). Löschen Sie es oder bearbeiten Sie das Diagramm als Text."
+
+msgid "There is an extra `{}` after `\"{value}\"`."
+msgstr "Nach `\"{value}\"` steht ein überzähliges `{}`."
+
+msgid "There is an item with an empty name."
+msgstr "Es gibt ein Element mit leerem Namen."
+
+msgid "There is an overlap that contains no set."
+msgstr "Es gibt eine Überschneidung, die keine Menge enthält."
+
+msgid "There is an unclosed \"` ({statement})."
+msgstr "Es gibt ein nicht geschlossenes \"` ({statement})."
+
+msgid "There is an unclosed \"` … `\"."
+msgstr "Es gibt ein nicht geschlossenes \"` … `\"."
+
+msgid "There is an unclosed `\"` ({statement})."
+msgstr "Es gibt ein nicht geschlossenes `\"` ({statement})."
+
+msgid "There is an unclosed `\"` ({text})."
+msgstr "Es gibt ein nicht geschlossenes `\"` ({text})."
+
+msgid "There is an unclosed `\"`."
+msgstr "Es gibt ein nicht geschlossenes `\"`."
+
+msgid "There is an unclosed label ({line})."
+msgstr "Es gibt eine nicht geschlossene Beschriftung ({line})."
+
+msgid "There is no `:` after the label ({statement})."
+msgstr "Nach der Beschriftung fehlt ein `:` ({statement})."
+
+msgid "There is no `[` after the `:` of the point."
+msgstr "Nach dem `:` des Punkts fehlt ein `[`."
+
+msgid "There is no `]]` closing `[[` ({line})."
+msgstr "Es gibt kein `]]`, das `[[` schließt ({line})."
+
+msgid "There is no `]` after the label ({line})."
+msgstr "Nach der Beschriftung fehlt eine `]` ({line})."
+
+msgid "There is no `end note` that matches the `note` ({statement})."
+msgstr "Es gibt kein `end note`, das zum `note` passt ({statement})."
+
+msgid "There is no `{{` after `{statement}`."
+msgstr "Nach `{statement}` fehlt ein `{{`."
+
+msgid "There is no `}}` that matches a `{{`."
+msgstr "Es gibt kein `}}`, das zu einem `{{` passt."
+
+msgid "There is no block `{end}` for the edge to connect (written only in an edge, Mermaid places a new block there)."
+msgstr "Es gibt keinen Block `{end}`, den die Kante verbinden kann (wenn er nur in einer Kante geschrieben ist, platziert Mermaid dort einen neuen Block)."
+
+msgid "There is no block `{target}` to give the class `{class_name}` to."
+msgstr "Es gibt keinen Block `{target}`, dem die Klasse `{class_name}` zugewiesen werden kann."
+
+msgid "There is no block `{target}` to give the style to."
+msgstr "Es gibt keinen Block `{target}`, dem der Stil zugewiesen werden kann."
+
+msgid "There is no block around `{}`."
+msgstr "Es gibt keinen Block um `{}`."
+
+msgid "There is no data name after `data`."
+msgstr "Nach `data` fehlt ein Datenname."
+
+msgid "There is no element `{end}` for the end of a relationship."
+msgstr "Es gibt kein Element `{end}` für das Ende einer Beziehung."
+
+msgid "There is no frame number after `->>` ({line})."
+msgstr "Nach `->>` fehlt eine Frame-Nummer ({line})."
+
+msgid "There is no node before `:::` ({trimmed})."
+msgstr "Vor `:::` steht kein Knoten ({trimmed})."
+
+msgid "There is no node before `::icon(…)` ({trimmed})."
+msgstr "Vor `::icon(…)` steht kein Knoten ({trimmed})."
+
+msgid "There is no node before `@{{` ({rest}). Mermaid skips this line, so edit it as text."
+msgstr "Vor `@{{` steht kein Knoten ({rest}). Mermaid überspringt diese Zeile. Bearbeiten Sie das Diagramm daher als Text."
+
+msgid "There is no number after `-->` ({statement})."
+msgstr "Nach `-->` fehlt eine Zahl ({statement})."
+
+msgid "There is no period before the event `{trimmed}`."
+msgstr "Vor dem Ereignis `{trimmed}` steht kein Zeitraum."
+
+msgid "There is no requirement or element named `{name}` for a relationship to point to."
+msgstr "Es gibt keine Anforderung und kein Element namens `{name}`, auf das eine Beziehung verweisen kann."
+
+msgid "There is no requirement or element named `{name}` for a style assignment to point to."
+msgstr "Es gibt keine Anforderung und kein Element namens `{name}`, auf das eine Stilzuweisung verweisen kann."
+
+msgid "There is no start or end after `:` ({statement})."
+msgstr "Nach `:` fehlen Beginn oder Ende ({statement})."
+
+msgid "There is no style class name after `:::` ({statement})."
+msgstr "Nach `:::` fehlt ein Stilklassenname ({statement})."
+
+msgid "There is no task name before `:` ({statement})."
+msgstr "Vor `:` fehlt ein Aufgabenname ({statement})."
+
+msgid "Thick arrow"
+msgstr "Dicker Pfeil"
+
+msgid "This commit has the message `{message}`, which a merge cannot have, so it cannot be changed into a merge. Remove the `msg` in the text, or delete the commit and add a merge."
+msgstr "Dieser Commit hat die Nachricht `{message}`, die ein Merge nicht haben kann, daher kann er nicht in einen Merge umgewandelt werden. Entfernen Sie das `msg` im Text oder löschen Sie den Commit und fügen Sie einen Merge hinzu."
+
+msgid "This could not be read as a mindmap node ({statement}). Edit it as text."
+msgstr "Dies konnte nicht als Mindmap-Knoten gelesen werden ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "This could not be read as a node of a tree view ({trimmed}). Enclose a name in \"…\" or '…', and write `title`, `accTitle` and `accDescr` before the first node."
+msgstr "Dies konnte nicht als Knoten einer Baumansicht gelesen werden ({trimmed}). Setzen Sie einen Namen in \"…\" oder '…' und schreiben Sie `title`, `accTitle` und `accDescr` vor den ersten Knoten."
+
+msgid "This could not be read as a statement of a Venn diagram ({statement}). Edit it as text."
+msgstr "Dies konnte nicht als Anweisung eines Venn-Diagramms gelesen werden ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "This could not be read as a treemap item ({rest}). Write it as `\"name\"` or `\"name\": value`."
+msgstr "Dies konnte nicht als Treemap-Element gelesen werden ({rest}). Schreiben Sie es als `\"name\"` oder `\"name\": value`."
+
+msgid "This could not be read as an event ({trimmed})."
+msgstr "Dies konnte nicht als Ereignis gelesen werden ({trimmed})."
+
+msgid "This date and time cannot be written in local time"
+msgstr "Dieses Datum und diese Uhrzeit können nicht in Ortszeit geschrieben werden"
+
+msgid "This diagram cannot be opened, because rewriting it would change its content (it depends on the order of the style assignments or the like). Edit it as text."
+msgstr "Dieses Diagramm kann nicht geöffnet werden, da ein Umschreiben seinen Inhalt ändern würde (es hängt von der Reihenfolge der Stilzuweisungen o. Ä. ab). Bearbeiten Sie das Diagramm als Text."
+
+msgid "This diagram is not a C4 diagram."
+msgstr "Dieses Diagramm ist kein C4-Diagramm."
+
+msgid "This diagram is not a Gantt chart."
+msgstr "Dieses Diagramm ist kein Gantt-Diagramm."
+
+msgid "This diagram is not a Git graph."
+msgstr "Dieses Diagramm ist kein Git-Graph."
+
+msgid "This diagram is not a Sankey diagram."
+msgstr "Dieses Diagramm ist kein Sankey-Diagramm."
+
+msgid "This diagram is not a Venn diagram."
+msgstr "Dieses Diagramm ist kein Venn-Diagramm."
+
+msgid "This diagram is not a block diagram."
+msgstr "Dieses Diagramm ist kein Blockdiagramm."
+
+msgid "This diagram is not a class diagram."
+msgstr "Dieses Diagramm ist kein Klassendiagramm."
+
+msgid "This diagram is not a kanban board."
+msgstr "Dieses Diagramm ist kein Kanban-Board."
+
+msgid "This diagram is not a mindmap."
+msgstr "Dieses Diagramm ist keine Mindmap."
+
+msgid "This diagram is not a packet diagram."
+msgstr "Dieses Diagramm ist kein Paketdiagramm."
+
+msgid "This diagram is not a pie chart."
+msgstr "Dieses Diagramm ist kein Kreisdiagramm."
+
+msgid "This diagram is not a quadrant chart."
+msgstr "Dieses Diagramm ist kein Quadrantendiagramm."
+
+msgid "This diagram is not a radar chart."
+msgstr "Dieses Diagramm ist kein Radardiagramm."
+
+msgid "This diagram is not a requirement diagram."
+msgstr "Dieses Diagramm ist kein Anforderungsdiagramm."
+
+msgid "This diagram is not a sequence diagram."
+msgstr "Dieses Diagramm ist kein Sequenzdiagramm."
+
+msgid "This diagram is not a state diagram."
+msgstr "Dieses Diagramm ist kein Zustandsdiagramm."
+
+msgid "This diagram is not a timeline."
+msgstr "Dieses Diagramm ist keine Zeitleiste."
+
+msgid "This diagram is not a tree view."
+msgstr "Dieses Diagramm ist keine Baumansicht."
+
+msgid "This diagram is not a treemap."
+msgstr "Dieses Diagramm ist keine Treemap."
+
+msgid "This diagram is not a user journey."
+msgstr "Dieses Diagramm ist keine User Journey."
+
+msgid "This diagram is not an ER diagram."
+msgstr "Dieses Diagramm ist kein ER-Diagramm."
+
+msgid "This diagram is not an Ishikawa diagram."
+msgstr "Dieses Diagramm ist kein Ishikawa-Diagramm."
+
+msgid "This diagram is not an XY chart."
+msgstr "Dieses Diagramm ist kein XY-Diagramm."
+
+msgid "This diagram is not an architecture diagram."
+msgstr "Dieses Diagramm ist kein Architekturdiagramm."
+
+msgid "This diagram is not an event modeling diagram."
+msgstr "Dieses Diagramm ist kein Event-Modeling-Diagramm."
+
+msgid "This diagram type is not supported by the structured editor (flowcharts only)."
+msgstr "Dieser Diagrammtyp wird vom strukturierten Editor nicht unterstützt (nur Flussdiagramme)."
+
+msgid "This is not a Gantt chart"
+msgstr "Dies ist kein Gantt-Diagramm"
+
+msgid "This is not a Gantt chart (only diagrams that start with `gantt` can be edited in the structured editor)."
+msgstr "Dies ist kein Gantt-Diagramm (nur Diagramme, die mit `gantt` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a Git graph (only diagrams that start with `gitGraph` can be edited in the structured editor)."
+msgstr "Dies ist kein Git-Graph (nur Diagramme, die mit `gitGraph` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a block diagram (only a diagram that starts with `block-beta` can be edited in the structured editor)."
+msgstr "Dies ist kein Blockdiagramm (nur ein Diagramm, das mit `block-beta` beginnt, kann im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a class diagram (only diagrams that start with `classDiagram` can be edited in the structured editor)."
+msgstr "Dies ist kein Klassendiagramm (nur Diagramme, die mit `classDiagram` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a kanban board (only diagrams that start with `kanban` can be edited in the structured editor)."
+msgstr "Dies ist kein Kanban-Board (nur Diagramme, die mit `kanban` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a mindmap (only a diagram that starts with `mindmap` can be edited in the structured editor)."
+msgstr "Dies ist keine Mindmap (nur ein Diagramm, das mit `mindmap` beginnt, kann im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a pie chart (only a diagram that starts with `pie` can be edited in the structured editor)."
+msgstr "Dies ist kein Kreisdiagramm (nur ein Diagramm, das mit `pie` beginnt, kann im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a quadrant chart (only diagrams that start with `quadrantChart` can be edited in the structured editor)."
+msgstr "Dies ist kein Quadrantendiagramm (nur Diagramme, die mit `quadrantChart` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a radar chart (only diagrams that start with `radar-beta` can be edited in the structured editor)."
+msgstr "Dies ist kein Radardiagramm (nur Diagramme, die mit `radar-beta` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a requirement diagram (only diagrams that start with `requirementDiagram` can be edited in the structured editor)."
+msgstr "Dies ist kein Anforderungsdiagramm (nur Diagramme, die mit `requirementDiagram` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a state diagram (only a diagram that starts with `stateDiagram` can be edited in the structured editor)."
+msgstr "Dies ist kein Zustandsdiagramm (nur ein Diagramm, das mit `stateDiagram` beginnt, kann im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a timeline (only a diagram that starts with `timeline` can be edited in the structured editor)."
+msgstr "Dies ist keine Zeitleiste (nur ein Diagramm, das mit `timeline` beginnt, kann im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a tree view (only a diagram that starts with `treeView-beta` can be edited in the structured editor)."
+msgstr "Dies ist keine Baumansicht (nur ein Diagramm, das mit `treeView-beta` beginnt, kann im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a treemap (only a diagram that starts with `treemap-beta` can be edited in the structured editor)."
+msgstr "Dies ist keine Treemap (nur ein Diagramm, das mit `treemap-beta` beginnt, kann im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not a user journey (only diagrams that start with `journey` can be edited in the structured editor)."
+msgstr "Dies ist keine User Journey (nur Diagramme, die mit `journey` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not an Ishikawa diagram (only a diagram that starts with `ishikawa-beta` or `ishikawa` can be edited in the structured editor)."
+msgstr "Dies ist kein Ishikawa-Diagramm (nur ein Diagramm, das mit `ishikawa-beta` oder `ishikawa` beginnt, kann im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not an XY chart (only diagrams that start with `xychart-beta` can be edited in the structured editor)."
+msgstr "Dies ist kein XY-Diagramm (nur Diagramme, die mit `xychart-beta` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not an architecture diagram (only diagrams that start with `architecture-beta` can be edited in the structured editor)."
+msgstr "Dies ist kein Architekturdiagramm (nur Diagramme, die mit `architecture-beta` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This is not an event modeling diagram (only diagrams that start with `eventmodeling` can be edited in the structured editor)."
+msgstr "Dies ist kein Event-Modeling-Diagramm (nur Diagramme, die mit `eventmodeling` beginnen, können im strukturierten Editor bearbeitet werden)."
+
+msgid "This line could not be read as a field of a packet diagram ({statement}). Write it as `0-15: \"label\"` or `+8: \"label\"`."
+msgstr "Diese Zeile konnte nicht als Feld eines Paketdiagramms gelesen werden ({statement}). Schreiben Sie sie als `0-15: \"label\"` oder `+8: \"label\"`."
+
+msgid "This line could not be read as a flow of a Sankey diagram ({}). Write it as `source,target,value`."
+msgstr "Diese Zeile konnte nicht als Fluss eines Sankey-Diagramms gelesen werden ({}). Schreiben Sie sie als `source,target,value`."
+
+msgid "This line could not be read as a slice of a pie chart ({statement}). Write it as `\"label\" : value`."
+msgstr "Diese Zeile konnte nicht als Segment eines Kreisdiagramms gelesen werden ({statement}). Schreiben Sie sie als `\"label\" : value`."
+
+msgid "Tick count (ticks)"
+msgstr "Anzahl der Teilstriche (ticks)"
+
+msgid "To give task `{}` an ID, make its start a date or `after`."
+msgstr "Um der Aufgabe `{}` eine ID zu geben, legen Sie als Beginn ein Datum oder `after` fest."
+
+msgid "Top to bottom (TB / TD)"
+msgstr "Von oben nach unten (TB / TD)"
+
+msgid "Top to bottom (TB)"
+msgstr "Von oben nach unten (TB)"
+
+msgid "Traces (traces)"
+msgstr "Verfolgt (traces)"
+
+msgid "Trapezoid (reversed) [\\manual input/]"
+msgstr "Trapez (umgekehrt) [\\manuelle Eingabe/]"
+
+msgid "Trapezoid [/ \\]"
+msgstr "Trapez [/ \\]"
+
+msgid "Trapezoid [/manual operation\\]"
+msgstr "Trapez [/manueller Vorgang\\]"
+
+msgid "Two axes have the ID `{}`. It is unclear which axis a value belongs to, so change one of the IDs."
+msgstr "Zwei Achsen haben die ID `{}`. Es ist unklar, zu welcher Achse ein Wert gehört. Ändern Sie daher eine der IDs."
+
+msgid "Two curves have the ID `{}`. Change one of the IDs."
+msgstr "Zwei Kurven haben die ID `{}`. Ändern Sie eine der IDs."
+
+msgid "Two-way arrow"
+msgstr "Doppelpfeil"
+
+msgid "Unique key (UK)"
+msgstr "Eindeutiger Schlüssel (UK)"
+
+msgid "Use only letters, digits and `_` in the class name of point `{}`."
+msgstr "Verwenden Sie im Klassennamen des Punkts `{}` nur Buchstaben, Ziffern und `_`."
+
+msgid "Verification: Analysis"
+msgstr "Verifizierung: Analyse"
+
+msgid "Verification: Demonstration"
+msgstr "Verifizierung: Demonstration"
+
+msgid "Verification: Inspection"
+msgstr "Verifizierung: Inspektion"
+
+msgid "Verification: Test"
+msgstr "Verifizierung: Test"
+
+msgid "Verifies (verifies)"
+msgstr "Verifiziert (verifies)"
+
+msgid "Very High"
+msgstr "Sehr hoch"
+
+msgid "Very Low"
+msgstr "Sehr niedrig"
+
+msgid "When text shaped like `<tag …>` contains `=\"…\"`, Mermaid rewrites the `\"` to `'` before reading it, which changes the diagram. Change the `<` of the label or the `=` at its end."
+msgstr "Wenn Text in der Form `<tag …>` ein `=\"…\"` enthält, schreibt Mermaid das `\"` vor dem Lesen in `'` um, wodurch sich das Diagramm ändert. Ändern Sie das `<` der Beschriftung oder das `=` an ihrem Ende."
+
+msgid "With the x-axis range `{min}` → `{max}`, Mermaid cannot place the values of series {number} and never finishes drawing. Move the ends of the range apart."
+msgstr "Mit dem X-Achsenbereich `{min}` → `{max}` kann Mermaid die Werte der Reihe {number} nicht platzieren und beendet das Zeichnen nie. Vergrößern Sie den Abstand zwischen den Enden des Bereichs."
+
+msgid "Without `dateFormat`, the end cannot be written as a date"
+msgstr "Ohne `dateFormat` kann das Ende nicht als Datum geschrieben werden"
+
+msgid "Without categories or a range on the x axis, Mermaid builds the x axis from the number of values in the first series. With only one value in the first series, it cannot place the values of series {number} and never finishes drawing. Add values to the first series, or give the x axis categories or a range."
+msgstr "Ohne Kategorien oder einen Bereich auf der X-Achse bildet Mermaid die X-Achse aus der Anzahl der Werte in der ersten Reihe. Mit nur einem Wert in der ersten Reihe kann es die Werte der Reihe {number} nicht platzieren und beendet das Zeichnen nie. Fügen Sie der ersten Reihe Werte hinzu oder geben Sie der X-Achse Kategorien oder einen Bereich."
+
+msgid "Write `graticule` as `circle` or `polygon` ({line})."
+msgstr "Schreiben Sie `graticule` als `circle` oder `polygon` ({line})."
+
+msgid "Write `showLegend` as `true` or `false` ({line})."
+msgstr "Schreiben Sie `showLegend` als `true` oder `false` ({line})."
+
+msgid "Write a direction such as `(right)` for the arrow block in `{line}`."
+msgstr "Schreiben Sie für den Pfeilblock in `{line}` eine Richtung wie `(right)`."
+
+msgid "Write a generic type as `{name}~T~` ({statement})."
+msgstr "Schreiben Sie einen generischen Typ als `{name}~T~` ({statement})."
+
+msgid "Write a number of 0 or more like `12`, `0.5` or `.5` (no leading 0, trailing `.` or sign)."
+msgstr "Schreiben Sie eine Zahl ab 0 wie `12`, `0.5` oder `.5` (keine führende 0, kein `.` am Ende und kein Vorzeichen)."
+
+msgid "Write at least one block to give the class `{class_name}` to."
+msgstr "Schreiben Sie mindestens einen Block, dem die Klasse `{class_name}` zugewiesen werden soll."
+
+msgid "Write at least one direction for arrow `{}` (right / left / up / down / x / y)."
+msgstr "Schreiben Sie mindestens eine Richtung für den Pfeil `{}` (right / left / up / down / x / y)."
+
+msgid "Write it as `[\"display name\"]` ({statement})."
+msgstr "Schreiben Sie es als `[\"display name\"]` ({statement})."
+
+msgid "Write it as `namespace {name} {{` ({statement})."
+msgstr "Schreiben Sie es als `namespace {name} {{` ({statement})."
+
+msgid "Write it as `note \"text\"` ({statement})."
+msgstr "Schreiben Sie es als `note \"text\"` ({statement})."
+
+msgid "Write it as `state \"description\" as ID` ({statement})."
+msgstr "Schreiben Sie es als `state \"description\" as ID` ({statement})."
+
+msgid "Write one of TB / BT / LR / RL after `direction` ({statement})."
+msgstr "Schreiben Sie nach `direction` einen von TB / BT / LR / RL ({statement})."
+
+msgid "Write the number of bits of “{}” as a whole number of 1 or more."
+msgstr "Schreiben Sie die Anzahl der Bits von „{}“ als ganze Zahl ab 1."
+
+msgid "Write the order `{order}` as a whole number."
+msgstr "Schreiben Sie die Reihenfolge `{order}` als ganze Zahl."
+
+msgid "Write the style `{style}` as `name: value`."
+msgstr "Schreiben Sie den Stil `{style}` als `name: value`."
+
+msgid "Write the x-axis range `{min}` → `{max}` as numbers."
+msgstr "Schreiben Sie den X-Achsenbereich `{min}` → `{max}` als Zahlen."
+
+msgid "Write the y-axis range `{}` → `{}` as numbers (leave both empty to set it automatically)."
+msgstr "Schreiben Sie den Y-Achsenbereich `{}` → `{}` als Zahlen (lassen Sie beide leer, um ihn automatisch festzulegen)."
+
+msgid "Zero or more"
+msgstr "Null oder mehr"
+
+msgid "Zero or one"
+msgstr "Null oder eins"
+
+msgid "`\"` is required"
+msgstr "`\"` ist erforderlich"
+
+msgid "`\"`, `%%` and line breaks are not allowed, and it cannot start or end with whitespace."
+msgstr "`\"`, `%%` und Zeilenumbrüche sind nicht zulässig, und es darf nicht mit Leerraum beginnen oder enden."
+
+msgid "`:::` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "`:::` ist für den Knoten `{}` zweimal geschrieben. Mermaid verwendet nur das spätere. Führen Sie sie daher zu einem zusammen und öffnen Sie den Editor dann erneut."
+
+msgid "`:::` without a class is not supported by the structured editor ({rest})."
+msgstr "`:::` ohne Klasse wird vom strukturierten Editor nicht unterstützt ({rest})."
+
+msgid "`::icon(` has no closing parenthesis ({rest}). Mermaid skips this line, so close it or edit it as text."
+msgstr "`::icon(` hat keine schließende Klammer ({rest}). Mermaid überspringt diese Zeile. Schließen Sie sie daher oder bearbeiten Sie das Diagramm als Text."
+
+msgid "`::icon(…)` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "`::icon(…)` ist für den Knoten `{}` zweimal geschrieben. Mermaid verwendet nur das spätere. Führen Sie sie daher zu einem zusammen und öffnen Sie den Editor dann erneut."
+
+msgid "`<<annotation>>` is not closed ({statement})."
+msgstr "`<<annotation>>` ist nicht geschlossen ({statement})."
+
+msgid "`@{{` is not closed with `}}`."
+msgstr "`@{{` ist nicht mit `}}` geschlossen."
+
+msgid "`@{{{inner}}}` has an empty entry."
+msgstr "`@{{{inner}}}` hat einen leeren Eintrag."
+
+msgid "`UpdateElementStyle({alias}, …)` comes before the declaration of `{alias}`, so it has no effect. Move it after the declaration."
+msgstr "`UpdateElementStyle({alias}, …)` steht vor der Deklaration von `{alias}` und hat daher keine Wirkung. Verschieben Sie es hinter die Deklaration."
+
+msgid "`UpdateRelStyle({from}, {to}, …)` comes before the relationship, so it has no effect. Move it after the relationship."
+msgstr "`UpdateRelStyle({from}, {to}, …)` steht vor der Beziehung und hat daher keine Wirkung. Verschieben Sie es hinter die Beziehung."
+
+msgid "`X` (seconds) cannot express less than a second"
+msgstr "`X` (Sekunden) kann keine Zeiten unter einer Sekunde darstellen"
+
+msgid "`[` is missing ({statement})."
+msgstr "`[` fehlt ({statement})."
+
+msgid "`axisFormat` is written twice. Merge them into one, then open it again."
+msgstr "`axisFormat` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`axis` has no axes ({line})."
+msgstr "`axis` hat keine Achsen ({line})."
+
+msgid "`branch` cannot take `{other}:`"
+msgstr "`branch` kann kein `{other}:` annehmen"
+
+msgid "`cherry-pick` cannot take `{other}:`"
+msgstr "`cherry-pick` kann kein `{other}:` annehmen"
+
+msgid "`commit` cannot take `{other}:`"
+msgstr "`commit` kann kein `{other}:` annehmen"
+
+msgid "`curve` has no curves ({line})."
+msgstr "`curve` hat keine Kurven ({line})."
+
+msgid "`dateFormat` is written twice. Merge them into one, then open it again."
+msgstr "`dateFormat` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`destroy {id}` is written twice, which is not supported by the structured editor. Edit it as text."
+msgstr "`destroy {id}` ist zweimal geschrieben, was vom strukturierten Editor nicht unterstützt wird. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`direction {rest}` cannot be read (write one of TB / BT / LR / RL)."
+msgstr "`direction {rest}` kann nicht gelesen werden (schreiben Sie einen von TB / BT / LR / RL)."
+
+msgid "`direction` cannot be written inside a `namespace` ({statement})."
+msgstr "`direction` kann nicht innerhalb eines `namespace` geschrieben werden ({statement})."
+
+msgid "`direction` is written twice in the same place. Merge them into one, then open the editor again."
+msgstr "`direction` ist an derselben Stelle zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie den Editor dann erneut."
+
+msgid "`direction` is written twice. Merge them into one, then open it again ({statement})."
+msgstr "`direction` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut ({statement})."
+
+msgid "`direction` is written twice. Merge them into one, then open it again."
+msgstr "`direction` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`displayMode` cannot be written in the body ({statement}). In Mermaid, set it with `displayMode: compact` in the front matter or with `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%`. Edit it as text."
+msgstr "`displayMode` kann nicht im Hauptteil geschrieben werden ({statement}). Legen Sie es in Mermaid mit `displayMode: compact` im Front Matter oder mit `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%` fest. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`global` is the name of the whole diagram, so it cannot be used as the alias of a boundary."
+msgstr "`global` ist der Name des gesamten Diagramms, daher kann es nicht als Alias einer Grenze verwendet werden."
+
+msgid "`id:` is missing"
+msgstr "`id:` fehlt"
+
+msgid "`merge` cannot take `{other}:`"
+msgstr "`merge` kann kein `{other}:` annehmen"
+
+msgid "`note` must be followed by `left of` or `right of` ({statement})."
+msgstr "Auf `note` muss `left of` oder `right of` folgen ({statement})."
+
+msgid "`quadrant-{}` is written twice. Merge them into one, then open it again."
+msgstr "`quadrant-{}` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`title` is written twice. Merge them into one, then open it again."
+msgstr "`title` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`title` is written twice. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "`title` ist zweimal geschrieben. Mermaid verwendet nur das spätere. Führen Sie sie daher zu einem zusammen und öffnen Sie den Editor dann erneut."
+
+msgid "`title` is written twice. Only the last one is used, so merge them into one, then open it again."
+msgstr "`title` ist zweimal geschrieben. Nur das letzte wird verwendet. Führen Sie sie daher zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`x-axis` has neither a name nor ticks ({statement})."
+msgstr "`x-axis` hat weder einen Namen noch Teilstriche ({statement})."
+
+msgid "`x-axis` is written twice. Merge them into one, then open it again."
+msgstr "`x-axis` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`y-axis` has neither a name nor a range ({statement})."
+msgstr "`y-axis` hat weder einen Namen noch einen Bereich ({statement})."
+
+msgid "`y-axis` is written twice. Merge them into one, then open it again."
+msgstr "`y-axis` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{annotation}` cannot be used as an annotation ({statement})."
+msgstr "`{annotation}` kann nicht als Annotation verwendet werden ({statement})."
+
+msgid "`{class}` cannot be used as a class name ({statement})."
+msgstr "`{class}` kann nicht als Klassenname verwendet werden ({statement})."
+
+msgid "`{class}` cannot be used as a class name."
+msgstr "`{class}` kann nicht als Klassenname verwendet werden."
+
+msgid "`{comment}` cannot be written as an end-of-line comment."
+msgstr "`{comment}` kann nicht als Zeilenendkommentar geschrieben werden."
+
+msgid "`{format}` cannot be used for `{name}` (`#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "`{format}` kann nicht für `{name}` verwendet werden (`#`, `;` und Zeilenumbrüche sind nicht zulässig, und es darf nicht leer sein)."
+
+msgid "`{generic}` cannot be used as a generic type ({statement})."
+msgstr "`{generic}` kann nicht als generischer Typ verwendet werden ({statement})."
+
+msgid "`{header}` cannot be read as the heading of a Sankey diagram (write only `sankey-beta` on its line)."
+msgstr "`{header}` kann nicht als Überschrift eines Sankey-Diagramms gelesen werden (schreiben Sie nur `sankey-beta` in diese Zeile)."
+
+msgid "`{header}` cannot be read as the heading of a packet diagram (write only `packet-beta` on its line)."
+msgstr "`{header}` kann nicht als Überschrift eines Paketdiagramms gelesen werden (schreiben Sie nur `packet-beta` in diese Zeile)."
+
+msgid "`{id}` appears before its `create`. Put the `create` first."
+msgstr "`{id}` erscheint vor seinem `create`. Setzen Sie das `create` an den Anfang."
+
+msgid "`{id}` cannot be placed inside itself."
+msgstr "`{id}` kann nicht in sich selbst platziert werden."
+
+msgid "`{id}` cannot be used as a state ID ({statement})."
+msgstr "`{id}` kann nicht als Zustands-ID verwendet werden ({statement})."
+
+msgid "`{id}` cannot be used as a state ID ({statement}). Mermaid cannot read an ID that contains spaces, `:`, `;` or `-`."
+msgstr "`{id}` kann nicht als Zustands-ID verwendet werden ({statement}). Mermaid kann keine ID lesen, die Leerzeichen, `:`, `;` oder `-` enthält."
+
+msgid "`{id}` in `click` is the name a task without an ID gets automatically. It points to a different task when tasks are added, deleted or moved, so give that task an ID and change `click` to use it."
+msgstr "`{id}` in `click` ist der Name, den eine Aufgabe ohne ID automatisch erhält. Er verweist auf eine andere Aufgabe, wenn Aufgaben hinzugefügt, gelöscht oder verschoben werden. Geben Sie dieser Aufgabe daher eine ID und ändern Sie `click` so, dass sie verwendet wird."
+
+msgid "`{id}` is not activated, so it cannot be deactivated."
+msgstr "`{id}` ist nicht aktiviert, daher kann es nicht deaktiviert werden."
+
+msgid "`{input}` is not enclosed in `\"`."
+msgstr "`{input}` ist nicht in `\"` eingeschlossen."
+
+msgid "`{keyword}` cannot be used in event modeling (line {}; the official Mermaid does not accept it). Remove the line, or edit it as text."
+msgstr "`{keyword}` kann im Event Modeling nicht verwendet werden (Zeile {}; das offizielle Mermaid akzeptiert es nicht). Entfernen Sie die Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "`{keyword}` cannot be written inside a `namespace` ({statement})."
+msgstr "`{keyword}` kann nicht innerhalb eines `namespace` geschrieben werden ({statement})."
+
+msgid "`{keyword}` is written twice. Merge them into one, then open it again."
+msgstr "`{keyword}` ist zweimal geschrieben. Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{keyword}` statements are not supported by the structured editor ({trimmed}). Edit it as text."
+msgstr "`{keyword}`-Anweisungen werden vom strukturierten Editor nicht unterstützt ({trimmed}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{key}:` is written twice"
+msgstr "`{key}:` ist zweimal geschrieben"
+
+msgid "`{key}:` on the element `{target}` is lost in the structured editor ({statement}). Edit it as text."
+msgstr "`{key}:` am Element `{target}` geht im strukturierten Editor verloren ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{key}` of `{opening}` is written twice. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{key}` von `{opening}` ist zweimal geschrieben. Mermaid verwendet nur das letzte. Führen Sie sie daher zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{label}` cannot be used as a task name ({statement}). `:` and words that start a statement, such as `title` and `section`, are not allowed."
+msgstr "`{label}` kann nicht als Aufgabenname verwendet werden ({statement}). `:` und Wörter, mit denen eine Anweisung beginnt, wie `title` und `section`, sind nicht zulässig."
+
+msgid "`{line}` cannot be read as a number of columns (a whole number of 1 or more, or auto)."
+msgstr "`{line}` kann nicht als Anzahl der Spalten gelesen werden (eine ganze Zahl ab 1 oder auto)."
+
+msgid "`{name}` cannot be used as a `:::` style class name ({statement})."
+msgstr "`{name}` kann nicht als `:::`-Stilklassenname verwendet werden ({statement})."
+
+msgid "`{name}` cannot be used as a `namespace` name ({statement})."
+msgstr "`{name}` kann nicht als `namespace`-Name verwendet werden ({statement})."
+
+msgid "`{name}` cannot be used as a class name ({statement})."
+msgstr "`{name}` kann nicht als Klassenname verwendet werden ({statement})."
+
+msgid "`{name}` cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
+msgstr "`{name}` kann nicht als Name verwendet werden (die Symbole \" - < > {{ }} : , # % ;, Leerzeichen am Anfang und Ende sowie das Wort direction sind nicht zulässig)."
+
+msgid "`{name}` is defined twice. Mermaid ignores the second one, so merge them into one, then open it again."
+msgstr "`{name}` ist doppelt definiert. Mermaid ignoriert die zweite Definition. Führen Sie sie daher zu einer zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{name}` is not a C4 diagram macro. Edit it as text."
+msgstr "`{name}` ist kein Makro eines C4-Diagramms. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{name}` is written twice ({line}). Merge them into one, then open it again."
+msgstr "`{name}` ist zweimal geschrieben ({line}). Führen Sie sie zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{other}` is not a Git graph statement"
+msgstr "`{other}` ist keine Anweisung eines Git-Graphen"
+
+msgid "`{parent}`, which `{id}` belongs to, is not a group (it does not exist, or it is a service or a junction)."
+msgstr "`{parent}`, zu dem `{id}` gehört, ist keine Gruppe (es ist nicht vorhanden oder ein Dienst oder eine Verbindungsstelle)."
+
+msgid "`{remainder}` after the value cannot be written in a pie chart ({statement}). Edit it as text."
+msgstr "`{remainder}` nach dem Wert kann in einem Kreisdiagramm nicht geschrieben werden ({statement}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{rest}` follows `{CLASS_KEYWORD}` on the same line. Move it to the next line, then open it again."
+msgstr "Auf `{CLASS_KEYWORD}` folgt in derselben Zeile `{rest}`. Verschieben Sie es in die nächste Zeile und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{rest}` follows on the `{}` line. Move it to the next line, then open the editor again."
+msgstr "In der `{}`-Zeile folgt `{rest}`. Verschieben Sie es in die nächste Zeile und öffnen Sie den Editor dann erneut."
+
+msgid "`{segment}` has no name."
+msgstr "`{segment}` hat keinen Namen."
+
+msgid "`{segment}` is not in the form `$name=\"value\"`."
+msgstr "`{segment}` hat nicht die Form `$name=\"value\"`."
+
+msgid "`{statement}` after `%%{{…}}%%` is not supported by the structured editor. Put the directive and the statement on separate lines, then open it again."
+msgstr "`{statement}` nach `%%{{…}}%%` wird vom strukturierten Editor nicht unterstützt. Schreiben Sie die Direktive und die Anweisung in getrennte Zeilen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{statement}` cannot be read as an edge (write it as `a:R -- L:b`)."
+msgstr "`{statement}` kann nicht als Kante gelesen werden (schreiben Sie sie als `a:R -- L:b`)."
+
+msgid "`{statement}` cannot be used in a C4 diagram (line {}; Mermaid does not accept it). Delete the line, or edit it as text."
+msgstr "`{statement}` kann in einem C4-Diagramm nicht verwendet werden (Zeile {}; Mermaid akzeptiert es nicht). Löschen Sie die Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "`{statement}` is read as a `direction` statement, so it is not supported by the structured editor. Edit it as text."
+msgstr "`{statement}` wird als `direction`-Anweisung gelesen und daher vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{statement}` needs both an alias and a label. Edit it as text."
+msgstr "`{statement}` benötigt sowohl einen Alias als auch eine Beschriftung. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{statement}` points to `{target}`, which is not defined yet at that point. Mermaid ignores it, so reordering in the structured editor would change the diagram. Move it after the definition, or edit it as text."
+msgstr "`{statement}` verweist auf `{target}`, das an dieser Stelle noch nicht definiert ist. Mermaid ignoriert es, daher würde ein Umordnen im strukturierten Editor das Diagramm ändern. Verschieben Sie es hinter die Definition oder bearbeiten Sie das Diagramm als Text."
+
+msgid "`{statement}`, written after the directive `%%{{…}}%%` on the same line, is not supported by the structured editor. Mermaid removes the directive and reads this statement. Break the line after the directive, then open it again."
+msgstr "`{statement}`, das in derselben Zeile nach der Direktive `%%{{…}}%%` steht, wird vom strukturierten Editor nicht unterstützt. Mermaid entfernt die Direktive und liest diese Anweisung. Fügen Sie nach der Direktive einen Zeilenumbruch ein und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{tail}` following the `architecture-beta` line is not supported by the structured editor. Move it to a line of its own, or edit it as text."
+msgstr "`{tail}` nach der `architecture-beta`-Zeile wird vom strukturierten Editor nicht unterstützt. Verschieben Sie es in eine eigene Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "`{tail}` on the `gantt` line is not supported by the structured editor. Move it to the next line, or edit it as text."
+msgstr "`{tail}` in der `gantt`-Zeile wird vom strukturierten Editor nicht unterstützt. Verschieben Sie es in die nächste Zeile oder bearbeiten Sie das Diagramm als Text."
+
+msgid "`{tail}` on the `gitGraph` line is not supported by the structured editor (the direction is one of LR / TB / BT). Edit it as text."
+msgstr "`{tail}` in der `gitGraph`-Zeile wird vom strukturierten Editor nicht unterstützt (die Richtung ist eine von LR / TB / BT). Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{tail}` on the `journey` line is not supported by the structured editor. Edit it as text."
+msgstr "`{tail}` in der `journey`-Zeile wird vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{tail}` on the `kanban` line is not supported by the structured editor. Write columns on the next line."
+msgstr "`{tail}` in der `kanban`-Zeile wird vom strukturierten Editor nicht unterstützt. Schreiben Sie Spalten in die nächste Zeile."
+
+msgid "`{tail}` on the `quadrantChart` line is not supported by the structured editor. Edit it as text."
+msgstr "`{tail}` in der `quadrantChart`-Zeile wird vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{tail}` on the `radar-beta` line is not supported by the structured editor. Edit it as text."
+msgstr "`{tail}` in der `radar-beta`-Zeile wird vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{tail}` on the `{}` line is not supported by the structured editor. Edit it as text."
+msgstr "`{tail}` in der `{}`-Zeile wird vom strukturierten Editor nicht unterstützt. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{text}` cannot be used (`\"` and line breaks are not allowed)."
+msgstr "`{text}` kann nicht verwendet werden (`\"` und Zeilenumbrüche sind nicht zulässig)."
+
+msgid "`{text}` cannot be written back"
+msgstr "`{text}` kann nicht zurückgeschrieben werden"
+
+msgid "`{token}` cannot hold the milliseconds exactly"
+msgstr "`{token}` kann die Millisekunden nicht exakt aufnehmen"
+
+msgid "`{trimmed}` cannot be read as a point (`name: [x, y]`) or as any other statement. Edit it as text."
+msgstr "`{trimmed}` kann weder als Punkt (`name: [x, y]`) noch als andere Anweisung gelesen werden. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{trimmed}` cannot be read as a point."
+msgstr "`{trimmed}` kann nicht als Punkt gelesen werden."
+
+msgid "`{trimmed}` cannot be read as a task (`name: score: people`) or as any other statement. Edit it as text."
+msgstr "`{trimmed}` kann weder als Aufgabe (`name: score: people`) noch als andere Anweisung gelesen werden. Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{trimmed}` is not supported by the structured editor (line {}). Edit it as text."
+msgstr "`{trimmed}` wird vom strukturierten Editor nicht unterstützt (Zeile {}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{trimmed}` is not supported by the structured editor ({reason}). Edit it as text."
+msgstr "`{trimmed}` wird vom strukturierten Editor nicht unterstützt ({reason}). Bearbeiten Sie das Diagramm als Text."
+
+msgid "`{trimmed}` is not supported by the structured editor. Close a multi-line `@{{` with a line that is only `}}`."
+msgstr "`{trimmed}` wird vom strukturierten Editor nicht unterstützt. Schließen Sie ein mehrzeiliges `@{{` mit einer Zeile, die nur `}}` enthält."
+
+msgid "`{value}` cannot be read as a value of a pie chart ({statement}). Write a number of 0 or more."
+msgstr "`{value}` kann nicht als Wert eines Kreisdiagramms gelesen werden ({statement}). Schreiben Sie eine Zahl ab 0."
+
+msgid "`{value}` cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
+msgstr "`{value}` kann nicht für `{owner}` verwendet werden (Zeilenumbrüche, Leerzeichen am Anfang und Ende, `%%{{`, Werte, die mit `\"` beginnen, und das Mischen von `\"` mit `#` / `%%` sind nicht zulässig)."
+
+msgid "`{word}` cannot be used as an attribute type or name."
+msgstr "`{word}` kann nicht als Attributtyp oder -name verwendet werden."
+
+msgid "`{}` after the branch name is ignored"
+msgstr "`{}` nach dem Branch-Namen wird ignoriert"
+
+msgid "`{}` after the quoted message is ignored"
+msgstr "`{}` nach der Nachricht in Anführungszeichen wird ignoriert"
+
+msgid "`{}` cannot be used as a class name ({statement}). Spaces, symbols and Mermaid's reserved words are not allowed."
+msgstr "`{}` kann nicht als Klassenname verwendet werden ({statement}). Leerzeichen, Symbole und reservierte Wörter von Mermaid sind nicht zulässig."
+
+msgid "`{}` cannot be used as a participant id."
+msgstr "`{}` kann nicht als Teilnehmer-ID verwendet werden."
+
+msgid "`{}` cannot be used inside `{}`."
+msgstr "`{}` kann nicht innerhalb von `{}` verwendet werden."
+
+msgid "`{}` cannot be used on the right side of a relationship."
+msgstr "`{}` kann nicht auf der rechten Seite einer Beziehung verwendet werden."
+
+msgid "`{}` cannot come after a participant created with `create`."
+msgstr "`{}` kann nicht nach einem Teilnehmer stehen, der mit `create` erstellt wird."
+
+msgid "`{}` does not have enough arguments."
+msgstr "`{}` hat nicht genügend Argumente."
+
+msgid "`{}` follows `}}` on the same line ({trimmed}). Leave `}}` alone on its line, then open it again."
+msgstr "Auf `}}` folgt in derselben Zeile `{}` ({trimmed}). Lassen Sie `}}` allein in seiner Zeile stehen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{}` has `:::` twice. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{}` hat `:::` zweimal. Mermaid verwendet nur das letzte. Führen Sie sie daher zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{}` has no alias."
+msgstr "`{}` hat keinen Alias."
+
+msgid "`{}` has two icons. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{}` hat zwei Symbole. Mermaid verwendet nur das letzte. Führen Sie sie daher zu einem zusammen und öffnen Sie das Diagramm dann erneut."
+
+msgid "`{}` is indented less than the first column. Indent columns as deep as the first column, and cards deeper than that."
+msgstr "`{}` ist weniger tief eingerückt als die erste Spalte. Rücken Sie Spalten so tief ein wie die erste Spalte und Karten tiefer als diese."
+
+msgid "`{}` is not activated, so it cannot be deactivated."
+msgstr "`{}` ist nicht aktiviert, daher kann es nicht deaktiviert werden."
+
+msgid "accTitle / accDescr on a line with `;` is not supported by the structured editor ({trimmed}). Write one per line."
+msgstr "accTitle / accDescr in einer Zeile mit `;` wird vom strukturierten Editor nicht unterstützt ({trimmed}). Schreiben Sie eine Anweisung pro Zeile."
+
+msgid "accTitle / accDescr with an unclosed `\"` or `[` is not supported by the structured editor ({trimmed}). Mermaid reads the lines after it as part of the description."
+msgstr "accTitle / accDescr mit einem nicht geschlossenen `\"` oder `[` wird vom strukturierten Editor nicht unterstützt ({trimmed}). Mermaid liest die nachfolgenden Zeilen als Teil der Beschreibung."
+
+msgid "arrow `{}`"
+msgstr "Pfeil `{}`"
+
+msgid "block `{}`"
+msgstr "Block `{}`"
+
+msgid "cannot read `{}`"
+msgstr "`{}` kann nicht gelesen werden"
+
+msgid "group `{id}`"
+msgstr "Gruppe `{id}`"
+
+msgid "line breaks and `%%{{` are not allowed, and it cannot start with `%%` or have spaces at either end"
+msgstr "Zeilenumbrüche und `%%{{` sind nicht zulässig, und es darf nicht mit `%%` beginnen und keine Leerzeichen an den Enden haben"
+
+msgid "no `%%` or line breaks, no whitespace at either end, and no `\\` before a quote or at the end"
+msgstr "kein `%%`, keine Zeilenumbrüche, kein Leerraum an den Enden und kein `\\` vor einem Anführungszeichen oder am Ende"
+
+msgid "section `{name}`"
+msgstr "Abschnitt `{name}`"
+
+msgid "task `{}`"
+msgstr "Aufgabe `{}`"
+
+msgid "the branch name `{name}` cannot be written back"
+msgstr "Der Branch-Name `{name}` kann nicht zurückgeschrieben werden"
+
+msgid "the branch name is missing"
+msgstr "Der Branch-Name fehlt"
+
+msgid "the first section"
+msgstr "der erste Abschnitt"
+
+msgid "the order `{value}` is not a whole number"
+msgstr "Die Reihenfolge `{value}` ist keine ganze Zahl"
+
+msgid "the quotes are not closed"
+msgstr "Die Anführungszeichen sind nicht geschlossen"
+
+msgid "the space"
+msgstr "der Freiraum"
+
+msgid "the type `{value}` is not one of NORMAL / REVERSE / HIGHLIGHT"
+msgstr "Der Typ `{value}` ist keiner von NORMAL / REVERSE / HIGHLIGHT"
+
+msgid "there is no `:` after `{key}`"
+msgstr "Nach `{key}` fehlt ein `:`"
+
+msgid "{error} Edit it as text."
+msgstr "{error} Bearbeiten Sie das Diagramm als Text."
+
+msgid "{name}: `{value}` cannot be written. {number_rule}"
+msgstr "{name}: `{value}` kann nicht geschrieben werden. {number_rule}"
+
+msgid "{problem} Edit it as text."
+msgstr "{problem} Bearbeiten Sie das Diagramm als Text."
+
+msgctxt "C4 element"
+msgid "Bidirectional"
+msgstr "Bidirektional"
+
+msgctxt "C4 element"
+msgid "Boundary"
+msgstr "Grenze"
+
+msgctxt "C4 element"
+msgid "Component"
+msgstr "Komponente"
+
+msgctxt "C4 element"
+msgid "Component (DB)"
+msgstr "Komponente (DB)"
+
+msgctxt "C4 element"
+msgid "Component (queue)"
+msgstr "Komponente (Warteschlange)"
+
+msgctxt "C4 element"
+msgid "Container"
+msgstr "Container"
+
+msgctxt "C4 element"
+msgid "Container (DB)"
+msgstr "Container (DB)"
+
+msgctxt "C4 element"
+msgid "Container (queue)"
+msgstr "Container (Warteschlange)"
+
+msgctxt "C4 element"
+msgid "Container boundary"
+msgstr "Containergrenze"
+
+msgctxt "C4 element"
+msgid "Deployment node"
+msgstr "Verteilungsknoten"
+
+msgctxt "C4 element"
+msgid "Deployment node (left-aligned)"
+msgstr "Verteilungsknoten (linksbündig)"
+
+msgctxt "C4 element"
+msgid "Deployment node (right-aligned)"
+msgstr "Verteilungsknoten (rechtsbündig)"
+
+msgctxt "C4 element"
+msgid "Downward"
+msgstr "Nach unten"
+
+msgctxt "C4 element"
+msgid "Enterprise boundary"
+msgstr "Unternehmensgrenze"
+
+msgctxt "C4 element"
+msgid "External component"
+msgstr "Externe Komponente"
+
+msgctxt "C4 element"
+msgid "External component (DB)"
+msgstr "Externe Komponente (DB)"
+
+msgctxt "C4 element"
+msgid "External component (queue)"
+msgstr "Externe Komponente (Warteschlange)"
+
+msgctxt "C4 element"
+msgid "External container"
+msgstr "Externer Container"
+
+msgctxt "C4 element"
+msgid "External container (DB)"
+msgstr "Externer Container (DB)"
+
+msgctxt "C4 element"
+msgid "External container (queue)"
+msgstr "Externer Container (Warteschlange)"
+
+msgctxt "C4 element"
+msgid "External person"
+msgstr "Externe Person"
+
+msgctxt "C4 element"
+msgid "External system"
+msgstr "Externes System"
+
+msgctxt "C4 element"
+msgid "External system (DB)"
+msgstr "Externes System (DB)"
+
+msgctxt "C4 element"
+msgid "External system (queue)"
+msgstr "Externes System (Warteschlange)"
+
+msgctxt "C4 element"
+msgid "Leftward"
+msgstr "Nach links"
+
+msgctxt "C4 element"
+msgid "Person"
+msgstr "Person"
+
+msgctxt "C4 element"
+msgid "Relationship"
+msgstr "Beziehung"
+
+msgctxt "C4 element"
+msgid "Reverse"
+msgstr "Umgekehrt"
+
+msgctxt "C4 element"
+msgid "Rightward"
+msgstr "Nach rechts"
+
+msgctxt "C4 element"
+msgid "System"
+msgstr "System"
+
+msgctxt "C4 element"
+msgid "System (DB)"
+msgstr "System (DB)"
+
+msgctxt "C4 element"
+msgid "System (queue)"
+msgstr "System (Warteschlange)"
+
+msgctxt "C4 element"
+msgid "System boundary"
+msgstr "Systemgrenze"
+
+msgctxt "C4 element"
+msgid "Upward"
+msgstr "Nach oben"
+
+msgctxt "Gantt task tag"
+msgid "Critical"
+msgstr "Kritisch"
+
+msgctxt "Gantt task tag"
+msgid "Done"
+msgstr "Fertig"
+
+msgctxt "Gantt task tag"
+msgid "In progress"
+msgstr "In Bearbeitung"
+
+msgctxt "Gantt task tag"
+msgid "Milestone"
+msgstr "Meilenstein"
+
+msgctxt "Gantt task tag"
+msgid "Vertical line"
+msgstr "Vertikale Linie"
+
+msgctxt "Mermaid diagram kind"
+msgid "Architecture Diagram"
+msgstr "Architekturdiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Block Diagram"
+msgstr "Blockdiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "C4 Diagram"
+msgstr "C4-Diagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Class Diagram"
+msgstr "Klassendiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "ER Diagram"
+msgstr "ER-Diagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Event Modeling"
+msgstr "Event Modeling"
+
+msgctxt "Mermaid diagram kind"
+msgid "Flowchart"
+msgstr "Flussdiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Gantt Chart"
+msgstr "Gantt-Diagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Git Graph"
+msgstr "Git-Graph"
+
+msgctxt "Mermaid diagram kind"
+msgid "Ishikawa Diagram"
+msgstr "Ishikawa-Diagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Kanban"
+msgstr "Kanban"
+
+msgctxt "Mermaid diagram kind"
+msgid "Mindmap"
+msgstr "Mindmap"
+
+msgctxt "Mermaid diagram kind"
+msgid "Packet Diagram"
+msgstr "Paketdiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Pie Chart"
+msgstr "Kreisdiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Quadrant Chart"
+msgstr "Quadrantendiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Radar Chart"
+msgstr "Radardiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Requirement Diagram"
+msgstr "Anforderungsdiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Sankey Diagram"
+msgstr "Sankey-Diagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Sequence Diagram"
+msgstr "Sequenzdiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "State Diagram"
+msgstr "Zustandsdiagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "Timeline"
+msgstr "Zeitleiste"
+
+msgctxt "Mermaid diagram kind"
+msgid "Tree View"
+msgstr "Baumansicht"
+
+msgctxt "Mermaid diagram kind"
+msgid "Treemap"
+msgstr "Treemap"
+
+msgctxt "Mermaid diagram kind"
+msgid "User Journey"
+msgstr "User Journey"
+
+msgctxt "Mermaid diagram kind"
+msgid "Venn Diagram"
+msgstr "Venn-Diagramm"
+
+msgctxt "Mermaid diagram kind"
+msgid "XY Chart (Bar/Line)"
+msgstr "XY-Diagramm (Balken/Linie)"
+
+msgctxt "architecture node"
+msgid "Junction"
+msgstr "Verbindungsstelle"
+
+msgctxt "architecture node"
+msgid "Service"
+msgstr "Dienst"
+
+msgctxt "architecture side"
+msgid "Bottom"
+msgstr "Unten"
+
+msgctxt "architecture side"
+msgid "Left"
+msgstr "Links"
+
+msgctxt "architecture side"
+msgid "Right"
+msgstr "Rechts"
+
+msgctxt "architecture side"
+msgid "Top"
+msgstr "Oben"
+
+msgctxt "block diagram"
+msgid "Arrow"
+msgstr "Pfeil"
+
+msgctxt "block diagram"
+msgid "Block"
+msgstr "Block"
+
+msgctxt "block diagram"
+msgid "Circle"
+msgstr "Kreis"
+
+msgctxt "block diagram"
+msgid "Cross"
+msgstr "Kreuz"
+
+msgctxt "block diagram"
+msgid "Group"
+msgstr "Gruppe"
+
+msgctxt "block diagram"
+msgid "Space"
+msgstr "Freiraum"
+
+msgctxt "event modeling frame field"
+msgid "name"
+msgstr "Name"
+
+msgctxt "event modeling frame field"
+msgid "number"
+msgstr "Nummer"
+
+msgctxt "event modeling frame field"
+msgid "type"
+msgstr "Typ"
+
+msgctxt "gitGraph commit type"
+msgid "Highlight"
+msgstr "Hervorgehoben"
+
+msgctxt "gitGraph commit type"
+msgid "Normal"
+msgstr "Normal"
+
+msgctxt "gitGraph commit type"
+msgid "Reverse"
+msgstr "Umgekehrt"
+
+msgctxt "gitGraph operation"
+msgid "Branch"
+msgstr "Branch"
+
+msgctxt "gitGraph operation"
+msgid "Checkout"
+msgstr "Checkout"
+
+msgctxt "gitGraph operation"
+msgid "Cherry-pick"
+msgstr "Cherry-Pick"
+
+msgctxt "gitGraph operation"
+msgid "Commit"
+msgstr "Commit"
+
+msgctxt "gitGraph operation"
+msgid "Merge"
+msgstr "Merge"
+
+msgctxt "gitGraph operation list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "kanban node"
+msgid "card"
+msgstr "Karte"
+
+msgctxt "kanban node"
+msgid "column"
+msgstr "Spalte"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "mindmap shape"
+msgid "Default"
+msgstr "Standard"
+
+msgctxt "note placement"
+msgid "Left"
+msgstr "Links"
+
+msgctxt "note placement"
+msgid "Right"
+msgstr "Rechts"
+
+msgctxt "quadrant axis"
+msgid "x axis"
+msgstr "X-Achse"
+
+msgctxt "quadrant axis"
+msgid "y axis"
+msgstr "Y-Achse"
+
+msgctxt "radar graticule"
+msgid "Circle"
+msgstr "Kreis"
+
+msgctxt "radar graticule"
+msgid "Polygon"
+msgstr "Polygon"
+
+msgctxt "requirement type"
+msgid "Design constraint"
+msgstr "Entwurfsbeschränkung"
+
+msgctxt "requirement type"
+msgid "Functional requirement"
+msgstr "Funktionale Anforderung"
+
+msgctxt "requirement type"
+msgid "Interface requirement"
+msgstr "Schnittstellenanforderung"
+
+msgctxt "requirement type"
+msgid "Performance requirement"
+msgstr "Leistungsanforderung"
+
+msgctxt "requirement type"
+msgid "Physical requirement"
+msgstr "Physische Anforderung"
+
+msgctxt "requirement type"
+msgid "Requirement"
+msgstr "Anforderung"
+
+msgctxt "sequence note placement"
+msgid "Left of"
+msgstr "Links von"
+
+msgctxt "sequence note placement"
+msgid "Over"
+msgstr "Über"
+
+msgctxt "sequence note placement"
+msgid "Right of"
+msgstr "Rechts von"
+
+msgctxt "xychart orientation"
+msgid "Horizontal"
+msgstr "Horizontal"
+
+msgctxt "xychart orientation"
+msgid "Vertical"
+msgstr "Vertikal"
+
+msgctxt "xychart series"
+msgid "Bar"
+msgstr "Balken"
+
+msgctxt "xychart series"
+msgid "Line"
+msgstr "Linie"

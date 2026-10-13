@@ -1288,7 +1288,7 @@ impl SshRemoteConnection {
             .await
             .context(i18n::t!("downloading server binary locally"))
             .context(i18n::t!(
-                "There is no bundled artifact (ADR-F15) and the download failed as well. \
+                "There is no bundled artifact and the download failed as well. \
                  Build with script\\build.ps1 to prepare the bundled artifact, \
                  or check that this computer can reach the download server"
             ))?;

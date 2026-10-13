@@ -1,0 +1,87 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid " [modified]"
+msgstr " [geändert]"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "Eine Datei oder ein Ordner mit demselben Namen ist bereits vorhanden. Durch das Ersetzen wird der aktuelle Inhalt überschrieben."
+
+msgid "Argument required"
+msgstr "Argument erforderlich"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Cannot save buffer with absolute path"
+msgstr "Ein Puffer mit absolutem Pfad kann nicht gespeichert werden"
+
+msgid "Default Vim Bindings"
+msgstr "Standard-Vim-Tastenkombinationen"
+
+msgid "Disable Vim Mode"
+msgstr "Vim-Modus deaktivieren"
+
+msgid "Enable Vim Mode"
+msgstr "Vim-Modus aktivieren"
+
+msgid "Failed to :w"
+msgstr "Ausführen von :w fehlgeschlagen"
+
+msgid "Failed to save"
+msgstr "Speichern fehlgeschlagen"
+
+msgid "Failed to write lines"
+msgstr "Zeilen konnten nicht geschrieben werden"
+
+msgid "Invalid argument: {}"
+msgstr "Ungültiges Argument: {}"
+
+msgid "No file name"
+msgstr "Kein Dateiname"
+
+msgid "Nothing in register {}"
+msgstr "Register {} ist leer"
+
+msgid "Overwriting the current file with selected buffer content requires '!'."
+msgstr "Das Überschreiben der aktuellen Datei mit dem ausgewählten Pufferinhalt erfordert '!'."
+
+msgid "Partial buffer write requires file name."
+msgstr "Partielles Schreiben des Puffers erfordert einen Dateinamen."
+
+msgid "Replace"
+msgstr "Ersetzen"
+
+msgid "Use ! to write partial buffer"
+msgstr "! verwenden, um einen Teil des Puffers zu schreiben"
+
+msgid "Vim: Off"
+msgstr "Vim: Aus"
+
+msgid "Vim: On"
+msgstr "Vim: Ein"
+
+msgid "When disabled, you can type as soon as you open a file, just like in VSCode."
+msgstr "Wenn deaktiviert, können Sie wie in VSCode sofort nach dem Öffnen einer Datei tippen."
+
+msgid "When enabled, you edit with Vim key bindings."
+msgstr "Wenn aktiviert, bearbeiten Sie mit Vim-Tastenkombinationen."
+
+msgid "[No Name]"
+msgstr "[Kein Name]"
+
+msgid "{filename}{modified} {lines} lines --{percentage}%--"
+msgstr "{filename}{modified} {lines} Zeilen --{percentage}%--"
+
+msgid "{path} already exists. Do you want to replace it?"
+msgstr "{path} ist bereits vorhanden. Möchten Sie die Datei ersetzen?"
+
+msgid "{} already exists. Do you want to replace it?"
+msgstr "{} ist bereits vorhanden. Möchten Sie es ersetzen?"

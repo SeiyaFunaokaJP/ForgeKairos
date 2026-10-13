@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"{}\" is not a language tag; showing English."
+msgstr "\"{}\"은(는) 언어 태그가 아닙니다. 영어로 표시합니다."
+
+msgid "Problems in the UI translation files"
+msgstr "UI 번역 파일의 문제"
+
+msgid "Restart Now"
+msgstr "지금 다시 시작"
+
+msgid "Some parts of the UI switch to the new language after a restart."
+msgstr "UI의 일부는 다시 시작한 후 새 언어로 전환됩니다."
+
+msgid "There is no translation for \"{}\"; showing English."
+msgstr "\"{}\"에 대한 번역이 없습니다. 영어로 표시합니다."
+
+msgid "…and {} more (see the log)."
+msgstr "…외 {}개 (로그 참조)."
+
+msgctxt "dialog title"
+msgid "Critical"
+msgstr "경고"
+
+msgctxt "dialog title"
+msgid "Info"
+msgstr "정보"
+
+msgctxt "dialog title"
+msgid "Warning"
+msgstr "경고"

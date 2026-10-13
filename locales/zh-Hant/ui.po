@@ -1,0 +1,223 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "1 day"
+msgstr "1 天"
+
+msgid "1 hour"
+msgstr "1 小時"
+
+msgid "1 minute"
+msgstr "1 分鐘"
+
+msgid "1 month"
+msgstr "1 個月"
+
+msgid "1 year"
+msgstr "1 年"
+
+msgid "10 seconds"
+msgstr "10 秒"
+
+msgid "2 months"
+msgstr "2 個月"
+
+msgid "2 years"
+msgstr "2 年"
+
+msgid "20 seconds"
+msgstr "20 秒"
+
+msgid "5 seconds"
+msgstr "5 秒"
+
+msgid "Authentication Required."
+msgstr "需要驗證。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Checking for Zed Updates…"
+msgstr "正在檢查 ForgeKairos 更新…"
+
+msgid "Choose one of the options below to use the {}"
+msgstr "選擇以下其中一個選項以使用 {}"
+
+msgid "Client Secret Required."
+msgstr "需要用戶端密碼。"
+
+msgid "Clone Repository"
+msgstr "複製儲存庫"
+
+msgid "Copied!"
+msgstr "已複製！"
+
+msgid "Copy"
+msgstr "複製"
+
+msgid "Dismiss"
+msgstr "關閉"
+
+msgid "Downloading Zed Update…"
+msgstr "正在下載 ForgeKairos 更新…"
+
+msgid "Downloading version {version} needs network access to {hosts}"
+msgstr "下載版本 {version} 需要對 {hosts} 的網路存取權"
+
+msgid "Failed to Update"
+msgstr "更新失敗"
+
+msgid "Installing Zed Update…"
+msgstr "正在安裝 ForgeKairos 更新…"
+
+msgid "Learn More"
+msgstr "深入了解"
+
+msgid "No items"
+msgstr "沒有項目"
+
+msgid "Open Project"
+msgstr "開啟專案"
+
+msgid "Restart to Update"
+msgstr "重新啟動以更新"
+
+msgid "Reveal in File Explorer"
+msgstr "在檔案總管中顯示"
+
+msgid "Reveal in File Manager"
+msgstr "在檔案管理員中顯示"
+
+msgid "Reveal in Finder"
+msgstr "在 Finder 中顯示"
+
+msgid "Server has an error."
+msgstr "伺服器發生錯誤。"
+
+msgid "Server is active."
+msgstr "伺服器運作中。"
+
+msgid "Server is starting."
+msgstr "伺服器正在啟動。"
+
+msgid "Server is stopped."
+msgstr "伺服器已停止。"
+
+msgid "Thread has an Error"
+msgstr "會話發生錯誤"
+
+msgid "Up to Date"
+msgstr "已是最新版本"
+
+msgid "Update Needs Permission"
+msgstr "更新需要權限"
+
+msgid "Update to Version: {version}"
+msgstr "更新至版本：{version}"
+
+msgid "Waiting for Authorization…"
+msgstr "正在等待授權…"
+
+msgid "Waiting for Confirmation"
+msgstr "等待確認"
+
+msgid "Waiting for approval."
+msgstr "等待核准。"
+
+msgid "a minute"
+msgstr "1 分鐘"
+
+msgid "about 1 hour"
+msgstr "大約 1 小時"
+
+msgid "about 1 month"
+msgstr "大約 1 個月"
+
+msgid "about 1 year"
+msgstr "大約 1 年"
+
+msgid "about 2 months"
+msgstr "大約 2 個月"
+
+msgid "about {} hours"
+msgstr "大約 {} 小時"
+
+msgid "about {} years"
+msgstr "大約 {} 年"
+
+msgid "almost 2 years"
+msgstr "將近 2 年"
+
+msgid "almost {} years"
+msgstr "將近 {} 年"
+
+msgid "half a minute"
+msgstr "半分鐘"
+
+msgid "less than 10 seconds"
+msgstr "不到 10 秒"
+
+msgid "less than 20 seconds"
+msgstr "不到 20 秒"
+
+msgid "less than 5 seconds"
+msgstr "不到 5 秒"
+
+msgid "less than a minute"
+msgstr "不到 1 分鐘"
+
+msgid "or"
+msgstr "或"
+
+msgid "over 1 year"
+msgstr "超過 1 年"
+
+msgid "over {} years"
+msgstr "超過 {} 年"
+
+msgid "{label} is defined in the project's settings."
+msgstr "{label} 定義於專案設定中。"
+
+msgid "{label} was configured manually."
+msgstr "{label} 是手動設定的。"
+
+msgid "{label} was installed from an extension."
+msgstr "{label} 是從擴充功能安裝的。"
+
+msgid "{label} was installed from the ACP registry."
+msgstr "{label} 是從 ACP 登錄庫安裝的。"
+
+msgid "{message} ({}% downloaded)"
+msgstr "{message}（已下載 {}%）"
+
+msgid "{string} ago"
+msgstr "{string}前"
+
+msgid "{string} from now"
+msgstr "{string}後"
+
+msgid "{} days"
+msgstr "{} 天"
+
+msgid "{} hours"
+msgstr "{} 小時"
+
+msgid "{} minutes"
+msgstr "{} 分鐘"
+
+msgid "{} months"
+msgstr "{} 個月"
+
+msgid "{} years"
+msgstr "{} 年"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

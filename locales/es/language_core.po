@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Available in all locations in your current project."
+msgstr "Disponible en todas las ubicaciones de su proyecto actual."
+
+msgid "Available in all of your projects on this machine."
+msgstr "Disponible en todos sus proyectos de este equipo."
+
+msgid "Available only in the subproject you're currently in."
+msgstr "Disponible solo en el subproyecto en el que se encuentra."
+
+msgid "Global"
+msgstr "Global"
+
+msgid "Project"
+msgstr "Proyecto"
+
+msgid "Subproject"
+msgstr "Subproyecto"

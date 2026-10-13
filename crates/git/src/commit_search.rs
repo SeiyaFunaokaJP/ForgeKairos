@@ -68,10 +68,41 @@ impl CommitSearchConditionKind {
         }
     }
 
+    /// The label in the display language as a word the query takes too, so that a condition
+    /// can be typed in any language there is a translation for. Not when the query could not
+    /// read it back as this condition: a label with a colon or a quote, or one that another
+    /// condition also goes by.
+    fn translated_prefix(self) -> Option<&'static str> {
+        if self == Self::Sha {
+            return None;
+        }
+        let label = self.label();
+        // A label that is one of the condition's own words (English, or no translation) is
+        // written as that word already.
+        if label.is_empty()
+            || self.prefix_words().iter().any(|word| same_word(word, label))
+            || label.trim() != label
+            || label.contains(|character: char| is_colon(character) || character == '"')
+        {
+            return None;
+        }
+        let taken_elsewhere = Self::ALL.iter().filter(|kind| **kind != self).any(|kind| {
+            same_word(kind.label(), label)
+                || kind
+                    .prefix_words()
+                    .iter()
+                    .any(|word| same_word(word, label))
+        });
+        (!taken_elsewhere).then_some(label)
+    }
+
     /// The word the search box writes before the colon: the label, when the query takes it,
     /// and otherwise the English word, so that a condition written in a language the query
     /// does not read still reads back.
     pub fn query_prefix(self) -> &'static str {
+        if let Some(translated) = self.translated_prefix() {
+            return translated;
+        }
         let label = self.label();
         let words = self.prefix_words();
         words
@@ -112,25 +143,57 @@ impl MergeFilter {
     pub fn parse(value: &str) -> Option<Self> {
         let value = value.trim();
         let is = |words: &[&str]| words.iter().any(|word| word.eq_ignore_ascii_case(value));
-        if is(&["yes", "include", "はい", "含む"]) {
+        if is(Self::Include.words()) {
             Some(Self::Include)
-        } else if is(&["no", "exclude", "いいえ", "除く"]) {
+        } else if is(Self::Exclude.words()) {
             Some(Self::Exclude)
-        } else if is(&["only", "だけ", "のみ"]) {
+        } else if is(Self::Only.words()) {
             Some(Self::Only)
         } else {
-            None
+            [Self::Include, Self::Exclude, Self::Only]
+                .into_iter()
+                .find(|filter| {
+                    filter
+                        .translated_word()
+                        .is_some_and(|word| same_word(word, value))
+                })
         }
+    }
+
+    fn words(self) -> &'static [&'static str] {
+        match self {
+            Self::Include => &["yes", "include", "はい", "含む"],
+            Self::Exclude => &["no", "exclude", "いいえ", "除く"],
+            Self::Only => &["only", "だけ", "のみ"],
+        }
+    }
+
+    fn translation(self) -> &'static str {
+        match self {
+            Self::Include => i18n::tc!("commit search", "yes"),
+            Self::Exclude => i18n::tc!("commit search", "no"),
+            Self::Only => i18n::tc!("commit search", "only"),
+        }
+    }
+
+    /// The value in the display language, unless another value also goes by it.
+    fn translated_word(self) -> Option<&'static str> {
+        let word = self.translation().trim();
+        let taken_elsewhere = [Self::Include, Self::Exclude, Self::Only]
+            .into_iter()
+            .filter(|filter| *filter != self)
+            .any(|filter| {
+                same_word(filter.translation(), word)
+                    || filter.words().iter().any(|other| same_word(other, word))
+            });
+        (!word.is_empty() && !taken_elsewhere).then_some(word)
     }
 
     /// The value the advanced search form writes into the query, in the display language when
     /// [`Self::parse`] reads it back.
     pub fn query_value(self) -> &'static str {
-        let (translated, english) = match self {
-            Self::Include => (i18n::tc!("commit search", "yes"), "yes"),
-            Self::Exclude => (i18n::tc!("commit search", "no"), "no"),
-            Self::Only => (i18n::tc!("commit search", "only"), "only"),
-        };
+        let translated = self.translation();
+        let english = self.words().first().copied().unwrap_or_default();
         if Self::parse(translated) == Some(self) {
             translated
         } else {
@@ -145,16 +208,33 @@ fn is_colon(character: char) -> bool {
 
 /// The condition `text` starts with, and how many bytes its prefix and colon take.
 fn match_condition_prefix(text: &str) -> Option<(CommitSearchConditionKind, usize)> {
-    CommitSearchConditionKind::ALL.iter().find_map(|kind| {
-        kind.prefix_words().iter().find_map(|word| {
-            let candidate = text.get(..word.len())?;
-            if !candidate.eq_ignore_ascii_case(word) {
-                return None;
-            }
-            let colon = text.get(word.len()..)?.chars().next()?;
-            is_colon(colon).then_some((*kind, word.len() + colon.len_utf8()))
+    let prefix_length = |word: &str| {
+        let candidate = text.get(..word.len())?;
+        if !same_word(candidate, word) {
+            return None;
+        }
+        let colon = text.get(word.len()..)?.chars().next()?;
+        is_colon(colon).then_some(word.len() + colon.len_utf8())
+    };
+    let fixed = CommitSearchConditionKind::ALL.iter().find_map(|kind| {
+        kind.prefix_words()
+            .iter()
+            .find_map(|word| Some((*kind, prefix_length(word)?)))
+    });
+    fixed.or_else(|| {
+        CommitSearchConditionKind::ALL.iter().find_map(|kind| {
+            let label = kind.translated_prefix()?;
+            // A label of two words can be typed as one, since a space would end the value.
+            let joined: String = label.split_whitespace().collect();
+            let length = prefix_length(label).or_else(|| prefix_length(&joined))?;
+            Some((*kind, length))
         })
     })
+}
+
+/// Whether two words are the same ignoring case, also outside ASCII (`Änderung`).
+fn same_word(left: &str, right: &str) -> bool {
+    left == right || left.to_lowercase() == right.to_lowercase()
 }
 
 fn next_whitespace(text: &str, from: usize) -> usize {
@@ -915,6 +995,91 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Conditions can be typed in the display language, whichever it is, with the English
+    /// words still read.
+    #[test]
+    fn test_conditions_are_read_in_any_display_language() {
+        struct LabelCatalog(&'static [(&'static str, &'static str)]);
+        impl i18n::Catalog for LabelCatalog {
+            fn locale(&self) -> &str {
+                "xx"
+            }
+            fn lookup(&self, context: Option<&str>, msgid: &str) -> Option<&'static str> {
+                if context != Some("commit search") {
+                    return None;
+                }
+                self.0
+                    .iter()
+                    .find(|(english, _)| *english == msgid)
+                    .map(|(_, translated)| *translated)
+            }
+            fn lookup_plural(
+                &self,
+                _context: Option<&str>,
+                _msgid: &str,
+                _msgid_plural: &str,
+                _count: u64,
+            ) -> Option<&'static str> {
+                None
+            }
+        }
+        static GERMAN: LabelCatalog = LabelCatalog(&[
+            ("Author", "Autor"),
+            ("Change", "Änderung"),
+            ("Since", "Geändert seit"),
+            ("Until", "bis"),
+            ("yes", "ja"),
+            ("no", "nein"),
+            ("only", "nur"),
+        ]);
+        static CHINESE: LabelCatalog = LabelCatalog(&[
+            ("Author", "作者"),
+            ("Tag", "标签"),
+            ("Merge", "合并"),
+            ("only", "仅"),
+            // Another condition's English word stays that condition's.
+            ("File", "tag"),
+        ]);
+
+        {
+            let _locale = i18n::test_support::LocaleOverride::new(Some(&GERMAN));
+            for (query, kind, value) in [
+                ("autor:alice", Kind::Author, "alice"),
+                ("AUTOR：alice", Kind::Author, "alice"),
+                ("author:alice", Kind::Author, "alice"),
+                ("änderung:foo", Kind::Change, "foo"),
+                ("ÄNDERUNG:foo", Kind::Change, "foo"),
+                ("Geändert seit:2024-01-01", Kind::Since, "2024-01-01"),
+                ("geändertseit:2024-01-01", Kind::Since, "2024-01-01"),
+                ("Bis:2024-01-01", Kind::Until, "2024-01-01"),
+            ] {
+                assert_eq!(conditions(query), [(kind, value.to_string())], "{query}");
+            }
+            assert_eq!(MergeFilter::parse("Nur"), Some(MergeFilter::Only));
+            assert_eq!(MergeFilter::parse("JA"), Some(MergeFilter::Include));
+            assert_eq!(MergeFilter::parse("no"), Some(MergeFilter::Exclude));
+            assert_eq!(MergeFilter::Only.query_value(), "nur");
+            assert_eq!(Kind::Change.query_prefix(), "Änderung");
+            for kind in Kind::ALL {
+                let written = set_commit_search_condition("x", kind, "abcd").unwrap();
+                assert_eq!(conditions(&written), [(kind, "abcd".to_string())]);
+            }
+        }
+
+        let _locale = i18n::test_support::LocaleOverride::new(Some(&CHINESE));
+        for (query, kind) in [
+            ("作者:alice", Kind::Author),
+            ("标签:v1", Kind::Tag),
+            ("tag:v1", Kind::Tag),
+            ("合并:仅", Kind::Merge),
+        ] {
+            assert_eq!(conditions(query).first().map(|(kind, _)| *kind), Some(kind));
+        }
+        assert_eq!(MergeFilter::parse("仅"), Some(MergeFilter::Only));
+        assert_eq!(Kind::Path.query_prefix(), "path");
+        assert_eq!(text("fix: typo"), "fix: typo");
     }
 
     #[test]

@@ -1,0 +1,61 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Confirm Selections"
+msgstr "Confirmer les sélections"
+
+msgid "Create Dev Container"
+msgstr "Créer un conteneur de développement"
+
+msgid "Error Creating Dev Container Definition"
+msgstr "Erreur lors de la création de la définition du conteneur de développement"
+
+msgid "Error Retrieving Templates"
+msgstr "Erreur lors de la récupération des modèles"
+
+msgid "Go Back"
+msgstr "Précédent"
+
+msgid "Multiple containers match this project's dev container labels ({ids}). Zed can't decide which to connect to. Stop and remove the stale one(s) with `docker stop <id>` and `docker rm <id>`, then try again."
+msgstr "Plusieurs conteneurs correspondent aux étiquettes de conteneur de développement de ce projet ({ids}). ForgeKairos ne peut pas déterminer auquel se connecter. Arrêtez et supprimez le ou les conteneurs obsolètes avec `docker stop <id>` et `docker rm <id>`, puis réessayez."
+
+msgid "Overwrite"
+msgstr "Remplacer"
+
+msgid "Overwrite Existing Configuration?"
+msgstr "Remplacer la configuration existante ?"
+
+msgid "Querying features..."
+msgstr "Recherche des fonctionnalités..."
+
+msgid "Querying template registry..."
+msgstr "Recherche dans le registre de modèles..."
+
+msgid "Search for Dev Container Templates"
+msgstr "Rechercher des modèles de conteneur de développement"
+
+msgid "Select Feature"
+msgstr "Sélectionner la fonctionnalité"
+
+msgid "Select a template"
+msgstr "Sélectionnez un modèle"
+
+msgid "Select features to add"
+msgstr "Sélectionnez les fonctionnalités à ajouter"
+
+msgid "Template Option: "
+msgstr "Option de modèle : "
+
+msgctxt "dev container wizard"
+msgid "Continue"
+msgstr "Continuer"

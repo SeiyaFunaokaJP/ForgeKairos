@@ -1,0 +1,3123 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A Note has no target."
+msgstr "有 Note 沒有目標。"
+
+msgid "A `%%{{` directive is on the same line as a statement or a comment (Mermaid cuts out only the directive and reads the rest as a statement). Write the directive on a line of its own, or edit it as text."
+msgstr "`%%{{` 指示詞與陳述式或註解位於同一行（Mermaid 只會截取指示詞，並將其餘部分讀取為陳述式）。請將指示詞單獨寫在一行，或以文字編輯。"
+
+msgid "A `%%{{` inside a comment runs on to the next line ({line}). Mermaid does not read the lines in between, so the structured editor cannot handle it."
+msgstr "註解中的 `%%{{` 延續到下一行（{line}）。Mermaid 不會讀取其間的行，因此結構化編輯器無法處理。"
+
+msgid "A `block` group is not closed with `end`. Edit it as text."
+msgstr "`block` 群組未以 `end` 結束。請以文字編輯。"
+
+msgid "A `section` without a name is not supported by the structured editor ({statement}). Give it a name, or edit it as text."
+msgstr "結構化編輯器不支援沒有名稱的 `section`（{statement}）。請為其命名，或以文字編輯。"
+
+msgid "A `section` without a name is not supported by the structured editor ({trimmed}). Give it a name, or edit it as text."
+msgstr "結構化編輯器不支援沒有名稱的 `section`（{trimmed}）。請為其命名，或以文字編輯。"
+
+msgid "A comment (`%%`) on a line of data `{name}` is lost in the structured editor. Move the comment to a line of its own outside the block, then open it again."
+msgstr "資料 `{name}` 那一行上的註解（`%%`）會在結構化編輯器中遺失。請將註解移至區塊外的獨立一行，然後再次開啟。"
+
+msgid "A comment at the end of a frame line is lost in the structured editor ({line}). Move the comment to a line of its own, then open it again."
+msgstr "框架行結尾的註解會在結構化編輯器中遺失（{line}）。請將註解移至獨立的一行，然後再次開啟。"
+
+msgid "A comment in the middle or at the end of a statement is lost in the structured editor ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "陳述式中間或結尾的註解會在結構化編輯器中遺失（{trimmed}）。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "A comment inside a `curve` that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside, or edit it as text."
+msgstr "跨越多行的 `curve` 中的註解會在結構化編輯器中遺失（{trimmed}）。請將註解移到外面，或以文字編輯。"
+
+msgid "A comment inside a statement that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside the statement, or edit it as text."
+msgstr "跨越多行的陳述式中的註解會在結構化編輯器中遺失（{trimmed}）。請將註解移至陳述式外，或以文字編輯。"
+
+msgid "A comment must be a single line that starts with `%%`."
+msgstr "註解必須是以 `%%` 開頭的單一行。"
+
+msgid "A date cannot be written into `{other}` of `dateFormat`"
+msgstr "無法將日期寫入 `dateFormat` 的 `{other}`"
+
+msgid "A deactivate has no target."
+msgstr "有 deactivate 沒有目標。"
+
+msgid "A field of 0 bits cannot be written ({statement})."
+msgstr "無法寫入 0 位元的欄位（{statement}）。"
+
+msgid "A frame whose name contains %% cannot be handled by the structured editor ({line})."
+msgstr "結構化編輯器無法處理名稱中含有 %% 的框架（{line}）。"
+
+msgid "A group without an ID cannot have a label or a width. Give it an ID."
+msgstr "沒有 ID 的群組不能有標籤或寬度。請為其指定 ID。"
+
+msgid "A line of the Sankey diagram has a fourth column ({}). Write only the three columns `source,target,value`."
+msgstr "桑基圖的某一行有第四欄（{}）。請只寫 `source,target,value` 三欄。"
+
+msgid "A line that contains `end note` cannot be written in the text of a note ({trimmed}). Edit it as text."
+msgstr "附註的文字中不能寫入含有 `end note` 的行（{trimmed}）。請以文字編輯。"
+
+msgid "A multi-line `@{{` is supported only when its first line ends with `@{{` and the lines after it are written as `key: value`."
+msgstr "只有在第一行以 `@{{` 結尾，且後續各行以 `key: value` 撰寫時，才支援多行的 `@{{`。"
+
+msgid "A node label cannot contain line breaks."
+msgstr "節點標籤不可包含換行。"
+
+msgid "A node name cannot contain line breaks."
+msgstr "節點名稱不可包含換行。"
+
+msgid "A space is needed after `:` ({trimmed})."
+msgstr "`:` 之後需要空格（{trimmed}）。"
+
+msgid "A statement follows `%%{{…}}%%` on the same line (line {}). Put the directive on its own line, then open it."
+msgstr "`%%{{…}}%%` 後方的同一行接著陳述式（第 {} 行）。請將指示詞放在獨立的一行，然後再開啟。"
+
+msgid "A statement follows `%%{{…}}%%` on the same line ({}). Put the directive and the statement on separate lines, then open the editor."
+msgstr "`%%{{…}}%%` 後方的同一行接著陳述式（{}）。請將指示詞與陳述式分成不同行，然後再開啟編輯器。"
+
+msgid "A {what} has an empty ID."
+msgstr "有 ID 為空的 {what}。"
+
+msgid "Aggregation (left is whole)"
+msgstr "聚合（左側為整體）"
+
+msgid "Aggregation (right is whole)"
+msgstr "聚合（右側為整體）"
+
+msgid "Alternative (alt)"
+msgstr "替代（alt）"
+
+msgid "An `accTitle` after `title` becomes the diagram's title, so `title` is not used."
+msgstr "位於 `title` 之後的 `accTitle` 會成為圖表的標題，因此不會使用 `title`。"
+
+msgid "An activate has no target."
+msgstr "有 activate 沒有目標。"
+
+msgid "An arrow has no receiver."
+msgstr "有箭頭沒有接收者。"
+
+msgid "An arrow has no sender."
+msgstr "有箭頭沒有傳送者。"
+
+msgid "An empty `\"\"` after `-->` is not supported by the structured editor. Remove it, or edit it as text."
+msgstr "結構化編輯器不支援 `-->` 之後的空 `\"\"`。請將其移除，或以文字編輯。"
+
+msgid "An empty label `[\"\"]` is not supported by the structured editor ({line}). Write a label or remove `[\"\"]`, then open it again."
+msgstr "結構化編輯器不支援空標籤 `[\"\"]`（{line}）。請撰寫標籤或移除 `[\"\"]`，然後再次開啟。"
+
+msgid "An item outside any group is indented. Use “Move into the Group Above” to put it into a group."
+msgstr "不屬於任何群組的項目有縮排。請使用「移入上方的群組」將其放入群組。"
+
+msgid "Arrow"
+msgstr "箭頭"
+
+msgid "Association (line only)"
+msgstr "關聯（僅線條）"
+
+msgid "Association (pointing left)"
+msgstr "關聯（指向左方）"
+
+msgid "Association (pointing right)"
+msgstr "關聯（指向右方）"
+
+msgid "At the same time (and)"
+msgstr "同時（and）"
+
+msgid "Automation (pcr)"
+msgstr "自動化（pcr）"
+
+msgid "Background (rect)"
+msgstr "背景（rect）"
+
+msgid "Bang )) (("
+msgstr "爆炸 )) (("
+
+msgid "Because of how `%%{{…}}%%` or similar is written, what the structured editor reads does not match the diagram Mermaid draws. Edit it as text."
+msgstr "由於 `%%{{…}}%%` 等的寫法，結構化編輯器讀取的內容與 Mermaid 繪製的圖表不一致。請以文字編輯。"
+
+msgid "Both inline data and a data reference are written ({line}). Keep only one, then open it again."
+msgstr "同時寫入了內嵌資料與資料參考（{line}）。請只保留其中一個，然後再次開啟。"
+
+msgid "Bottom to top (BT)"
+msgstr "由下而上（BT）"
+
+msgid "Box (participant)"
+msgstr "方塊（participant）"
+
+msgid "Branch `{name}` is referenced by operation {list}. Delete it first, or point it at another branch."
+msgid_plural "Branch `{name}` is referenced by operations {list}. Delete them first, or point them at another branch."
+msgstr[0] "分支 `{name}` 被操作 {list} 參考。請先刪除這些操作，或將其指向另一個分支。"
+
+msgid "Break (break)"
+msgstr "中斷（break）"
+
+msgid "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated."
+msgstr "無法刪除 {what}，因為參考它的工作日期將無法計算。"
+
+msgid "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated. The diagram cannot be drawn with its current content ({error}). Fix the fields outlined in red first."
+msgstr "無法刪除 {what}，因為參考它的工作日期將無法計算。以目前的內容無法繪製圖表（{error}）。請先修正以紅框標示的欄位。"
+
+msgid "Cannot delete {what}."
+msgstr "無法刪除 {what}。"
+
+msgid "Cannot delete {what}: the end of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+msgstr "無法刪除 {what}：參考它的工作 `{task}` 的結束時間會改變。請先將 `{task}` 的 `after` / `until` 改寫為日期。"
+
+msgid "Cannot delete {what}: the end of task `{}` would have to be written as a date, which is not possible ({error})."
+msgstr "無法刪除 {what}：工作 `{}` 的結束時間必須寫成日期，但無法這樣做（{error}）。"
+
+msgid "Cannot delete {what}: the start of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+msgstr "無法刪除 {what}：參考它的工作 `{task}` 的開始時間會改變。請先將 `{task}` 的 `after` / `until` 改寫為日期。"
+
+msgid "Cannot delete {what}: the start of task `{}` would have to be written as a date, which is not possible ({error})."
+msgstr "無法刪除 {what}：工作 `{}` 的開始時間必須寫成日期，但無法這樣做（{error}）。"
+
+msgid "Central connections written with `()` are not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援以 `()` 撰寫的中央連接。請以文字編輯。"
+
+msgid "Choice (option)"
+msgstr "選項（option）"
+
+msgid "Choice <<choice>>"
+msgstr "分支 <<choice>>"
+
+msgid "Choose the commit to cherry-pick."
+msgstr "請選擇要揀選的提交。"
+
+msgid "Circle (( ))"
+msgstr "圓形 (( ))"
+
+msgid "Circle ((point))"
+msgstr "圓形 ((點))"
+
+msgid "Circle end"
+msgstr "圓形端點"
+
+msgid "Close a one-line `namespace` with `}}` on the same line ({statement}). Split it into several lines, or edit it as text."
+msgstr "單行的 `namespace` 請在同一行以 `}}` 結束（{statement}）。請分成多行，或以文字編輯。"
+
+msgid "Close the arrow block in `{line}` with `]>`."
+msgstr "請以 `]>` 結束 `{line}` 中的箭頭區塊。"
+
+msgid "Close the arrow direction in `{line}` with `)`."
+msgstr "請以 `)` 結束 `{line}` 中的箭頭方向。"
+
+msgid "Cloud"
+msgstr "雲端"
+
+msgid "Cloud ) ("
+msgstr "雲朵 ) ("
+
+msgid "Command (cmd)"
+msgstr "命令（cmd）"
+
+msgid "Comments at the end of a statement (from `#` or `%%` onward) would be lost in the structured editor ({}). Move the comment to its own line, or enclose values that contain `#` in `\"`."
+msgstr "陳述式結尾的註解（自 `#` 或 `%%` 起）會在結構化編輯器中遺失（{}）。請將註解移至獨立的一行，或以 `\"` 括住含有 `#` 的值。"
+
+msgid "Comments inside an attribute block would be lost in the structured editor ({statement}). Move the comment out of the block, or edit it as text."
+msgstr "屬性區塊中的註解會在結構化編輯器中遺失（{statement}）。請將註解移至區塊外，或以文字編輯。"
+
+msgid "Commit `{id}` is referenced by the cherry-pick at operation {list}. Delete it first."
+msgid_plural "Commit `{id}` is referenced by the cherry-picks at operations {list}. Delete them first."
+msgstr[0] "提交 `{id}` 被操作 {list} 的揀選參考。請先刪除這些操作。"
+
+msgid "Component diagram"
+msgstr "元件圖"
+
+msgid "Composite states are nested too deeply. Edit it as text."
+msgstr "複合狀態的巢狀層級過深。請以文字編輯。"
+
+msgid "Composition (left is whole)"
+msgstr "組合（左側為整體）"
+
+msgid "Composition (right is whole)"
+msgstr "組合（右側為整體）"
+
+msgid "Container diagram"
+msgstr "容器圖"
+
+msgid "Contains (contains)"
+msgstr "包含（contains）"
+
+msgid "Context diagram"
+msgstr "內容圖"
+
+msgid "Copies (copies)"
+msgstr "複製（copies）"
+
+msgid "Could not determine which item the end-of-line comment ({comment}) belongs to. Move the comment to its own line, or edit it as text."
+msgstr "無法判斷行尾的註解（{comment}）屬於哪個項目。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "Could not find the details of participant `{model_id}`."
+msgstr "找不到參與者 `{model_id}` 的詳細資料。"
+
+msgid "Could not find the entity on the left side of a relationship."
+msgstr "找不到關係左側的實體。"
+
+msgid "Could not find the entity on the right side of a relationship."
+msgstr "找不到關係右側的實體。"
+
+msgid "Could not read `{other}` as a requirement field."
+msgstr "無法將 `{other}` 讀取為需求欄位。"
+
+msgid "Could not read `{other}` as an element field."
+msgstr "無法將 `{other}` 讀取為元素欄位。"
+
+msgid "Could not read `{rest}` after the `)` of `{statement}`."
+msgstr "無法讀取 `{statement}` 的 `)` 之後的 `{rest}`。"
+
+msgid "Could not read `{rest}` after the `class` statement ({statement})."
+msgstr "無法讀取 `class` 陳述式之後的 `{rest}`（{statement}）。"
+
+msgid "Could not read `{rest}` after the relation ({statement})."
+msgstr "無法讀取關係之後的 `{rest}`（{statement}）。"
+
+msgid "Could not read `{statement}` as a C4 diagram statement. Edit it as text."
+msgstr "無法將 `{statement}` 讀取為 C4 圖表陳述式。請以文字編輯。"
+
+msgid "Could not read `{statement}` as a class assignment."
+msgstr "無法將 `{statement}` 讀取為類別指派。"
+
+msgid "Could not read `{statement}` as a relationship."
+msgstr "無法將 `{statement}` 讀取為關係。"
+
+msgid "Could not read `{statement}` as a requirement diagram statement. Edit it as text."
+msgstr "無法將 `{statement}` 讀取為需求圖陳述式。請以文字編輯。"
+
+msgid "Could not read `{statement}` as an item of a block (`{opening}`)."
+msgstr "無法將 `{statement}` 讀取為區塊（`{opening}`）的項目。"
+
+msgid "Could not read `{statement}`. A class diagram statement is one of `class A`, `A : member`, `A --> B`, `<<annotation>> A` and `note for A \"…\"`."
+msgstr "無法讀取 `{statement}`。類別圖的陳述式必須是 `class A`、`A : member`、`A --> B`、`<<annotation>> A` 與 `note for A \"…\"` 其中之一。"
+
+msgid "Could not read `{trailing}` after the `\"` of `{input}`."
+msgstr "無法讀取 `{input}` 的 `\"` 之後的 `{trailing}`。"
+
+msgid "Could not read `{value}` of `{name}` ({line}). {number_rule}"
+msgstr "無法讀取 `{name}` 的 `{value}`（{line}）。{number_rule}"
+
+msgid "Could not read `{}` after `<<annotation>> ClassName` ({statement})."
+msgstr "無法讀取 `<<annotation>> ClassName` 之後的 `{}`（{statement}）。"
+
+msgid "Could not read `{}` after `]` ({statement})."
+msgstr "無法讀取 `]` 之後的 `{}`（{statement}）。"
+
+msgid "Could not read `{}` after axis `{id}` ({line})."
+msgstr "無法讀取座標軸 `{id}` 之後的 `{}`（{line}）。"
+
+msgid "Could not read `{}` after the note ({statement})."
+msgstr "無法讀取附註之後的 `{}`（{statement}）。"
+
+msgid "Could not read `{}` after the quotes ({statement})."
+msgstr "無法讀取引號之後的 `{}`（{statement}）。"
+
+msgid "Could not read `{}` after the range ({statement})."
+msgstr "無法讀取範圍之後的 `{}`（{statement}）。"
+
+msgid "Could not read `{}` as a risk."
+msgstr "無法將 `{}` 讀取為風險。"
+
+msgid "Could not read `{}` as a verification method."
+msgstr "無法將 `{}` 讀取為驗證方法。"
+
+msgid "Could not read `{}` in `{statement}`."
+msgstr "無法讀取 `{statement}` 中的 `{}`。"
+
+msgid "Could not read `{}` the way Mermaid does. Edit it as text."
+msgstr "無法以與 Mermaid 相同的方式讀取 `{}`。請以文字編輯。"
+
+msgid "Could not read both ends of `{statement}`."
+msgstr "無法讀取 `{statement}` 的兩端。"
+
+msgid "Could not read both ends of `{}`."
+msgstr "無法讀取 `{}` 的兩端。"
+
+msgid "Could not read the ID of an edge end ({statement})."
+msgstr "無法讀取邊的端點 ID（{statement}）。"
+
+msgid "Could not read the ID of the junction ({statement})."
+msgstr "無法讀取連接點的 ID（{statement}）。"
+
+msgid "Could not read the ID of the service ({statement})."
+msgstr "無法讀取服務的 ID（{statement}）。"
+
+msgid "Could not read the alias of `{text}` (write the alias as the first argument, without `$…=`)."
+msgstr "無法讀取 `{text}` 的別名（請將別名寫為第一個引數，不加 `$…=`）。"
+
+msgid "Could not read the axis ID ({line})."
+msgstr "無法讀取座標軸 ID（{line}）。"
+
+msgid "Could not read the class name ({statement})."
+msgstr "無法讀取類別名稱（{statement}）。"
+
+msgid "Could not read the class name `{keyword}` applies to ({statement}). Names enclosed in `` ` `` are not supported by the structured editor. Edit it as text."
+msgstr "無法讀取 `{keyword}` 所套用的類別名稱（{statement}）。結構化編輯器不支援以 `` ` `` 括住的名稱。請以文字編輯。"
+
+msgid "Could not read the curve ID ({line})."
+msgstr "無法讀取曲線 ID（{line}）。"
+
+msgid "Could not read the date and time"
+msgstr "無法讀取日期與時間"
+
+msgid "Could not read the end `{end}` ({statement})."
+msgstr "無法讀取結束 `{end}`（{statement}）。"
+
+msgid "Could not read the group ID ({statement})."
+msgstr "無法讀取群組 ID（{statement}）。"
+
+msgid "Could not read the group ID after `in` ({statement})."
+msgstr "無法讀取 `in` 之後的群組 ID（{statement}）。"
+
+msgid "Could not read the one-line `namespace` ({statement})."
+msgstr "無法讀取單行的 `namespace`（{statement}）。"
+
+msgid "Could not read the position of a Note."
+msgstr "無法讀取 Note 的位置。"
+
+msgid "Could not read the range `{min} --> {max}` as numbers ({statement})."
+msgstr "無法將範圍 `{min} --> {max}` 讀取為數字（{statement}）。"
+
+msgid "Could not read the start `{text}` ({statement})."
+msgstr "無法讀取開始 `{text}`（{statement}）。"
+
+msgid "Could not read the target of the style assignment ({text})."
+msgstr "無法讀取樣式指派的目標（{text}）。"
+
+msgid "Could not read the targets `{}` of `{keyword}`. Write IDs made of ASCII letters, digits, `_` and `-`, separated by spaces."
+msgstr "無法讀取 `{keyword}` 的目標 `{}`。請撰寫由 ASCII 英文字母、數字、`_` 與 `-` 組成的 ID，並以空格分隔。"
+
+msgid "Could not read the task fields `{}` ({statement}). Of `tags, ID, start, end`, write 1 to 3 fields, not counting the tags."
+msgstr "無法讀取工作欄位 `{}`（{statement}）。在 `tags, ID, start, end` 之中，不計標籤請撰寫 1 到 3 個欄位。"
+
+msgid "Could not read the value `{entry}` of curve `{curve}` ({line}). {number_rule}"
+msgstr "無法讀取曲線 `{curve}` 的值 `{entry}`（{line}）。{number_rule}"
+
+msgid "Could not read the x-axis ticks ({statement})."
+msgstr "無法讀取 X 軸刻度（{statement}）。"
+
+msgid "Could not read the y-axis range ({statement}). Write it as `0 --> 100`."
+msgstr "無法讀取 Y 軸範圍（{statement}）。請以 `0 --> 100` 的形式撰寫。"
+
+msgid "Could not read this as a Gantt chart line ({statement}). Write it as `task name :start, end`."
+msgstr "無法將此讀取為甘特圖的行（{statement}）。請以 `task name :start, end` 的形式撰寫。"
+
+msgid "Could not read this as a kanban node ({node_part}). Edit it as text."
+msgstr "無法將此讀取為看板節點（{node_part}）。請以文字編輯。"
+
+msgid "Could not read this as a radar chart statement ({trimmed}). Edit it as text."
+msgstr "無法將此讀取為雷達圖陳述式（{trimmed}）。請以文字編輯。"
+
+msgid "Could not read this as a style assignment ({text})."
+msgstr "無法將此讀取為樣式指派（{text}）。"
+
+msgid "Could not read this as an XY chart statement ({statement}). Edit it as text."
+msgstr "無法將此讀取為 XY 圖表陳述式（{statement}）。請以文字編輯。"
+
+msgid "Cross end"
+msgstr "叉號端點"
+
+msgid "Curve `{id}` mixes values with and without axis names ({line})."
+msgstr "曲線 `{id}` 混用了有座標軸名稱與沒有座標軸名稱的值（{line}）。"
+
+msgid "Curve `{}` has a value for `{axis}`, but there is no such axis ({line}). Mermaid does not draw this value, so remove it or add the axis, then open it again."
+msgstr "曲線 `{}` 有 `{axis}` 的值，但沒有此座標軸（{line}）。Mermaid 不會繪製此值，請將其移除或新增該座標軸，然後再次開啟。"
+
+msgid "Curve `{}` has no value for axis `{}` ({line})."
+msgstr "曲線 `{}` 沒有座標軸 `{}` 的值（{line}）。"
+
+msgid "Curve `{}` has no values. Write at least one value (Mermaid does not accept an empty curve)."
+msgstr "曲線 `{}` 沒有任何值。請至少撰寫一個值（Mermaid 不接受空曲線）。"
+
+msgid "Curve `{}` has two values for axis `{axis}` ({line}). Mermaid draws only the first one, so keep one, then open it again."
+msgstr "曲線 `{}` 有兩個座標軸 `{axis}` 的值（{line}）。Mermaid 只會繪製第一個，請只保留一個，然後再次開啟。"
+
+msgid "Curve `{}` writes its values with axis names, but there are no axes."
+msgstr "曲線 `{}` 以座標軸名稱撰寫其值，但沒有任何座標軸。"
+
+msgid "Curve `{}` writes its values with axis names, so every axis needs a value."
+msgstr "曲線 `{}` 以座標軸名稱撰寫其值，因此每個座標軸都需要一個值。"
+
+msgid "Curve `{}`: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value)."
+msgstr "曲線 `{}`：第 {} 個值是空的。中間的值不可為空（結尾的空儲存格視為沒有值）。"
+
+msgid "Cylinder [( )]"
+msgstr "圓柱 [( )]"
+
+msgid "Dashed (line only)"
+msgstr "虛線（僅線條）"
+
+msgid "Data `{name}` cannot be handled by the structured editor. Start it with the line `data {name} {{` and end it with a line that is only `}}` at the start (Mermaid does not accept a one-line block)."
+msgstr "結構化編輯器無法處理資料 `{name}`。請以 `data {name} {{` 這一行開始，並以行首只有 `}}` 的一行結束（Mermaid 不接受單行區塊）。"
+
+msgid "Data `{name}` has no contents."
+msgstr "資料 `{name}` 沒有內容。"
+
+msgid "Database"
+msgstr "資料庫"
+
+msgid "Database [(store)]"
+msgstr "資料庫 [(儲存)]"
+
+msgid "Dependency (pointing left)"
+msgstr "相依（指向左方）"
+
+msgid "Dependency (pointing right)"
+msgstr "相依（指向右方）"
+
+msgid "Deployment diagram"
+msgstr "部署圖"
+
+msgid "Derives (derives)"
+msgstr "衍生（derives）"
+
+msgid "Diagrams that use edge IDs (`{target}@`) are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "結構化編輯器不支援使用邊 ID（`{target}@`）的圖表（{statement}）。請以文字編輯。"
+
+msgid "Diagrams where the edge ID `{id}` is the same as a node or group ID are not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援邊 ID `{id}` 與節點或群組 ID 相同的圖表。請以文字編輯。"
+
+msgid "Diagrams with a class on an edge ({edge}) are not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援邊（{edge}）上有類別的圖表。請以文字編輯。"
+
+msgid "Diagrams with a duplicate edge ID `{id}` are not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援邊 ID `{id}` 重複的圖表。請以文字編輯。"
+
+msgid "Diamond { }"
+msgstr "菱形 { }"
+
+msgid "Disk"
+msgstr "磁碟"
+
+msgid "Dotted arrow"
+msgstr "虛線箭頭"
+
+msgid "Dotted arrow (reply)"
+msgstr "虛線箭頭（回覆）"
+
+msgid "Dotted async"
+msgstr "虛線非同步"
+
+msgid "Dotted bidirectional"
+msgstr "虛線雙向"
+
+msgid "Dotted cross"
+msgstr "虛線叉號"
+
+msgid "Dotted line"
+msgstr "虛線"
+
+msgid "Double Circle ((( )))"
+msgstr "雙圓形 ((( )))"
+
+msgid "Double circle (((end)))"
+msgstr "雙圓形 (((結束)))"
+
+msgid "Dynamic diagram"
+msgstr "動態圖"
+
+msgid "Ellipse (-ellipse-)"
+msgstr "橢圓 (-橢圓-)"
+
+msgid "Enclose the HTML attributes in `{text}` in `'` (Mermaid rewrites `\"` to `'`, which changes where the values are separated)."
+msgstr "請以 `'` 括住 `{text}` 中的 HTML 屬性（Mermaid 會將 `\"` 改寫為 `'`，這會改變值的分隔位置）。"
+
+msgid "Enclose the label in `{line}` in `\"` (labels in a block diagram need quotes)."
+msgstr "請以 `\"` 括住 `{line}` 中的標籤（區塊圖中的標籤需要引號）。"
+
+msgid "Enter the end of task `{}` (a date or a duration such as `5d`)."
+msgstr "請輸入工作 `{}` 的結束（日期或 `5d` 之類的期間）。"
+
+msgid "Enter the start date of task `{}`."
+msgstr "請輸入工作 `{}` 的開始日期。"
+
+msgid "Entity `{name}` is not defined."
+msgstr "未定義實體 `{name}`。"
+
+msgid "Entity `{}` is defined twice."
+msgstr "實體 `{}` 定義了兩次。"
+
+msgid "Event (evt)"
+msgstr "事件（evt）"
+
+msgid "Every section after the first needs a name (without one, it merges with the section above)."
+msgstr "第一個之後的每個區段都需要名稱（沒有名稱時會與上方的區段合併）。"
+
+msgid "Exactly one"
+msgstr "恰好一個"
+
+msgid "Flag > ]"
+msgstr "旗形 > ]"
+
+msgid "Flag >note]"
+msgstr "旗形 >註記]"
+
+msgid "For an `accDescr {{ … }}` closed on one line, Mermaid reads up to the next `}}` line as the description ({trimmed}). Split it over several lines, or edit it as text."
+msgstr "對於在同一行結束的 `accDescr {{ … }}`，Mermaid 會將直到下一個 `}}` 行為止的內容讀取為描述（{trimmed}）。請分成多行，或以文字編輯。"
+
+msgid "Foreign key (FK)"
+msgstr "外部索引鍵（FK）"
+
+msgid "Fork <<fork>>"
+msgstr "分岔 <<fork>>"
+
+msgid "Frame `{}` has both inline data and a data reference. Keep only one."
+msgstr "框架 `{}` 同時有內嵌資料與資料參考。請只保留其中一個。"
+
+msgid "Frame `{}` refers to the data `{reference}`, which does not exist."
+msgstr "框架 `{}` 參考的資料 `{reference}` 不存在。"
+
+msgid "Give the point two coordinates, `[x, y]` (Mermaid skips any from the third on)."
+msgstr "請為點指定兩個座標 `[x, y]`（Mermaid 會略過第三個以後的座標）。"
+
+msgid "Hexagon {{ }}"
+msgstr "六邊形 {{ }}"
+
+msgid "Hexagon {{{{prepare}}}}"
+msgstr "六邊形 {{{{準備}}}}"
+
+msgid "High"
+msgstr "高"
+
+msgid "IDs referred to by `after` / `until` can only contain ASCII letters, digits, `_` and `-` (`{reference}` in task `{}`)."
+msgstr "`after` / `until` 參考的 ID 只能包含 ASCII 英文字母、數字、`_` 與 `-`（工作 `{}` 中的 `{reference}`）。"
+
+msgid "Inheritance (left is parent)"
+msgstr "繼承（左側為父項）"
+
+msgid "Inheritance (right is parent)"
+msgstr "繼承（右側為父項）"
+
+msgid "Inside the boundary `{alias}`, write `title`, `accTitle` and the like after the first element (Mermaid does not accept them otherwise)."
+msgstr "在邊界 `{alias}` 內，請將 `title`、`accTitle` 等寫在第一個元素之後（否則 Mermaid 不接受）。"
+
+msgid "Internet"
+msgstr "網際網路"
+
+msgid "Inverted Trapezoid [\\ /]"
+msgstr "倒梯形 [\\ /]"
+
+msgid "Invisible (for alignment)"
+msgstr "隱藏（用於對齊）"
+
+msgid "It cannot contain `%%` or line breaks, and it cannot be empty."
+msgstr "不可包含 `%%` 或換行，也不可為空。"
+
+msgid "It is not closed with `]` ({statement})."
+msgstr "未以 `]` 結束（{statement}）。"
+
+msgid "Items cannot be placed under the item `{}`, which has a value. To put items inside it, leave its value empty."
+msgstr "有值的項目 `{}` 下方不能放置項目。若要在其中放入項目，請將其值留空。"
+
+msgid "Join <<join>>"
+msgstr "合併 <<join>>"
+
+msgid "Junction `{}` cannot have an icon or a title."
+msgstr "連接點 `{}` 不能有圖示或標題。"
+
+msgid "Lavender"
+msgstr "薰衣草紫"
+
+msgid "Lean Left [\\ \\]"
+msgstr "左傾 [\\ \\]"
+
+msgid "Lean Right [/ /]"
+msgstr "右傾 [/ /]"
+
+msgid "Left to right (LR)"
+msgstr "由左至右（LR）"
+
+msgid "Light blue"
+msgstr "淺藍色"
+
+msgid "Light gray"
+msgstr "淺灰色"
+
+msgid "Light green"
+msgstr "淺綠色"
+
+msgid "Light pink"
+msgstr "淺粉紅色"
+
+msgid "Light yellow"
+msgstr "淺黃色"
+
+msgid "Line Only"
+msgstr "僅線條"
+
+msgid "Line only"
+msgstr "僅線條"
+
+msgid "Loop (loop)"
+msgstr "迴圈（loop）"
+
+msgid "Low"
+msgstr "低"
+
+msgid "Maximum (max)"
+msgstr "最大值（max）"
+
+msgid "Medium"
+msgstr "中"
+
+msgid "Mermaid and the structured editor read this diagram differently. Edit it as text."
+msgstr "Mermaid 與結構化編輯器對此圖表的讀取方式不同。請以文字編輯。"
+
+msgid "Mermaid cannot read `{word}` on the frame line ({line}). Names cannot contain spaces, so remove it or make it one word, then open it again."
+msgstr "Mermaid 無法讀取框架行上的 `{word}`（{line}）。名稱不可包含空格，請將其移除或改為單一字詞，然後再次開啟。"
+
+msgid "Mermaid cannot read the `:` after the edge in `{line}`."
+msgstr "Mermaid 無法讀取 `{line}` 中邊之後的 `:`。"
+
+msgid "Mermaid cannot read the coordinate `{value}` (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
+msgstr "Mermaid 無法讀取座標 `{value}`（0 到 1：只能是 `0`、`1`，或以 `0.` 開頭的小數）。"
+
+msgid "Mermaid collapses the spaces in the unquoted `{text}` when drawing it ({statement}). Enclose it in `\"`, like `\"{text}\"`, then open it again."
+msgstr "繪製時，Mermaid 會壓縮未加引號的 `{text}` 中的空格（{statement}）。請以 `\"` 括住，例如 `\"{text}\"`，然後再次開啟。"
+
+msgid "Mermaid could not parse this diagram ({error}). Edit it as text."
+msgstr "Mermaid 無法剖析此圖表（{error}）。請以文字編輯。"
+
+msgid "Mermaid could not read the diagram written back ({error}). Edit it as text."
+msgstr "Mermaid 無法讀取寫回的圖表（{error}）。請以文字編輯。"
+
+msgid "Mermaid could not read this as a diagram"
+msgstr "Mermaid 無法將此讀取為圖表"
+
+msgid "Mermaid could not read this as a diagram."
+msgstr "Mermaid 無法將此讀取為圖表。"
+
+msgid "Mermaid does not accept `{tail}` on the `treeView-beta` line. Edit it as text."
+msgstr "Mermaid 不接受 `treeView-beta` 行上的 `{tail}`。請以文字編輯。"
+
+msgid "Mermaid does not know the type `{type_keyword}` and only draws it as a red box ({line}). Use one of ui / pcr / cmd / evt / rmo."
+msgstr "Mermaid 不認識類型 `{type_keyword}`，只會將其繪製成紅色方塊（{line}）。請使用 ui / pcr / cmd / evt / rmo 其中之一。"
+
+msgid "Mermaid does not read the pair `{start_delimiter}…{end_delimiter}` in `{line}` as a shape (it is drawn as a plain box). Change it to `[ ]` or another shape, then open the editor again."
+msgstr "Mermaid 不會將 `{line}` 中的 `{start_delimiter}…{end_delimiter}` 組合讀取為形狀（會繪製成一般方塊）。請將其改為 `[ ]` 或其他形狀，然後再次開啟編輯器。"
+
+msgid "Mermaid draws a line of only `%%` as a period, so the structured editor does not support it. Delete it or edit it as text."
+msgstr "Mermaid 會將只有 `%%` 的行繪製為一個期間，因此結構化編輯器不支援。請將其刪除或以文字編輯。"
+
+msgid "Mermaid ignores `{}` after `\"{name}\"`, so it is not supported by the structured editor."
+msgstr "Mermaid 會忽略 `\"{name}\"` 之後的 `{}`，因此結構化編輯器不支援。"
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the `axisFormat` value `{value}`. Edit it as text."
+msgstr "Mermaid 會忽略 `axisFormat` 值 `{value}` 中自 `#` 或 `;` 起的所有內容。請以文字編輯。"
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the `dateFormat` value `{value}`. Edit it as text."
+msgstr "Mermaid 會忽略 `dateFormat` 值 `{value}` 中自 `#` 或 `;` 起的所有內容。請以文字編輯。"
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the fields of a task ({statement}). Edit it as text."
+msgstr "Mermaid 會忽略工作欄位中自 `#` 或 `;` 起的所有內容（{statement}）。請以文字編輯。"
+
+msgid "Mermaid read this kanban board as {} nodes, but the structured editor read {}. Edit it as text."
+msgstr "Mermaid 將此看板讀取為 {} 個節點，但結構化編輯器讀取為 {} 個。請以文字編輯。"
+
+msgid "Mermaid read this treemap as {} items, but the structured editor read {}. Edit it as text."
+msgstr "Mermaid 將此矩形樹狀圖讀取為 {} 個項目，但結構化編輯器讀取為 {} 個。請以文字編輯。"
+
+msgid "Mermaid reads `{line}` as an edge that continues from the block on the previous line. Write an edge on the same line as the blocks at both of its ends."
+msgstr "Mermaid 會將 `{line}` 讀取為從上一行的區塊延續的邊。請將邊寫在與其兩端區塊相同的行上。"
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a cause, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+msgstr "Mermaid 會將指示詞 `%%{{…}}%%` 之後的 `{rest}` 讀取為原因，但結構化編輯器會將其與註解一起移動。請將指示詞放在獨立的一行。"
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a node, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+msgstr "Mermaid 會將指示詞 `%%{{…}}%%` 之後的 `{rest}` 讀取為節點，但結構化編輯器會將其與註解一起移動。請將指示詞放在獨立的一行。"
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a statement, but the structured editor would move it along with the comments. Put the directive on a line of its own."
+msgstr "Mermaid 會將指示詞 `%%{{…}}%%` 之後的 `{rest}` 讀取為陳述式，但結構化編輯器會將其與註解一起移動。請將指示詞放在獨立的一行。"
+
+msgid "Mermaid reads `{tail}` on the `{keyword}` line as the text of the effect, but written back it would become a comment. Edit it as text."
+msgstr "Mermaid 會將 `{keyword}` 行上的 `{tail}` 讀取為結果的文字，但寫回後會變成註解。請以文字編輯。"
+
+msgid "Mermaid reads `{trimmed}` as a character reference, so it cannot be kept as a comment. Edit it as text."
+msgstr "Mermaid 會將 `{trimmed}` 讀取為字元參考，因此無法保留為註解。請以文字編輯。"
+
+msgid "Mermaid reads the `\"` of `<tag attribute=\"…\">` as `'`, which changes which quotes pair up ({line}). Enclose the attribute in `'`."
+msgstr "Mermaid 會將 `<tag attribute=\"…\">` 的 `\"` 讀取為 `'`，這會改變引號的配對方式（{line}）。請以 `'` 括住屬性。"
+
+msgid "Mermaid reads the rest of the `eventmodeling` line ({tail}) as the first frame. Move it to the next line, then open it again."
+msgstr "Mermaid 會將 `eventmodeling` 行的其餘部分（{tail}）讀取為第一個框架。請將其移至下一行，然後再次開啟。"
+
+msgid "Mermaid reads the second `space` in `{line}` as a block named `space`. The structured editor does not support it."
+msgstr "Mermaid 會將 `{line}` 中的第二個 `space` 讀取為名為 `space` 的區塊。結構化編輯器不支援此情況。"
+
+msgid "Mermaid removes the `;` that follows `:#…` after `style` or `classDef` before reading the line, so writing it back would change its meaning ({trimmed}). Add a space after the `:`, or edit it as text."
+msgstr "Mermaid 在讀取該行之前，會移除 `style` 或 `classDef` 之後 `:#…` 後面的 `;`，因此寫回會改變其意義（{trimmed}）。請在 `:` 之後加上空格，或以文字編輯。"
+
+msgid "Mermaid skips `{after}` after `direction {}` ({statement}). Remove it, then open it again."
+msgstr "Mermaid 會略過 `direction {}` 之後的 `{after}`（{statement}）。請將其移除，然後再次開啟。"
+
+msgid "Mermaid skips `{tail}` after `::icon(…)` ({rest}). Delete it or edit it as text."
+msgstr "Mermaid 會略過 `::icon(…)` 之後的 `{tail}`（{rest}）。請將其刪除或以文字編輯。"
+
+msgid "Mermaid skips `{tail}` after `@{{ … }}`. Remove it or edit it as text."
+msgstr "Mermaid 會略過 `@{{ … }}` 之後的 `{tail}`。請將其移除或以文字編輯。"
+
+msgid "Mermaid skips a line without a task name ({trimmed}). Give it a name, or edit it as text."
+msgstr "Mermaid 會略過沒有工作名稱的行（{trimmed}）。請為其命名，或以文字編輯。"
+
+msgid "Mermaid skips a period from its `#` on as a comment ({trimmed}). Delete the `#`, or edit it as text."
+msgstr "Mermaid 會將期間中自 `#` 起的內容視為註解而略過（{trimmed}）。請刪除 `#`，或以文字編輯。"
+
+msgid "Mermaid skips everything after a `%%` in the middle of a line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "Mermaid 會略過行中間的 `%%` 之後的所有內容（{trimmed}）。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "Mermaid skips everything from `#` or `;` on ({trimmed}). Remove it, or edit it as text."
+msgstr "Mermaid 會略過自 `#` 或 `;` 起的所有內容（{trimmed}）。請將其移除，或以文字編輯。"
+
+msgid "Mermaid skips everything from the third `:` on ({trimmed}). Remove the `:`, or edit it as text."
+msgstr "Mermaid 會略過自第三個 `:` 起的所有內容（{trimmed}）。請移除該 `:`，或以文字編輯。"
+
+msgid "Mermaid skips everything in a section name from `:` on ({trimmed}). Delete the `:`, or edit it as text."
+msgstr "Mermaid 會略過區段名稱中自 `:` 起的所有內容（{trimmed}）。請刪除該 `:`，或以文字編輯。"
+
+msgid "Mermaid skips what follows the `;` in `{statement}`. Delete it or edit it as text."
+msgstr "Mermaid 會略過 `{statement}` 中 `;` 之後的內容。請將其刪除或以文字編輯。"
+
+msgid "Mermaid would no longer read the comment after `{statement}` as a comment. Close the quotes (`\"` `'`), or stop using the tag attribute `=\"…\"`."
+msgstr "Mermaid 將不再把 `{statement}` 之後的註解讀取為註解。請閉合引號（`\"` `'`），或停止使用標記屬性 `=\"…\"`。"
+
+msgid "Minimum (min)"
+msgstr "最小值（min）"
+
+msgid "Names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "結構化編輯器不支援以 `` ` `` 括住的名稱（{statement}）。請以文字編輯。"
+
+msgid "None (transparent)"
+msgstr "無（透明）"
+
+msgid "Normal State"
+msgstr "一般狀態"
+
+msgid "Nothing can be written after the `{{` of `{statement}`."
+msgstr "`{statement}` 的 `{{` 之後不能撰寫任何內容。"
+
+msgid "One of the people has an empty name ({trimmed}). Remove it, or edit it as text."
+msgstr "其中一位人員的名稱是空的（{trimmed}）。請將其移除，或以文字編輯。"
+
+msgid "One or more"
+msgstr "一個以上"
+
+msgid "Only boundaries can have `{{` ({statement}). Edit it as text."
+msgstr "只有邊界可以有 `{{`（{statement}）。請以文字編輯。"
+
+msgid "Only class declarations, notes and nested `namespace`s can be written inside a `namespace` ({line})."
+msgstr "`namespace` 內只能撰寫類別宣告、附註與巢狀的 `namespace`（{line}）。"
+
+msgid "Operation {number} (branch): branch `{}` already exists (to switch to it, use a checkout)."
+msgstr "操作 {number}（branch）：分支 `{}` 已存在（若要切換至該分支，請使用簽出）。"
+
+msgid "Operation {number} (checkout): branch `{}` has not been created yet (create it with a branch operation first)."
+msgstr "操作 {number}（checkout）：尚未建立分支 `{}`（請先以 branch 操作建立）。"
+
+msgid "Operation {number} (cherry-pick): `{parent}` is not a direct parent of `{}`."
+msgstr "操作 {number}（cherry-pick）：`{parent}` 不是 `{}` 的直接父項。"
+
+msgid "Operation {number} (cherry-pick): `{}` is a merge commit, so specify its parent."
+msgstr "操作 {number}（cherry-pick）：`{}` 是合併提交，請指定其父項。"
+
+msgid "Operation {number} (cherry-pick): `{}` is already on the current branch `{current}`."
+msgstr "操作 {number}（cherry-pick）：`{}` 已在目前的分支 `{current}` 上。"
+
+msgid "Operation {number} (cherry-pick): commit `{}` does not come before it."
+msgstr "操作 {number}（cherry-pick）：提交 `{}` 不在此操作之前。"
+
+msgid "Operation {number} (cherry-pick): the current branch `{current}` has no commits yet."
+msgstr "操作 {number}（cherry-pick）：目前的分支 `{current}` 還沒有任何提交。"
+
+msgid "Operation {number} (commit): the ID `{id}` is used more than once."
+msgstr "操作 {number}（commit）：ID `{id}` 重複使用。"
+
+msgid "Operation {number} (merge): `{current}` has no commits since it branched off `{other}`, so it cannot be merged."
+msgstr "操作 {number}（merge）：`{current}` 自從 `{other}` 分出後沒有任何提交，因此無法合併。"
+
+msgid "Operation {number} (merge): branch `{other}` cannot be merged into itself."
+msgstr "操作 {number}（merge）：分支 `{other}` 無法合併至自身。"
+
+msgid "Operation {number} (merge): branch `{other}` has no commits yet."
+msgstr "操作 {number}（merge）：分支 `{other}` 還沒有任何提交。"
+
+msgid "Operation {number} (merge): branch `{other}` has not been created yet."
+msgstr "操作 {number}（merge）：尚未建立分支 `{other}`。"
+
+msgid "Operation {number} (merge): the ID `{id}` is already in use."
+msgstr "操作 {number}（merge）：ID `{id}` 已被使用。"
+
+msgid "Operation {number} (merge): the current branch `{current}` has no commits yet."
+msgstr "操作 {number}（merge）：目前的分支 `{current}` 還沒有任何提交。"
+
+msgid "Operation {number} (merge): the heads of `{current}` and `{other}` are the same commit."
+msgstr "操作 {number}（merge）：`{current}` 與 `{other}` 的前端是同一個提交。"
+
+msgid "Operation {}: {problem}"
+msgstr "操作 {}：{problem}"
+
+msgid "Optional (opt)"
+msgstr "選擇性（opt）"
+
+msgid "Other: {name}"
+msgstr "其他：{name}"
+
+msgid "Otherwise (else)"
+msgstr "否則（else）"
+
+msgid "Overlapping parallel (par_over)"
+msgstr "重疊平行（par_over）"
+
+msgid "Parallel (par)"
+msgstr "平行（par）"
+
+msgid "Parallelogram (reversed) [\\output\\]"
+msgstr "平行四邊形（反向）[\\輸出\\]"
+
+msgid "Parallelogram [/input/]"
+msgstr "平行四邊形 [/輸入/]"
+
+msgid "Parent (u)"
+msgstr "父項（u）"
+
+msgid "Participant `{id}` is created twice with `create`."
+msgstr "參與者 `{id}` 以 `create` 建立了兩次。"
+
+msgid "Participant `{id}` is destroyed twice with `destroy`."
+msgstr "參與者 `{id}` 以 `destroy` 終結了兩次。"
+
+msgid "Participant `{id}` is not declared."
+msgstr "未宣告參與者 `{id}`。"
+
+msgid "Participant `{}` has a config object (`@{{ … }}`), so it cannot have an alias (as)."
+msgstr "參與者 `{}` 有設定物件（`@{{ … }}`），因此不能有別名（as）。"
+
+msgid "Participant `{}` has a config object (`@{{ … }}`), so it must be a box (participant)."
+msgstr "參與者 `{}` 有設定物件（`@{{ … }}`），因此必須是方塊（participant）。"
+
+msgid "Participant `{}` is created with `create`, so it cannot be put in a box."
+msgstr "參與者 `{}` 是以 `create` 建立的，因此無法放入 box。"
+
+msgid "Participant `{}` is declared twice."
+msgstr "參與者 `{}` 宣告了兩次。"
+
+msgid "Participant `{}` refers to a box that does not exist."
+msgstr "參與者 `{}` 參考了不存在的 box。"
+
+msgid "Participants in the same box must be next to each other."
+msgstr "同一個 box 中的參與者必須彼此相鄰。"
+
+msgid "Periods before the first section are not drawn when there are sections. Name them as a section, or move the periods into a section below."
+msgstr "有區段時，第一個區段之前的期間不會繪製。請將其命名為區段，或將這些期間移至下方的區段。"
+
+msgid "Point `{}` has a style `{}` that cannot be used (separate `radius: 10`, `color: #ff0000`, `stroke-color: #000` and `stroke-width: 2px` with commas)."
+msgstr "點 `{}` 的樣式 `{}` 無法使用（請以逗號分隔 `radius: 10`、`color: #ff0000`、`stroke-color: #000` 與 `stroke-width: 2px`）。"
+
+msgid "Primary key (PK)"
+msgstr "主索引鍵（PK）"
+
+msgid "Read by the structured editor, this diagram would become a different packet than Mermaid reads. Edit it as text."
+msgstr "以結構化編輯器讀取時，此圖表會成為與 Mermaid 讀取結果不同的封包。請以文字編輯。"
+
+msgid "Read by the structured editor, this diagram would differ from what Mermaid reads (for example in the order of `text`). Edit it as text."
+msgstr "以結構化編輯器讀取時，此圖表會與 Mermaid 的讀取結果不同（例如 `text` 的順序）。請以文字編輯。"
+
+msgid "Read by the structured editor, this diagram would have different flows than Mermaid reads. Edit it as text."
+msgstr "以結構化編輯器讀取時，此圖表的流程會與 Mermaid 的讀取結果不同。請以文字編輯。"
+
+msgid "Read model (rmo)"
+msgstr "讀取模型（rmo）"
+
+msgid "Realization (left is abstract)"
+msgstr "實現（左側為抽象）"
+
+msgid "Realization (right is abstract)"
+msgstr "實現（右側為抽象）"
+
+msgid "Rectangle [process]"
+msgstr "矩形 [處理]"
+
+msgid "Refines (refines)"
+msgstr "細化（refines）"
+
+msgid "Rhombus {{condition}}"
+msgstr "菱形 {{條件}}"
+
+msgid "Right to left (RL)"
+msgstr "由右至左（RL）"
+
+msgid "Risk: High"
+msgstr "風險：高"
+
+msgid "Risk: Low"
+msgstr "風險：低"
+
+msgid "Risk: Medium"
+msgstr "風險：中"
+
+msgid "Rounded ( )"
+msgstr "圓角 ( )"
+
+msgid "Rounded (process)"
+msgstr "圓角 (處理)"
+
+msgid "Satisfies (satisfies)"
+msgstr "滿足（satisfies）"
+
+msgid "Screen (ui)"
+msgstr "畫面（ui）"
+
+msgid "Series {number} has no values. Mermaid cannot draw a series without values."
+msgstr "數列 {number} 沒有任何值。Mermaid 無法繪製沒有值的數列。"
+
+msgid "Series {number}: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value)."
+msgstr "數列 {number}：第 {} 個值是空的。中間的值不可為空（結尾的空儲存格視為沒有值）。"
+
+msgid "Server"
+msgstr "伺服器"
+
+msgid "Several statements separated by `;` are not supported by the structured editor ({trimmed}). Write one per line."
+msgstr "結構化編輯器不支援以 `;` 分隔的多個陳述式（{trimmed}）。請每行撰寫一個。"
+
+msgid "Solid arrow (call)"
+msgstr "實線箭頭（呼叫）"
+
+msgid "Solid async"
+msgstr "實線非同步"
+
+msgid "Solid bidirectional"
+msgstr "實線雙向"
+
+msgid "Solid cross (failure)"
+msgstr "實線叉號（失敗）"
+
+msgid "Solid line"
+msgstr "實線"
+
+msgid "Some names are read by Mermaid as the same node (for example after it removes HTML tags). Edit it as text."
+msgstr "有些名稱會被 Mermaid 讀取為同一個節點（例如在移除 HTML 標記之後）。請以文字編輯。"
+
+msgid "Square [ ]"
+msgstr "方形 [ ]"
+
+msgid "Stadium ([ ])"
+msgstr "體育場形 ([ ])"
+
+msgid "Stadium ([start])"
+msgstr "體育場形 ([開始])"
+
+msgid "Start a new line after `{{` ({statement}). Mermaid cannot read a member block written on one line either."
+msgstr "請在 `{{` 之後換行（{statement}）。Mermaid 也無法讀取寫在單行中的成員區塊。"
+
+msgid "Start a new line after `{{` ({statement}). The structured editor does not support a composite state written on one line."
+msgstr "請在 `{{` 之後換行（{statement}）。結構化編輯器不支援寫在單行中的複合狀態。"
+
+msgid "Start it with an ASCII letter or `_`, and use only ASCII letters, digits, `_` and `-` (it cannot end with `-`)."
+msgstr "請以 ASCII 英文字母或 `_` 開頭，並只使用 ASCII 英文字母、數字、`_` 與 `-`（不可以 `-` 結尾）。"
+
+msgid "Statements written after `%%{{ … }}%%` on the same line are not supported by the structured editor ({}). Move the statement to the next line, then open it again."
+msgstr "結構化編輯器不支援在同一行中寫在 `%%{{ … }}%%` 之後的陳述式（{}）。請將陳述式移至下一行，然後再次開啟。"
+
+msgid "Stick figure (actor)"
+msgstr "火柴人（actor）"
+
+msgid "Style class names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "結構化編輯器不支援以 `` ` `` 括住的樣式類別名稱（{statement}）。請以文字編輯。"
+
+msgid "Style classes applied with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "結構化編輯器不支援以 `:::` 套用的樣式類別（{statement}）。請以文字編輯。"
+
+msgid "Subroutine [[ ]]"
+msgstr "子程序 [[ ]]"
+
+msgid "Subroutine [[process]]"
+msgstr "子程序 [[處理]]"
+
+msgid "Task `{}` cannot list the people `{}` (names cannot contain `:`, `,`, `#`, `;` or line breaks, and cannot be empty)."
+msgstr "工作 `{}` 無法列出人員 `{}`（名稱不可包含 `:`、`,`、`#`、`;` 或換行，也不可為空）。"
+
+msgid "Task `{}` has a score of {}. Use a score from 1 to 5."
+msgstr "工作 `{}` 的分數為 {}。請使用 1 到 5 的分數。"
+
+msgid "That operation no longer exists."
+msgstr "該操作已不存在。"
+
+msgid "The ID `{id}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty; tag names such as `done` cannot be used either)."
+msgstr "無法使用 ID `{id}`（不允許 `,`、`#`、`;` 與換行，也不可為空；也不能使用 `done` 等標籤名稱）。"
+
+msgid "The ID `{id}` cannot be used (letters, digits, `_` and `-`, starting and ending with a letter, digit or `_`. IDs that start with a capital L, R, T or B, IDs that start with `title`, and `group`, `service`, `junction`, `in`, `align`, `row`, `column`, `accTitle` and `accDescr` are not allowed)."
+msgstr "無法使用 ID `{id}`（只能使用英文字母、數字、`_` 與 `-`，且開頭與結尾須為英文字母、數字或 `_`。不允許以大寫 L、R、T 或 B 開頭的 ID、以 `title` 開頭的 ID，以及 `group`、`service`、`junction`、`in`、`align`、`row`、`column`、`accTitle` 與 `accDescr`）。"
+
+msgid "The ID `{id}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "無法使用 ID `{id}`（不可包含 `\"`、`%%` 或換行）。"
+
+msgid "The ID `{id}` cannot be used (spaces and the symbols ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` are not allowed, nor are end / space / columns / class / classDef / style / block / root)."
+msgstr "無法使用 ID `{id}`（不允許空格與符號 ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / `，也不允許 end / space / columns / class / classDef / style / block / root）。"
+
+msgid "The ID `{id}` is not supported by the structured editor ({statement}). `,`, `#`, `;` and line breaks cannot be used, and tag names such as `done` cannot be IDs."
+msgstr "結構化編輯器不支援 ID `{id}`（{statement}）。不能使用 `,`、`#`、`;` 與換行，且 `done` 等標籤名稱不能作為 ID。"
+
+msgid "The ID `{id}` is used by two tasks. Mermaid uses only the later one as the target of `after`, so change one of the IDs."
+msgstr "ID `{id}` 被兩個工作使用。Mermaid 只會將後者作為 `after` 的目標，請變更其中一個 ID。"
+
+msgid "The ID `{id}` is used twice. Groups, services and junctions all need different IDs."
+msgstr "ID `{id}` 使用了兩次。群組、服務與連接點都需要不同的 ID。"
+
+msgid "The ID `{id}` is used twice. Mermaid does not place the second one, so give it a different ID."
+msgstr "ID `{id}` 使用了兩次。Mermaid 不會放置第二個，請為其指定不同的 ID。"
+
+msgid "The ID `{reference}` that task `{}` refers to does not exist."
+msgstr "工作 `{}` 參考的 ID `{reference}` 不存在。"
+
+msgid "The ID `{}` is used in two places. Columns and cards all need different IDs."
+msgstr "ID `{}` 用於兩個位置。欄與卡片都需要不同的 ID。"
+
+msgid "The Markdown label in `{line}` is not closed (a ` is needed before the `\"`)."
+msgstr "`{line}` 中的 Markdown 標籤未閉合（`\"` 之前需要一個 `）。"
+
+msgid "The `\"` of `{input}` is not closed."
+msgstr "`{input}` 的 `\"` 未閉合。"
+
+msgid "The `\"` of the label in `{line}` is not closed."
+msgstr "`{line}` 中標籤的 `\"` 未閉合。"
+
+msgid "The `)` of `{statement}` is missing."
+msgstr "`{statement}` 缺少 `)`。"
+
+msgid "The `]` of `[\"display name\"]` is missing ({statement})."
+msgstr "`[\"display name\"]` 缺少 `]`（{statement}）。"
+
+msgid "The `accTitle` after `title` is used as the diagram's title. Move `accTitle` before `title`, or edit it as text."
+msgstr "`title` 之後的 `accTitle` 被用作圖表的標題。請將 `accTitle` 移至 `title` 之前，或以文字編輯。"
+
+msgid "The `after` of task `{}` has no target."
+msgstr "工作 `{}` 的 `after` 沒有目標。"
+
+msgid "The `click` line is above task `{id}`. Mermaid does not add links to tasks written after `click`, so move task `{id}` above the `click` line."
+msgstr "`click` 行位於工作 `{id}` 上方。Mermaid 不會為寫在 `click` 之後的工作加上連結，請將工作 `{id}` 移至 `click` 行上方。"
+
+msgid "The `namespace`s are nested too deeply. Edit it as text."
+msgstr "`namespace` 的巢狀層級過深。請以文字編輯。"
+
+msgid "The `text` line is not under any set ({trimmed})."
+msgstr "`text` 行不在任何集合之下（{trimmed}）。"
+
+msgid "The `until` of task `{}` has no target."
+msgstr "工作 `{}` 的 `until` 沒有目標。"
+
+msgid "The `x-axis` ticks are written after a series (bar / line). Mermaid places the values of the series written before them at 1, 2, 3…, so reordering them in the structured editor would change the chart. Move `x-axis` before the series, then open it again."
+msgstr "`x-axis` 刻度寫在數列（bar / line）之後。Mermaid 會將寫在其之前的數列值放在 1、2、3… 的位置，因此在結構化編輯器中重新排序會改變圖表。請將 `x-axis` 移至數列之前，然後再次開啟。"
+
+msgid "The `{header}` line is not supported by the structured editor (leave only the heading, such as `C4Context`, on the line)."
+msgstr "結構化編輯器不支援 `{header}` 行（請在該行只保留 `C4Context` 等標題）。"
+
+msgid "The `{id}` that `{line}` refers to is not placed before this line. Mermaid then does not place `{id}`, so write this after the line that places the block."
+msgstr "`{line}` 參考的 `{id}` 並未放置在此行之前。此時 Mermaid 不會放置 `{id}`，請將此行寫在放置該區塊的行之後。"
+
+msgid "The `{keyword}` statement is not supported by the structured editor (line {}). Edit it as text."
+msgstr "結構化編輯器不支援 `{keyword}` 陳述式（第 {} 行）。請以文字編輯。"
+
+msgid "The `{opening}` block is not closed with `}}`."
+msgstr "`{opening}` 區塊未以 `}}` 結束。"
+
+msgid "The `{separator}` in the description cannot be written as it is ({statement}). Write `:` as `#58;` and `;` as `#59;`, or edit it as text."
+msgstr "描述中的 `{separator}` 無法照原樣撰寫（{statement}）。請將 `:` 寫成 `#58;`、`;` 寫成 `#59;`，或以文字編輯。"
+
+msgid "The `{{` of a `namespace` has no matching `}}`."
+msgstr "`namespace` 的 `{{` 沒有對應的 `}}`。"
+
+msgid "The `{{` of the data is not closed ({line})."
+msgstr "資料的 `{{` 未閉合（{line}）。"
+
+msgid "The `{}` block is not closed with `end`."
+msgstr "`{}` 區塊未以 `end` 結束。"
+
+msgid "The alias `{alias}` cannot be used (spaces, `\"` `,` `(` `)` `{{` `}}` and names starting with `$` are not allowed)."
+msgstr "無法使用別名 `{alias}`（不允許空格、`\"`、`,`、`(`、`)`、`{{`、`}}`，以及以 `$` 開頭的名稱）。"
+
+msgid "The alias `{alias}` is declared twice. Use a different name."
+msgstr "別名 `{alias}` 宣告了兩次。請使用不同的名稱。"
+
+msgid "The amount “{value}” of {source} → {target} cannot be used (only a number of 0 or more)."
+msgstr "{source} → {target} 的數量「{value}」無法使用（僅限 0 以上的數字）。"
+
+msgid "The arrow direction `{word}` in `{line}` cannot be read (right / left / up / down / x / y)."
+msgstr "無法讀取 `{line}` 中的箭頭方向 `{word}`（right / left / up / down / x / y）。"
+
+msgid "The arrow of frame `{}` points to itself."
+msgstr "框架 `{}` 的箭頭指向自身。"
+
+msgid "The attributes of entity `{}` need both a type and a name."
+msgstr "實體 `{}` 的屬性需要同時有型別與名稱。"
+
+msgid "The axis ID `{}` cannot be used. {id_rule}"
+msgstr "無法使用座標軸 ID `{}`。{id_rule}"
+
+msgid "The block `{id}` is placed twice ({line}). Mermaid ignores the second one, so merge them into one, then open the editor again."
+msgstr "區塊 `{id}` 放置了兩次（{line}）。Mermaid 會忽略第二個，請將其合併為一個，然後再次開啟編輯器。"
+
+msgid "The block right after `space` in `{line}` cannot have a width (Mermaid cannot read it)."
+msgstr "`{line}` 中緊接在 `space` 之後的區塊不能有寬度（Mermaid 無法讀取）。"
+
+msgid "The boundary `{alias}` is empty. Mermaid cannot draw an empty boundary, so put at least one element in it or delete the boundary."
+msgstr "邊界 `{alias}` 是空的。Mermaid 無法繪製空的邊界，請在其中放入至少一個元素，或刪除此邊界。"
+
+msgid "The bracket of block `{id}` in `{line}` is not closed."
+msgstr "`{line}` 中區塊 `{id}` 的括號未閉合。"
+
+msgid "The branch name `{name}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "無法使用分支名稱 `{name}`（不可包含 `\"`、`%%` 或換行）。"
+
+msgid "The branch name is empty."
+msgstr "分支名稱是空的。"
+
+msgid "The cause `{cause}` cannot be written ({rules})."
+msgstr "無法撰寫原因 `{cause}`（{rules}）。"
+
+msgid "The cause `{}` is two or more levels deeper than its parent."
+msgstr "原因 `{}` 比其父項深兩層以上。"
+
+msgid "The class `{classes}` of {what} `{}` cannot be written."
+msgstr "無法撰寫 {what} `{}` 的類別 `{classes}`。"
+
+msgid "The class `{class}` of the item `{}` cannot be used."
+msgstr "無法使用項目 `{}` 的類別 `{class}`。"
+
+msgid "The class name `{class_name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
+msgstr "無法使用類別名稱 `{class_name}`（僅限 ASCII 英文字母、數字與 `_`，且不可為空）。"
+
+msgid "The class name `{}` cannot be used (only ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "無法使用類別名稱 `{}`（僅限 ASCII 英文字母、數字與 `_`，且須以英文字母或 `_` 開頭）。"
+
+msgid "The classDef name `{name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
+msgstr "無法使用 classDef 名稱 `{name}`（僅限 ASCII 英文字母、數字與 `_`，且不可為空）。"
+
+msgid "The classes `{classes}` of the node `{}` cannot be written (line breaks and `%%{{` are not allowed, and they cannot be empty)."
+msgstr "無法撰寫節點 `{}` 的類別 `{classes}`（不允許換行與 `%%{{`，且不可為空）。"
+
+msgid "The comment at the end of a statement ({comment}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "陳述式結尾的註解（{comment}）會在結構化編輯器中遺失。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "The comment at the end of the `erDiagram` line ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "`erDiagram` 行結尾的註解（{statement}）會在結構化編輯器中遺失。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "The comment at the end of the line of {what} `{}` cannot be kept with the line written this way (use `\"` in the title in pairs)."
+msgstr "以這種方式撰寫的行，無法保留 {what} `{}` 行尾的註解（請在標題中成對使用 `\"`）。"
+
+msgid "The comment at the end of the line that closes an attribute block ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "結束屬性區塊的行尾註解（{statement}）會在結構化編輯器中遺失。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "The comment line ({}) inside data `{name}` is lost in the structured editor. Move it outside the block, then open it again."
+msgstr "資料 `{name}` 內的註解行（{}）會在結構化編輯器中遺失。請將其移至區塊外，然後再次開啟。"
+
+msgid "The concurrency separator `--` can be written only inside a composite state (`state X {{ … }}`)."
+msgstr "並行分隔符號 `--` 只能寫在複合狀態（`state X {{ … }}`）內。"
+
+msgid "The config object (`@{{ … }}`) of participant `{id}` spans several lines, which is not supported by the structured editor. Edit it as text."
+msgstr "參與者 `{id}` 的設定物件（`@{{ … }}`）跨越多行，結構化編輯器不支援此情況。請以文字編輯。"
+
+msgid "The config object of participant `{}` must be on one line and must not contain `}}`."
+msgstr "參與者 `{}` 的設定物件必須在同一行中，且不可包含 `}}`。"
+
+msgid "The contents of data `{}` must start on the {{ line and end with a line that is only }} at the start of the line (it cannot be written on one line; no %%)."
+msgstr "資料 `{}` 的內容必須從 {{ 行開始，並以行首只有 }} 的一行結束（不能寫在單行中；不可包含 %%）。"
+
+msgid "The coordinates of the point have no `]`."
+msgstr "點的座標缺少 `]`。"
+
+msgid "The curve ID `{}` cannot be used. {id_rule}"
+msgstr "無法使用曲線 ID `{}`。{id_rule}"
+
+msgid "The data `{data}` of frame `{}` cannot be written (a single line enclosed in {{ }}; no %%)."
+msgstr "無法撰寫框架 `{}` 的資料 `{data}`（須為以 {{ }} 括住的單行；不可包含 %%）。"
+
+msgid "The data name `{name}` cannot be handled by the structured editor."
+msgstr "結構化編輯器無法處理資料名稱 `{name}`。"
+
+msgid "The data name `{}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "無法使用資料名稱 `{}`（ASCII 英文字母、數字與 `_`，且須以英文字母或 `_` 開頭）。"
+
+msgid "The data name `{}` is used more than once."
+msgstr "資料名稱 `{}` 重複使用。"
+
+msgid "The data reference `[[{reference}]]` cannot be handled by the structured editor ({line})."
+msgstr "結構化編輯器無法處理資料參考 `[[{reference}]]`（{line}）。"
+
+msgid "The diagram contains an unsupported attribute key `{key}`. Edit it as text."
+msgstr "圖表包含不支援的屬性鍵 `{key}`。請以文字編輯。"
+
+msgid "The diagram contains an unsupported cardinality."
+msgstr "圖表包含不支援的基數。"
+
+msgid "The diagram contains an unsupported relationship type `{other}`."
+msgstr "圖表包含不支援的關係類型 `{other}`。"
+
+msgid "The diagram contains an unsupported statement (type {other}). Edit it as text."
+msgstr "圖表包含不支援的陳述式（類型 {other}）。請以文字編輯。"
+
+msgid "The edge `{}` → `{}` stays inside one group, so it cannot use “Group Edge”."
+msgstr "邊 `{}` → `{}` 位於同一個群組內，因此無法使用「群組邊緣」。"
+
+msgid "The edge end `{}` does not exist. Choose the ID of a service or junction."
+msgstr "邊的端點 `{}` 不存在。請選擇服務或連接點的 ID。"
+
+msgid "The edge end `{}` is a group. Connect edges to services or junctions (to leave from the border of a group, use “Group Edge”)."
+msgstr "邊的端點 `{}` 是群組。請將邊連接至服務或連接點（若要從群組的邊框拉出，請使用「群組邊緣」）。"
+
+msgid "The edge label `{label}` cannot be written (`\"` and line breaks are not allowed)."
+msgstr "無法撰寫邊的標籤 `{label}`（不允許 `\"` 與換行）。"
+
+msgid "The edge line `{}` cannot be written."
+msgstr "無法撰寫邊的線條 `{}`。"
+
+msgid "The effect (the problem) is empty. Enter the effect before writing causes."
+msgstr "結果（問題）是空的。請先輸入結果，再撰寫原因。"
+
+msgid "The effect `{effect}` cannot be written ({rules})."
+msgstr "無法撰寫結果 `{effect}`（{rules}）。"
+
+msgid "The end `{end}` of a relationship is a boundary. Relationships can only connect elements."
+msgstr "關係的端點 `{end}` 是邊界。關係只能連接元素。"
+
+msgid "The end `{text}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "無法使用工作 `{}` 的結束 `{text}`（不允許 `,`、`#`、`;` 與換行，且不可為空）。"
+
+msgid "The end bit comes before the start bit ({statement})."
+msgstr "結束位元在開始位元之前（{statement}）。"
+
+msgid "The end cannot be `after` ({statement}). Mermaid reads it as a duration of 0."
+msgstr "結束不能是 `after`（{statement}）。Mermaid 會將其讀取為 0 的期間。"
+
+msgid "The end is before the start"
+msgstr "結束早於開始"
+
+msgid "The entity name cannot be empty."
+msgstr "實體名稱不可為空。"
+
+msgid "The event `{event}` of the period `{}` cannot be written (a space right after `:`, a `:` at the end, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "無法撰寫期間 `{}` 的事件 `{event}`（不允許緊接在 `:` 之後的空格、結尾的 `:`、`%%{{` 與換行，且不可為空）。"
+
+msgid "The field does not continue from the previous field ({statement}). Start it at bit {next_bit}."
+msgstr "欄位未接續上一個欄位（{statement}）。請從第 {next_bit} 位元開始。"
+
+msgid "The first node of a mindmap must be the root."
+msgstr "心智圖的第一個節點必須是根節點。"
+
+msgid "The first task `{}` needs a start date (there is no previous task)."
+msgstr "第一個工作 `{}` 需要開始日期（沒有前一個工作）。"
+
+msgid "The flows form a cycle ({}). A Sankey diagram cannot draw a cycle."
+msgstr "流程形成循環（{}）。桑基圖無法繪製循環。"
+
+msgid "The frame line has no {what} ({line}). Write it as `tf number type name`."
+msgstr "框架行沒有 {what}（{line}）。請以 `tf number type name` 的形式撰寫。"
+
+msgid "The frame number `{name}` cannot be handled by the structured editor ({line})."
+msgstr "結構化編輯器無法處理框架編號 `{name}`（{line}）。"
+
+msgid "The frame number `{}` cannot be used (1 to 3 ASCII digits)."
+msgstr "無法使用框架編號 `{}`（1 到 3 位 ASCII 數字）。"
+
+msgid "The frame number `{}` is used more than once."
+msgstr "框架編號 `{}` 重複使用。"
+
+msgid "The group in `{line}` cannot have an arrow shape."
+msgstr "`{line}` 中的群組不能有箭頭形狀。"
+
+msgid "The icon `{icon}` of the node `{}` cannot be written (`)`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "無法撰寫節點 `{}` 的圖示 `{icon}`（不允許 `)`、`%%{{` 與換行，且不可為空）。"
+
+msgid "The icon `{icon}` of {what} `{}` cannot be written."
+msgstr "無法撰寫 {what} `{}` 的圖示 `{icon}`。"
+
+msgid "The icon `{rest}` is not supported by the structured editor."
+msgstr "結構化編輯器不支援圖示 `{rest}`。"
+
+msgid "The icon of `{id}` cannot be written (a name uses only letters, digits, `_`, `-` and `:`; to show text, enclose it in quotes)."
+msgstr "無法撰寫 `{id}` 的圖示（名稱只能使用英文字母、數字、`_`、`-` 與 `:`；若要顯示文字，請以引號括住）。"
+
+msgid "The item `{}` could not be read the same way Mermaid reads it. Edit it as text."
+msgstr "無法以與 Mermaid 相同的方式讀取項目 `{}`。請以文字編輯。"
+
+msgid "The item `{}` is two or more levels deeper than its parent."
+msgstr "項目 `{}` 比其父項深兩層以上。"
+
+msgid "The item name `{}` cannot be written (line breaks, `%%{{`, `=\"` and `#…;` are not allowed, and it cannot contain both `\"` and `'`)."
+msgstr "無法撰寫項目名稱 `{}`（不允許換行、`%%{{`、`=\"` 與 `#…;`，且不可同時包含 `\"` 與 `'`）。"
+
+msgid "The label `{label}` of arrow `{id}` cannot be written (`\"` and line breaks are not allowed)."
+msgstr "無法撰寫箭頭 `{id}` 的標籤 `{label}`（不允許 `\"` 與換行）。"
+
+msgid "The label `{label}` of axis `{}` cannot be written. {label_rule}"
+msgstr "無法撰寫座標軸 `{}` 的標籤 `{label}`。{label_rule}"
+
+msgid "The label `{label}` of block `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
+msgstr "無法撰寫區塊 `{id}` 的標籤 `{label}`（不允許 `\"` 與換行，且以 ` 開頭的標籤必須以 ` 結尾）。"
+
+msgid "The label `{label}` of curve `{}` cannot be written. {label_rule}"
+msgstr "無法撰寫曲線 `{}` 的標籤 `{label}`。{label_rule}"
+
+msgid "The label `{label}` of group `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
+msgstr "無法撰寫群組 `{id}` 的標籤 `{label}`（不允許 `\"` 與換行，且以 ` 開頭的標籤必須以 ` 結尾）。"
+
+msgid "The label `{label}` of quadrant {} cannot be written (no `\"` or line breaks, and no whitespace at either end)."
+msgstr "無法撰寫象限 {} 的標籤 `{label}`（不可包含 `\"` 或換行，兩端也不可有空白字元）。"
+
+msgid "The label `{title}` of the edge `{}` → `{}` cannot be written ({label_rule})."
+msgstr "無法撰寫邊 `{}` → `{}` 的標籤 `{title}`（{label_rule}）。"
+
+msgid "The label `{}` cannot be written in the default shape (`(` `)` `[` `{{` `}}` and `%%` are not allowed, and it cannot have spaces at either end or start with `::icon(` or `:::`). Change the shape."
+msgstr "無法以預設形狀撰寫標籤 `{}`（不允許 `(`、`)`、`[`、`{{`、`}}` 與 `%%`，兩端不可有空格，也不可以 `::icon(` 或 `:::` 開頭）。請變更形狀。"
+
+msgid "The label `{}` cannot be written in this shape (the closing bracket and `\"` cannot be used together)."
+msgstr "無法以此形狀撰寫標籤 `{}`（結束括號與 `\"` 不能同時使用）。"
+
+msgid "The label `{}` cannot contain `%%{{` (Mermaid cuts out everything up to `}}%%`)."
+msgstr "標籤 `{}` 不可包含 `%%{{`（Mermaid 會截去直到 `}}%%` 的所有內容）。"
+
+msgid "The label is not written as `[\"…\"]` ({line})."
+msgstr "標籤未以 `[\"…\"]` 的形式撰寫（{line}）。"
+
+msgid "The label of node `{node_part}` is not closed. Labels that span several lines are not supported by the structured editor. Edit it as text."
+msgstr "節點 `{node_part}` 的標籤未閉合。結構化編輯器不支援跨越多行的標籤。請以文字編輯。"
+
+msgid "The label of the node `{statement}` is not closed. The structured editor does not support a label that spans several lines. Edit it as text."
+msgstr "節點 `{statement}` 的標籤未閉合。結構化編輯器不支援跨越多行的標籤。請以文字編輯。"
+
+msgid "The label “{label}” of “{name}” cannot be used (`\"`, line breaks and spaces at either end are not allowed)."
+msgstr "無法使用「{name}」的標籤「{label}」（不允許 `\"`、換行與兩端的空格）。"
+
+msgid "The label “{}” cannot be used (`%%` and line breaks are not allowed)."
+msgstr "無法使用標籤「{}」（不允許 `%%` 與換行）。"
+
+msgid "The lane `{namespace}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "無法使用泳道 `{namespace}`（ASCII 英文字母、數字與 `_`，且須以英文字母或 `_` 開頭）。"
+
+msgid "The line with the end-of-line comment ({comment}) has two or more statements, or it could not be determined which item the comment belongs to. Put one statement on each line, or edit it as text."
+msgstr "含有行尾註解（{comment}）的行有兩個以上的陳述式，或無法判斷註解屬於哪個項目。請每行放置一個陳述式，或以文字編輯。"
+
+msgid "The member block of `class` has no matching `}}` ({statement})."
+msgstr "`class` 的成員區塊沒有對應的 `}}`（{statement}）。"
+
+msgid "The memberships of group `{}` form a loop. Remove one of them."
+msgstr "群組 `{}` 的所屬關係形成迴圈。請移除其中一個。"
+
+msgid "The message `{message}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "無法使用訊息 `{message}`（不可包含 `\"`、`%%` 或換行）。"
+
+msgid "The message after `create {created}` must be sent to `{created}`."
+msgstr "`create {created}` 之後的訊息必須傳送至 `{created}`。"
+
+msgid "The message after `destroy {destroyed}` must involve `{destroyed}`."
+msgstr "`destroy {destroyed}` 之後的訊息必須涉及 `{destroyed}`。"
+
+msgid "The metadata `{text}` is not supported by the structured editor (only `key: value`, with a single-line string as the value). Edit it as text."
+msgstr "結構化編輯器不支援中繼資料 `{text}`（僅支援 `key: value`，且值為單行字串）。請以文字編輯。"
+
+msgid "The name `{name}` is used twice."
+msgstr "名稱 `{name}` 使用了兩次。"
+
+msgid "The name `{}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`. It can be split with `.`, but without a lane a name cannot contain exactly one `.`)."
+msgstr "無法使用名稱 `{}`（ASCII 英文字母、數字與 `_`，且須以英文字母或 `_` 開頭。可以用 `.` 分隔，但沒有泳道時，名稱不可只包含一個 `.`）。"
+
+msgid "The name `{}` has a lane, so it cannot contain `.`."
+msgstr "名稱 `{}` 有泳道，因此不可包含 `.`。"
+
+msgid "The name `{}` of series {number} cannot be written. {text_rule}"
+msgstr "無法撰寫數列 {number} 的名稱 `{}`。{text_rule}"
+
+msgid "The name is empty ({statement})."
+msgstr "名稱是空的（{statement}）。"
+
+msgid "The name of the node `{}` cannot be written (`\"` and `'` cannot both be used)."
+msgstr "無法撰寫節點 `{}` 的名稱（`\"` 與 `'` 不能同時使用）。"
+
+msgid "The name of the node `{}` cannot be written (when an HTML tag attribute is enclosed in `\"`, Mermaid rewrites it to `'` and the name is cut off)."
+msgstr "無法撰寫節點 `{}` 的名稱（以 `\"` 括住 HTML 標記屬性時，Mermaid 會將其改寫為 `'`，導致名稱被截斷）。"
+
+msgid "The name of the node `{}` cannot contain `%%{{` (Mermaid cuts it out as a directive)."
+msgstr "節點 `{}` 的名稱不可包含 `%%{{`（Mermaid 會將其視為指示詞而截去）。"
+
+msgid "The node `{name}` is nested too deeply (Mermaid allows up to {MAX_TREE_VIEW_DEPTH} levels)."
+msgstr "節點 `{name}` 的巢狀層級過深（Mermaid 最多允許 {MAX_TREE_VIEW_DEPTH} 層）。"
+
+msgid "The node `{}` is two or more levels deeper than its parent."
+msgstr "節點 `{}` 比其父項深兩層以上。"
+
+msgid "The node name “{name}” cannot be used (it cannot be empty, have spaces at either end, or contain line breaks or `\"\"`)."
+msgstr "無法使用節點名稱「{name}」（不可為空、兩端不可有空格，也不可包含換行或 `\"\"`）。"
+
+msgid "The number of columns must be a whole number of 1 or more, or auto."
+msgstr "欄數必須是 1 以上的整數，或 auto。"
+
+msgid "The number of columns of a group must be a whole number of 1 or more, or auto."
+msgstr "群組的欄數必須是 1 以上的整數，或 auto。"
+
+msgid "The operations right after branch `{}` run on this branch. Delete them first, or move them to another branch."
+msgstr "緊接在分支 `{}` 之後的操作是在此分支上執行的。請先刪除這些操作，或將其移至另一個分支。"
+
+msgid "The order of the `create` statements does not match the order of the participants. Order the participants as they are created."
+msgstr "`create` 陳述式的順序與參與者的順序不符。請依建立順序排列參與者。"
+
+msgid "The overlap “{name}” contains the same set twice."
+msgstr "重疊「{name}」包含相同的集合兩次。"
+
+msgid "The overlap “{name}” is written before the set “{missing}”. Place an overlap after the sets it uses."
+msgstr "重疊「{name}」寫在集合「{missing}」之前。請將重疊放在其使用的集合之後。"
+
+msgid "The overlap “{name}” is written twice."
+msgstr "重疊「{name}」寫了兩次。"
+
+msgid "The participant id `{model_id}` contains characters Mermaid uses internally, so it is not supported by the structured editor. Edit it as text."
+msgstr "參與者 id `{model_id}` 包含 Mermaid 內部使用的字元，因此結構化編輯器不支援。請以文字編輯。"
+
+msgid "The participant type `{other}` is not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援參與者類型 `{other}`。請以文字編輯。"
+
+msgid "The period `{}` cannot be written (`:`, `#`, `%%{{` and line breaks are not allowed, and it cannot be empty or start with `title`, `section`, `accTitle`, `accDescr` or `%%`)."
+msgstr "無法撰寫期間 `{}`（不允許 `:`、`#`、`%%{{` 與換行，不可為空，也不可以 `title`、`section`、`accTitle`、`accDescr` 或 `%%` 開頭）。"
+
+msgid "The point name `{}` cannot be written (no `\"` or line breaks; it cannot be empty or start or end with whitespace)."
+msgstr "無法撰寫點的名稱 `{}`（不可包含 `\"` 或換行；不可為空，也不可以空白字元開頭或結尾）。"
+
+msgid "The quote of `state \"description\"` is not closed ({statement})."
+msgstr "`state \"description\"` 的引號未閉合（{statement}）。"
+
+msgid "The quotes around the display name are not closed ({statement})."
+msgstr "顯示名稱的引號未閉合（{statement}）。"
+
+msgid "The quotes around the multiplicity are not closed ({statement})."
+msgstr "多重性的引號未閉合（{statement}）。"
+
+msgid "The quotes around the note text are not closed ({statement})."
+msgstr "附註文字的引號未閉合（{statement}）。"
+
+msgid "The quotes in `@{{{inner}}}` are not closed."
+msgstr "`@{{{inner}}}` 中的引號未閉合。"
+
+msgid "The same item has two end-of-line comments ({comment}). Merge them into one, or edit it as text."
+msgstr "同一個項目有兩個行尾註解（{comment}）。請將其合併為一個，或以文字編輯。"
+
+msgid "The score `{score_text}` is not supported by the structured editor ({trimmed}). Use a whole number from 1 to 5, or edit it as text."
+msgstr "結構化編輯器不支援分數 `{score_text}`（{trimmed}）。請使用 1 到 5 的整數，或以文字編輯。"
+
+msgid "The section name `{name}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "無法使用區段名稱 `{name}`（不允許 `:`、`%%{{` 與換行，且不可為空）。"
+
+msgid "The section name `{name}` cannot be used (line breaks and `%%{{` are not allowed)."
+msgstr "無法使用區段名稱 `{name}`（不允許換行與 `%%{{`）。"
+
+msgid "The section name `{name}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty)."
+msgstr "無法使用區段名稱 `{name}`（不可包含 `:`、`#`、`;` 或換行，且不可為空）。"
+
+msgid "The section name `{name}` is used twice. Mermaid draws the periods of both in one section of that name, so rename one."
+msgstr "區段名稱 `{name}` 使用了兩次。Mermaid 會將兩者的期間繪製在同一個該名稱的區段中，請重新命名其中一個。"
+
+msgid "The series has no values ({statement})."
+msgstr "數列沒有任何值（{statement}）。"
+
+msgid "The series value `{value}` cannot be read as a number ({statement})."
+msgstr "無法將數列值 `{value}` 讀取為數字（{statement}）。"
+
+msgid "The series values are not written as `[1, 2, 3]` ({statement})."
+msgstr "數列值未以 `[1, 2, 3]` 的形式撰寫（{statement}）。"
+
+msgid "The set ID “{id}” cannot be used (it cannot be empty, contain `\"` or line breaks, or have spaces at either end)."
+msgstr "無法使用集合 ID「{id}」（不可為空、不可包含 `\"` 或換行，兩端也不可有空格）。"
+
+msgid "The set “{id}” is written twice."
+msgstr "集合「{id}」寫了兩次。"
+
+msgid "The set “{missing}” of the overlap “{name}” does not exist."
+msgstr "重疊「{name}」的集合「{missing}」不存在。"
+
+msgid "The shape of `{}` is changed inside an edge ({line}). Write the shape where the block is placed."
+msgstr "`{}` 的形狀在邊中被變更（{line}）。請在放置區塊的位置撰寫形狀。"
+
+msgid "The side of an edge is one of L R T B ({statement})."
+msgstr "邊的方向為 L R T B 其中之一（{statement}）。"
+
+msgid "The size could not be read as a number ({statement})."
+msgstr "無法將大小讀取為數字（{statement}）。"
+
+msgid "The size “{size}” of “{name}” cannot be used (only a number of 0 or more)."
+msgstr "無法使用「{name}」的大小「{size}」（僅限 0 以上的數字）。"
+
+msgid "The source `{source}` of the arrow to frame `{}` is not in an earlier frame."
+msgstr "指向框架 `{}` 的箭頭來源 `{source}` 不在較早的框架中。"
+
+msgid "The start `{date}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "無法使用工作 `{}` 的開始 `{date}`（不允許 `,`、`#`、`;` 與換行，且不可為空）。"
+
+msgid "The start cannot be `until` ({statement})."
+msgstr "開始不能是 `until`（{statement}）。"
+
+msgid "The structured editor cannot handle `{header}` (write only `venn-beta` on its line, and the statements from the next line on)."
+msgstr "結構化編輯器無法處理 `{header}`（請在該行只寫 `venn-beta`，陳述式從下一行開始撰寫）。"
+
+msgid "The structured editor cannot handle a statement written after `%%{{ … }}%%` on the same line ({statement}). Move the statement to the next line, then open the editor again."
+msgstr "結構化編輯器無法處理在同一行中寫在 `%%{{ … }}%%` 之後的陳述式（{statement}）。請將陳述式移至下一行，然後再次開啟編輯器。"
+
+msgid "The structured editor cannot handle the amount “{value}” ({}). Write a number of 0 or more."
+msgstr "結構化編輯器無法處理數量「{value}」（{}）。請撰寫 0 以上的數字。"
+
+msgid "The structured editor cannot keep the comment at the end of this line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "結構化編輯器無法保留此行結尾的註解（{trimmed}）。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "The structured editor does not support `:::` without a class ({trimmed})."
+msgstr "結構化編輯器不支援沒有類別的 `:::`（{trimmed}）。"
+
+msgid "The structured editor does not support `{id}` in `{line}`. {}"
+msgstr "結構化編輯器不支援 `{line}` 中的 `{id}`。{}"
+
+msgid "The structured editor does not support `{line}` (it could not be read as a block)."
+msgstr "結構化編輯器不支援 `{line}`（無法將其讀取為區塊）。"
+
+msgid "The structured editor does not support `{line}` (write it as `class ID1,ID2 className`)."
+msgstr "結構化編輯器不支援 `{line}`（請以 `class ID1,ID2 className` 的形式撰寫）。"
+
+msgid "The structured editor does not support `{line}` (write it as `style ID style`)."
+msgstr "結構化編輯器不支援 `{line}`（請以 `style ID style` 的形式撰寫）。"
+
+msgid "The structured editor does not support `{rest}` on the `pie` line. Edit it as text."
+msgstr "結構化編輯器不支援 `pie` 行上的 `{rest}`。請以文字編輯。"
+
+msgid "The structured editor does not support `{statement}` (only the form `classDef name style;`). Edit it as text."
+msgstr "結構化編輯器不支援 `{statement}`（僅支援 `classDef name style;` 的形式）。請以文字編輯。"
+
+msgid "The structured editor does not support `{tail}` on the `mindmap` line. Write the nodes on the following lines."
+msgstr "結構化編輯器不支援 `mindmap` 行上的 `{tail}`。請在後續各行撰寫節點。"
+
+msgid "The structured editor does not support `{tail}` on the `timeline` line. Edit it as text."
+msgstr "結構化編輯器不支援 `timeline` 行上的 `{tail}`。請以文字編輯。"
+
+msgid "The structured editor does not support `{tail}` on the `{header}` line (Mermaid cannot draw this diagram)."
+msgstr "結構化編輯器不支援 `{header}` 行上的 `{tail}`（Mermaid 無法繪製此圖表）。"
+
+msgid "The structured editor does not support `{tail}` on the `{}` line. Write it on the next line."
+msgstr "結構化編輯器不支援 `{}` 行上的 `{tail}`。請將其寫在下一行。"
+
+msgid "The structured editor does not support `{tail}` written right after `end`. Write it on the next line."
+msgstr "結構化編輯器不支援緊接在 `end` 之後撰寫的 `{tail}`。請將其寫在下一行。"
+
+msgid "The structured editor does not support `{trimmed}`. Put a space after `title`."
+msgstr "結構化編輯器不支援 `{trimmed}`。請在 `title` 之後加上空格。"
+
+msgid "The structured editor does not support `{}` written right after `%%{{ … }}%%`. Write it on the next line."
+msgstr "結構化編輯器不支援緊接在 `%%{{ … }}%%` 之後撰寫的 `{}`。請將其寫在下一行。"
+
+msgid "The structured editor does not support `{}` written right after the group heading in `{line}`. Write it on the next line."
+msgstr "結構化編輯器不支援緊接在 `{line}` 中群組標題之後撰寫的 `{}`。請將其寫在下一行。"
+
+msgid "The structured editor does not support a `%%` comment in the middle of a line ({line}). Write the comment on a line of its own."
+msgstr "結構化編輯器不支援位於行中間的 `%%` 註解（{line}）。請將註解寫在獨立的一行。"
+
+msgid "The structured editor does not support a `%%{{ … }}%%` that spans several lines. Write it on one line at the top of the diagram."
+msgstr "結構化編輯器不支援跨越多行的 `%%{{ … }}%%`。請將其以單行寫在圖表開頭。"
+
+msgid "The structured editor does not support a line that contains `%%{{`, because Mermaid cuts it out as a directive ({tail})."
+msgstr "結構化編輯器不支援含有 `%%{{` 的行，因為 Mermaid 會將其視為指示詞而截去（{tail}）。"
+
+msgid "The structured editor does not support the `{open}` shape of the node `{statement}` (Mermaid draws it in the default shape). Edit it as text."
+msgstr "結構化編輯器不支援節點 `{statement}` 的 `{open}` 形狀（Mermaid 會以預設形狀繪製）。請以文字編輯。"
+
+msgid "The structured editor does not support the class name in `{line}`."
+msgstr "結構化編輯器不支援 `{line}` 中的類別名稱。"
+
+msgid "The structured editor does not support the icon `{trimmed}`."
+msgstr "結構化編輯器不支援圖示 `{trimmed}`。"
+
+msgid "The structured editor does not support the value `{token}` of the item `{name}` (Mermaid skips everything from a `_` or a second `.` on)."
+msgstr "結構化編輯器不支援項目 `{name}` 的值 `{token}`（Mermaid 會略過自 `_` 或第二個 `.` 起的所有內容）。"
+
+msgid "The structured editor does not support this diagram. Edit it as text."
+msgstr "結構化編輯器不支援此圖表。請以文字編輯。"
+
+msgid "The structured editor would lose the comment at the end of the `treeView-beta` line. Move the comment to a line of its own, or edit it as text."
+msgstr "`treeView-beta` 行結尾的註解會在結構化編輯器中遺失。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+msgstr "陳述式結尾的註解會在結構化編輯器中遺失（{statement}）。請將註解移至獨立的一行，或以文字編輯。"
+
+msgid "The structured editor would write statements that follow each other on one line ({trimmed}) back twice. Put the statements on separate lines, or edit it as text."
+msgstr "結構化編輯器會將在同一行中連續撰寫的陳述式（{trimmed}）寫回兩次。請將陳述式分成不同行，或以文字編輯。"
+
+msgid "The style `{key}` cannot be used (use one of {})."
+msgstr "無法使用樣式 `{key}`（請使用 {} 其中之一）。"
+
+msgid "The style `{style}` of the class `{name}` cannot be written (separate `name:value` pairs with `,`; `;` and `%%` are not allowed)."
+msgstr "無法撰寫類別 `{name}` 的樣式 `{style}`（請以 `,` 分隔 `name:value` 配對；不允許 `;` 與 `%%`）。"
+
+msgid "The style of `{target}` cannot contain line breaks."
+msgstr "`{target}` 的樣式不可包含換行。"
+
+msgid "The style of classDef `{name}` cannot contain line breaks."
+msgstr "classDef `{name}` 的樣式不可包含換行。"
+
+msgid "The tag `{tag}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "無法使用標籤 `{tag}`（不可包含 `\"`、`%%` 或換行）。"
+
+msgid "The task name `{}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot start with `%%`)."
+msgstr "無法使用工作名稱 `{}`（不允許 `:`、`%%{{` 與換行，也不可以 `%%` 開頭）。"
+
+msgid "The task name `{}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty. It also cannot start with `title `, `section `, `accTitle`, `accDescr` or `%%`)."
+msgstr "無法使用工作名稱 `{}`（不可包含 `:`、`#`、`;` 或換行，且不可為空。也不可以 `title `、`section `、`accTitle`、`accDescr` 或 `%%` 開頭）。"
+
+msgid "The text is empty ({statement})."
+msgstr "文字是空的（{statement}）。"
+
+msgid "The tick count (ticks) `{ticks}` is too large. Use {MAX_TICKS} or less."
+msgstr "刻度數（ticks）`{ticks}` 太大。請使用 {MAX_TICKS} 以下的值。"
+
+msgid "The title `{title}` cannot be used (line breaks and `%%` are not allowed, and it cannot be empty)."
+msgstr "無法使用標題 `{title}`（不允許換行與 `%%`，且不可為空）。"
+
+msgid "The title `{title}` cannot be written (line breaks and `%%` are not allowed, and it cannot be empty or have spaces at either end)."
+msgstr "無法撰寫標題 `{title}`（不允許換行與 `%%`，不可為空，兩端也不可有空格）。"
+
+msgid "The title `{title}` cannot be written (line breaks, `%%`, `=\"` and `#…;` are not allowed)."
+msgstr "無法撰寫標題 `{title}`（不允許換行、`%%`、`=\"` 與 `#…;`）。"
+
+msgid "The title `{title}` cannot be written (no `%%`, `;` or line breaks, and it cannot start or end with whitespace)."
+msgstr "無法撰寫標題 `{title}`（不可包含 `%%`、`;` 或換行，也不可以空白字元開頭或結尾）。"
+
+msgid "The title `{title}` cannot be written in a pie chart (`%%` is not allowed)."
+msgstr "無法在圓餅圖中撰寫標題 `{title}`（不允許 `%%`）。"
+
+msgid "The title `{title}` of {what} `{}` cannot be written (no line breaks, `%%{{`, `=\"` or `#…;`, and closing brackets cannot be used together with `\"`)."
+msgstr "無法撰寫 {what} `{}` 的標題 `{title}`（不可包含換行、`%%{{`、`=\"` 或 `#…;`，且結束括號不能與 `\"` 同時使用）。"
+
+msgid "The title `{}` cannot be written. {text_rule}"
+msgstr "無法撰寫標題 `{}`。{text_rule}"
+
+msgid "The title cannot be empty or contain line breaks or `%%` (and cannot start or end with whitespace)."
+msgstr "標題不可為空，也不可包含換行或 `%%`（也不可以空白字元開頭或結尾）。"
+
+msgid "The title cannot contain `%%` or line breaks (and cannot start or end with whitespace)."
+msgstr "標題不可包含 `%%` 或換行（也不可以空白字元開頭或結尾）。"
+
+msgid "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+msgstr "標題不可包含 `%%` 或換行（兩端也不可有空格）。"
+
+msgid "The title cannot contain line breaks or `%%{{` (and cannot be empty)."
+msgstr "標題不可包含換行或 `%%{{`（也不可為空）。"
+
+msgid "The title cannot contain line breaks or `%%{{`, and it cannot be empty or have spaces at either end."
+msgstr "標題不可包含換行或 `%%{{`，不可為空，兩端也不可有空格。"
+
+msgid "The title cannot contain line breaks, `#` or `;` (and cannot start or end with whitespace)."
+msgstr "標題不可包含換行、`#` 或 `;`（也不可以空白字元開頭或結尾）。"
+
+msgid "The title could not be read the same way Mermaid reads it. Edit it as text."
+msgstr "無法以與 Mermaid 相同的方式讀取標題。請以文字編輯。"
+
+msgid "The title of `{id}` cannot be written ({label_rule})."
+msgstr "無法撰寫 `{id}` 的標題（{label_rule}）。"
+
+msgid "The title of {what} `{}` is empty."
+msgstr "{what} `{}` 的標題是空的。"
+
+msgid "The total number of bits ({total}) is too large. Mermaid can draw up to {MAX_PACKET_BITS} bits."
+msgstr "位元總數（{total}）太大。Mermaid 最多可繪製 {MAX_PACKET_BITS} 位元。"
+
+msgid "The value `{value}` of curve `{}` cannot be written. {number_rule}"
+msgstr "無法撰寫曲線 `{}` 的值 `{value}`。{number_rule}"
+
+msgid "The value `{value}` of series {number} is not a number (for example 12, -3.5, .5)."
+msgstr "數列 {number} 的值 `{value}` 不是數字（例如 12、-3.5、.5）。"
+
+msgid "The value `{value}` of style `{key}` cannot be used."
+msgstr "無法使用樣式 `{key}` 的值 `{value}`。"
+
+msgid "The value `{value}` of the item `{}` cannot be read as a number (a number of 0 or more; `,` as a thousands separator and `.` as the decimal point are allowed)."
+msgstr "無法將項目 `{}` 的值 `{value}` 讀取為數字（0 以上的數字；可使用 `,` 作為千分位分隔符號，`.` 作為小數點）。"
+
+msgid "The value of `{keyword}` cannot contain line breaks."
+msgstr "`{keyword}` 的值不可包含換行。"
+
+msgid "The values of curve `{id}` are not written as `{{1, 2, 3}}` ({line})."
+msgstr "曲線 `{id}` 的值未以 `{{1, 2, 3}}` 的形式撰寫（{line}）。"
+
+msgid "The width in `{line}` must be a whole number of 1 or more."
+msgstr "`{line}` 中的寬度必須是 1 以上的整數。"
+
+msgid "The width of {what} must be 1 or more."
+msgstr "{what} 的寬度必須是 1 以上。"
+
+msgid "The x axis has an empty category ({statement})."
+msgstr "X 軸有空的類別（{statement}）。"
+
+msgid "The x axis has no categories. Add a category, or set the x-axis “Scale” to “None (1, 2, 3…)”."
+msgstr "X 軸沒有任何類別。請新增類別，或將 X 軸的「刻度」設為「無（1, 2, 3…）」。"
+
+msgid "The x-axis category `{}` cannot be written. {text_rule}"
+msgstr "無法撰寫 X 軸類別 `{}`。{text_rule}"
+
+msgid "The x-axis name `{}` cannot be written. {text_rule}"
+msgstr "無法撰寫 X 軸名稱 `{}`。{text_rule}"
+
+msgid "The y axis cannot have categories ({statement})."
+msgstr "Y 軸不能有類別（{statement}）。"
+
+msgid "The y-axis name `{}` cannot be written. {text_rule}"
+msgstr "無法撰寫 Y 軸名稱 `{}`。{text_rule}"
+
+msgid "The year {} cannot be written with 2 digits"
+msgstr "無法以 2 位數撰寫 {} 年"
+
+msgid "The year {} cannot be written with 4 digits"
+msgstr "無法以 4 位數撰寫 {} 年"
+
+msgid "The {axis} `{value}` of point `{}` cannot be used (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
+msgstr "無法使用點 `{}` 的 {axis} `{value}`（0 到 1：只能是 `0`、`1`，或以 `0.` 開頭的小數）。"
+
+msgid "The {name} label cannot be written (no `\"` or line breaks, and no whitespace at either end)."
+msgstr "無法撰寫 {name} 標籤（不可包含 `\"` 或換行，兩端也不可有空白字元）。"
+
+msgid "The {what} ID `{}` cannot be used (no brackets, `\"`, `%%`, `@{{`, `#…;` or whitespace at either end)."
+msgstr "無法使用 {what} ID `{}`（不可包含括號、`\"`、`%%`、`@{{`、`#…;`，兩端也不可有空白字元）。"
+
+msgid "The {what} `{}` has a value for `{}` that cannot be written (no `}}`, `\"`, `%%`, `#…;`, line breaks or whitespace at either end)."
+msgstr "{what} `{}` 的 `{}` 值無法撰寫（不可包含 `}}`、`\"`、`%%`、`#…;`、換行，兩端也不可有空白字元）。"
+
+msgid "There are more `end`s than blocks."
+msgstr "`end` 比區塊多。"
+
+msgid "There are two `columns` at the same level. Mermaid uses only the last one, so merge them into one."
+msgstr "同一層級有兩個 `columns`。Mermaid 只會使用最後一個，請將其合併為一個。"
+
+msgid "There are two `title`s. Only the last one is used."
+msgstr "有兩個 `title`。只會使用最後一個。"
+
+msgid "There are two arrows from `{source}` to `{}`."
+msgstr "從 `{source}` 到 `{}` 有兩個箭頭。"
+
+msgid "There are two roots (`{}`). A mindmap has only one root, and the other nodes are indented deeper than the root."
+msgstr "有兩個根節點（`{}`）。心智圖只有一個根節點，其他節點的縮排要比根節點更深。"
+
+msgid "There are two roots (`{}`). A mindmap has only one root."
+msgstr "有兩個根節點（`{}`）。心智圖只有一個根節點。"
+
+msgid "There are unreadable characters after the `}}` of curve `{id}` ({line})."
+msgstr "曲線 `{id}` 的 `}}` 之後有無法讀取的字元（{line}）。"
+
+msgid "There is a `%%{{` in the middle of a statement ({line}). Mermaid cuts `%%{{ … }}%%` out and joins what is before and after it, so the structured editor cannot handle it."
+msgstr "陳述式中間有 `%%{{`（{line}）。Mermaid 會截去 `%%{{ … }}%%` 並將前後內容連接起來，因此結構化編輯器無法處理。"
+
+msgid "There is a `%%{{` that is never closed ({line}). Mermaid does not read anything after it, so the structured editor cannot handle it."
+msgstr "有從未閉合的 `%%{{`（{line}）。Mermaid 不會讀取其後的任何內容，因此結構化編輯器無法處理。"
+
+msgid "There is a `[` inside `[` ({statement})."
+msgstr "`[` 中有 `[`（{statement}）。"
+
+msgid "There is a `}}` without a matching `{{`."
+msgstr "有沒有對應 `{{` 的 `}}`。"
+
+msgid "There is a `}}` without a matching boundary (line {}). Edit it as text."
+msgstr "有沒有對應邊界的 `}}`（第 {} 行）。請以文字編輯。"
+
+msgid "There is a `}}` without a matching boundary."
+msgstr "有沒有對應邊界的 `}}`。"
+
+msgid "There is a boundary that is not closed (`}}` is missing). Edit it as text."
+msgstr "有未閉合的邊界（缺少 `}}`）。請以文字編輯。"
+
+msgid "There is a boundary that is not closed."
+msgstr "有未閉合的邊界。"
+
+msgid "There is a node with an empty label ({trimmed})."
+msgstr "有標籤為空的節點（{trimmed}）。"
+
+msgid "There is a node with an empty label."
+msgstr "有標籤為空的節點。"
+
+msgid "There is a requirement or element with an empty name."
+msgstr "有名稱為空的需求或元素。"
+
+msgid "There is a requirement or element without a name ({text})."
+msgstr "有沒有名稱的需求或元素（{text}）。"
+
+msgid "There is a style assignment without a target."
+msgstr "有沒有目標的樣式指派。"
+
+msgid "There is an `end` without a matching `block`. Mermaid draws it as a block named `end`."
+msgstr "有沒有對應 `block` 的 `end`。Mermaid 會將其繪製為名為 `end` 的區塊。"
+
+msgid "There is an empty cause."
+msgstr "有空的原因。"
+
+msgid "There is an empty event ({trimmed}). Delete it, or edit it as text."
+msgstr "有空的事件（{trimmed}）。請將其刪除，或以文字編輯。"
+
+msgid "There is an extra `{}` after `\"{value}\"`."
+msgstr "`\"{value}\"` 之後有多餘的 `{}`。"
+
+msgid "There is an item with an empty name."
+msgstr "有名稱為空的項目。"
+
+msgid "There is an overlap that contains no set."
+msgstr "有不包含任何集合的重疊。"
+
+msgid "There is an unclosed \"` ({statement})."
+msgstr "有未閉合的 \"`（{statement}）。"
+
+msgid "There is an unclosed \"` … `\"."
+msgstr "有未閉合的 \"` … `\"。"
+
+msgid "There is an unclosed `\"` ({statement})."
+msgstr "有未閉合的 `\"`（{statement}）。"
+
+msgid "There is an unclosed `\"` ({text})."
+msgstr "有未閉合的 `\"`（{text}）。"
+
+msgid "There is an unclosed `\"`."
+msgstr "有未閉合的 `\"`。"
+
+msgid "There is an unclosed label ({line})."
+msgstr "有未閉合的標籤（{line}）。"
+
+msgid "There is no `:` after the label ({statement})."
+msgstr "標籤之後沒有 `:`（{statement}）。"
+
+msgid "There is no `[` after the `:` of the point."
+msgstr "點的 `:` 之後沒有 `[`。"
+
+msgid "There is no `]]` closing `[[` ({line})."
+msgstr "沒有結束 `[[` 的 `]]`（{line}）。"
+
+msgid "There is no `]` after the label ({line})."
+msgstr "標籤之後沒有 `]`（{line}）。"
+
+msgid "There is no `end note` that matches the `note` ({statement})."
+msgstr "沒有與 `note` 對應的 `end note`（{statement}）。"
+
+msgid "There is no `{{` after `{statement}`."
+msgstr "`{statement}` 之後沒有 `{{`。"
+
+msgid "There is no `}}` that matches a `{{`."
+msgstr "沒有與 `{{` 對應的 `}}`。"
+
+msgid "There is no block `{end}` for the edge to connect (written only in an edge, Mermaid places a new block there)."
+msgstr "沒有供邊連接的區塊 `{end}`（只在邊中撰寫時，Mermaid 會在該處放置新區塊）。"
+
+msgid "There is no block `{target}` to give the class `{class_name}` to."
+msgstr "沒有可套用類別 `{class_name}` 的區塊 `{target}`。"
+
+msgid "There is no block `{target}` to give the style to."
+msgstr "沒有可套用樣式的區塊 `{target}`。"
+
+msgid "There is no block around `{}`."
+msgstr "沒有包住 `{}` 的區塊。"
+
+msgid "There is no data name after `data`."
+msgstr "`data` 之後沒有資料名稱。"
+
+msgid "There is no element `{end}` for the end of a relationship."
+msgstr "沒有作為關係端點的元素 `{end}`。"
+
+msgid "There is no frame number after `->>` ({line})."
+msgstr "`->>` 之後沒有框架編號（{line}）。"
+
+msgid "There is no node before `:::` ({trimmed})."
+msgstr "`:::` 之前沒有節點（{trimmed}）。"
+
+msgid "There is no node before `::icon(…)` ({trimmed})."
+msgstr "`::icon(…)` 之前沒有節點（{trimmed}）。"
+
+msgid "There is no node before `@{{` ({rest}). Mermaid skips this line, so edit it as text."
+msgstr "`@{{` 之前沒有節點（{rest}）。Mermaid 會略過此行，請以文字編輯。"
+
+msgid "There is no number after `-->` ({statement})."
+msgstr "`-->` 之後沒有數字（{statement}）。"
+
+msgid "There is no period before the event `{trimmed}`."
+msgstr "事件 `{trimmed}` 之前沒有期間。"
+
+msgid "There is no requirement or element named `{name}` for a relationship to point to."
+msgstr "沒有名為 `{name}` 的需求或元素可供關係指向。"
+
+msgid "There is no requirement or element named `{name}` for a style assignment to point to."
+msgstr "沒有名為 `{name}` 的需求或元素可供樣式指派指向。"
+
+msgid "There is no start or end after `:` ({statement})."
+msgstr "`:` 之後沒有開始或結束（{statement}）。"
+
+msgid "There is no style class name after `:::` ({statement})."
+msgstr "`:::` 之後沒有樣式類別名稱（{statement}）。"
+
+msgid "There is no task name before `:` ({statement})."
+msgstr "`:` 之前沒有工作名稱（{statement}）。"
+
+msgid "Thick arrow"
+msgstr "粗箭頭"
+
+msgid "This commit has the message `{message}`, which a merge cannot have, so it cannot be changed into a merge. Remove the `msg` in the text, or delete the commit and add a merge."
+msgstr "此提交有訊息 `{message}`，而合併不能有訊息，因此無法將其變更為合併。請移除文字中的 `msg`，或刪除此提交並新增合併。"
+
+msgid "This could not be read as a mindmap node ({statement}). Edit it as text."
+msgstr "無法將此讀取為心智圖節點（{statement}）。請以文字編輯。"
+
+msgid "This could not be read as a node of a tree view ({trimmed}). Enclose a name in \"…\" or '…', and write `title`, `accTitle` and `accDescr` before the first node."
+msgstr "無法將此讀取為樹狀檢視的節點（{trimmed}）。請以 \"…\" 或 '…' 括住名稱，並將 `title`、`accTitle` 與 `accDescr` 寫在第一個節點之前。"
+
+msgid "This could not be read as a statement of a Venn diagram ({statement}). Edit it as text."
+msgstr "無法將此讀取為文氏圖的陳述式（{statement}）。請以文字編輯。"
+
+msgid "This could not be read as a treemap item ({rest}). Write it as `\"name\"` or `\"name\": value`."
+msgstr "無法將此讀取為矩形樹狀圖項目（{rest}）。請以 `\"name\"` 或 `\"name\": value` 的形式撰寫。"
+
+msgid "This could not be read as an event ({trimmed})."
+msgstr "無法將此讀取為事件（{trimmed}）。"
+
+msgid "This date and time cannot be written in local time"
+msgstr "無法以當地時間撰寫此日期與時間"
+
+msgid "This diagram cannot be opened, because rewriting it would change its content (it depends on the order of the style assignments or the like). Edit it as text."
+msgstr "無法開啟此圖表，因為重寫會改變其內容（其內容取決於樣式指派等的順序）。請以文字編輯。"
+
+msgid "This diagram is not a C4 diagram."
+msgstr "此圖表不是 C4 圖表。"
+
+msgid "This diagram is not a Gantt chart."
+msgstr "此圖表不是甘特圖。"
+
+msgid "This diagram is not a Git graph."
+msgstr "此圖表不是 Git 圖表。"
+
+msgid "This diagram is not a Sankey diagram."
+msgstr "此圖表不是桑基圖。"
+
+msgid "This diagram is not a Venn diagram."
+msgstr "此圖表不是文氏圖。"
+
+msgid "This diagram is not a block diagram."
+msgstr "此圖表不是區塊圖。"
+
+msgid "This diagram is not a class diagram."
+msgstr "此圖表不是類別圖。"
+
+msgid "This diagram is not a kanban board."
+msgstr "此圖表不是看板。"
+
+msgid "This diagram is not a mindmap."
+msgstr "此圖表不是心智圖。"
+
+msgid "This diagram is not a packet diagram."
+msgstr "此圖表不是封包圖。"
+
+msgid "This diagram is not a pie chart."
+msgstr "此圖表不是圓餅圖。"
+
+msgid "This diagram is not a quadrant chart."
+msgstr "此圖表不是象限圖。"
+
+msgid "This diagram is not a radar chart."
+msgstr "此圖表不是雷達圖。"
+
+msgid "This diagram is not a requirement diagram."
+msgstr "此圖表不是需求圖。"
+
+msgid "This diagram is not a sequence diagram."
+msgstr "此圖表不是循序圖。"
+
+msgid "This diagram is not a state diagram."
+msgstr "此圖表不是狀態圖。"
+
+msgid "This diagram is not a timeline."
+msgstr "此圖表不是時間軸。"
+
+msgid "This diagram is not a tree view."
+msgstr "此圖表不是樹狀檢視。"
+
+msgid "This diagram is not a treemap."
+msgstr "此圖表不是矩形樹狀圖。"
+
+msgid "This diagram is not a user journey."
+msgstr "此圖表不是使用者旅程圖。"
+
+msgid "This diagram is not an ER diagram."
+msgstr "此圖表不是 ER 圖。"
+
+msgid "This diagram is not an Ishikawa diagram."
+msgstr "此圖表不是魚骨圖。"
+
+msgid "This diagram is not an XY chart."
+msgstr "此圖表不是 XY 圖表。"
+
+msgid "This diagram is not an architecture diagram."
+msgstr "此圖表不是架構圖。"
+
+msgid "This diagram is not an event modeling diagram."
+msgstr "此圖表不是事件模型圖。"
+
+msgid "This diagram type is not supported by the structured editor (flowcharts only)."
+msgstr "結構化編輯器不支援此圖表類型（僅支援流程圖）。"
+
+msgid "This is not a Gantt chart"
+msgstr "這不是甘特圖"
+
+msgid "This is not a Gantt chart (only diagrams that start with `gantt` can be edited in the structured editor)."
+msgstr "這不是甘特圖（只有以 `gantt` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a Git graph (only diagrams that start with `gitGraph` can be edited in the structured editor)."
+msgstr "這不是 Git 圖表（只有以 `gitGraph` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a block diagram (only a diagram that starts with `block-beta` can be edited in the structured editor)."
+msgstr "這不是區塊圖（只有以 `block-beta` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a class diagram (only diagrams that start with `classDiagram` can be edited in the structured editor)."
+msgstr "這不是類別圖（只有以 `classDiagram` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a kanban board (only diagrams that start with `kanban` can be edited in the structured editor)."
+msgstr "這不是看板（只有以 `kanban` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a mindmap (only a diagram that starts with `mindmap` can be edited in the structured editor)."
+msgstr "這不是心智圖（只有以 `mindmap` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a pie chart (only a diagram that starts with `pie` can be edited in the structured editor)."
+msgstr "這不是圓餅圖（只有以 `pie` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a quadrant chart (only diagrams that start with `quadrantChart` can be edited in the structured editor)."
+msgstr "這不是象限圖（只有以 `quadrantChart` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a radar chart (only diagrams that start with `radar-beta` can be edited in the structured editor)."
+msgstr "這不是雷達圖（只有以 `radar-beta` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a requirement diagram (only diagrams that start with `requirementDiagram` can be edited in the structured editor)."
+msgstr "這不是需求圖（只有以 `requirementDiagram` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a state diagram (only a diagram that starts with `stateDiagram` can be edited in the structured editor)."
+msgstr "這不是狀態圖（只有以 `stateDiagram` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a timeline (only a diagram that starts with `timeline` can be edited in the structured editor)."
+msgstr "這不是時間軸（只有以 `timeline` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a tree view (only a diagram that starts with `treeView-beta` can be edited in the structured editor)."
+msgstr "這不是樹狀檢視（只有以 `treeView-beta` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a treemap (only a diagram that starts with `treemap-beta` can be edited in the structured editor)."
+msgstr "這不是矩形樹狀圖（只有以 `treemap-beta` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not a user journey (only diagrams that start with `journey` can be edited in the structured editor)."
+msgstr "這不是使用者旅程圖（只有以 `journey` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not an Ishikawa diagram (only a diagram that starts with `ishikawa-beta` or `ishikawa` can be edited in the structured editor)."
+msgstr "這不是魚骨圖（只有以 `ishikawa-beta` 或 `ishikawa` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not an XY chart (only diagrams that start with `xychart-beta` can be edited in the structured editor)."
+msgstr "這不是 XY 圖表（只有以 `xychart-beta` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not an architecture diagram (only diagrams that start with `architecture-beta` can be edited in the structured editor)."
+msgstr "這不是架構圖（只有以 `architecture-beta` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This is not an event modeling diagram (only diagrams that start with `eventmodeling` can be edited in the structured editor)."
+msgstr "這不是事件模型圖（只有以 `eventmodeling` 開頭的圖表才能在結構化編輯器中編輯）。"
+
+msgid "This line could not be read as a field of a packet diagram ({statement}). Write it as `0-15: \"label\"` or `+8: \"label\"`."
+msgstr "無法將此行讀取為封包圖的欄位（{statement}）。請以 `0-15: \"label\"` 或 `+8: \"label\"` 的形式撰寫。"
+
+msgid "This line could not be read as a flow of a Sankey diagram ({}). Write it as `source,target,value`."
+msgstr "無法將此行讀取為桑基圖的流程（{}）。請以 `source,target,value` 的形式撰寫。"
+
+msgid "This line could not be read as a slice of a pie chart ({statement}). Write it as `\"label\" : value`."
+msgstr "無法將此行讀取為圓餅圖的扇區（{statement}）。請以 `\"label\" : value` 的形式撰寫。"
+
+msgid "Tick count (ticks)"
+msgstr "刻度數（ticks）"
+
+msgid "To give task `{}` an ID, make its start a date or `after`."
+msgstr "若要為工作 `{}` 指定 ID，請將其開始設為日期或 `after`。"
+
+msgid "Top to bottom (TB / TD)"
+msgstr "由上而下（TB / TD）"
+
+msgid "Top to bottom (TB)"
+msgstr "由上而下（TB）"
+
+msgid "Traces (traces)"
+msgstr "追蹤（traces）"
+
+msgid "Trapezoid (reversed) [\\manual input/]"
+msgstr "梯形（反向）[\\手動輸入/]"
+
+msgid "Trapezoid [/ \\]"
+msgstr "梯形 [/ \\]"
+
+msgid "Trapezoid [/manual operation\\]"
+msgstr "梯形 [/手動操作\\]"
+
+msgid "Two axes have the ID `{}`. It is unclear which axis a value belongs to, so change one of the IDs."
+msgstr "有兩個座標軸的 ID 為 `{}`。無法確定值屬於哪個座標軸，請變更其中一個 ID。"
+
+msgid "Two curves have the ID `{}`. Change one of the IDs."
+msgstr "有兩條曲線的 ID 為 `{}`。請變更其中一個 ID。"
+
+msgid "Two-way arrow"
+msgstr "雙向箭頭"
+
+msgid "Unique key (UK)"
+msgstr "唯一索引鍵（UK）"
+
+msgid "Use only letters, digits and `_` in the class name of point `{}`."
+msgstr "點 `{}` 的類別名稱請只使用英文字母、數字與 `_`。"
+
+msgid "Verification: Analysis"
+msgstr "驗證：分析"
+
+msgid "Verification: Demonstration"
+msgstr "驗證：示範"
+
+msgid "Verification: Inspection"
+msgstr "驗證：檢查"
+
+msgid "Verification: Test"
+msgstr "驗證：測試"
+
+msgid "Verifies (verifies)"
+msgstr "驗證（verifies）"
+
+msgid "Very High"
+msgstr "非常高"
+
+msgid "Very Low"
+msgstr "非常低"
+
+msgid "When text shaped like `<tag …>` contains `=\"…\"`, Mermaid rewrites the `\"` to `'` before reading it, which changes the diagram. Change the `<` of the label or the `=` at its end."
+msgstr "當 `<tag …>` 形式的文字包含 `=\"…\"` 時，Mermaid 會在讀取前將 `\"` 改寫為 `'`，這會改變圖表。請變更標籤的 `<` 或其結尾的 `=`。"
+
+msgid "With the x-axis range `{min}` → `{max}`, Mermaid cannot place the values of series {number} and never finishes drawing. Move the ends of the range apart."
+msgstr "在 X 軸範圍 `{min}` → `{max}` 下，Mermaid 無法放置數列 {number} 的值，且繪製永遠不會完成。請拉開範圍兩端的距離。"
+
+msgid "Without `dateFormat`, the end cannot be written as a date"
+msgstr "沒有 `dateFormat` 時，無法將結束寫成日期"
+
+msgid "Without categories or a range on the x axis, Mermaid builds the x axis from the number of values in the first series. With only one value in the first series, it cannot place the values of series {number} and never finishes drawing. Add values to the first series, or give the x axis categories or a range."
+msgstr "X 軸沒有類別或範圍時，Mermaid 會依第一個數列的值數量建立 X 軸。若第一個數列只有一個值，就無法放置數列 {number} 的值，且繪製永遠不會完成。請在第一個數列中新增值，或為 X 軸指定類別或範圍。"
+
+msgid "Write `graticule` as `circle` or `polygon` ({line})."
+msgstr "請將 `graticule` 寫成 `circle` 或 `polygon`（{line}）。"
+
+msgid "Write `showLegend` as `true` or `false` ({line})."
+msgstr "請將 `showLegend` 寫成 `true` 或 `false`（{line}）。"
+
+msgid "Write a direction such as `(right)` for the arrow block in `{line}`."
+msgstr "請為 `{line}` 中的箭頭區塊撰寫方向，例如 `(right)`。"
+
+msgid "Write a generic type as `{name}~T~` ({statement})."
+msgstr "請將泛型型別寫成 `{name}~T~`（{statement}）。"
+
+msgid "Write a number of 0 or more like `12`, `0.5` or `.5` (no leading 0, trailing `.` or sign)."
+msgstr "請撰寫 0 以上的數字，例如 `12`、`0.5` 或 `.5`（不可有前導 0、結尾的 `.` 或正負號）。"
+
+msgid "Write at least one block to give the class `{class_name}` to."
+msgstr "請至少撰寫一個要套用類別 `{class_name}` 的區塊。"
+
+msgid "Write at least one direction for arrow `{}` (right / left / up / down / x / y)."
+msgstr "請為箭頭 `{}` 至少撰寫一個方向（right / left / up / down / x / y）。"
+
+msgid "Write it as `[\"display name\"]` ({statement})."
+msgstr "請以 `[\"display name\"]` 的形式撰寫（{statement}）。"
+
+msgid "Write it as `namespace {name} {{` ({statement})."
+msgstr "請以 `namespace {name} {{` 的形式撰寫（{statement}）。"
+
+msgid "Write it as `note \"text\"` ({statement})."
+msgstr "請以 `note \"text\"` 的形式撰寫（{statement}）。"
+
+msgid "Write it as `state \"description\" as ID` ({statement})."
+msgstr "請以 `state \"description\" as ID` 的形式撰寫（{statement}）。"
+
+msgid "Write one of TB / BT / LR / RL after `direction` ({statement})."
+msgstr "請在 `direction` 之後撰寫 TB / BT / LR / RL 其中之一（{statement}）。"
+
+msgid "Write the number of bits of “{}” as a whole number of 1 or more."
+msgstr "請將「{}」的位元數寫成 1 以上的整數。"
+
+msgid "Write the order `{order}` as a whole number."
+msgstr "請將順序 `{order}` 寫成整數。"
+
+msgid "Write the style `{style}` as `name: value`."
+msgstr "請將樣式 `{style}` 寫成 `name: value`。"
+
+msgid "Write the x-axis range `{min}` → `{max}` as numbers."
+msgstr "請將 X 軸範圍 `{min}` → `{max}` 寫成數字。"
+
+msgid "Write the y-axis range `{}` → `{}` as numbers (leave both empty to set it automatically)."
+msgstr "請將 Y 軸範圍 `{}` → `{}` 寫成數字（兩者皆留空即自動設定）。"
+
+msgid "Zero or more"
+msgstr "零個以上"
+
+msgid "Zero or one"
+msgstr "零個或一個"
+
+msgid "`\"` is required"
+msgstr "必須有 `\"`"
+
+msgid "`\"`, `%%` and line breaks are not allowed, and it cannot start or end with whitespace."
+msgstr "不允許 `\"`、`%%` 與換行，也不可以空白字元開頭或結尾。"
+
+msgid "`:::` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "節點 `{}` 寫了兩次 `:::`。Mermaid 只會使用後者，請將其合併為一個，然後再次開啟編輯器。"
+
+msgid "`:::` without a class is not supported by the structured editor ({rest})."
+msgstr "結構化編輯器不支援沒有類別的 `:::`（{rest}）。"
+
+msgid "`::icon(` has no closing parenthesis ({rest}). Mermaid skips this line, so close it or edit it as text."
+msgstr "`::icon(` 沒有右括號（{rest}）。Mermaid 會略過此行，請將其閉合或以文字編輯。"
+
+msgid "`::icon(…)` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "節點 `{}` 寫了兩次 `::icon(…)`。Mermaid 只會使用後者，請將其合併為一個，然後再次開啟編輯器。"
+
+msgid "`<<annotation>>` is not closed ({statement})."
+msgstr "`<<annotation>>` 未閉合（{statement}）。"
+
+msgid "`@{{` is not closed with `}}`."
+msgstr "`@{{` 未以 `}}` 結束。"
+
+msgid "`@{{{inner}}}` has an empty entry."
+msgstr "`@{{{inner}}}` 有空的項目。"
+
+msgid "`UpdateElementStyle({alias}, …)` comes before the declaration of `{alias}`, so it has no effect. Move it after the declaration."
+msgstr "`UpdateElementStyle({alias}, …)` 位於 `{alias}` 的宣告之前，因此沒有作用。請將其移至宣告之後。"
+
+msgid "`UpdateRelStyle({from}, {to}, …)` comes before the relationship, so it has no effect. Move it after the relationship."
+msgstr "`UpdateRelStyle({from}, {to}, …)` 位於關係之前，因此沒有作用。請將其移至關係之後。"
+
+msgid "`X` (seconds) cannot express less than a second"
+msgstr "`X`（秒）無法表示少於一秒的時間"
+
+msgid "`[` is missing ({statement})."
+msgstr "缺少 `[`（{statement}）。"
+
+msgid "`axisFormat` is written twice. Merge them into one, then open it again."
+msgstr "`axisFormat` 寫了兩次。請將其合併為一個，然後再次開啟。"
+
+msgid "`axis` has no axes ({line})."
+msgstr "`axis` 沒有任何座標軸（{line}）。"
+
+msgid "`branch` cannot take `{other}:`"
+msgstr "`branch` 不能接受 `{other}:`"
+
+msgid "`cherry-pick` cannot take `{other}:`"
+msgstr "`cherry-pick` 不能接受 `{other}:`"
+
+msgid "`commit` cannot take `{other}:`"
+msgstr "`commit` 不能接受 `{other}:`"
+
+msgid "`curve` has no curves ({line})."
+msgstr "`curve` 沒有任何曲線（{line}）。"
+
+msgid "`dateFormat` is written twice. Merge them into one, then open it again."
+msgstr "`dateFormat` 寫了兩次。請將其合併為一個，然後再次開啟。"
+
+msgid "`destroy {id}` is written twice, which is not supported by the structured editor. Edit it as text."
+msgstr "`destroy {id}` 寫了兩次，結構化編輯器不支援此情況。請以文字編輯。"
+
+msgid "`direction {rest}` cannot be read (write one of TB / BT / LR / RL)."
+msgstr "無法讀取 `direction {rest}`（請撰寫 TB / BT / LR / RL 其中之一）。"
+
+msgid "`direction` cannot be written inside a `namespace` ({statement})."
+msgstr "`direction` 不能寫在 `namespace` 內（{statement}）。"
+
+msgid "`direction` is written twice in the same place. Merge them into one, then open the editor again."
+msgstr "`direction` 在同一位置寫了兩次。請將其合併為一個，然後再次開啟編輯器。"
+
+msgid "`direction` is written twice. Merge them into one, then open it again ({statement})."
+msgstr "`direction` 寫了兩次。請將其合併為一個，然後再次開啟（{statement}）。"
+
+msgid "`direction` is written twice. Merge them into one, then open it again."
+msgstr "`direction` 寫了兩次。請將其合併為一個，然後再次開啟。"
+
+msgid "`displayMode` cannot be written in the body ({statement}). In Mermaid, set it with `displayMode: compact` in the front matter or with `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%`. Edit it as text."
+msgstr "`displayMode` 不能寫在本文中（{statement}）。在 Mermaid 中，請在前置資料中以 `displayMode: compact`，或以 `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%` 設定。請以文字編輯。"
+
+msgid "`global` is the name of the whole diagram, so it cannot be used as the alias of a boundary."
+msgstr "`global` 是整個圖表的名稱，因此不能用作邊界的別名。"
+
+msgid "`id:` is missing"
+msgstr "缺少 `id:`"
+
+msgid "`merge` cannot take `{other}:`"
+msgstr "`merge` 不能接受 `{other}:`"
+
+msgid "`note` must be followed by `left of` or `right of` ({statement})."
+msgstr "`note` 之後必須接 `left of` 或 `right of`（{statement}）。"
+
+msgid "`quadrant-{}` is written twice. Merge them into one, then open it again."
+msgstr "`quadrant-{}` 寫了兩次。請將其合併為一個，然後再次開啟。"
+
+msgid "`title` is written twice. Merge them into one, then open it again."
+msgstr "`title` 寫了兩次。請將其合併為一個，然後再次開啟。"
+
+msgid "`title` is written twice. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "`title` 寫了兩次。Mermaid 只會使用後者，請將其合併為一個，然後再次開啟編輯器。"
+
+msgid "`title` is written twice. Only the last one is used, so merge them into one, then open it again."
+msgstr "`title` 寫了兩次。只會使用最後一個，請將其合併為一個，然後再次開啟。"
+
+msgid "`x-axis` has neither a name nor ticks ({statement})."
+msgstr "`x-axis` 既沒有名稱也沒有刻度（{statement}）。"
+
+msgid "`x-axis` is written twice. Merge them into one, then open it again."
+msgstr "`x-axis` 寫了兩次。請將其合併為一個，然後再次開啟。"
+
+msgid "`y-axis` has neither a name nor a range ({statement})."
+msgstr "`y-axis` 既沒有名稱也沒有範圍（{statement}）。"
+
+msgid "`y-axis` is written twice. Merge them into one, then open it again."
+msgstr "`y-axis` 寫了兩次。請將其合併為一個，然後再次開啟。"
+
+msgid "`{annotation}` cannot be used as an annotation ({statement})."
+msgstr "`{annotation}` 不能用作註記（{statement}）。"
+
+msgid "`{class}` cannot be used as a class name ({statement})."
+msgstr "`{class}` 不能用作類別名稱（{statement}）。"
+
+msgid "`{class}` cannot be used as a class name."
+msgstr "`{class}` 不能用作類別名稱。"
+
+msgid "`{comment}` cannot be written as an end-of-line comment."
+msgstr "`{comment}` 無法寫成行尾註解。"
+
+msgid "`{format}` cannot be used for `{name}` (`#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "`{format}` 不能用於 `{name}`（不允許 `#`、`;` 與換行，且不可為空）。"
+
+msgid "`{generic}` cannot be used as a generic type ({statement})."
+msgstr "`{generic}` 不能用作泛型型別（{statement}）。"
+
+msgid "`{header}` cannot be read as the heading of a Sankey diagram (write only `sankey-beta` on its line)."
+msgstr "無法將 `{header}` 讀取為桑基圖的標題（請在該行只寫 `sankey-beta`）。"
+
+msgid "`{header}` cannot be read as the heading of a packet diagram (write only `packet-beta` on its line)."
+msgstr "無法將 `{header}` 讀取為封包圖的標題（請在該行只寫 `packet-beta`）。"
+
+msgid "`{id}` appears before its `create`. Put the `create` first."
+msgstr "`{id}` 出現在其 `create` 之前。請將 `create` 放在前面。"
+
+msgid "`{id}` cannot be placed inside itself."
+msgstr "`{id}` 不能放在自身之中。"
+
+msgid "`{id}` cannot be used as a state ID ({statement})."
+msgstr "`{id}` 不能用作狀態 ID（{statement}）。"
+
+msgid "`{id}` cannot be used as a state ID ({statement}). Mermaid cannot read an ID that contains spaces, `:`, `;` or `-`."
+msgstr "`{id}` 不能用作狀態 ID（{statement}）。Mermaid 無法讀取包含空格、`:`、`;` 或 `-` 的 ID。"
+
+msgid "`{id}` in `click` is the name a task without an ID gets automatically. It points to a different task when tasks are added, deleted or moved, so give that task an ID and change `click` to use it."
+msgstr "`click` 中的 `{id}` 是沒有 ID 的工作自動取得的名稱。新增、刪除或移動工作時，它會指向不同的工作，因此請為該工作指定 ID，並將 `click` 改為使用該 ID。"
+
+msgid "`{id}` is not activated, so it cannot be deactivated."
+msgstr "`{id}` 未啟動，因此無法停止啟動。"
+
+msgid "`{input}` is not enclosed in `\"`."
+msgstr "`{input}` 未以 `\"` 括住。"
+
+msgid "`{keyword}` cannot be used in event modeling (line {}; the official Mermaid does not accept it). Remove the line, or edit it as text."
+msgstr "`{keyword}` 不能用於事件模型圖（第 {} 行；官方版 Mermaid 不接受）。請移除該行，或以文字編輯。"
+
+msgid "`{keyword}` cannot be written inside a `namespace` ({statement})."
+msgstr "`{keyword}` 不能寫在 `namespace` 內（{statement}）。"
+
+msgid "`{keyword}` is written twice. Merge them into one, then open it again."
+msgstr "`{keyword}` 寫了兩次。請將其合併為一個，然後再次開啟。"
+
+msgid "`{keyword}` statements are not supported by the structured editor ({trimmed}). Edit it as text."
+msgstr "結構化編輯器不支援 `{keyword}` 陳述式（{trimmed}）。請以文字編輯。"
+
+msgid "`{key}:` is written twice"
+msgstr "`{key}:` 寫了兩次"
+
+msgid "`{key}:` on the element `{target}` is lost in the structured editor ({statement}). Edit it as text."
+msgstr "元素 `{target}` 上的 `{key}:` 會在結構化編輯器中遺失（{statement}）。請以文字編輯。"
+
+msgid "`{key}` of `{opening}` is written twice. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{opening}` 的 `{key}` 寫了兩次。Mermaid 只會使用最後一個，請將其合併為一個，然後再次開啟。"
+
+msgid "`{label}` cannot be used as a task name ({statement}). `:` and words that start a statement, such as `title` and `section`, are not allowed."
+msgstr "`{label}` 不能用作工作名稱（{statement}）。不允許 `:`，以及 `title`、`section` 等作為陳述式開頭的字詞。"
+
+msgid "`{line}` cannot be read as a number of columns (a whole number of 1 or more, or auto)."
+msgstr "無法將 `{line}` 讀取為欄數（1 以上的整數，或 auto）。"
+
+msgid "`{name}` cannot be used as a `:::` style class name ({statement})."
+msgstr "`{name}` 不能用作 `:::` 樣式類別名稱（{statement}）。"
+
+msgid "`{name}` cannot be used as a `namespace` name ({statement})."
+msgstr "`{name}` 不能用作 `namespace` 名稱（{statement}）。"
+
+msgid "`{name}` cannot be used as a class name ({statement})."
+msgstr "`{name}` 不能用作類別名稱（{statement}）。"
+
+msgid "`{name}` cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
+msgstr "`{name}` 不能用作名稱（不允許符號 \" - < > {{ }} : , # % ;、前後空格，以及 direction 這個字）。"
+
+msgid "`{name}` is defined twice. Mermaid ignores the second one, so merge them into one, then open it again."
+msgstr "`{name}` 定義了兩次。Mermaid 會忽略第二個，請將其合併為一個，然後再次開啟。"
+
+msgid "`{name}` is not a C4 diagram macro. Edit it as text."
+msgstr "`{name}` 不是 C4 圖表的巨集。請以文字編輯。"
+
+msgid "`{name}` is written twice ({line}). Merge them into one, then open it again."
+msgstr "`{name}` 寫了兩次（{line}）。請將其合併為一個，然後再次開啟。"
+
+msgid "`{other}` is not a Git graph statement"
+msgstr "`{other}` 不是 Git 圖表的陳述式"
+
+msgid "`{parent}`, which `{id}` belongs to, is not a group (it does not exist, or it is a service or a junction)."
+msgstr "`{id}` 所屬的 `{parent}` 不是群組（不存在，或者是服務或連接點）。"
+
+msgid "`{remainder}` after the value cannot be written in a pie chart ({statement}). Edit it as text."
+msgstr "值之後的 `{remainder}` 不能寫在圓餅圖中（{statement}）。請以文字編輯。"
+
+msgid "`{rest}` follows `{CLASS_KEYWORD}` on the same line. Move it to the next line, then open it again."
+msgstr "`{rest}` 在同一行中接在 `{CLASS_KEYWORD}` 之後。請將其移至下一行，然後再次開啟。"
+
+msgid "`{rest}` follows on the `{}` line. Move it to the next line, then open the editor again."
+msgstr "`{}` 行上接著 `{rest}`。請將其移至下一行，然後再次開啟編輯器。"
+
+msgid "`{segment}` has no name."
+msgstr "`{segment}` 沒有名稱。"
+
+msgid "`{segment}` is not in the form `$name=\"value\"`."
+msgstr "`{segment}` 不是 `$name=\"value\"` 的形式。"
+
+msgid "`{statement}` after `%%{{…}}%%` is not supported by the structured editor. Put the directive and the statement on separate lines, then open it again."
+msgstr "結構化編輯器不支援 `%%{{…}}%%` 之後的 `{statement}`。請將指示詞與陳述式分成不同行，然後再次開啟。"
+
+msgid "`{statement}` cannot be read as an edge (write it as `a:R -- L:b`)."
+msgstr "無法將 `{statement}` 讀取為邊（請以 `a:R -- L:b` 的形式撰寫）。"
+
+msgid "`{statement}` cannot be used in a C4 diagram (line {}; Mermaid does not accept it). Delete the line, or edit it as text."
+msgstr "`{statement}` 不能用於 C4 圖表（第 {} 行；Mermaid 不接受）。請刪除該行，或以文字編輯。"
+
+msgid "`{statement}` is read as a `direction` statement, so it is not supported by the structured editor. Edit it as text."
+msgstr "`{statement}` 會被讀取為 `direction` 陳述式，因此結構化編輯器不支援。請以文字編輯。"
+
+msgid "`{statement}` needs both an alias and a label. Edit it as text."
+msgstr "`{statement}` 需要同時有別名與標籤。請以文字編輯。"
+
+msgid "`{statement}` points to `{target}`, which is not defined yet at that point. Mermaid ignores it, so reordering in the structured editor would change the diagram. Move it after the definition, or edit it as text."
+msgstr "`{statement}` 指向在該處尚未定義的 `{target}`。Mermaid 會忽略它，因此在結構化編輯器中重新排序會改變圖表。請將其移至定義之後，或以文字編輯。"
+
+msgid "`{statement}`, written after the directive `%%{{…}}%%` on the same line, is not supported by the structured editor. Mermaid removes the directive and reads this statement. Break the line after the directive, then open it again."
+msgstr "結構化編輯器不支援在同一行中寫在指示詞 `%%{{…}}%%` 之後的 `{statement}`。Mermaid 會移除指示詞並讀取此陳述式。請在指示詞之後換行，然後再次開啟。"
+
+msgid "`{tail}` following the `architecture-beta` line is not supported by the structured editor. Move it to a line of its own, or edit it as text."
+msgstr "結構化編輯器不支援接在 `architecture-beta` 行之後的 `{tail}`。請將其移至獨立的一行，或以文字編輯。"
+
+msgid "`{tail}` on the `gantt` line is not supported by the structured editor. Move it to the next line, or edit it as text."
+msgstr "結構化編輯器不支援 `gantt` 行上的 `{tail}`。請將其移至下一行，或以文字編輯。"
+
+msgid "`{tail}` on the `gitGraph` line is not supported by the structured editor (the direction is one of LR / TB / BT). Edit it as text."
+msgstr "結構化編輯器不支援 `gitGraph` 行上的 `{tail}`（方向為 LR / TB / BT 其中之一）。請以文字編輯。"
+
+msgid "`{tail}` on the `journey` line is not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援 `journey` 行上的 `{tail}`。請以文字編輯。"
+
+msgid "`{tail}` on the `kanban` line is not supported by the structured editor. Write columns on the next line."
+msgstr "結構化編輯器不支援 `kanban` 行上的 `{tail}`。請在下一行撰寫欄。"
+
+msgid "`{tail}` on the `quadrantChart` line is not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援 `quadrantChart` 行上的 `{tail}`。請以文字編輯。"
+
+msgid "`{tail}` on the `radar-beta` line is not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援 `radar-beta` 行上的 `{tail}`。請以文字編輯。"
+
+msgid "`{tail}` on the `{}` line is not supported by the structured editor. Edit it as text."
+msgstr "結構化編輯器不支援 `{}` 行上的 `{tail}`。請以文字編輯。"
+
+msgid "`{text}` cannot be used (`\"` and line breaks are not allowed)."
+msgstr "無法使用 `{text}`（不允許 `\"` 與換行）。"
+
+msgid "`{text}` cannot be written back"
+msgstr "無法寫回 `{text}`"
+
+msgid "`{token}` cannot hold the milliseconds exactly"
+msgstr "`{token}` 無法精確表示毫秒"
+
+msgid "`{trimmed}` cannot be read as a point (`name: [x, y]`) or as any other statement. Edit it as text."
+msgstr "無法將 `{trimmed}` 讀取為點（`name: [x, y]`）或任何其他陳述式。請以文字編輯。"
+
+msgid "`{trimmed}` cannot be read as a point."
+msgstr "無法將 `{trimmed}` 讀取為點。"
+
+msgid "`{trimmed}` cannot be read as a task (`name: score: people`) or as any other statement. Edit it as text."
+msgstr "無法將 `{trimmed}` 讀取為工作（`name: score: people`）或任何其他陳述式。請以文字編輯。"
+
+msgid "`{trimmed}` is not supported by the structured editor (line {}). Edit it as text."
+msgstr "結構化編輯器不支援 `{trimmed}`（第 {} 行）。請以文字編輯。"
+
+msgid "`{trimmed}` is not supported by the structured editor ({reason}). Edit it as text."
+msgstr "結構化編輯器不支援 `{trimmed}`（{reason}）。請以文字編輯。"
+
+msgid "`{trimmed}` is not supported by the structured editor. Close a multi-line `@{{` with a line that is only `}}`."
+msgstr "結構化編輯器不支援 `{trimmed}`。請以只有 `}}` 的一行結束多行的 `@{{`。"
+
+msgid "`{value}` cannot be read as a value of a pie chart ({statement}). Write a number of 0 or more."
+msgstr "無法將 `{value}` 讀取為圓餅圖的值（{statement}）。請撰寫 0 以上的數字。"
+
+msgid "`{value}` cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
+msgstr "`{value}` 不能用於 `{owner}`（不允許換行、前後空格、`%%{{`、以 `\"` 開頭的值，以及混用 `\"` 與 `#` / `%%`）。"
+
+msgid "`{word}` cannot be used as an attribute type or name."
+msgstr "`{word}` 不能用作屬性型別或名稱。"
+
+msgid "`{}` after the branch name is ignored"
+msgstr "分支名稱之後的 `{}` 會被忽略"
+
+msgid "`{}` after the quoted message is ignored"
+msgstr "加上引號的訊息之後的 `{}` 會被忽略"
+
+msgid "`{}` cannot be used as a class name ({statement}). Spaces, symbols and Mermaid's reserved words are not allowed."
+msgstr "`{}` 不能用作類別名稱（{statement}）。不允許空格、符號與 Mermaid 的保留字。"
+
+msgid "`{}` cannot be used as a participant id."
+msgstr "`{}` 不能用作參與者 id。"
+
+msgid "`{}` cannot be used inside `{}`."
+msgstr "`{}` 不能用在 `{}` 內。"
+
+msgid "`{}` cannot be used on the right side of a relationship."
+msgstr "`{}` 不能用在關係的右側。"
+
+msgid "`{}` cannot come after a participant created with `create`."
+msgstr "`{}` 不能排在以 `create` 建立的參與者之後。"
+
+msgid "`{}` does not have enough arguments."
+msgstr "`{}` 的引數不足。"
+
+msgid "`{}` follows `}}` on the same line ({trimmed}). Leave `}}` alone on its line, then open it again."
+msgstr "`{}` 在同一行中接在 `}}` 之後（{trimmed}）。請讓 `}}` 單獨位於一行，然後再次開啟。"
+
+msgid "`{}` has `:::` twice. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{}` 有兩個 `:::`。Mermaid 只會使用最後一個，請將其合併為一個，然後再次開啟。"
+
+msgid "`{}` has no alias."
+msgstr "`{}` 沒有別名。"
+
+msgid "`{}` has two icons. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{}` 有兩個圖示。Mermaid 只會使用最後一個，請將其合併為一個，然後再次開啟。"
+
+msgid "`{}` is indented less than the first column. Indent columns as deep as the first column, and cards deeper than that."
+msgstr "`{}` 的縮排比第一欄淺。請將欄縮排至與第一欄相同的深度，卡片則縮排得更深。"
+
+msgid "`{}` is not activated, so it cannot be deactivated."
+msgstr "`{}` 未啟動，因此無法停止啟動。"
+
+msgid "accTitle / accDescr on a line with `;` is not supported by the structured editor ({trimmed}). Write one per line."
+msgstr "結構化編輯器不支援位於含有 `;` 的行上的 accTitle / accDescr（{trimmed}）。請每行撰寫一個。"
+
+msgid "accTitle / accDescr with an unclosed `\"` or `[` is not supported by the structured editor ({trimmed}). Mermaid reads the lines after it as part of the description."
+msgstr "結構化編輯器不支援含有未閉合 `\"` 或 `[` 的 accTitle / accDescr（{trimmed}）。Mermaid 會將其後的各行讀取為描述的一部分。"
+
+msgid "arrow `{}`"
+msgstr "箭頭 `{}`"
+
+msgid "block `{}`"
+msgstr "區塊 `{}`"
+
+msgid "cannot read `{}`"
+msgstr "無法讀取 `{}`"
+
+msgid "group `{id}`"
+msgstr "群組 `{id}`"
+
+msgid "line breaks and `%%{{` are not allowed, and it cannot start with `%%` or have spaces at either end"
+msgstr "不允許換行與 `%%{{`，不可以 `%%` 開頭，兩端也不可有空格"
+
+msgid "no `%%` or line breaks, no whitespace at either end, and no `\\` before a quote or at the end"
+msgstr "不可包含 `%%` 或換行，兩端不可有空白字元，且引號之前或結尾不可有 `\\`"
+
+msgid "section `{name}`"
+msgstr "區段 `{name}`"
+
+msgid "task `{}`"
+msgstr "工作 `{}`"
+
+msgid "the branch name `{name}` cannot be written back"
+msgstr "無法寫回分支名稱 `{name}`"
+
+msgid "the branch name is missing"
+msgstr "缺少分支名稱"
+
+msgid "the first section"
+msgstr "第一個區段"
+
+msgid "the order `{value}` is not a whole number"
+msgstr "順序 `{value}` 不是整數"
+
+msgid "the quotes are not closed"
+msgstr "引號未閉合"
+
+msgid "the space"
+msgstr "空白區"
+
+msgid "the type `{value}` is not one of NORMAL / REVERSE / HIGHLIGHT"
+msgstr "類型 `{value}` 不是 NORMAL / REVERSE / HIGHLIGHT 其中之一"
+
+msgid "there is no `:` after `{key}`"
+msgstr "`{key}` 之後沒有 `:`"
+
+msgid "{error} Edit it as text."
+msgstr "{error} 請以文字編輯。"
+
+msgid "{name}: `{value}` cannot be written. {number_rule}"
+msgstr "{name}：無法撰寫 `{value}`。{number_rule}"
+
+msgid "{problem} Edit it as text."
+msgstr "{problem} 請以文字編輯。"
+
+msgctxt "C4 element"
+msgid "Bidirectional"
+msgstr "雙向"
+
+msgctxt "C4 element"
+msgid "Boundary"
+msgstr "邊界"
+
+msgctxt "C4 element"
+msgid "Component"
+msgstr "元件"
+
+msgctxt "C4 element"
+msgid "Component (DB)"
+msgstr "元件（DB）"
+
+msgctxt "C4 element"
+msgid "Component (queue)"
+msgstr "元件（佇列）"
+
+msgctxt "C4 element"
+msgid "Container"
+msgstr "容器"
+
+msgctxt "C4 element"
+msgid "Container (DB)"
+msgstr "容器（DB）"
+
+msgctxt "C4 element"
+msgid "Container (queue)"
+msgstr "容器（佇列）"
+
+msgctxt "C4 element"
+msgid "Container boundary"
+msgstr "容器邊界"
+
+msgctxt "C4 element"
+msgid "Deployment node"
+msgstr "部署節點"
+
+msgctxt "C4 element"
+msgid "Deployment node (left-aligned)"
+msgstr "部署節點（靠左對齊）"
+
+msgctxt "C4 element"
+msgid "Deployment node (right-aligned)"
+msgstr "部署節點（靠右對齊）"
+
+msgctxt "C4 element"
+msgid "Downward"
+msgstr "向下"
+
+msgctxt "C4 element"
+msgid "Enterprise boundary"
+msgstr "企業邊界"
+
+msgctxt "C4 element"
+msgid "External component"
+msgstr "外部元件"
+
+msgctxt "C4 element"
+msgid "External component (DB)"
+msgstr "外部元件（DB）"
+
+msgctxt "C4 element"
+msgid "External component (queue)"
+msgstr "外部元件（佇列）"
+
+msgctxt "C4 element"
+msgid "External container"
+msgstr "外部容器"
+
+msgctxt "C4 element"
+msgid "External container (DB)"
+msgstr "外部容器（DB）"
+
+msgctxt "C4 element"
+msgid "External container (queue)"
+msgstr "外部容器（佇列）"
+
+msgctxt "C4 element"
+msgid "External person"
+msgstr "外部人員"
+
+msgctxt "C4 element"
+msgid "External system"
+msgstr "外部系統"
+
+msgctxt "C4 element"
+msgid "External system (DB)"
+msgstr "外部系統（DB）"
+
+msgctxt "C4 element"
+msgid "External system (queue)"
+msgstr "外部系統（佇列）"
+
+msgctxt "C4 element"
+msgid "Leftward"
+msgstr "向左"
+
+msgctxt "C4 element"
+msgid "Person"
+msgstr "人員"
+
+msgctxt "C4 element"
+msgid "Relationship"
+msgstr "關係"
+
+msgctxt "C4 element"
+msgid "Reverse"
+msgstr "反向"
+
+msgctxt "C4 element"
+msgid "Rightward"
+msgstr "向右"
+
+msgctxt "C4 element"
+msgid "System"
+msgstr "系統"
+
+msgctxt "C4 element"
+msgid "System (DB)"
+msgstr "系統（DB）"
+
+msgctxt "C4 element"
+msgid "System (queue)"
+msgstr "系統（佇列）"
+
+msgctxt "C4 element"
+msgid "System boundary"
+msgstr "系統邊界"
+
+msgctxt "C4 element"
+msgid "Upward"
+msgstr "向上"
+
+msgctxt "Gantt task tag"
+msgid "Critical"
+msgstr "關鍵"
+
+msgctxt "Gantt task tag"
+msgid "Done"
+msgstr "完成"
+
+msgctxt "Gantt task tag"
+msgid "In progress"
+msgstr "進行中"
+
+msgctxt "Gantt task tag"
+msgid "Milestone"
+msgstr "里程碑"
+
+msgctxt "Gantt task tag"
+msgid "Vertical line"
+msgstr "垂直線"
+
+msgctxt "Mermaid diagram kind"
+msgid "Architecture Diagram"
+msgstr "架構圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Block Diagram"
+msgstr "區塊圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "C4 Diagram"
+msgstr "C4 圖表"
+
+msgctxt "Mermaid diagram kind"
+msgid "Class Diagram"
+msgstr "類別圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "ER Diagram"
+msgstr "ER 圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Event Modeling"
+msgstr "事件模型圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Flowchart"
+msgstr "流程圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Gantt Chart"
+msgstr "甘特圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Git Graph"
+msgstr "Git 圖表"
+
+msgctxt "Mermaid diagram kind"
+msgid "Ishikawa Diagram"
+msgstr "魚骨圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Kanban"
+msgstr "看板"
+
+msgctxt "Mermaid diagram kind"
+msgid "Mindmap"
+msgstr "心智圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Packet Diagram"
+msgstr "封包圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Pie Chart"
+msgstr "圓餅圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Quadrant Chart"
+msgstr "象限圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Radar Chart"
+msgstr "雷達圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Requirement Diagram"
+msgstr "需求圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Sankey Diagram"
+msgstr "桑基圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Sequence Diagram"
+msgstr "循序圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "State Diagram"
+msgstr "狀態圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Timeline"
+msgstr "時間軸"
+
+msgctxt "Mermaid diagram kind"
+msgid "Tree View"
+msgstr "樹狀檢視"
+
+msgctxt "Mermaid diagram kind"
+msgid "Treemap"
+msgstr "矩形樹狀圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "User Journey"
+msgstr "使用者旅程圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "Venn Diagram"
+msgstr "文氏圖"
+
+msgctxt "Mermaid diagram kind"
+msgid "XY Chart (Bar/Line)"
+msgstr "XY 圖表（長條圖/折線圖）"
+
+msgctxt "architecture node"
+msgid "Junction"
+msgstr "連接點"
+
+msgctxt "architecture node"
+msgid "Service"
+msgstr "服務"
+
+msgctxt "architecture side"
+msgid "Bottom"
+msgstr "下方"
+
+msgctxt "architecture side"
+msgid "Left"
+msgstr "左"
+
+msgctxt "architecture side"
+msgid "Right"
+msgstr "右"
+
+msgctxt "architecture side"
+msgid "Top"
+msgstr "上方"
+
+msgctxt "block diagram"
+msgid "Arrow"
+msgstr "箭頭"
+
+msgctxt "block diagram"
+msgid "Block"
+msgstr "區塊"
+
+msgctxt "block diagram"
+msgid "Circle"
+msgstr "圓形"
+
+msgctxt "block diagram"
+msgid "Cross"
+msgstr "叉號"
+
+msgctxt "block diagram"
+msgid "Group"
+msgstr "群組"
+
+msgctxt "block diagram"
+msgid "Space"
+msgstr "空白區"
+
+msgctxt "event modeling frame field"
+msgid "name"
+msgstr "名稱"
+
+msgctxt "event modeling frame field"
+msgid "number"
+msgstr "編號"
+
+msgctxt "event modeling frame field"
+msgid "type"
+msgstr "類型"
+
+msgctxt "gitGraph commit type"
+msgid "Highlight"
+msgstr "醒目提示"
+
+msgctxt "gitGraph commit type"
+msgid "Normal"
+msgstr "一般"
+
+msgctxt "gitGraph commit type"
+msgid "Reverse"
+msgstr "反轉"
+
+msgctxt "gitGraph operation"
+msgid "Branch"
+msgstr "建立分支"
+
+msgctxt "gitGraph operation"
+msgid "Checkout"
+msgstr "簽出"
+
+msgctxt "gitGraph operation"
+msgid "Cherry-pick"
+msgstr "揀選"
+
+msgctxt "gitGraph operation"
+msgid "Commit"
+msgstr "提交"
+
+msgctxt "gitGraph operation"
+msgid "Merge"
+msgstr "合併"
+
+msgctxt "gitGraph operation list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "kanban node"
+msgid "card"
+msgstr "卡片"
+
+msgctxt "kanban node"
+msgid "column"
+msgstr "欄"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "mindmap shape"
+msgid "Default"
+msgstr "標準"
+
+msgctxt "note placement"
+msgid "Left"
+msgstr "左"
+
+msgctxt "note placement"
+msgid "Right"
+msgstr "右"
+
+msgctxt "quadrant axis"
+msgid "x axis"
+msgstr "X 軸"
+
+msgctxt "quadrant axis"
+msgid "y axis"
+msgstr "Y 軸"
+
+msgctxt "radar graticule"
+msgid "Circle"
+msgstr "圓形（circle）"
+
+msgctxt "radar graticule"
+msgid "Polygon"
+msgstr "多邊形（polygon）"
+
+msgctxt "requirement type"
+msgid "Design constraint"
+msgstr "設計限制"
+
+msgctxt "requirement type"
+msgid "Functional requirement"
+msgstr "功能需求"
+
+msgctxt "requirement type"
+msgid "Interface requirement"
+msgstr "介面需求"
+
+msgctxt "requirement type"
+msgid "Performance requirement"
+msgstr "效能需求"
+
+msgctxt "requirement type"
+msgid "Physical requirement"
+msgstr "實體需求"
+
+msgctxt "requirement type"
+msgid "Requirement"
+msgstr "需求"
+
+msgctxt "sequence note placement"
+msgid "Left of"
+msgstr "左側"
+
+msgctxt "sequence note placement"
+msgid "Over"
+msgstr "重疊"
+
+msgctxt "sequence note placement"
+msgid "Right of"
+msgstr "右側"
+
+msgctxt "xychart orientation"
+msgid "Horizontal"
+msgstr "水平（horizontal）"
+
+msgctxt "xychart orientation"
+msgid "Vertical"
+msgstr "垂直（vertical）"
+
+msgctxt "xychart series"
+msgid "Bar"
+msgstr "長條"
+
+msgctxt "xychart series"
+msgid "Line"
+msgstr "折線"

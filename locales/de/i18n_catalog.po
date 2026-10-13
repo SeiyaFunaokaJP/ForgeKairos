@@ -1,0 +1,24 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "i18n_catalog test: Goodbye"
+msgstr "i18n_catalog-Test: Auf Wiedersehen"
+
+msgid "i18n_catalog test: Hello"
+msgstr "i18n_catalog-Test: Hallo"
+
+msgid "i18n_catalog test: {count} file"
+msgid_plural "i18n_catalog test: {count} files"
+msgstr[0] "i18n_catalog-Test: {count} Datei"
+msgstr[1] "i18n_catalog-Test: {count} Dateien"
+
+msgctxt "i18n_catalog test"
+msgid "Open"
+msgstr "Öffnen"

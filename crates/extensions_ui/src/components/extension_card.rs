@@ -329,7 +329,7 @@ impl ExtensionCard {
                 let upgrade = matches!(status, ExtensionStatus::Upgrading).then(|| {
                     Button::new(
                         Self::button_id(&extension.id, ExtensionOperation::Upgrade),
-                        i18n::t!("Upgrade"),
+                        i18n::tc!("extension card", "Upgrade"),
                     )
                     .disabled(status.disables_actions())
                 });
@@ -350,7 +350,7 @@ impl ExtensionCard {
                     );
                     Button::new(
                         Self::button_id(&extension.id, ExtensionOperation::Upgrade),
-                        i18n::t!("Upgrade"),
+                        i18n::tc!("extension card", "Upgrade"),
                     )
                     .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                     .when(!is_compatible, |button| {
@@ -655,7 +655,7 @@ impl RenderOnce for ExtensionCard {
                                     .color(Color::Muted),
                                 )
                                 .children(installed_version.map(|installed_version| {
-                                    Headline::new(format!("(v{installed_version} installed)"))
+                                    Headline::new(i18n::t!("(v{installed_version} installed)"))
                                         .size(HeadlineSize::XSmall)
                                 }))
                                 .when(!provided_features.is_empty(), |parent| {

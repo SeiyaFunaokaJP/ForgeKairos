@@ -1,0 +1,228 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "AI Browser"
+msgstr "AI 브라우저"
+
+msgid "AI agents open the browser tabs they drive here, to debug web apps. These AI tabs use their own browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents."
+msgstr "AI 에이전트는 웹 앱을 디버그하기 위해 조작하는 브라우저 탭을 여기에 엽니다. 이 AI 탭은 별도의 브라우저 프로필을 사용하며, 통신은 네트워크 허용 목록으로 제한됩니다. localhost는 항상 허용됩니다. 사용자 자신의 브라우저 탭은 AI 에이전트에게 표시되지 않습니다."
+
+msgid "AI control is off"
+msgstr "AI 제어 꺼짐"
+
+msgid "AI control of the built-in browser is off, so AI agents cannot open tabs here."
+msgstr "내장 브라우저의 AI 제어가 꺼져 있어 AI 에이전트가 여기에서 탭을 열 수 없습니다."
+
+msgid "AI control of the built-in browser is on: AI agents can open and drive tabs here."
+msgstr "내장 브라우저의 AI 제어가 켜져 있습니다: AI 에이전트가 여기에서 탭을 열고 조작할 수 있습니다."
+
+msgid "AI control paused"
+msgstr "AI 제어 일시 중지됨"
+
+msgid "AI is operating…"
+msgstr "AI가 조작 중…"
+
+msgid "AI tab: separate profile, network limited to the allowlist"
+msgstr "AI 탭: 별도 프로필, 네트워크는 허용 목록으로 제한됨"
+
+msgid "AI tabs need the network allowlist proxy, which is not running, so this tab cannot open pages."
+msgstr "AI 탭에는 네트워크 허용 목록 프록시가 필요하지만 실행 중이 아니므로 이 탭에서는 페이지를 열 수 없습니다."
+
+msgid "Add Folder"
+msgstr "폴더 추가"
+
+msgid "Back"
+msgstr "뒤로"
+
+msgid "Blocked a download in this AI tab: {url}"
+msgstr "이 AI 탭에서 다운로드를 차단했습니다: {url}"
+
+msgid "Blocked {url}: AI tabs only open http and https pages on the network allowlist."
+msgstr "{url}을(를) 차단했습니다: AI 탭은 네트워크 허용 목록에 있는 http 및 https 페이지만 엽니다."
+
+msgid "Bookmark This Page"
+msgstr "이 페이지 북마크"
+
+msgid "Bookmarks are still loading. Try again in a moment."
+msgstr "북마크를 아직 로드하는 중입니다. 잠시 후 다시 시도하세요."
+
+msgid "Browser"
+msgstr "브라우저"
+
+msgid "Browser Panel"
+msgstr "브라우저 패널"
+
+msgid "Close Bookmarks"
+msgstr "북마크 닫기"
+
+msgid "Copied the selection to the clipboard. Paste it to ask your question."
+msgstr "선택 영역을 클립보드에 복사했습니다. 붙여넣어 질문하세요."
+
+msgid "Couldn't load the page."
+msgstr "페이지를 로드하지 못했습니다."
+
+msgid "Couldn't save the bookmarks."
+msgstr "북마크를 저장하지 못했습니다."
+
+msgid "Delete"
+msgstr "삭제"
+
+msgid "Delete the folder and everything in it?"
+msgstr "폴더와 그 안의 모든 항목을 삭제하시겠습니까?"
+
+msgid "Delete?"
+msgstr "삭제하시겠습니까?"
+
+msgid "Edit"
+msgstr "편집"
+
+msgid "Edit Folder"
+msgstr "폴더 편집"
+
+msgid "Enter a URL or search terms"
+msgstr "URL 또는 검색어 입력"
+
+msgid "Enter a URL."
+msgstr "URL을 입력하세요."
+
+msgid "Enter a name."
+msgstr "이름을 입력하세요."
+
+msgid "Forward"
+msgstr "앞으로"
+
+msgid "Loading…"
+msgstr "로드 중…"
+
+msgid "Move to Editor Area"
+msgstr "편집기 영역으로 이동"
+
+msgid "New AI Tab"
+msgstr "새 AI 탭"
+
+msgid "New Tab"
+msgstr "새 탭"
+
+msgid "No bookmarks yet. Use the star button in the toolbar to add the current page."
+msgstr "아직 북마크가 없습니다. 도구 모음의 별 버튼을 사용하여 현재 페이지를 추가하세요."
+
+msgid "Open Developer Tools"
+msgstr "개발자 도구 열기"
+
+msgid "Open Download Page"
+msgstr "다운로드 페이지 열기"
+
+msgid "Open This Page at Startup"
+msgstr "시작 시 이 페이지 열기"
+
+msgid "Open a page first."
+msgstr "먼저 페이지를 여세요."
+
+msgid "Open in External Browser"
+msgstr "외부 브라우저에서 열기"
+
+msgid "Open the Setting"
+msgstr "설정 열기"
+
+msgid "Reload"
+msgstr "다시 로드"
+
+msgid "Resume"
+msgstr "재개"
+
+msgid "Save"
+msgstr "저장"
+
+msgid "Set the startup page to {url}."
+msgstr "시작 페이지를 {url}(으)로 설정했습니다."
+
+msgid "Show Folder Contents"
+msgstr "폴더 내용 표시"
+
+msgid "Show Window"
+msgstr "창 표시"
+
+msgid "Shown in a separate window"
+msgstr "별도 창에 표시됨"
+
+msgid "Split Right"
+msgstr "오른쪽으로 분할"
+
+msgid "Starting the built-in browser…"
+msgstr "내장 브라우저 시작 중…"
+
+msgid "Stop AI"
+msgstr "AI 중지"
+
+msgid "The AI tab's browser could not start: {detail}"
+msgstr "AI 탭의 브라우저를 시작할 수 없습니다: {detail}"
+
+msgid "The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime."
+msgstr "WebView2 런타임을 찾을 수 없습니다. Microsoft Edge WebView2 런타임을 설치하세요."
+
+msgid "The built-in browser couldn't be started in this window."
+msgstr "이 창에서 내장 브라우저를 시작하지 못했습니다."
+
+msgid "The built-in browser isn't supported on this platform."
+msgstr "이 플랫폼에서는 내장 브라우저가 지원되지 않습니다."
+
+msgid "This page stopped working."
+msgstr "이 페이지가 작동을 멈췄습니다."
+
+msgid "Top Level"
+msgstr "최상위"
+
+msgid "Turn On in Settings"
+msgstr "설정에서 켜기"
+
+msgid "WebKitGTK 4.1 wasn't found. Install libwebkit2gtk-4.1-0 (Debian/Ubuntu) or webkit2gtk4.1 (Fedora)."
+msgstr "WebKitGTK 4.1을 찾을 수 없습니다. libwebkit2gtk-4.1-0(Debian/Ubuntu) 또는 webkit2gtk4.1(Fedora)을 설치하세요."
+
+msgid "You can also open an AI tab yourself, for example to sign in to the app under test first."
+msgstr "예를 들어 테스트 대상 앱에 먼저 로그인하려는 경우 AI 탭을 직접 열 수도 있습니다."
+
+msgid "{url} — Ctrl-click or middle-click to open in a new tab"
+msgstr "{url} — 새 탭에서 열려면 Ctrl+클릭 또는 가운데 클릭"
+
+msgctxt "browser AI tab badge"
+msgid "AI"
+msgstr "AI"
+
+msgctxt "browser bookmark"
+msgid "Add Bookmark"
+msgstr "북마크 추가"
+
+msgctxt "browser bookmark"
+msgid "Bookmarks"
+msgstr "북마크"
+
+msgctxt "browser bookmark"
+msgid "Cancel"
+msgstr "취소"
+
+msgctxt "browser bookmark"
+msgid "Edit Bookmark"
+msgstr "북마크 편집"
+
+msgctxt "browser bookmark"
+msgid "Location"
+msgstr "위치"
+
+msgctxt "browser bookmark"
+msgid "Move Down"
+msgstr "아래로 이동"
+
+msgctxt "browser bookmark"
+msgid "Move Up"
+msgstr "위로 이동"
+
+msgctxt "browser bookmark"
+msgid "Name"
+msgstr "이름"

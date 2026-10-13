@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Could not install the Go language server `gopls`, because `go` was not found."
+msgstr "`go`를 찾을 수 없어 Go 언어 서버 `gopls`를 설치하지 못했습니다."

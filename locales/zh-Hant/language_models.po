@@ -1,0 +1,405 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "API URL"
+msgstr "API URL"
+
+msgid "API key"
+msgstr "API 金鑰"
+
+msgid "API key configured"
+msgstr "API 金鑰已設定"
+
+msgid "API key configured for {}"
+msgstr "已為 {} 設定 API 金鑰"
+
+msgid "API key set in {env_var_name} environment variable"
+msgstr "API 金鑰已設定於 {env_var_name} 環境變數"
+
+msgid "Access Key ID"
+msgstr "存取金鑰 ID"
+
+msgid "Alternatively, you can connect to a remote llama.cpp server by specifying its URL and API key (set with --api-key, may not be required):"
+msgstr "或者，也可以指定 URL 和 API 金鑰（以 --api-key 設定，可能不需要）來連線到遠端 llama.cpp 伺服器："
+
+msgid "Alternatively, you can connect to an LM Studio server by specifying its URL and API key (may not be required):"
+msgstr "或者，也可以透過指定 URL 和 API 金鑰來連線至 LM Studio 伺服器（API 金鑰可能非必要）："
+
+msgid "Alternatively, you can connect to an Ollama server by specifying its URL and API key (may not be required):"
+msgstr "或者，也可以透過指定 URL 和 API 金鑰來連線至 Ollama 伺服器（API 金鑰可能非必要）："
+
+msgid "Attach the necessary Bedrock permissions to"
+msgstr "將必要的 Bedrock 權限附加至"
+
+msgid "Authentication failed for Vercel AI Gateway. Check that your Vercel AI Gateway key starts with vck_ and is active."
+msgstr "Vercel AI Gateway 驗證失敗。請確認 Vercel AI Gateway 金鑰以 vck_ 開頭且有效。"
+
+msgid "Authentication failed for Vercel AI Gateway. Use a Vercel AI Gateway key (vck_...).\nCreate or manage keys in Vercel AI Gateway console.\nIf this persists, regenerate the key and update it in Vercel AI Gateway provider settings in Zed."
+msgstr "Vercel AI Gateway 驗證失敗。請使用 Vercel AI Gateway 金鑰（vck_...）。\n可在 Vercel AI Gateway 主控台中建立或管理金鑰。\n如果問題持續發生，請重新產生金鑰，並在 ForgeKairos 的 Vercel AI Gateway 提供者設定中更新。"
+
+msgid "Authentication method is configured in settings. Edit settings.json to change."
+msgstr "驗證方式已在設定中設定。若要變更，請編輯 settings.json。"
+
+msgid "Bedrock API Key"
+msgstr "Bedrock API 金鑰"
+
+msgid "Bedrock Console"
+msgstr "Bedrock 主控台"
+
+msgid "Bedrock Model Catalog"
+msgstr "Bedrock 模型目錄"
+
+msgid "Browse GGUF Models"
+msgstr "瀏覽 GGUF 模型"
+
+msgid "But first, to access models on AWS, you need to:"
+msgstr "但首先，若要存取 AWS 上的模型，需要："
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Click 'Connect' below to start using Ollama in Zed"
+msgstr "按一下下方的「連線」以開始在 ForgeKairos 中使用 Ollama"
+
+msgid "Click 'Connect' below to start using llama.cpp in Zed"
+msgstr "按一下下方的「連線」以開始在 ForgeKairos 中使用 llama.cpp"
+
+msgid "Configure ChatGPT"
+msgstr "設定 ChatGPT"
+
+msgid "Configure Copilot Chat"
+msgstr "設定 Copilot Chat"
+
+msgid "Configure SuperGrok"
+msgstr "設定 SuperGrok"
+
+msgid "Connect"
+msgstr "連線"
+
+msgid "Connect without an API key (the server needs no authentication)"
+msgstr "不使用 API 金鑰連線（伺服器不需要驗證）"
+
+msgid "Connected"
+msgstr "已連線"
+
+msgid "Connecting to {} without an API key (the server needs no authentication)"
+msgstr "正在不使用 API 金鑰連線至 {}（伺服器不需要驗證）"
+
+msgid "Context Window"
+msgstr "上下文視窗"
+
+msgid "Context Window: {}"
+msgstr "上下文視窗：{}"
+
+msgid "Default: Discovered from the server"
+msgstr "預設：從伺服器自動偵測"
+
+msgid "Default: Model specific"
+msgstr "預設：依模型而定"
+
+msgid "Download LM Studio"
+msgstr "下載 LM Studio"
+
+msgid "Download Ollama"
+msgstr "下載 Ollama"
+
+msgid "Download and install Ollama from"
+msgstr "從以下位置下載並安裝 Ollama"
+
+msgid "Enable Fast Mode for Anthropic?"
+msgstr "要為 Anthropic 啟用快速模式嗎？"
+
+msgid "Enable Fast Mode for OpenAI?"
+msgstr "要為 OpenAI 啟用快速模式嗎？"
+
+msgid "Enable Fast Mode for Zed?"
+msgstr "要為 Zed 啟用快速模式嗎？"
+
+msgid "Enter either access keys OR a Bedrock API Key below (not both)"
+msgstr "在下方輸入存取金鑰或 Bedrock API 金鑰（二者擇一，不可同時填寫）"
+
+msgid "Failed to fetch model from API: {error}"
+msgstr "無法從 API 取得模型：{error}"
+
+msgid "Failed to load OpenCode {subscription} models: {error}"
+msgstr "無法載入 OpenCode {subscription} 模型：{error}"
+
+msgid "Fast mode lets requests use your Anthropic Priority Tier capacity, which Anthropic prioritizes over standard requests during peak load. Requires a Priority Tier commitment with Anthropic; without one, requests behave the same as the standard tier."
+msgstr "快速模式可讓要求使用您的 Anthropic Priority Tier 容量，在尖峰負載時 Anthropic 會優先處理這類要求，而非標準要求。需要與 Anthropic 簽訂 Priority Tier 合約；若無合約，要求的處理方式與標準層級相同。"
+
+msgid "Fast mode routes requests through the upstream provider's fast mode or priority tier. The upstream provider's premium per-token pricing applies and is passed through to your Zed billing."
+msgstr "快速模式會將要求透過上游提供者的快速模式或優先層級傳送。將套用上游提供者的每 Token 加價費率，並直接反映在您的 Zed 帳單中。"
+
+msgid "Fast mode sends requests using OpenAI's Priority processing tier, which targets significantly lower latency than the standard tier and is billed at a premium per-token rate."
+msgstr "快速模式會使用 OpenAI 的 Priority processing 層級傳送要求，其目標是比標準層級大幅降低延遲，並以每 Token 加價費率計費。"
+
+msgid "For Bedrock API Keys: Generate an API key from the"
+msgstr "Bedrock API 金鑰可在此產生："
+
+msgid "For access keys: Create an IAM user in the AWS console with programmatic access"
+msgstr "若使用存取金鑰：在 AWS 主控台建立具有程式設計存取權的 IAM 使用者"
+
+msgid "Get llama.cpp"
+msgstr "取得 llama.cpp"
+
+msgid "Grant permissions to the strategy you'll use according to the:"
+msgstr "依照以下說明授予所使用策略的權限："
+
+msgid "IAM Console"
+msgstr "IAM 主控台"
+
+msgid "Install llama.cpp from"
+msgstr "從以下位置安裝 llama.cpp"
+
+msgid "LM Studio needs to be running with at least one model downloaded."
+msgstr "LM Studio 需要正在執行，且至少已下載一個模型。"
+
+msgid "Loading credentials…"
+msgstr "正在載入認證資訊…"
+
+msgid "Manage Subscription"
+msgstr "管理訂閱"
+
+msgid "Model Catalog"
+msgstr "模型目錄"
+
+msgid "No subscriptions enabled. Enable at least one subscription to use OpenCode."
+msgstr "未啟用任何訂閱。請至少啟用一個訂閱才能使用 OpenCode。"
+
+msgid "Not authenticated"
+msgstr "未驗證"
+
+msgid "Open WebUI"
+msgstr "開啟 Web UI"
+
+msgid "OpenCode Console"
+msgstr "OpenCode 主控台"
+
+msgid "Optionally, if your environment uses AWS CLI profiles, you can set {profile}; if it requires a custom endpoint, you can set {endpoint}; and if it requires a Session Token, you can set {session_token}."
+msgstr "此外，如果您的環境使用 AWS CLI 設定檔，可以設定 {profile}；如果需要自訂端點，可以設定 {endpoint}；如果需要工作階段權杖，可以設定 {session_token}。"
+
+msgid "Paste your API key below and hit enter to start using OpenCode"
+msgstr "請在下方貼上 API 金鑰並按 Enter，即可開始使用 OpenCode"
+
+msgid "Prerequisites"
+msgstr "先決條件"
+
+msgid "Refresh Models"
+msgstr "重新整理模型"
+
+msgid "Region is configured via {region} environment variable or settings.json (defaults to us-east-1)."
+msgstr "區域可透過 {region} 環境變數或 settings.json 設定（預設為 us-east-1）。"
+
+msgid "Remove Provider"
+msgstr "移除提供者"
+
+msgid "Requires an active GitHub Copilot subscription."
+msgstr "需要有效的 GitHub Copilot 訂閱。"
+
+msgid "Reset"
+msgstr "重設"
+
+msgid "Reset API Key"
+msgstr "重設 API 金鑰"
+
+msgid "Reset API URL"
+msgstr "重設 API URL"
+
+msgid "Run LLMs locally on your machine with Ollama, or connect to an Ollama server. Can provide access to Llama, Mistral, Gemma, and hundreds of other models."
+msgstr "使用 Ollama 在本機執行 LLM，或連線到 Ollama 伺服器。可提供 Llama、Mistral、Gemma 及數百種其他模型的存取權。"
+
+msgid "Run local LLMs like Llama, Phi, and Qwen with LM Studio."
+msgstr "使用 LM Studio 在本機執行 Llama、Phi、Qwen 等 LLM。"
+
+msgid "Run local LLMs like Llama, Phi, and Qwen."
+msgstr "執行本機 LLM，例如 Llama、Phi 和 Qwen。"
+
+msgid "Run local models on your machine with LlamaCpp."
+msgstr "使用 LlamaCpp 在本機執行模型。"
+
+msgid "Run local models on your machine with Ollama."
+msgstr "使用 Ollama 在本機執行模型。"
+
+msgid "Run open models locally with llama.cpp's built-in server, or connect to a remote llama.cpp server."
+msgstr "使用 llama.cpp 的內建伺服器在本機執行開放模型，或連線到遠端 llama.cpp 伺服器。"
+
+msgid "Secret Access Key"
+msgstr "秘密存取金鑰"
+
+msgid "Select the models you would like access to:"
+msgstr "選取希望存取的模型："
+
+msgid "Session Token (Optional)"
+msgstr "工作階段權杖（選用）"
+
+msgid "Show Go models"
+msgstr "顯示 Go 模型"
+
+msgid "Show Zen models"
+msgstr "顯示 Zen 模型"
+
+msgid "Sign In"
+msgstr "登入"
+
+msgid "Sign In to use Zed AI"
+msgstr "登入以使用 Zed AI"
+
+msgid "Sign Out"
+msgstr "登出"
+
+msgid "Sign in and get your key at"
+msgstr "登入並在此取得金鑰："
+
+msgid "Sign in to have access to Zed's complete agentic experience with hosted models."
+msgstr "登入以使用 Zed 搭配託管模型的完整代理體驗。"
+
+msgid "Sign in with your ChatGPT Plus or Pro subscription to use OpenAI models in Zed's agent."
+msgstr "透過 ChatGPT Plus 或 Pro 訂閱登入，以便在 ForgeKairos 的代理中使用 OpenAI 模型。"
+
+msgid "Sign in with your SuperGrok subscription to use Grok models in Zed's agent."
+msgstr "透過 SuperGrok 訂閱登入，以便在 ForgeKairos 的代理中使用 Grok 模型。"
+
+msgid "Signed in"
+msgstr "已登入"
+
+msgid "Signed in as {email}"
+msgstr "已以 {email} 身分登入"
+
+msgid "Signing in…"
+msgstr "正在登入…"
+
+msgid "Start Free Trial"
+msgstr "開始免費試用"
+
+msgid "Start Ollama and download a model:"
+msgstr "啟動 Ollama 並下載模型："
+
+msgid "Start a free trial with $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+msgstr "開始免費試用，享有 $5 的 GPT Luna 額度及無限制編輯預測，為期 14 天（自試用開始起算）。"
+
+msgid "Start the server in router mode:"
+msgstr "以路由模式啟動伺服器："
+
+msgid "Static Credentials"
+msgstr "靜態認證資訊"
+
+msgid "Subscribe for access to Zed's hosted models."
+msgstr "訂閱即可使用 Zed 託管的模型。"
+
+msgid "Subscribed to Business"
+msgstr "已訂閱 Business"
+
+msgid "Subscribed to Pro"
+msgstr "已訂閱 Pro"
+
+msgid "Subscribed to Pro Trial"
+msgstr "已訂閱 Pro 試用"
+
+msgid "Subscribed to Student"
+msgstr "已訂閱 Student"
+
+msgid "Subscribed to VIP"
+msgstr "已訂閱 VIP"
+
+msgid "Subscriptions"
+msgstr "訂閱"
+
+msgid "This can't be changed while an API key is set in the {env_var_name} environment variable."
+msgstr "在 {env_var_name} 環境變數中設定了 API 金鑰時，無法變更此項目。"
+
+msgid "This method uses your AWS access key ID and secret access key, or a Bedrock API Key."
+msgstr "此方法使用 AWS 存取金鑰 ID 和秘密存取金鑰，或是 Bedrock API 金鑰。"
+
+msgid "To get your first model, try running"
+msgstr "若要取得第一個模型，可嘗試執行"
+
+msgid "To reset your API key, unset the {env_var_name} environment variable."
+msgstr "若要重設 API 金鑰，請取消設定 {env_var_name} 環境變數。"
+
+msgid "To reset your credentials, unset the {access_key_id}, {secret_access_key}, and {session_token} or {bearer_token} environment variables."
+msgstr "若要重設認證資訊，請取消設定 {access_key_id}、{secret_access_key}，以及 {session_token} 或 {bearer_token} 環境變數。"
+
+msgid "To use OpenCode models in Zed, you need an API key."
+msgstr "若要在 ForgeKairos 中使用 OpenCode 模型，需要 API 金鑰。"
+
+msgid "To use OpenCode models in Zed, you need an API key:"
+msgstr "若要在 ForgeKairos 中使用 OpenCode 模型，需要 API 金鑰："
+
+msgid "To use Zed's agent with Bedrock, set a custom authentication strategy in your settings or use static credentials. Mantle-only models (e.g. GPT-5.5, GPT-5.4, Grok 4.3) additionally require IAM permissions for the `bedrock-mantle` endpoint."
+msgstr "若要搭配 Bedrock 使用 ForgeKairos 的代理，可在設定中設定自訂驗證策略，或使用靜態認證資訊。Mantle 專用模型（例如 GPT-5.5、GPT-5.4、Grok 4.3）還需要 `bedrock-mantle` 端點的 IAM 權限。"
+
+msgid "To use Zed's agent with Bedrock, you can set a custom authentication strategy through your settings file or use static credentials."
+msgstr "若要搭配 Bedrock 使用 ForgeKairos 的代理，可以透過設定檔案設定自訂驗證策略，或使用靜態認證資訊。"
+
+msgid "To use Zed's agent with an {provider_name}-compatible provider, you need to add an API key."
+msgstr "若要搭配與 {provider_name} 相容的提供者使用 ForgeKairos 的代理，需要新增 API 金鑰。"
+
+msgid "To use a local llama.cpp server:"
+msgstr "若要使用本機 llama.cpp 伺服器："
+
+msgid "To use local Ollama:"
+msgstr "若要使用本機 Ollama："
+
+msgid "Upgrade to Pro"
+msgstr "升級至 Pro"
+
+msgid "Using AWS SSO profile: {profile_name}"
+msgstr "使用 AWS SSO 設定檔：{profile_name}"
+
+msgid "Using AWS profile: {profile_name}"
+msgstr "使用 AWS 設定檔：{profile_name}"
+
+msgid "Using Bedrock API Key"
+msgstr "使用 Bedrock API 金鑰"
+
+msgid "Using Bedrock API Key from {bearer_token} environment variable"
+msgstr "正在使用來自 {bearer_token} 環境變數的 Bedrock API 金鑰"
+
+msgid "Using IAM credentials"
+msgstr "使用 IAM 認證資訊"
+
+msgid "Using IAM credentials from {access_key_id} and {secret_access_key} environment variables"
+msgstr "正在使用來自 {access_key_id} 和 {secret_access_key} 環境變數的 IAM 認證資訊"
+
+msgid "Using automatic credentials (AWS default chain)"
+msgstr "使用自動認證資訊（AWS 預設鏈）"
+
+msgid "Using the API key"
+msgstr "使用 API 金鑰"
+
+msgid "View All Models"
+msgstr "檢視所有模型"
+
+msgid "You can also set the {access_key_id}, {secret_access_key} and {region} environment variables (or {bearer_token} for Bedrock API Key authentication) and restart Zed."
+msgstr "您也可以設定 {access_key_id}、{secret_access_key} 和 {region} 環境變數（若使用 Bedrock API 金鑰驗證則設定 {bearer_token}），然後重新啟動 ForgeKairos。"
+
+msgid "You can also set the {env_var_name} environment variable and restart Zed."
+msgstr "也可以設定 {env_var_name} 環境變數，然後重新啟動 ForgeKairos。"
+
+msgid "You have access to Zed's hosted models through your Pro subscription."
+msgstr "可透過 Pro 訂閱使用 Zed 託管的模型。"
+
+msgid "You have access to Zed's hosted models through your Student subscription."
+msgstr "可透過 Student 訂閱使用 Zed 託管的模型。"
+
+msgid "You have access to Zed's hosted models through your VIP subscription."
+msgstr "可透過 VIP 訂閱使用 Zed 託管的模型。"
+
+msgid "You have access to Zed's hosted models through your organization."
+msgstr "可透過組織使用 Zed 託管的模型。"
+
+msgid "Your Pro trial includes $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+msgstr "Pro 試用版包含 $5 的 GPT Luna 額度及無限制編輯預測，為期 14 天（自試用開始起算）。"
+
+msgid "Zed's hosted models are disabled by your organization's configuration."
+msgstr "組織設定已停用 Zed 託管的模型。"
+
+msgid "this user"
+msgstr "此使用者"

@@ -1,0 +1,37 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgctxt "reasoning effort"
+msgid "Extra High"
+msgstr "Muito alto"
+
+msgctxt "reasoning effort"
+msgid "High"
+msgstr "Alto"
+
+msgctxt "reasoning effort"
+msgid "Low"
+msgstr "Baixo"
+
+msgctxt "reasoning effort"
+msgid "Max"
+msgstr "Máximo"
+
+msgctxt "reasoning effort"
+msgid "Medium"
+msgstr "Médio"
+
+msgctxt "reasoning effort"
+msgid "Minimal"
+msgstr "Mínimo"
+
+msgctxt "reasoning effort"
+msgid "None"
+msgstr "Nenhum"

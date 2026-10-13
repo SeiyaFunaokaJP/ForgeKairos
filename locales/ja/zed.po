@@ -8,6 +8,9 @@ msgstr ""
 msgid "About Zed"
 msgstr "ForgeKairos について"
 
+msgid "Accessibility Tree"
+msgstr "アクセシビリティツリー"
+
 msgid "Add Cursor Above"
 msgstr "上にカーソルを追加"
 
@@ -83,6 +86,9 @@ msgstr "ReadDirectoryChangesW を開始できませんでした"
 msgid "Could not start inotify"
 msgstr "inotify を開始できませんでした"
 
+msgid "Debug Filesystem Watching"
+msgstr "ファイルシステムの監視のデバッグ"
+
 msgid "Diagnostics"
 msgstr "診断"
 
@@ -122,14 +128,27 @@ msgstr "実行ファイル: {}"
 msgid "Expand Selection"
 msgstr "選択範囲を拡張"
 
+msgid "Export as JSON"
+msgstr "JSON としてエクスポート"
+
 msgid "Export to PDF"
 msgstr "PDF に書き出す"
+
+msgid "Failed to load {path}\n{message}"
+msgstr "{path} を読み込めませんでした\n{message}"
+
+msgid "Failed to migrate settings\n{err}"
+msgstr "設定を移行できませんでした\n{err}"
 
 msgid "Failed to move Zed to Applications"
 msgstr "ForgeKairos を Applications に移動できませんでした"
 
 msgid "Failed to read telemetry log: {}"
 msgstr "テレメトリログの読み込みに失敗しました: {}"
+
+msgid "Failed to restore {count} workspace. Check logs for details."
+msgid_plural "Failed to restore {count} workspaces. Check logs for details."
+msgstr[0] "{count} 個のワークスペースを復元できませんでした。詳細はログを確認してください。"
 
 msgid "Filter events..."
 msgstr "イベントを絞り込み..."
@@ -230,8 +249,20 @@ msgstr "{} ({}) を中断"
 msgid "Invalid URL: {}"
 msgstr "無効な URL: {}"
 
+msgid "Invalid global debug scenarios file\n{error}"
+msgstr "グローバルのデバッグシナリオファイルが無効です\n{error}"
+
+msgid "Invalid global tasks file\n{error}"
+msgstr "グローバルのタスクファイルが無効です\n{error}"
+
+msgid "Invalid user settings file\n{error}"
+msgstr "ユーザー設定ファイルが無効です\n{error}"
+
 msgid "Italic"
 msgstr "斜体"
+
+msgid "JSON parse error in keymap file. Bindings not reloaded.\n\n{error}"
+msgstr "キーマップファイルの JSON を解析できません。キーバインドは再読み込みされていません。\n\n{error}"
 
 msgid "Language Server"
 msgstr "言語サーバー"
@@ -241,6 +272,12 @@ msgstr "行番号"
 
 msgid "Link"
 msgstr "リンク"
+
+msgid "Live native and polling watch roots across the app."
+msgstr "アプリ全体で現在有効な、ネイティブとポーリングの監視ルートです。"
+
+msgid "Log"
+msgstr "ログ"
 
 msgid "Marker"
 msgstr "マーカー"
@@ -275,8 +312,14 @@ msgstr "現在のフィルターに一致するイベントはありません"
 msgid "No formatter is configured for this file."
 msgstr "このファイルにはフォーマッタが設定されていません。"
 
+msgid "No local projects are open."
+msgstr "開いているローカルプロジェクトはありません。"
+
 msgid "No telemetry events recorded yet"
 msgstr "まだテレメトリイベントは記録されていません"
+
+msgid "No watch roots."
+msgstr "監視ルートはありません。"
 
 msgid "Nothing is selected. Select the text to format."
 msgstr "選択範囲がありません。フォーマットする範囲を選択してください。"
@@ -287,17 +330,29 @@ msgstr "実行中のカーネルはありません"
 msgid "Numbered List"
 msgstr "番号付きリスト"
 
+msgid "Open File"
+msgstr "ファイルを開く"
+
+msgid "Open Keymap File"
+msgstr "キーマップファイルを開く"
+
 msgid "Open Preview"
 msgstr "プレビューを開く"
 
 msgid "Open Raw Log File"
 msgstr "生のログファイルを開く"
 
+msgid "Open Settings File"
+msgstr "設定ファイルを開く"
+
 msgid "Paragraph Text Size"
 msgstr "段落の文字サイズ"
 
 msgid "Paste a URL to open."
 msgstr "開きたい URL を貼り付けてください。"
+
+msgid "Patterns Zed skips when scanning your open local projects. Excluded files may still produce watcher events."
+msgstr "開いているローカルプロジェクトをスキャンするときに ForgeKairos がスキップするパターンです。除外したファイルでも監視のイベントが届くことがあります。"
 
 msgid "Preview Markdown"
 msgstr "Markdown プレビューを開く"
@@ -316,6 +371,12 @@ msgstr "終了"
 
 msgid "REPL Menu"
 msgstr "REPL メニュー"
+
+msgid "Raw Events"
+msgstr "生のイベント"
+
+msgid "Raw watcher notifications, oldest first. Times are shown in your local time zone."
+msgstr "監視から届いたままの通知です (古い順)。時刻はローカルのタイムゾーンで表示します。"
 
 msgid "ReadDirectoryChangesW initialization failed: {}\n\nThis may occur on network filesystems and WSL paths. For troubleshooting see: https://zed.dev/docs/windows\n"
 msgstr "ReadDirectoryChangesW の初期化に失敗しました: {}\n\nネットワークファイルシステムや WSL のパスで発生することがあります。対処方法: https://zed.dev/docs/windows\n"
@@ -343,6 +404,12 @@ msgstr "選択範囲を実行"
 
 msgid "Run code on {} ({})"
 msgstr "{} ({}) でコードを実行"
+
+msgid "Save failed: {error}"
+msgstr "保存できませんでした: {error}"
+
+msgid "Scan Exclusions"
+msgstr "スキャンの除外"
 
 msgid "Select All"
 msgstr "すべて選択"
@@ -395,11 +462,17 @@ msgstr "旧版のデータフォルダーを新しいフォルダーへ移せな
 msgid "The older version ({}) has created folders again that this version no longer uses, so changes made in them are not reflected here:\n{}\n\n(older version's folder → folder this version uses)"
 msgstr "旧版 ({}) が、この版ではもう使わないフォルダーを作り直しています。そこでの変更はこの版には反映されません:\n{}\n\n(旧版のフォルダー → この版が使うフォルダー)"
 
+msgid "This project has no folders open."
+msgstr "このプロジェクトには開いているフォルダーがありません。"
+
 msgid "Toggle Fold at Cursor"
 msgstr "カーソル位置の折り畳みを切り替え"
 
 msgid "Troubleshoot and Quit"
 msgstr "対処方法を確認して終了"
+
+msgid "Unable to access/open log file at path {}: {e}"
+msgstr "パス {} のログファイルにアクセスできないか、開けません: {e}"
 
 msgid "Unfold All"
 msgstr "すべて展開"
@@ -418,6 +491,12 @@ msgstr "セッション一覧"
 
 msgid "Vim Mode"
 msgstr "Vim モード"
+
+msgid "Waiting for filesystem watcher events…"
+msgstr "ファイルシステムの監視イベントを待っています…"
+
+msgid "Watch Roots"
+msgstr "監視ルート"
 
 msgid "You can't toggle edit predictions for this file as it is within the excluded files list."
 msgstr "このファイルは除外ファイルの一覧に含まれているため、編集予測を切り替えられません。"

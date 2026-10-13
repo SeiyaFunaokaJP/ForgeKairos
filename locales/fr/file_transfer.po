@@ -1,0 +1,301 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Accepts this key and continues connecting (the key is recorded in known_hosts)"
+msgstr "Accepte cette clé et poursuit la connexion (la clé est enregistrée dans known_hosts)"
+
+msgid "Authentication was canceled."
+msgstr "L'authentification a été annulée."
+
+msgid "Brings the items selected on the remote side to the local side"
+msgstr "Rapatrie du côté local les éléments sélectionnés du côté distant"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Canceled."
+msgstr "Annulé."
+
+msgid "Clear Finished"
+msgstr "Effacer les transferts terminés"
+
+msgid "Connect"
+msgstr "Se connecter"
+
+msgid "Connect first."
+msgstr "Connectez-vous d'abord."
+
+msgid "Connected to {target}."
+msgstr "Connecté à {target}."
+
+msgid "Connecting to {target}…"
+msgstr "Connexion à {target}…"
+
+msgid "Connection name"
+msgstr "Nom de la connexion"
+
+msgid "Connections"
+msgstr "Connexions"
+
+msgid "Could not list the remote folder."
+msgstr "Impossible de lister le dossier distant."
+
+msgid "Could not open standard input"
+msgstr "Impossible d'ouvrir l'entrée standard"
+
+msgid "Could not open the folder: {error}"
+msgstr "Impossible d'ouvrir le dossier : {error}"
+
+msgid "Could not pass on the input: {error}"
+msgstr "Impossible de transmettre la saisie : {error}"
+
+msgid "Could not run {program}."
+msgstr "Impossible d'exécuter {program}."
+
+msgid "Could not save the connection: {error}"
+msgstr "Impossible d'enregistrer la connexion : {error}"
+
+msgid "Could not save the order: {error}"
+msgstr "Impossible d'enregistrer l'ordre : {error}"
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Delete \"{names}\" ({side})?"
+msgstr "Supprimer \"{names}\" ({side}) ?"
+
+msgid "Disconnect"
+msgstr "Se déconnecter"
+
+msgid "Disconnected."
+msgstr "Déconnecté."
+
+msgid "Done"
+msgstr "Terminé"
+
+msgid "Download"
+msgstr "Télécharger"
+
+msgid "Enter a host name or an IP address."
+msgstr "Saisissez un nom d'hôte ou une adresse IP."
+
+msgid "Enter a name."
+msgstr "Saisissez un nom."
+
+msgid "Enter the remote path."
+msgstr "Saisissez le chemin distant."
+
+msgid "Failed"
+msgstr "Échec"
+
+msgid "File Transfer"
+msgstr "Transfert de fichiers"
+
+msgid "Folder (e.g. Offices/Head Office)"
+msgstr "Dossier (p. ex. Agences/Siège)"
+
+msgid "Go to Parent Folder"
+msgstr "Atteindre le dossier parent"
+
+msgid "Host name / IP address"
+msgstr "Nom d'hôte / adresse IP"
+
+msgid "Loading…"
+msgstr "Chargement…"
+
+msgid "Local"
+msgstr "Local"
+
+msgid "Local side"
+msgstr "Côté local"
+
+msgid "More than {limit} files would be transferred. Transfer them in smaller batches."
+msgstr "Plus de {limit} fichiers seraient transférés. Transférez-les par lots plus petits."
+
+msgid "More than {limit} items would be deleted. Delete them in smaller batches."
+msgstr "Plus de {limit} éléments seraient supprimés. Supprimez-les par lots plus petits."
+
+msgid "Moves down one place within the same folder"
+msgstr "Descend d'une position dans le même dossier"
+
+msgid "Moves up one place within the same folder"
+msgstr "Monte d'une position dans le même dossier"
+
+msgid "Name of the new folder ({side})"
+msgstr "Nom du nouveau dossier ({side})"
+
+msgid "New name for \"{name}\""
+msgstr "Nouveau nom pour \"{name}\""
+
+msgid "No"
+msgstr "Non"
+
+msgid "No items"
+msgstr "Aucun élément"
+
+msgid "No saved connections yet."
+msgstr "Aucune connexion enregistrée pour l'instant."
+
+msgid "Opens the list of saved connections and Remote SSH hosts"
+msgstr "Ouvre la liste des connexions enregistrées et des hôtes SSH distants"
+
+msgid "Password (optional)"
+msgstr "Mot de passe (facultatif)"
+
+msgid "Port"
+msgstr "Port"
+
+msgid "Progress"
+msgstr "Progression"
+
+msgid "Queued"
+msgstr "En file d'attente"
+
+msgid "Reconnect"
+msgstr "Se reconnecter"
+
+msgid "Remember password"
+msgstr "Mémoriser le mot de passe"
+
+msgid "Remote"
+msgstr "Distant"
+
+msgid "Remote SSH"
+msgstr "SSH distant"
+
+msgid "Removed the saved password."
+msgstr "Mot de passe enregistré supprimé."
+
+msgid "Removes the saved password of this connection"
+msgstr "Supprime le mot de passe enregistré de cette connexion"
+
+msgid "Rename one item at a time."
+msgstr "Renommez un seul élément à la fois."
+
+msgid "Running"
+msgstr "En cours d'exécution"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Save this connection"
+msgstr "Enregistrer cette connexion"
+
+msgid "Saved"
+msgstr "Enregistré"
+
+msgid "Saved the connection \"{name}\"."
+msgstr "Connexion \"{name}\" enregistrée."
+
+msgid "Select the item to rename."
+msgstr "Sélectionnez l'élément à renommer."
+
+msgid "Select the items to delete."
+msgstr "Sélectionnez les éléments à supprimer."
+
+msgid "Select the items to download on the remote side."
+msgstr "Sélectionnez du côté distant les éléments à télécharger."
+
+msgid "Select the items to upload on the local side."
+msgstr "Sélectionnez du côté local les éléments à envoyer."
+
+msgid "Sends the items selected on the local side to the remote"
+msgstr "Envoie vers l'hôte distant les éléments sélectionnés du côté local"
+
+msgid "Stopped because the connection was closed."
+msgstr "Arrêté, car la connexion a été fermée."
+
+msgid "Stops connecting"
+msgstr "Arrête la connexion en cours"
+
+msgid "Target: {side}"
+msgstr "Cible : {side}"
+
+msgid "That name cannot be used."
+msgstr "Ce nom ne peut pas être utilisé."
+
+msgid "The command failed (it printed no details)."
+msgstr "La commande a échoué (aucun détail n'a été affiché)."
+
+msgid "The command failed:\n{detail}"
+msgstr "La commande a échoué :\n{detail}"
+
+msgid "The connection timed out."
+msgstr "Le délai de connexion a expiré."
+
+msgid "The host name contains characters that cannot be used."
+msgstr "Le nom d'hôte contient des caractères non autorisés."
+
+msgid "The list of saved connections has not loaded yet."
+msgstr "La liste des connexions enregistrées n'est pas encore chargée."
+
+msgid "The name contains characters that cannot be used."
+msgstr "Le nom contient des caractères non autorisés."
+
+msgid "The operation failed:\n{error}"
+msgstr "L'opération a échoué :\n{error}"
+
+msgid "The password is stored in the operating system's credential manager and shared with Quick Connect"
+msgstr "Le mot de passe est stocké dans le gestionnaire d'identifiants du système d'exploitation et partagé avec Connexion rapide"
+
+msgid "The password you entered was rejected. Enter it again."
+msgstr "Le mot de passe saisi a été refusé. Saisissez-le à nouveau."
+
+msgid "The port number is invalid."
+msgstr "Le numéro de port n'est pas valide."
+
+msgid "The remote path contains characters that cannot be used."
+msgstr "Le chemin distant contient des caractères non autorisés."
+
+msgid "The remote path must start with /."
+msgstr "Le chemin distant doit commencer par /."
+
+msgid "The saved password was rejected. Enter it again."
+msgstr "Le mot de passe enregistré a été refusé. Saisissez-le à nouveau."
+
+msgid "The user name contains characters that cannot be used."
+msgstr "Le nom d'utilisateur contient des caractères non autorisés."
+
+msgid "This Computer"
+msgstr "Cet ordinateur"
+
+msgid "This Remote ({display_name})"
+msgstr "Cet hôte distant ({display_name})"
+
+msgid "This host's key has not been seen before. Continue connecting?"
+msgstr "La clé de cet hôte n'a jamais été vue. Poursuivre la connexion ?"
+
+msgid "Upload"
+msgstr "Envoyer"
+
+msgid "User name"
+msgstr "Nom d'utilisateur"
+
+msgid "Writes to the list shared with Quick Connect"
+msgstr "Écrit dans la liste partagée avec Connexion rapide"
+
+msgid "Yes"
+msgstr "Oui"
+
+msgctxt "file transfer"
+msgid "New Folder"
+msgstr "Nouveau dossier"
+
+msgctxt "file transfer"
+msgid "Refresh"
+msgstr "Actualiser"
+
+msgctxt "file transfer"
+msgid "Rename"
+msgstr "Renommer"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

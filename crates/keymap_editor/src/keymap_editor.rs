@@ -2200,7 +2200,7 @@ impl Render for KeymapEditor {
                         i18n::t!("Action"),
                         i18n::t!("Arguments"),
                         i18n::t!("Keystrokes"),
-                        i18n::t!("Context"),
+                        i18n::tc!("keybinding", "Context"),
                         i18n::t!("Source"),
                     ])
                     .uniform_list(
