@@ -586,7 +586,7 @@ pub(crate) fn render_ai_choice_picker_row(
     selected: bool,
 ) -> AnyElement {
     let needs_setup = choice.needs_setup();
-    let badges = choice_badges(choice).join(" · ");
+    let badges = choice_badges(choice);
     ListItem::new(("ai-choice", ix))
         .inset(true)
         .spacing(ListItemSpacing::Sparse)
@@ -599,17 +599,25 @@ pub(crate) fn render_ai_choice_picker_row(
                 .child(ai_choice_icon(&choice.icon))
                 .child(
                     v_flex()
+                        .flex_1()
                         .min_w_0()
                         .child(
                             Label::new(choice.label.clone())
                                 .color(choice_label_color(needs_setup))
                                 .truncate(),
                         )
+                        // Wrapped rather than cut: in the picker's width a
+                        // truncated line hides the sandbox badge, the one
+                        // that tells where the AI runs.
                         .child(
-                            Label::new(badges)
-                                .size(LabelSize::XSmall)
-                                .color(badge_color(needs_setup))
-                                .truncate(),
+                            h_flex()
+                                .flex_wrap()
+                                .gap_x_1p5()
+                                .children(badges.into_iter().map(|badge| {
+                                    Label::new(badge)
+                                        .size(LabelSize::XSmall)
+                                        .color(badge_color(needs_setup))
+                                })),
                         ),
                 ),
         )
@@ -726,15 +734,16 @@ pub(crate) fn add_ai_choice_rows(
             AiChoiceMenuRow::ClaudeCodeOutsideSandbox => menu.item(
                 crate::agent_panel::claude_code_outside_sandbox_menu_entry(cx).handler({
                     let run = run.clone();
+                    let workspace = workspace.clone();
                     move |window, cx| {
+                        let workspace = workspace.clone();
                         run(
-                            Box::new(|window, cx| {
-                                window.dispatch_action(
-                                    Box::new(
-                                        zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
-                                    ),
-                                    cx,
-                                )
+                            Box::new(move |window, cx| {
+                                if let Some(workspace) = workspace.upgrade() {
+                                    crate::sandboxed_claude_code::launch_claude_code_in(
+                                        &workspace, true, window, cx,
+                                    );
+                                }
                             }),
                             window,
                             cx,
@@ -867,10 +876,9 @@ pub(crate) fn open_ai_choice(
 ) {
     match target {
         AiChoiceTarget::LaunchClaudeCode => {
-            window.dispatch_action(
-                Box::new(zed_actions::terminal::LaunchClaudeCode::default()),
-                cx,
-            );
+            if let Some(workspace) = workspace.upgrade() {
+                crate::sandboxed_claude_code::launch_claude_code_in(&workspace, false, window, cx);
+            }
         }
         AiChoiceTarget::SetUpProvider { provider_id } => {
             set_up_provider(provider_id.clone(), window, cx);

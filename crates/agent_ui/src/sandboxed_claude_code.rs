@@ -105,61 +105,100 @@ fn register_launch_actions(workspace: &mut Workspace, launch_on_host: HostLaunch
     workspace.register_action({
         let launch_on_host = launch_on_host.clone();
         move |workspace, action: &LaunchClaudeCode, window, cx| {
-            let project = workspace.project().read(cx);
-            let shape = ProjectShape::of(project, cx);
-            let on_remote_host = project.is_via_remote_server();
-            let effort = action.effort.clone();
-            match route_for(shape) {
-                #[cfg(target_os = "windows")]
-                LaunchRoute::LocalSandbox => {
-                    launch::launch_in_sandbox(workspace, effort, window, cx)
-                }
-                #[cfg(not(target_os = "windows"))]
-                LaunchRoute::LocalSandbox => confirm_and_launch_outside_sandbox(
-                    effort,
-                    Some(UNSUPPORTED_OS_REASON),
-                    on_remote_host,
-                    launch_on_host.clone(),
-                    window,
-                    cx,
-                ),
-                LaunchRoute::RemoteSandbox => {
-                    remote_launch::launch_on_remote_host(workspace, effort, window, cx)
-                }
-                LaunchRoute::OutsideSandbox { reason } => confirm_and_launch_outside_sandbox(
-                    effort,
-                    Some(reason),
-                    on_remote_host,
-                    launch_on_host.clone(),
-                    window,
-                    cx,
-                ),
-                LaunchRoute::OutsideSandboxByUserChoice => {
-                    launch_on_host(workspace, effort, window, cx)
-                }
-            }
+            launch_claude_code(
+                workspace,
+                action.effort.clone(),
+                launch_on_host.clone(),
+                window,
+                cx,
+            )
         }
     });
     workspace.register_action(
         move |workspace, action: &LaunchClaudeCodeOutsideSandbox, window, cx| {
-            let effort = action.effort.clone();
-            // The user has already said yes to every start in their own
-            // settings file, so asking again would only be noise.
-            if project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx) {
-                launch_on_host(workspace, effort, window, cx);
-                return;
-            }
-            let on_remote_host = workspace.project().read(cx).is_via_remote_server();
-            confirm_and_launch_outside_sandbox(
-                effort,
-                None,
-                on_remote_host,
+            launch_claude_code_outside_sandbox(
+                workspace,
+                action.effort.clone(),
                 launch_on_host.clone(),
                 window,
                 cx,
-            );
+            )
         },
     );
+}
+
+/// Starts Claude Code in `workspace` as its [`LaunchClaudeCode`] (or, with
+/// `outside_sandbox`, [`LaunchClaudeCodeOutsideSandbox`]) would. For menus
+/// that name their project (the sidebar's): an action dispatched in the
+/// window reaches the workspace the window last drew, which may be another.
+pub(crate) fn launch_claude_code_in(
+    workspace: &Entity<Workspace>,
+    outside_sandbox: bool,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    workspace.update(cx, |workspace, cx| {
+        let launch_on_host: HostLauncher = Rc::new(launch_on_host);
+        if outside_sandbox {
+            launch_claude_code_outside_sandbox(workspace, None, launch_on_host, window, cx)
+        } else {
+            launch_claude_code(workspace, None, launch_on_host, window, cx)
+        }
+    })
+}
+
+fn launch_claude_code(
+    workspace: &mut Workspace,
+    effort: Option<String>,
+    launch_on_host: HostLauncher,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let project = workspace.project().read(cx);
+    let shape = ProjectShape::of(project, cx);
+    let on_remote_host = project.is_via_remote_server();
+    match route_for(shape) {
+        #[cfg(target_os = "windows")]
+        LaunchRoute::LocalSandbox => launch::launch_in_sandbox(workspace, effort, window, cx),
+        #[cfg(not(target_os = "windows"))]
+        LaunchRoute::LocalSandbox => confirm_and_launch_outside_sandbox(
+            effort,
+            Some(UNSUPPORTED_OS_REASON),
+            on_remote_host,
+            launch_on_host,
+            window,
+            cx,
+        ),
+        LaunchRoute::RemoteSandbox => {
+            remote_launch::launch_on_remote_host(workspace, effort, window, cx)
+        }
+        LaunchRoute::OutsideSandbox { reason } => confirm_and_launch_outside_sandbox(
+            effort,
+            Some(reason),
+            on_remote_host,
+            launch_on_host,
+            window,
+            cx,
+        ),
+        LaunchRoute::OutsideSandboxByUserChoice => launch_on_host(workspace, effort, window, cx),
+    }
+}
+
+fn launch_claude_code_outside_sandbox(
+    workspace: &mut Workspace,
+    effort: Option<String>,
+    launch_on_host: HostLauncher,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    // The user has already said yes to every start in their own
+    // settings file, so asking again would only be noise.
+    if project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx) {
+        launch_on_host(workspace, effort, window, cx);
+        return;
+    }
+    let on_remote_host = workspace.project().read(cx).is_via_remote_server();
+    confirm_and_launch_outside_sandbox(effort, None, on_remote_host, launch_on_host, window, cx);
 }
 
 /// What decides where the CLI can run.
@@ -4234,6 +4273,50 @@ mod tests {
         cx.simulate_prompt_answer("Start (This Time Only)");
         cx.run_until_parked();
         assert_eq!(*launches.borrow(), [None]);
+    }
+
+    /// ADR-F94: Claude Code picked for a project (the sidebar's menu names
+    /// one) starts in that project, not in the one the window last drew.
+    #[gpui::test]
+    async fn claude_code_picked_for_a_project_starts_in_that_project(cx: &mut TestAppContext) {
+        let (_project, workspace_with_folder, mut cx) =
+            open_workspace(&[path!("/test").as_ref()], cx).await;
+        let project_without_folder = Project::test(FakeFs::new(cx.executor()), [], &mut cx).await;
+        let multi_workspace = cx
+            .update(|window, _| window.root::<MultiWorkspace>())
+            .flatten()
+            .expect("the window shows a multi-workspace");
+        let workspace_without_folder =
+            multi_workspace.update_in(&mut cx, |multi_workspace, window, cx| {
+                let added = multi_workspace.test_add_workspace(project_without_folder, window, cx);
+                multi_workspace.activate(workspace_with_folder.clone(), None, window, cx);
+                added
+            });
+        cx.run_until_parked();
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        set_user_settings(OUTSIDE_ALLOWED, &mut cx);
+
+        cx.update(|window, cx| {
+            crate::ai_choices::open_ai_choice(
+                &crate::ai_choices::AiChoiceTarget::LaunchClaudeCode,
+                &workspace_without_folder.downgrade(),
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let (_message, detail) = cx
+            .pending_prompt()
+            .expect("the project without a folder asks before starting outside");
+        let reason = if cfg!(target_os = "windows") {
+            NO_FOLDER_REASON
+        } else {
+            UNSUPPORTED_OS_REASON
+        };
+        assert!(detail.contains(reason), "{detail}");
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
     }
 
     async fn resume(

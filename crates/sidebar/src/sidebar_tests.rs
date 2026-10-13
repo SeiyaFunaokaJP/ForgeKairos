@@ -1994,9 +1994,9 @@ async fn test_keyboard_navigation_on_empty_list(cx: &mut TestAppContext) {
     assert_eq!(sidebar.read_with(cx, |s, _| s.selection), Some(0));
 }
 
-/// ADR-F94: an AI picked from a project's menu in the sidebar opens in that
-/// project, and only once it is the one the window shows, since Claude
-/// Code's launch is an action of the workspace the window last drew.
+/// ADR-F94: an AI picked from a project's menu in the sidebar opens with
+/// that project brought forward, without waiting for frames (what it opens
+/// is told the workspace rather than dispatched in the window).
 #[gpui::test]
 async fn test_ai_choice_from_a_project_menu_opens_in_that_project(cx: &mut TestAppContext) {
     init_test(cx);
@@ -2031,30 +2031,28 @@ async fn test_ai_choice_from_a_project_menu_opens_in_that_project(cx: &mut TestA
         })
     };
 
+    assert_eq!(
+        multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone()),
+        workspace_b
+    );
     sidebar.update_in(cx, |sidebar, window, cx| {
         sidebar.open_ai_choice_in_workspace(&workspace_a, open(&opened_in), window, cx);
     });
     cx.run_until_parked();
-    assert!(
-        opened_in.borrow().is_empty(),
-        "nothing opens before the project brought forward is drawn"
-    );
-    for _ in 0..2 {
-        cx.update(|window, cx| window.simulate_next_frame(cx));
-        cx.run_until_parked();
-    }
     assert_eq!(
         opened_in.borrow().as_slice(),
-        std::slice::from_ref(&workspace_a)
+        std::slice::from_ref(&workspace_a),
+        "opened once, with the project brought forward first"
     );
 
     sidebar.update_in(cx, |sidebar, window, cx| {
         sidebar.open_ai_choice_in_workspace(&workspace_a, open(&opened_in), window, cx);
     });
+    cx.run_until_parked();
     assert_eq!(
         opened_in.borrow().len(),
         2,
-        "the project already in front opens at once"
+        "the project already in front opens too"
     );
 }
 

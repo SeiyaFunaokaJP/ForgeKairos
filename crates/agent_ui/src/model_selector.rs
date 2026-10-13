@@ -382,9 +382,15 @@ pub(crate) fn initial_row_index<T: PickerItem>(
                 |row| matches!(row, PickerRow::Item { item, .. } if item.item_id() == active),
             )
         })
+        // A model before another AI even where that AI's vendor comes first:
+        // Enter right after a query must not leave this thread for a new one.
         .or_else(|| {
             rows.iter()
-                .position(|row| matches!(row, PickerRow::Item { .. } | PickerRow::Agent(_)))
+                .position(|row| matches!(row, PickerRow::Item { .. }))
+        })
+        .or_else(|| {
+            rows.iter()
+                .position(|row| matches!(row, PickerRow::Agent(_)))
         })
         .unwrap_or(0)
 }
@@ -2113,6 +2119,37 @@ mod tests {
                     AiChoiceTransition::SetUp
                 ),
             ]
+        );
+    }
+
+    /// Claude Code's row comes before the Anthropic models in their vendor's
+    /// section, yet Enter after a query that finds both picks the model.
+    #[gpui::test]
+    fn the_selection_starts_on_a_model_rather_than_on_another_ai(_cx: &mut TestAppContext) {
+        let mut searching = GroupCollapseState::default();
+        searching.set_query("claude");
+        let entries = info_list_to_picker_entries(
+            create_model_list(vec![("Anthropic", vec!["anthropic/claude-sonnet"])]),
+            &HashSet::default(),
+            Some(&AgentModelId::new("openai/gpt-5")),
+            Some(ai_choices(ThreadRunner::BuiltInAgent)),
+            &searching,
+        );
+        assert_eq!(
+            entry_labels(&entries).get(..5),
+            Some(
+                &[
+                    "# Claude (Anthropic)".to_string(),
+                    "@ Claude Code".to_string(),
+                    "@ Claude Agent".to_string(),
+                    "▼ Anthropic (1)".to_string(),
+                    "anthropic/claude-sonnet".to_string(),
+                ][..]
+            )
+        );
+        assert_eq!(
+            initial_row_index(&entries, Some(&AgentModelId::new("openai/gpt-5"))),
+            4
         );
     }
 
