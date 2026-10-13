@@ -59,7 +59,10 @@ pub(super) type AlacrittyGridIterator<'a> = GridIterator<'a, AlacCell>;
 pub(super) type AlacrittyHyperlink = AlacHyperlink;
 
 #[derive(Clone)]
-pub(super) struct ZedListener(UnboundedSender<PtyEvent>);
+pub(super) struct ZedListener {
+    sender: UnboundedSender<PtyEvent>,
+    generation: u64,
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct AlacrittySearch {
@@ -194,8 +197,16 @@ pub(super) fn new_term(
     bounds: TerminalBounds,
     events_tx: UnboundedSender<PtyEvent>,
     alternate_scroll: AlternateScroll,
+    generation: u64,
 ) -> Arc<AlacrittyTermLock> {
-    let mut term = Term::new(config.clone(), &bounds, ZedListener(events_tx));
+    let mut term = Term::new(
+        config.clone(),
+        &bounds,
+        ZedListener {
+            sender: events_tx,
+            generation,
+        },
+    );
 
     if let AlternateScroll::Off = alternate_scroll {
         term.unset_private_mode(PrivateMode::Named(NamedPrivateMode::AlternateScroll));
@@ -422,8 +433,17 @@ pub(super) fn spawn_event_loop(
     replay_markers: Option<ReplayMarkerFilter>,
 ) -> Result<PtySender> {
     let pty = TeePty::new(pty, session_log_tap, remote_cwd, replay_markers);
-    let event_loop = EventLoop::new(term, ZedListener(events_tx), pty, drain_on_exit, false)
-        .context("failed to create event loop")?;
+    let event_loop = EventLoop::new(
+        term,
+        ZedListener {
+            sender: events_tx,
+            generation: 0,
+        },
+        pty,
+        drain_on_exit,
+        false,
+    )
+    .context("failed to create event loop")?;
     let pty_tx = event_loop.channel();
     let _io_thread = event_loop.spawn();
 
@@ -541,7 +561,9 @@ impl From<AlacTermEvent> for TerminalBackendEvent {
 
 impl EventListener for ZedListener {
     fn send_event(&self, event: AlacTermEvent) {
-        self.0.unbounded_send(PtyEvent::Event(event.into())).ok();
+        self.sender
+            .unbounded_send(PtyEvent::Event(event.into(), self.generation))
+            .ok();
     }
 }
 
@@ -1783,7 +1805,10 @@ mod tests {
             let term = Term::new(
                 pty_term_config(1000, SettingsCursorShape::default()),
                 &TerminalBounds::default(),
-                ZedListener(events_tx.clone()),
+                ZedListener {
+                    sender: events_tx.clone(),
+                    generation: 0,
+                },
             );
             let pty = TeePty::new(
                 BurstPty {
@@ -1797,7 +1822,10 @@ mod tests {
             );
             let event_loop = EventLoop::new(
                 Arc::new(FairMutex::new(term)),
-                ZedListener(events_tx),
+                ZedListener {
+                    sender: events_tx,
+                    generation: 0,
+                },
                 pty,
                 false,
                 false,
@@ -1897,7 +1925,14 @@ mod tests {
     fn semantic_selection_stops_at_tree_branch() {
         let config = pty_term_config(1000, SettingsCursorShape::default());
         let (events_tx, _events_rx) = futures::channel::mpsc::unbounded();
-        let mut term = Term::new(config, &TerminalBounds::default(), ZedListener(events_tx));
+        let mut term = Term::new(
+            config,
+            &TerminalBounds::default(),
+            ZedListener {
+                sender: events_tx,
+                generation: 0,
+            },
+        );
         for character in "└─zms-demo.target".chars() {
             term.input(character);
         }

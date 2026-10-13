@@ -373,7 +373,7 @@ mod tests {
     use fs::{FakeFs, Fs as _};
     use git::repository::GitCommandOutput;
     use gpui::{AppContext as _, TestAppContext};
-    use language_model::fake_provider::FakeLanguageModel;
+    use language_model::LanguageModelRegistry;
     use prompt_store::ProjectContext;
     use serde_json::json;
     use settings::SettingsStore;
@@ -414,6 +414,7 @@ mod tests {
         fs.insert_tree(tree_root, tree).await;
         let project = Project::test(fs.clone(), [worktree.as_ref()], cx).await;
         cx.executor().run_until_parked();
+        let model = cx.update(|cx| LanguageModelRegistry::test(cx).model("fake"));
         let context_server_registry =
             cx.new(|cx| ContextServerRegistry::new(project.read(cx).context_server_store(), cx));
         let thread = cx.new(|cx| {
@@ -422,7 +423,7 @@ mod tests {
                 cx.new(|_cx| ProjectContext::default()),
                 context_server_registry,
                 Templates::new(),
-                Some(Arc::new(FakeLanguageModel::default())),
+                Some(model),
                 cx,
             )
         });

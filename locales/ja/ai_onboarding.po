@@ -20,9 +20,6 @@ msgstr "(現在のプラン)"
 msgid "14 days from trial start, no credit card required"
 msgstr "トライアル開始から 14 日間、クレジットカード不要"
 
-msgid "2,000 accepted edit predictions"
-msgstr "採用された編集予測 2,000 件"
-
 msgid "API Keys"
 msgstr "API キー"
 
@@ -32,20 +29,11 @@ msgstr "サインインせずに AI を使うには、ご自身のキーを追�
 msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
 msgstr "エージェントのコマンドは OS のサンドボックスの中で動きます。プロジェクトの外のファイル操作と新しいネットワークアクセスは先に確認されます。サンドボックスの外での実行は既定で許可されていません。許可した場合もターミナルのコマンドは 1 件ずつ確認されますが、外で起動したエージェントは自分の道具を確認なしで使うことがあります。"
 
-msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
-msgstr "GitHub Copilot は設定済みのため、そのまま使い続けることもできます。"
-
-msgid "Alternatively, you can use GitHub Copilot as your edit prediction provider."
-msgstr "編集予測のプロバイダーとして GitHub Copilot を使うこともできます。"
-
 msgid "Before You Use AI"
 msgstr "AI を使う前に"
 
 msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
 msgstr "エージェントが実行するコマンドと外部エージェント自体は、OS のサンドボックス (macOS は Seatbelt、Linux は bubblewrap、Windows は WSL) の中で動きます。プロジェクトの外のファイル操作と新しいネットワークアクセスは確認を経ます。サンドボックスの外での実行は既定で許可されておらず、サンドボックスの設定で許可できます。許可した場合も、サンドボックスの外で動かすターミナルのコマンドは 1 件ずつ確認を経ますが、サンドボックスの外で起動した外部エージェントや Claude Code は、自分の道具を確認なしで使うことがあります。"
-
-msgid "Configure Copilot"
-msgstr "Copilot を設定"
 
 msgid "Configure Providers"
 msgstr "プロバイダーを設定"
@@ -65,9 +53,6 @@ msgstr "外部の AI (クラウドの API や外部エージェント) には、
 msgid "External AI receives the code, files, and conversations you give it and may store them or train on them. Local models on this machine send nothing out."
 msgstr "外部の AI には渡したコード・ファイル・会話が送られ、保存や学習に使われることがあります。このマシンで動くローカルモデルは外へ何も送りません。"
 
-msgid "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
-msgstr "GitHub Copilot も編集予測のプロバイダーとして使えますが、外部の AI サービスです。「AI」ページの「プロバイダーの設定」で編集予測を有効にし、学習リスクの警告を確認してください。"
-
 msgid "Here's what you get:"
 msgstr "利用できる内容は次のとおりです。"
 
@@ -82,9 +67,6 @@ msgstr "クレジットカード不要"
 
 msgid "Open AI Settings"
 msgstr "AI の設定を開く"
-
-msgid "Open Configure Providers"
-msgstr "「プロバイダーの設定」を開く"
 
 msgid "Open Sandbox Settings"
 msgstr "サンドボックスの設定を開く"
@@ -127,9 +109,6 @@ msgstr "従量課金"
 
 msgid "Usage-based billing beyond $5"
 msgstr "$5 を超える分は従量課金"
-
-msgid "Use Copilot"
-msgstr "Copilot を使用"
 
 msgid "Welcome to Zed Business"
 msgstr "Zed Business へようこそ"

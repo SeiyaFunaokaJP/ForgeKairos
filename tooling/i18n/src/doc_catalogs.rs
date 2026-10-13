@@ -46,6 +46,10 @@ pub fn read_action_argument_descriptions(path: &Path) -> Result<BTreeSet<String>
     #[derive(Deserialize)]
     struct Dump {
         actions: Vec<Action>,
+        // The argument schemas refer to the types they share (`#/$defs/<name>`) rather than
+        // holding them, so those types' descriptions are only here.
+        #[serde(default)]
+        schema_definitions: serde_json::Map<String, Value>,
     }
     #[derive(Deserialize)]
     struct Action {
@@ -65,6 +69,9 @@ pub fn read_action_argument_descriptions(path: &Path) -> Result<BTreeSet<String>
         .filter_map(|action| action.schema.as_ref())
     {
         collect_descriptions(schema, &mut descriptions);
+    }
+    for definition in dump.schema_definitions.values() {
+        collect_descriptions(definition, &mut descriptions);
     }
     Ok(descriptions)
 }
@@ -234,13 +241,19 @@ mod tests {
         let actions_dump = directory.path().join("actions.json");
         fs::write(
             &actions_dump,
-            r#"{"actions": [
+            r##"{"actions": [
                 {"name": "editor::Copy", "documentation": "Copy.", "schema": null},
                 {"name": "git::Reset", "documentation": "Reset.", "schema": {
                     "properties": {"sha": {"description": "The SHA.", "default": ""}},
                     "$defs": {"Mode": {"oneOf": [{"const": "soft", "description": "Keep."}]}}
+                }},
+                {"name": "git::ResetHard", "documentation": "Reset.", "schema": {
+                    "properties": {"mode": {"$ref": "#/$defs/SharedMode"}}
                 }}
-            ]}"#,
+            ],
+            "schema_definitions": {
+                "SharedMode": {"oneOf": [{"const": "hard", "description": "Discard."}]}
+            }}"##,
         )
         .expect("write");
         assert_eq!(
@@ -248,7 +261,7 @@ mod tests {
                 .expect("an actions dump")
                 .into_iter()
                 .collect::<Vec<_>>(),
-            vec!["Keep.", "The SHA."]
+            vec!["Discard.", "Keep.", "The SHA."]
         );
     }
 

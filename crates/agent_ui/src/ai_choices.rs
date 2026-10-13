@@ -19,7 +19,7 @@ use agent_settings::ai_vendor::{
 use db::kvp::KeyValueStore;
 use fs::Fs;
 use gpui::{App, Entity, FocusHandle, SharedString, WeakEntity, Window};
-use language_model::{ConfiguredModel, IconOrSvg, LanguageModelRegistry};
+use language_model::{IconOrSvg, LanguageModel, LanguageModelRegistry};
 use project::{AgentId, Project};
 use settings::{LanguageModelSelection, Settings as _, update_settings_file};
 use ui::{
@@ -343,9 +343,7 @@ pub(crate) fn gather_ai_choice_inputs(
             has_models: !provider.provided_models(cx).is_empty(),
         })
         .collect();
-    let native_default_provider = registry
-        .default_model()
-        .map(|configured| configured.provider.id().0);
+    let native_default_provider = registry.default_model().map(|model| model.provider_id().0);
 
     let project_ref = project.read(cx);
     let installable_agents = if project_ref.is_via_collab() {
@@ -934,7 +932,7 @@ pub(crate) fn open_ai_choice(
                     && let Some(thread) = panel.active_native_agent_thread(cx)
                 {
                     thread.update(cx, |thread, cx| {
-                        thread.set_model(model.model, cx);
+                        thread.set_model(model, cx);
                         thread.set_thinking_enabled(selection.enable_thinking, cx);
                         thread.set_thinking_effort(selection.effort, cx);
                         if let Some(speed) = selection.speed {
@@ -1017,7 +1015,7 @@ enum ModelSwitch {
     /// `selection` is `None` when the default model already was this
     /// provider's and stays as the user chose it.
     Switched {
-        model: ConfiguredModel,
+        model: LanguageModel,
         selection: Option<LanguageModelSelection>,
     },
     NoModels,
@@ -1065,7 +1063,7 @@ fn switch_default_model_to_provider(
 ) -> ModelSwitch {
     let registry = LanguageModelRegistry::global(cx);
     if let Some(current) = registry.read(cx).default_model()
-        && current.provider.id().0 == *provider_id
+        && current.provider_id().0 == *provider_id
     {
         return ModelSwitch::Switched {
             model: current,
@@ -1111,9 +1109,8 @@ fn switch_default_model_to_provider(
     if let Some(leaving) = &leaving {
         remember_last_model_of_provider(leaving, cx);
     }
-    let configured = ConfiguredModel { provider, model };
     registry.update(cx, |registry, cx| {
-        registry.set_default_model(Some(configured.clone()), cx)
+        registry.set_default_model(Some(model.clone()), cx)
     });
     update_settings_file(fs, cx, {
         let selection = selection.clone();
@@ -1122,7 +1119,7 @@ fn switch_default_model_to_provider(
         }
     });
     ModelSwitch::Switched {
-        model: configured,
+        model,
         selection: Some(selection),
     }
 }
@@ -1376,7 +1373,7 @@ mod tests {
     fn switched_to(switch: &ModelSwitch) -> Option<(String, Option<LanguageModelSelection>)> {
         match switch {
             ModelSwitch::Switched { model, selection } => {
-                Some((model.model.id().0.to_string(), selection.clone()))
+                Some((model.id().0.to_string(), selection.clone()))
             }
             ModelSwitch::NoModels | ModelSwitch::UnknownProvider => None,
         }
@@ -1386,7 +1383,7 @@ mod tests {
         cx.update(|cx| {
             LanguageModelRegistry::read_global(cx)
                 .default_model()
-                .map(|configured| configured.model.id().0.to_string())
+                .map(|model| model.id().0.to_string())
         })
     }
 
@@ -1412,29 +1409,98 @@ mod tests {
     /// provider with no model is not switched to.
     #[gpui::test]
     async fn switching_providers_comes_back_to_the_model_used_last(cx: &mut gpui::TestAppContext) {
-        use language_model::fake_provider::{FakeLanguageModel, FakeLanguageModelProvider};
         use language_model::{
-            LanguageModel, LanguageModelProvider, LanguageModelProviderId,
-            LanguageModelProviderName,
+            AuthenticateError, LanguageModelClient, LanguageModelCompletionError,
+            LanguageModelCompletionStream, LanguageModelId, LanguageModelName,
+            LanguageModelProvider, LanguageModelProviderId, LanguageModelProviderName,
+            LanguageModelProviderState, LanguageModelRequest, ProviderSettingsView,
         };
+
+        // The shared fake provider always offers a model of its own, and this
+        // test needs a provider with none.
+        struct ListedModelsProvider {
+            id: LanguageModelProviderId,
+            models: Vec<LanguageModel>,
+        }
+
+        impl LanguageModelProviderState for ListedModelsProvider {
+            type ObservableEntity = ();
+
+            fn observable_entity(&self) -> Option<Entity<Self::ObservableEntity>> {
+                None
+            }
+        }
+
+        impl LanguageModelClient for ListedModelsProvider {
+            fn stream_completion(
+                &self,
+                _model: &LanguageModel,
+                _request: LanguageModelRequest,
+                _cx: &gpui::AsyncApp,
+            ) -> futures::future::BoxFuture<
+                'static,
+                Result<LanguageModelCompletionStream, LanguageModelCompletionError>,
+            > {
+                Box::pin(async { Err(anyhow::anyhow!("this test sends no requests").into()) })
+            }
+        }
+
+        impl LanguageModelProvider for ListedModelsProvider {
+            fn id(&self) -> LanguageModelProviderId {
+                self.id.clone()
+            }
+
+            fn name(&self) -> LanguageModelProviderName {
+                LanguageModelProviderName::from(self.id.0.to_string())
+            }
+
+            fn default_model(&self, _cx: &App) -> Option<LanguageModel> {
+                self.models.first().cloned()
+            }
+
+            fn default_fast_model(&self, _cx: &App) -> Option<LanguageModel> {
+                self.models.first().cloned()
+            }
+
+            fn provided_models(&self, _cx: &App) -> Vec<LanguageModel> {
+                self.models.clone()
+            }
+
+            fn is_authenticated(&self, _cx: &App) -> bool {
+                true
+            }
+
+            fn authenticate(&self, _cx: &mut App) -> gpui::Task<Result<(), AuthenticateError>> {
+                gpui::Task::ready(Ok(()))
+            }
+
+            fn settings_view(&self, _cx: &mut App) -> Option<ProviderSettingsView> {
+                None
+            }
+        }
 
         let fs = fs::FakeFs::new(cx.executor());
         fs.create_dir(::paths::settings_file().parent().expect("settings folder"))
             .await
             .expect("the settings folder can be made");
-        let fake_model = |provider: &str, id: &str, thinking: bool| -> Arc<dyn LanguageModel> {
-            Arc::new(FakeLanguageModel::with_id_and_thinking(
-                provider, id, id, thinking,
-            ))
-        };
-        let fake_provider = |id: &str, models: Vec<Arc<dyn LanguageModel>>| {
-            Arc::new(
-                FakeLanguageModelProvider::new(
-                    LanguageModelProviderId::from(id.to_string()),
-                    LanguageModelProviderName::from(id.to_string()),
+        let fake_model = |provider: &str, id: &str, thinking: bool| -> LanguageModel {
+            LanguageModel {
+                supports_thinking: thinking,
+                ..LanguageModel::new(
+                    LanguageModelId::from(id.to_string()),
+                    LanguageModelName::from(id.to_string()),
+                    LanguageModelProviderId::from(provider.to_string()),
+                    LanguageModelProviderName::from(provider.to_string()),
+                    id.to_string(),
+                    1_000_000,
                 )
-                .with_models(models),
-            )
+            }
+        };
+        let fake_provider = |id: &str, models: Vec<LanguageModel>| {
+            Arc::new(ListedModelsProvider {
+                id: LanguageModelProviderId::from(id.to_string()),
+                models,
+            })
         };
         let anthropic = fake_provider(
             "anthropic",
@@ -1474,13 +1540,7 @@ mod tests {
                 registry.register_provider(anthropic.clone(), cx);
                 registry.register_provider(openai.clone(), cx);
                 registry.register_provider(ollama.clone(), cx);
-                registry.set_default_model(
-                    Some(ConfiguredModel {
-                        provider: anthropic.clone(),
-                        model: chosen_model,
-                    }),
-                    cx,
-                );
+                registry.set_default_model(Some(chosen_model), cx);
             });
             cx.update_global::<settings::SettingsStore, _>(|store, cx| {
                 store.update_user_settings(cx, |settings| {

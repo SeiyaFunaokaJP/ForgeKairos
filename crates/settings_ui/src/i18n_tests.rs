@@ -40,14 +40,14 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p0.i11[reveal_if_open].description",
         "有効にすると、既に開いているバッファーを優先して表示します。",
     ),
-    ("p3.i140[language_detection].title", "言語の自動検出"),
+    ("p3.i141[language_detection].title", "言語の自動検出"),
     (
-        "p3.i140[language_detection].description",
+        "p3.i141[language_detection].description",
         "保存されていないバッファーの言語を自動で検出するかどうかを設定します。",
     ),
-    ("language.i59[language_detection].title", "言語の自動検出"),
+    ("language.i60[language_detection].title", "言語の自動検出"),
     (
-        "language.i59[language_detection].description",
+        "language.i60[language_detection].description",
         "保存されていないバッファーの言語を自動で検出するかどうかを設定します。",
     ),
     ("p5.i8[editor.search.search_on_type].title", "入力中に検索"),
@@ -56,11 +56,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "プロジェクト内検索で、Enter を押さなくても入力に合わせて検索を始めます。",
     ),
     (
-        "p6.i64[close_panel_on_toggle].title",
+        "p6.i65[close_panel_on_toggle].title",
         "切り替え時にパネルを閉じる",
     ),
     (
-        "p6.i64[close_panel_on_toggle].description",
+        "p6.i65[close_panel_on_toggle].description",
         "フォーカスのあるパネルで ToggleFocus アクションを実行したときに、フォーカスをエディターに戻す代わりに、パネルを閉じるかどうかを設定します。",
     ),
     (
@@ -110,11 +110,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "エディター内でカーソルが移動するときに、滑らかにアニメーションさせるかどうかを設定します。",
     ),
     (
-        "p3.i148[markdown_preview.open_markdown_files_in_preview].title",
+        "p3.i149[markdown_preview.open_markdown_files_in_preview].title",
         "Markdown ファイルをプレビューで開く",
     ),
     (
-        "p3.i148[markdown_preview.open_markdown_files_in_preview].description",
+        "p3.i149[markdown_preview.open_markdown_files_in_preview].description",
         "Markdown ファイルを自動的にプレビューで開くかどうかを設定します。",
     ),
     ("p5.i10.header", "コマンドパレット"),
@@ -134,24 +134,24 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p6.i6[status_bar.pending_keystrokes_indicator].description",
         "複数ストロークのキーバインドの入力中に、カウントダウン付きのインジケーターを表示します。Which-key メニューが有効なときは、そのキーバインドのプレビューのポップオーバーは無効になります。",
     ),
-    ("p6.i55[window_title_format].title", "タイトルの書式"),
+    ("p6.i56[window_title_format].title", "タイトルの書式"),
     (
-        "p6.i55[window_title_format].description",
+        "p6.i56[window_title_format].description",
         "ウィンドウのタイトルのテンプレートです。使える変数は `${projectName}`、`${fileName}`、`${filePath}`、`${relativePath}`、`${fileStem}`、`${remoteName}`、`${remoteHost}`、`${appName}`、`${branch}`、`${separator}` です。`${separator}` は隣の変数が空のときは省かれますが、文字どおりに書いたテキストは残ります。共同作業のインジケーターがある場合は、展開したテンプレートの後ろに付きます。テンプレートを展開した結果が空のときは、既定のテンプレートを使います。",
     ),
     (
-        "p6.i55[window_title_format].placeholder",
+        "p6.i56[window_title_format].placeholder",
         "${projectName}${separator}${fileName}",
     ),
     (
-        "p6.i56[window_title_separator].title",
+        "p6.i57[window_title_separator].title",
         "タイトルの区切り文字",
     ),
     (
-        "p6.i56[window_title_separator].description",
+        "p6.i57[window_title_separator].description",
         "ウィンドウのタイトルの書式で `${separator}` に入る文字列です。前後の空白も値に含めてください。",
     ),
-    ("p6.i56[window_title_separator].placeholder", " — "),
+    ("p6.i57[window_title_separator].placeholder", " — "),
     (
         "p7.i3[project_panel.title_tooltip_delay$].title",
         "プロジェクトパネルの項目名のツールチップの遅延",
@@ -169,11 +169,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "プロジェクトパネルの項目名のツールチップの遅延 (ミリ秒) です。",
     ),
     (
-        "language.i67[markdown_preview.open_markdown_files_in_preview].title",
+        "language.i68[markdown_preview.open_markdown_files_in_preview].title",
         "Markdown ファイルをプレビューで開く",
     ),
     (
-        "language.i67[markdown_preview.open_markdown_files_in_preview].description",
+        "language.i68[markdown_preview.open_markdown_files_in_preview].description",
         "Markdown ファイルを自動的にプレビューで開くかどうかを設定します。",
     ),
     // Added by upstream v1.21.0.
@@ -369,6 +369,39 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     (
         "p10.i24[git.accounts].link_description",
         "リポジトリがコミット・プッシュに使えるアカウント。リポジトリごとに Git パネルで選びます。",
+    ),
+    // Added by upstream v1.23.3.
+    (
+        "language.i7[languages.$(language).soft_wrap_indent].title",
+        "折り返した行のインデント",
+    ),
+    (
+        "language.i7[languages.$(language).soft_wrap_indent].description",
+        "ソフト折り返しで続く行のインデントの方法を設定します。",
+    ),
+    (
+        "p3.i88[languages.$(language).soft_wrap_indent].title",
+        "折り返した行のインデント",
+    ),
+    (
+        "p3.i88[languages.$(language).soft_wrap_indent].description",
+        "ソフト折り返しで続く行のインデントの方法を設定します。",
+    ),
+    (
+        "p12.i28[agent.max_idle_retained_threads].title",
+        "アイドル状態のスレッドの最大数",
+    ),
+    (
+        "p12.i28[agent.max_idle_retained_threads].description",
+        "セッションを読み込み直せるアイドル状態のエージェントのスレッドを、読み込んだまま残しておく最大数です。上限を超えると、更新の古いスレッドから解放します。",
+    ),
+    (
+        "p6.i23[title_bar.open_menus_on_hover].title",
+        "ホバーでメニューを開く",
+    ),
+    (
+        "p6.i23[title_bar.open_menus_on_hover].description",
+        "タイトルバーのメニューを、ホバーしたときに自動で開きます。",
     ),
 ];
 
@@ -1032,6 +1065,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         SidebarDockPosition,
         SnippetSortOrder,
         SoftWrap,
+        SoftWrapIndent,
         StatusStyle,
         StatusUntrackedFilesSetting,
         SteppingGranularity,
@@ -1540,7 +1574,7 @@ async fn english_search_still_matches_the_start_of_words(cx: &mut TestAppContext
     // with the table, but "ine" and "mat" would find more if ASCII matched
     // inside words ("line", "format").
     for (query, expected_count, expected_best_match) in [
-        ("line", 57, "Appearance"),
+        ("line", 58, "Appearance"),
         ("font size", 15, "Font"),
         ("tab", 44, "Preview Tabs"),
         ("index", 12, "Symbol Index"),

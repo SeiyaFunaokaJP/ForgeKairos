@@ -531,7 +531,15 @@ impl TabularDataPreviewPane {
     /// parser leaves that line among the data rows and there is no header row
     /// to put a caret in.
     pub(crate) fn has_header_row(&self) -> bool {
-        self.engine.contents.header_span.is_some()
+        let contents = &self.engine.contents;
+        // A JSON Lines file has no header line, but the keys of its records
+        // name its columns.
+        contents.header_span.is_some()
+            || contents
+                .headers
+                .as_slice()
+                .iter()
+                .any(|cell| matches!(cell, TableCell::Generated(_)))
     }
 
     pub(crate) fn grid_column_count(&self) -> usize {

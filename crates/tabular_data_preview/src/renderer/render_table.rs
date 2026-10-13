@@ -121,7 +121,6 @@ impl TabularDataPreviewPane {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let cols = current_widths.read(cx).cols();
-        // Create headers array with interactive elements
         let mut headers = Vec::with_capacity(cols);
 
         headers.push(self.create_row_identifier_header(cx));
@@ -156,12 +155,11 @@ impl TabularDataPreviewPane {
                         table.variable_row_height_list(row_count, self.list_state.clone(), {
                             cx.processor(move |this, display_row: usize, _window, cx| {
                                 this.performance_metrics.rendered_indices.push(display_row);
-
-                                let display_row = DisplayRow(display_row);
+                                // The mapping may be transiently stale while a filter/sort task is in-flight. Return an empty row rather than panicking
                                 Self::render_single_table_row(
                                     this,
                                     cols,
-                                    display_row,
+                                    DisplayRow(display_row),
                                     row_identifier_text_color,
                                     this.row_height,
                                     cx,
@@ -173,7 +171,6 @@ impl TabularDataPreviewPane {
                     RowRenderMechanism::UniformList => {
                         table.uniform_list("tabular-data-table", row_count, {
                             cx.processor(move |this, range: Range<usize>, _window, cx| {
-                                // Record all display indices in the range for performance metrics
                                 this.performance_metrics
                                     .rendered_indices
                                     .extend(range.clone());
@@ -288,6 +285,7 @@ impl TabularDataPreviewPane {
                                     format!("Pos {so}(L{slv})-{eo}(L{elv})")
                                 }
                                 TableCell::Virtual => "Virtual cell".into(),
+                                TableCell::Generated(_) => "Generated cell".into(),
                             },
                         ))
                     })

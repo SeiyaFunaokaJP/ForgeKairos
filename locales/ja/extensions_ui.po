@@ -47,6 +47,9 @@ msgstr "開発中の拡張機能 '{extension_id}' はインストールされて
 msgid "Do you want to install the recommended '{extension_id}' extension for '{file_name_or_extension}' files?"
 msgstr "'{file_name_or_extension}' ファイル向けの推奨拡張機能 '{extension_id}' をインストールしますか?"
 
+msgid "Don't show again"
+msgstr "今後表示しない"
+
 msgid "Downloads: {}"
 msgstr "ダウンロード数: {}"
 
@@ -97,6 +100,9 @@ msgstr "言語サーバー"
 
 msgid "Languages"
 msgstr "言語"
+
+msgid "Learn more"
+msgstr "詳細"
 
 msgid "Loading extensions…"
 msgstr "拡張機能を読み込んでいます…"

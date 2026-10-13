@@ -322,17 +322,18 @@ impl TabularDataPreviewPane {
         cx: &Context<'_, TabularDataPreviewPane>,
     ) -> Option<AnyElement> {
         let row_identifier: ui::SharedString = match self.settings.numbering_type {
-            RowIdentifiers::SrcLines => self
-                .engine
-                .contents
-                .line_numbers
-                .get(*data_row)?
-                .display_string(if self.settings.multiline_cells_effectively_enabled() {
-                    RowIdentDisplayMode::Vertical
-                } else {
-                    RowIdentDisplayMode::Horizontal
-                })
-                .into(),
+            // Fall back to a sequential row number when there is no source line for this row (e.g.
+            // content that did not originate from a text buffer, such as a database result set).
+            RowIdentifiers::SrcLines => match self.engine.contents.line_numbers.get(*data_row) {
+                Some(line) => line
+                    .display_string(if self.settings.multiline_cells_effectively_enabled() {
+                        RowIdentDisplayMode::Vertical
+                    } else {
+                        RowIdentDisplayMode::Horizontal
+                    })
+                    .into(),
+                None => (*display_row + 1).to_string().into(),
+            },
             RowIdentifiers::RowNum => (*display_row + 1).to_string().into(),
         };
 

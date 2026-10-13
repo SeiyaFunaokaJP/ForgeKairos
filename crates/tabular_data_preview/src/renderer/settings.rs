@@ -8,7 +8,7 @@ use crate::{
     ClearCells, DeleteColumns, DeleteRows, InsertColumnLeft, InsertColumnRight, InsertRowAbove,
     InsertRowBelow, OpenAsText, TabularDataPreviewPane, ToggleHeaderRow,
     renderer::table_header::ClearAllFilters,
-    settings::{FilterSortOrder, TabularDataPreviewSettings, VerticalAlignment},
+    settings::{FilterSortOrder, TableViewSettings, VerticalAlignment},
 };
 
 ///// Settings related /////
@@ -243,7 +243,7 @@ fn toggle_entry(
     description: Option<&'static str>,
     selected: bool,
     view_entity: &Entity<TabularDataPreviewPane>,
-    set: impl Fn(&mut TabularDataPreviewSettings) + 'static,
+    set: impl Fn(&mut TableViewSettings) + 'static,
 ) -> ContextMenu {
     let view_entity = view_entity.clone();
     let entry = ContextMenuEntry::new(label)
@@ -345,7 +345,7 @@ pub(crate) fn settings_popover_menu(
 fn append_dev_only_entries(
     menu: ContextMenu,
     view_entity: &Entity<TabularDataPreviewPane>,
-    settings: &TabularDataPreviewSettings,
+    settings: &TableViewSettings,
 ) -> ContextMenu {
     use crate::settings::RowRenderMechanism;
 

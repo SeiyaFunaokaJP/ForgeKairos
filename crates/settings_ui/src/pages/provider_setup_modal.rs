@@ -893,6 +893,23 @@ mod tests {
         }
     }
 
+    impl language_model::LanguageModelClient for RefusingProvider {
+        fn stream_completion(
+            &self,
+            _model: &LanguageModel,
+            _request: language_model::LanguageModelRequest,
+            _cx: &AsyncApp,
+        ) -> futures::future::BoxFuture<
+            'static,
+            Result<
+                language_model::LanguageModelCompletionStream,
+                language_model::LanguageModelCompletionError,
+            >,
+        > {
+            Box::pin(async { Err(anyhow::anyhow!("this test sends no requests").into()) })
+        }
+    }
+
     impl LanguageModelProvider for RefusingProvider {
         fn id(&self) -> LanguageModelProviderId {
             LanguageModelProviderId("refusing".into())
@@ -902,18 +919,23 @@ mod tests {
             LanguageModelProviderName("Refusing".into())
         }
 
-        fn default_model(&self, _: &App) -> Option<Arc<dyn LanguageModel>> {
+        fn default_model(&self, _: &App) -> Option<LanguageModel> {
             None
         }
 
-        fn default_fast_model(&self, _: &App) -> Option<Arc<dyn LanguageModel>> {
+        fn default_fast_model(&self, _: &App) -> Option<LanguageModel> {
             None
         }
 
-        fn provided_models(&self, cx: &App) -> Vec<Arc<dyn LanguageModel>> {
+        fn provided_models(&self, cx: &App) -> Vec<LanguageModel> {
             if self.state.read(cx).has_key {
-                vec![Arc::new(
-                    language_model::fake_provider::FakeLanguageModel::default(),
+                vec![LanguageModel::new(
+                    language_model::LanguageModelId("refusing-model".into()),
+                    language_model::LanguageModelName("Refusing".into()),
+                    self.id(),
+                    self.name(),
+                    "refusing/refusing-model",
+                    1000,
                 )]
             } else {
                 Vec::new()

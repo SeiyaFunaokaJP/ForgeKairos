@@ -4020,7 +4020,7 @@ async fn machine_architecture(invoker: &dyn WslInvoker, distro: Option<&str>) ->
 /// installation already there under the same digest is reused untouched.
 ///
 /// `strip_top_level_directory` drops the single directory a distribution
-/// tarball wraps everything in (`node-v24.11.0-linux-x64/`), so its contents
+/// tarball wraps everything in (`node-v24.21.0-linux-x64/`), so its contents
 /// land directly in the destination.
 ///
 /// The destination is below the directory the helper protects and hides
@@ -6688,7 +6688,7 @@ zed-sweep-removed acp-2222
     #[test]
     fn staged_runtimes_land_where_a_command_may_be_shown_them() {
         for relative in [
-            "node/wsl-sandbox/node-v24.11.0-linux-x64",
+            "node/wsl-sandbox/node-v24.21.0-linux-x64",
             "external_agents/wsl-sandbox/registry/npx/claude-acp",
             "external_agents/wsl-sandbox/registry/archive/some-agent/v1",
         ] {
@@ -7509,7 +7509,7 @@ zed-sweep-removed acp-2222
     }
 
     const NPX_RELATIVE: &str = "external_agents/wsl-sandbox/registry/npx/claude";
-    const NODE_RELATIVE: &str = "node/wsl-sandbox/node-v24.11.0-linux-x64";
+    const NODE_RELATIVE: &str = "node/wsl-sandbox/node-v24.21.0-linux-x64";
     const PACKAGE_SPEC: &str = "@agentclientprotocol/claude-agent-acp@0.76.0";
 
     /// ADR-F49 決定 22: an npm package is installed by putting a staging
@@ -7533,7 +7533,7 @@ zed-sweep-removed acp-2222
         let installed = smol::block_on(install_npm_package(
             &fake,
             Some("Ubuntu"),
-            "/home/me/.local/share/zed-jp-enhance/node/wsl-sandbox/node-v24.11.0-linux-x64",
+            "/home/me/.local/share/zed-jp-enhance/node/wsl-sandbox/node-v24.21.0-linux-x64",
             PACKAGE_SPEC,
             NPX_RELATIVE,
             vec!["registry.npmjs.org".to_string()],
@@ -7590,7 +7590,7 @@ zed-sweep-removed acp-2222
         );
         assert_eq!(
             install.node_directory,
-            "/home/me/.local/share/zed-jp-enhance/node/wsl-sandbox/node-v24.11.0-linux-x64"
+            "/home/me/.local/share/zed-jp-enhance/node/wsl-sandbox/node-v24.21.0-linux-x64"
         );
         assert_eq!(
             install.allowed_hosts,
@@ -8377,7 +8377,7 @@ zed-sweep-removed acp-2222
     // at them. Run them one at a time, in order:
     //
     //     set ZED_E2E_WSL_RUNTIME=1
-    //     set ZED_E2E_NODE_TARBALL=<node-v24.11.0-linux-x64.tar.gz>
+    //     set ZED_E2E_NODE_TARBALL=<node-v24.21.0-linux-x64.tar.gz>
     //     set ZED_E2E_NODE_SHA256=<its digest>
     //     rem 既定は zed-e2e。名前に e2e を含む、本番と重ならない根にだけ置ける。
     //     set ZED_E2E_WSL_ROOT=<staging root below the data directory>
@@ -8441,7 +8441,7 @@ zed-sweep-removed acp-2222
         }
 
         pub(super) fn node_relative() -> String {
-            staged_relative("node/wsl-sandbox/node-v24.11.0-linux-x64")
+            staged_relative("node/wsl-sandbox/node-v24.21.0-linux-x64")
         }
 
         pub(super) fn install_relative() -> String {
@@ -8620,7 +8620,7 @@ zed-sweep-removed acp-2222
     fn the_end_to_end_staging_never_reaches_what_a_real_zed_staged() {
         // 本物の Zed が置く場所 (`project` の `agent_server_store` の綴り)。
         let production = [
-            "node/wsl-sandbox/node-v24.11.0-linux-x64",
+            "node/wsl-sandbox/node-v24.21.0-linux-x64",
             "external_agents/wsl-sandbox/registry/npx/zed-e2e",
         ];
         let root = e2e::root_relative();
@@ -8670,7 +8670,7 @@ zed-sweep-removed acp-2222
             return;
         }
         let node_directory = e2e::node_directory();
-        assert!(node_directory.ends_with("node/wsl-sandbox/node-v24.11.0-linux-x64"));
+        assert!(node_directory.ends_with("node/wsl-sandbox/node-v24.21.0-linux-x64"));
 
         // ADR-F49 決定 25: a runtime whose only identity is the place it is in
         // — a registry archive published without a digest — is found there
@@ -8703,7 +8703,7 @@ zed-sweep-removed acp-2222
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            output.status.success() && stdout.trim() == "v24.11.0",
+            output.status.success() && stdout.trim() == "v24.21.0",
             "node --version printed {stdout:?} / {:?}",
             String::from_utf8_lossy(&output.stderr)
         );

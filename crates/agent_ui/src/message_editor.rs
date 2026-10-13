@@ -14,7 +14,7 @@ use crate::{
 };
 use acp_thread::{AcpThread, AgentThreadEntry, MentionUri};
 use agent::ThreadStore;
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::{v1 as acp_v1, v2 as acp_v2};
 use agent_settings::AgentSettings;
 use anyhow::{Result, anyhow};
 use base64::Engine as _;
@@ -53,15 +53,15 @@ use zed_actions::agent::{Chat, PasteRaw};
 
 #[derive(Default)]
 pub struct SessionCapabilities {
-    prompt_capabilities: acp::PromptCapabilities,
-    available_commands: Vec<acp::AvailableCommand>,
+    prompt_capabilities: acp_v1::PromptCapabilities,
+    available_commands: Vec<acp_v1::AvailableCommand>,
     available_skills: Vec<AvailableSkill>,
 }
 
 impl SessionCapabilities {
     pub fn new(
-        prompt_capabilities: acp::PromptCapabilities,
-        available_commands: Vec<acp::AvailableCommand>,
+        prompt_capabilities: acp_v1::PromptCapabilities,
+        available_commands: Vec<acp_v1::AvailableCommand>,
         available_skills: Vec<AvailableSkill>,
     ) -> Self {
         Self {
@@ -72,8 +72,8 @@ impl SessionCapabilities {
     }
 
     pub fn from_acp_commands(
-        prompt_capabilities: acp::PromptCapabilities,
-        available_commands: Vec<acp::AvailableCommand>,
+        prompt_capabilities: acp_v1::PromptCapabilities,
+        available_commands: Vec<acp_v1::AvailableCommand>,
     ) -> Self {
         Self::new(prompt_capabilities, available_commands, Vec::new())
     }
@@ -86,7 +86,7 @@ impl SessionCapabilities {
         self.prompt_capabilities.embedded_context
     }
 
-    pub fn available_commands(&self) -> &[acp::AvailableCommand] {
+    pub fn available_commands(&self) -> &[acp_v1::AvailableCommand] {
         &self.available_commands
     }
 
@@ -131,11 +131,11 @@ impl SessionCapabilities {
         self.available_skills.clone()
     }
 
-    pub fn set_prompt_capabilities(&mut self, prompt_capabilities: acp::PromptCapabilities) {
+    pub fn set_prompt_capabilities(&mut self, prompt_capabilities: acp_v1::PromptCapabilities) {
         self.prompt_capabilities = prompt_capabilities;
     }
 
-    pub fn set_available_commands(&mut self, available_commands: Vec<acp::AvailableCommand>) {
+    pub fn set_available_commands(&mut self, available_commands: Vec<acp_v1::AvailableCommand>) {
         self.available_commands = available_commands;
     }
 
@@ -528,6 +528,7 @@ impl MessageEditor {
             let mut editor = Editor::new(mode, buffer, None, window, cx);
             editor.set_placeholder_text(placeholder, window, cx);
             editor.set_show_indent_guides(false, cx);
+            editor.set_show_wrap_guides(false, cx);
             editor.set_show_completions_on_input(Some(true));
             editor.set_soft_wrap();
             editor.disable_mouse_wheel_zoom();
@@ -722,7 +723,7 @@ impl MessageEditor {
             .iter()
             .find(|available_command| available_command.name == command_name)?;
 
-        let acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput {
+        let acp_v1::AvailableCommandInput::Unstructured(acp_v1::UnstructuredCommandInput {
             mut hint,
             ..
         }) = available_command.input.clone()?
@@ -755,7 +756,7 @@ impl MessageEditor {
 
     pub fn insert_thread_summary(
         &mut self,
-        session_id: acp::SessionId,
+        session_id: acp_v1::SessionId,
         title: Option<SharedString>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -834,7 +835,7 @@ impl MessageEditor {
 
     fn validate_slash_commands(
         text: &str,
-        available_commands: &[acp::AvailableCommand],
+        available_commands: &[acp_v1::AvailableCommand],
         available_skills: &[AvailableSkill],
         agent_id: &AgentId,
     ) -> Result<()> {
@@ -908,7 +909,7 @@ impl MessageEditor {
     /// when both a global and a project-local skill share a name.
     /// Globals carry an empty scope and so render as `/:<name>`.
     fn format_available_commands(
-        commands: &[acp::AvailableCommand],
+        commands: &[acp_v1::AvailableCommand],
         skills: &[AvailableSkill],
     ) -> String {
         if commands.is_empty() && skills.is_empty() {
@@ -926,7 +927,7 @@ impl MessageEditor {
         &self,
         full_mention_content: bool,
         cx: &mut Context<Self>,
-    ) -> Task<Result<(Vec<acp::ContentBlock>, Vec<Entity<Buffer>>)>> {
+    ) -> Task<Result<(Vec<acp_v1::ContentBlock>, Vec<Entity<Buffer>>)>> {
         let text = self.editor.read(cx).text(cx);
         let (available_commands, available_skills) = {
             let session_capabilities = self.session_capabilities.read();
@@ -1098,7 +1099,10 @@ impl MessageEditor {
 
     /// The draft as it stands, with each attachment as its mode produces it:
     /// the message budget only reduces attachments when the message is sent.
-    pub fn draft_contents(&self, cx: &mut Context<Self>) -> Task<Result<Vec<acp::ContentBlock>>> {
+    pub fn draft_contents(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Vec<acp_v1::ContentBlock>>> {
         let pinned_modes = self.pinned_attachment_modes(cx);
         let build_task = self.build_content_blocks(false, cx);
         cx.spawn(async move |_, _cx| {
@@ -1125,7 +1129,7 @@ impl MessageEditor {
         &self,
         full_mention_content: bool,
         cx: &mut Context<Self>,
-    ) -> Task<Result<(Vec<acp::ContentBlock>, Vec<Entity<Buffer>>)>> {
+    ) -> Task<Result<(Vec<acp_v1::ContentBlock>, Vec<Entity<Buffer>>)>> {
         let contents = self.mention_set.update(cx, |store, cx| {
             store.contents_before_budget(full_mention_content, cx)
         });
@@ -1157,7 +1161,7 @@ impl MessageEditor {
 
     /// Snapshots the editor's current draft into a list of `ContentBlock`s
     /// without awaiting any pending mention resolution.
-    pub fn draft_content_blocks_snapshot(&self, cx: &App) -> Vec<acp::ContentBlock> {
+    pub fn draft_content_blocks_snapshot(&self, cx: &App) -> Vec<acp_v1::ContentBlock> {
         let editor = self.editor.read(cx);
         let crease_snapshot = editor.display_map.read(cx).crease_snapshot();
         let buffer_snapshot = editor.buffer().read(cx).snapshot(cx);
@@ -1179,6 +1183,12 @@ impl MessageEditor {
     pub fn clear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.editor.update(cx, |editor, cx| {
             editor.clear(window, cx);
+        });
+        self.clear_mentions(cx);
+    }
+
+    fn clear_mentions(&mut self, cx: &mut Context<Self>) {
+        self.editor.update(cx, |editor, cx| {
             editor.remove_creases(
                 self.mention_set.update(cx, |mention_set, _cx| {
                     mention_set
@@ -1918,11 +1928,15 @@ impl MessageEditor {
 
     pub fn set_message(
         &mut self,
-        message: Vec<acp::ContentBlock>,
+        message: Vec<acp_v1::ContentBlock>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.clear(window, cx);
+        // This also replaces read-only transcript content; input actions such as
+        // Editor::clear intentionally cannot modify those buffers.
+        self.editor
+            .update(cx, |editor, cx| editor.set_text("", window, cx));
+        self.clear_mentions(cx);
         self.insert_message_blocks(message, false, RestoredFrom::EarlierMessage, window, cx);
     }
 
@@ -1930,7 +1944,7 @@ impl MessageEditor {
     /// attachments have not been through the message budget yet.
     pub fn set_draft_message(
         &mut self,
-        message: Vec<acp::ContentBlock>,
+        message: Vec<acp_v1::ContentBlock>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1938,9 +1952,66 @@ impl MessageEditor {
         self.insert_message_blocks(message, false, RestoredFrom::Draft, window, cx);
     }
 
+    pub fn set_source_message(
+        &mut self,
+        source_blocks: Vec<agent_client_protocol::schema::v2::ContentBlock>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use agent_client_protocol::schema::v2::ContentBlock;
+
+        if source_blocks
+            .iter()
+            .all(acp_thread::content::can_convert_to_v1)
+        {
+            match source_blocks
+                .into_iter()
+                .map(acp_thread::content::to_v1)
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(message) => self.set_message(message, window, cx),
+                Err(error) => {
+                    log::error!("failed to display representable source message: {error}");
+                    self.set_message(
+                        vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
+                            i18n::t!(
+                                "[Unsupported message content — this message cannot be edited or resent]"
+                            )
+                            .to_string(),
+                        ))],
+                        window,
+                        cx,
+                    );
+                }
+            }
+            return;
+        }
+
+        let mut visible = Vec::new();
+        for block in source_blocks {
+            if acp_thread::content::can_convert_to_v1(&block) {
+                match acp_thread::content::to_v1(block) {
+                    Ok(block) => visible.push(block),
+                    Err(error) => log::error!("failed to display source content: {error}"),
+                }
+            } else if let ContentBlock::Text(text) = block {
+                visible.push(acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
+                    text.text,
+                )));
+            }
+        }
+        visible.push(acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
+            format!(
+                "\n{}",
+                i18n::t!("[Unsupported message content — this message cannot be edited or resent]")
+            ),
+        )));
+        self.set_message(visible, window, cx);
+    }
+
     pub fn append_message(
         &mut self,
-        message: Vec<acp::ContentBlock>,
+        message: Vec<acp_v1::ContentBlock>,
         separator: Option<&str>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1963,7 +2034,7 @@ impl MessageEditor {
 
     fn insert_message_blocks(
         &mut self,
-        message: Vec<acp::ContentBlock>,
+        message: Vec<acp_v1::ContentBlock>,
         append_to_existing: bool,
         restored_from: RestoredFrom,
         window: &mut Window,
@@ -1983,11 +2054,11 @@ impl MessageEditor {
 
         for chunk in message {
             match chunk {
-                acp::ContentBlock::Text(text_content) => {
+                acp_v1::ContentBlock::Text(text_content) => {
                     append_normalized(&mut text, text_content.text);
                 }
-                acp::ContentBlock::Resource(acp::EmbeddedResource {
-                    resource: acp::EmbeddedResourceResource::TextResourceContents(resource),
+                acp_v1::ContentBlock::Resource(acp_v1::EmbeddedResource {
+                    resource: acp_v1::EmbeddedResourceResource::TextResourceContents(resource),
                     meta,
                     ..
                 }) => {
@@ -2008,7 +2079,7 @@ impl MessageEditor {
                         AttachmentMode::from_meta(meta.as_ref()),
                     ));
                 }
-                acp::ContentBlock::ResourceLink(resource) => {
+                acp_v1::ContentBlock::ResourceLink(resource) => {
                     if let Some(mention_uri) =
                         MentionUri::parse(&resource.uri, path_style).log_err()
                     {
@@ -2023,7 +2094,7 @@ impl MessageEditor {
                         ));
                     }
                 }
-                acp::ContentBlock::Image(acp::ImageContent {
+                acp_v1::ContentBlock::Image(acp_v1::ImageContent {
                     uri,
                     data,
                     mime_type,
@@ -2338,7 +2409,7 @@ fn build_chunks_from_creases(
     supports_embedded_context: bool,
     skip_repeated_content: bool,
     mut resolve: impl FnMut(&CreaseId) -> Option<(MentionUri, Option<Mention>)>,
-) -> (Vec<acp::ContentBlock>, Vec<Entity<Buffer>>) {
+) -> (Vec<acp_v1::ContentBlock>, Vec<Entity<Buffer>>) {
     let mut ix = text
         .char_indices()
         .find(|(_, c)| !c.is_whitespace())
@@ -2367,7 +2438,7 @@ fn build_chunks_from_creases(
             _ => false,
         };
         if repeats_embedded_content {
-            chunks.push(acp::ContentBlock::Text(acp::TextContent::new(
+            chunks.push(acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
                 uri.as_link().to_string(),
             )));
         } else {
@@ -2393,23 +2464,23 @@ fn build_chunks_from_creases(
 /// Marks each draft block of an attachment the user pinned to a mode, so that
 /// restoring the draft pins it again (see [`AttachmentMode::to_meta`]).
 fn with_attachment_modes(
-    blocks: Vec<acp::ContentBlock>,
+    blocks: Vec<acp_v1::ContentBlock>,
     pinned_modes: &HashMap<String, AttachmentMode>,
-) -> Vec<acp::ContentBlock> {
+) -> Vec<acp_v1::ContentBlock> {
     if pinned_modes.is_empty() {
         return blocks;
     }
     blocks
         .into_iter()
         .map(|block| match block {
-            acp::ContentBlock::Resource(mut resource) => {
-                if let acp::EmbeddedResourceResource::TextResourceContents(contents) =
+            acp_v1::ContentBlock::Resource(mut resource) => {
+                if let acp_v1::EmbeddedResourceResource::TextResourceContents(contents) =
                     &resource.resource
                     && let Some(mode) = pinned_modes.get(&contents.uri)
                 {
                     resource.meta = mode.to_meta();
                 }
-                acp::ContentBlock::Resource(resource)
+                acp_v1::ContentBlock::Resource(resource)
             }
             block => block,
         })
@@ -2611,15 +2682,17 @@ fn attached_in_earlier_turn(
     let uri = uri.to_uri().to_string();
     let entries = thread.entries();
     let Some(sent_at) = entries.iter().rposition(|entry| match entry {
-        AgentThreadEntry::UserMessage(message) => message.chunks.iter().any(|chunk| {
-            matches!(
-                chunk,
-                acp::ContentBlock::Resource(acp::EmbeddedResource {
-                    resource: acp::EmbeddedResourceResource::TextResourceContents(resource),
-                    ..
-                }) if resource.uri == uri
-            )
-        }),
+        AgentThreadEntry::UserMessage(message) => {
+            message.content.source_blocks().iter().any(|block| {
+                matches!(
+                    block,
+                    acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource {
+                        resource: acp_v2::EmbeddedResourceResource::TextResourceContents(resource),
+                        ..
+                    }) if resource.uri == uri
+                )
+            })
+        }
         _ => false,
     }) else {
         return false;
@@ -2671,7 +2744,7 @@ fn mention_to_content_block(
     mention: Option<&Mention>,
     supports_embedded_context: bool,
     tracked_buffers: &mut Vec<Entity<Buffer>>,
-) -> acp::ContentBlock {
+) -> acp_v1::ContentBlock {
     match mention {
         Some(Mention::Text {
             content,
@@ -2679,20 +2752,23 @@ fn mention_to_content_block(
         }) => {
             tracked_buffers.extend(mention_tracked_buffers.iter().cloned());
             if supports_embedded_context {
-                acp::ContentBlock::Resource(acp::EmbeddedResource::new(
-                    acp::EmbeddedResourceResource::TextResourceContents(
-                        acp::TextResourceContents::new(content.clone(), uri.to_uri().to_string()),
+                acp_v1::ContentBlock::Resource(acp_v1::EmbeddedResource::new(
+                    acp_v1::EmbeddedResourceResource::TextResourceContents(
+                        acp_v1::TextResourceContents::new(
+                            content.clone(),
+                            uri.to_uri().to_string(),
+                        ),
                     ),
                 ))
             } else {
-                acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
+                acp_v1::ContentBlock::ResourceLink(acp_v1::ResourceLink::new(
                     uri.name(),
                     uri.to_uri().to_string(),
                 ))
             }
         }
-        Some(Mention::Image(mention_image)) => acp::ContentBlock::Image(
-            acp::ImageContent::new(mention_image.data.clone(), mention_image.format.mime_type())
+        Some(Mention::Image(mention_image)) => acp_v1::ContentBlock::Image(
+            acp_v1::ImageContent::new(mention_image.data.clone(), mention_image.format.mime_type())
                 .uri(match uri {
                     MentionUri::File { .. } | MentionUri::PastedImage { .. } => {
                         Some(uri.to_uri().to_string())
@@ -2703,7 +2779,7 @@ fn mention_to_content_block(
                     }
                 }),
         ),
-        _ => acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
+        _ => acp_v1::ContentBlock::ResourceLink(acp_v1::ResourceLink::new(
             uri.name(),
             uri.to_uri().to_string(),
         )),
@@ -2780,7 +2856,7 @@ mod tests {
     use super::PromptLocalCommand;
     use acp_thread::{AgentConnection as _, MentionUri};
     use agent::{ThreadStore, outline};
-    use agent_client_protocol::schema::v1 as acp;
+    use agent_client_protocol::schema::v1 as acp_v1;
     use base64::Engine as _;
     use editor::{
         AnchorRangeExt as _, Editor, EditorMode, MultiBufferOffset, SelectionEffects,
@@ -2791,7 +2867,8 @@ mod tests {
     use futures::{FutureExt as _, StreamExt as _};
     use gpui::{
         AppContext, ClipboardEntry, ClipboardItem, Entity, EventEmitter, ExternalPaths,
-        FocusHandle, Focusable, Task, TestAppContext, UpdateGlobal as _, VisualTestContext,
+        FocusHandle, Focusable, Task, TestAppContext, UpdateGlobal as _, VisualContext,
+        VisualTestContext,
     };
     use language_model::LanguageModelRegistry;
     use lsp::{CompletionContext, CompletionTriggerKind};
@@ -2825,8 +2902,8 @@ mod tests {
             warning: None,
         };
         let session_capabilities = SessionCapabilities::new(
-            acp::PromptCapabilities::default(),
-            vec![acp::AvailableCommand::new("help", "Get help")],
+            acp_v1::PromptCapabilities::default(),
+            vec![acp_v1::AvailableCommand::new("help", "Get help")],
             vec![skill],
         );
 
@@ -2840,17 +2917,17 @@ mod tests {
     #[test]
     fn test_completion_commands_derive_category_from_meta() {
         let session_capabilities = SessionCapabilities::new(
-            acp::PromptCapabilities::default(),
+            acp_v1::PromptCapabilities::default(),
             vec![
-                acp::AvailableCommand::new("compact", "Built-in").meta(
+                acp_v1::AvailableCommand::new("compact", "Built-in").meta(
                     acp_thread::meta_with_command_category(acp_thread::CommandCategory::Native),
                 ),
-                acp::AvailableCommand::new("deploy", "MCP").meta(
+                acp_v1::AvailableCommand::new("deploy", "MCP").meta(
                     acp_thread::meta_with_command_category(acp_thread::CommandCategory::Mcp),
                 ),
                 // No category meta: this is how external ACP agents' commands
                 // arrive, and they should group on their own.
-                acp::AvailableCommand::new("help", "External"),
+                acp_v1::AvailableCommand::new("help", "External"),
             ],
             Vec::new(),
         );
@@ -2886,7 +2963,7 @@ mod tests {
         // `/:<name>`); project-local skills carry their worktree root
         // name. The empty-scope encoding means a worktree literally
         // named `global` no longer collides with the global source.
-        let commands = vec![acp::AvailableCommand::new("help", "Get help")];
+        let commands = vec![acp_v1::AvailableCommand::new("help", "Get help")];
         let skills = vec![make_skill("deploy", ""), make_skill("deploy", "zed")];
         let no_skills = Vec::new();
 
@@ -3145,7 +3222,7 @@ mod tests {
             .unwrap();
 
         // We don't send a resource link for the deleted crease.
-        pretty_assertions::assert_matches!(content.as_slice(), [acp::ContentBlock::Text { .. }]);
+        pretty_assertions::assert_matches!(content.as_slice(), [acp_v1::ContentBlock::Text { .. }]);
     }
 
     #[gpui::test]
@@ -3168,7 +3245,7 @@ mod tests {
         let project = Project::test(fs.clone(), ["/test".as_ref()], cx).await;
         let thread_store = None;
         let session_capabilities = Arc::new(RwLock::new(SessionCapabilities::from_acp_commands(
-            acp::PromptCapabilities::default(),
+            acp_v1::PromptCapabilities::default(),
             vec![],
         )));
 
@@ -3214,7 +3291,7 @@ mod tests {
         // Now simulate Claude providing its list of available commands (which doesn't include file)
         session_capabilities
             .write()
-            .set_available_commands(vec![acp::AvailableCommand::new("help", "Get help")]);
+            .set_available_commands(vec![acp_v1::AvailableCommand::new("help", "Get help")]);
 
         // Test that unsupported slash commands trigger an error when we have a list of available commands
         editor.update_in(cx, |editor, window, cx| {
@@ -3254,7 +3331,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(content.len(), 1);
-        if let acp::ContentBlock::Text(text) = &content[0] {
+        if let acp_v1::ContentBlock::Text(text) = &content[0] {
             assert_eq!(text.text, "Hello Claude!");
         } else {
             panic!("Expected ContentBlock::Text");
@@ -3272,7 +3349,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(content.len(), 1);
-        if let acp::ContentBlock::Text(text) = &content[0] {
+        if let acp_v1::ContentBlock::Text(text) = &content[0] {
             assert_eq!(text.text, "Check this @");
         } else {
             panic!("Expected ContentBlock::Text");
@@ -3329,13 +3406,13 @@ mod tests {
 
         let thread_store = None;
         let session_capabilities = Arc::new(RwLock::new(SessionCapabilities::from_acp_commands(
-            acp::PromptCapabilities::default(),
+            acp_v1::PromptCapabilities::default(),
             vec![
-                acp::AvailableCommand::new("quick-math", "2 + 2 = 4 - 1 = 3"),
-                acp::AvailableCommand::new("say-hello", "Say hello to whoever you want").input(
-                    acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
-                        "<name>",
-                    )),
+                acp_v1::AvailableCommand::new("quick-math", "2 + 2 = 4 - 1 = 3"),
+                acp_v1::AvailableCommand::new("say-hello", "Say hello to whoever you want").input(
+                    acp_v1::AvailableCommandInput::Unstructured(
+                        acp_v1::UnstructuredCommandInput::new("<name>"),
+                    ),
                 ),
             ],
         )));
@@ -3500,7 +3577,7 @@ mod tests {
         let mut cx = VisualTestContext::from_window(window.into(), cx);
 
         let session_capabilities = Arc::new(RwLock::new(SessionCapabilities::from_acp_commands(
-            acp::PromptCapabilities::default(),
+            acp_v1::PromptCapabilities::default(),
             Vec::new(),
         )));
 
@@ -3614,8 +3691,8 @@ mod tests {
         let mut cx = VisualTestContext::from_window(window.into(), cx);
 
         let session_capabilities = Arc::new(RwLock::new(SessionCapabilities::from_acp_commands(
-            acp::PromptCapabilities::default(),
-            vec![acp::AvailableCommand::new("hello", "Say hello")],
+            acp_v1::PromptCapabilities::default(),
+            vec![acp_v1::AvailableCommand::new("hello", "Say hello")],
         )));
 
         // Track every event emitted by the message editor across the
@@ -3768,7 +3845,7 @@ mod tests {
 
         let thread_store = cx.new(|cx| ThreadStore::new(cx));
         let session_capabilities = Arc::new(RwLock::new(SessionCapabilities::from_acp_commands(
-            acp::PromptCapabilities::default(),
+            acp_v1::PromptCapabilities::default(),
             vec![],
         )));
 
@@ -3827,7 +3904,7 @@ mod tests {
 
         message_editor.update(&mut cx, |editor, _cx| {
             editor.session_capabilities.write().set_prompt_capabilities(
-                acp::PromptCapabilities::new()
+                acp_v1::PromptCapabilities::new()
                     .image(true)
                     .audio(true)
                     .embedded_context(true),
@@ -4282,10 +4359,9 @@ mod tests {
                     cx,
                 );
                 // Enable embedded context so files are actually included
-                editor
-                    .session_capabilities
-                    .write()
-                    .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                editor.session_capabilities.write().set_prompt_capabilities(
+                    acp_v1::PromptCapabilities::new().embedded_context(true),
+                );
                 editor
             })
         });
@@ -4362,7 +4438,7 @@ mod tests {
 
         let thread_store = Some(cx.new(|cx| ThreadStore::new(cx)));
 
-        let session_id = acp::SessionId::new("thread-123");
+        let session_id = acp_v1::SessionId::new("thread-123");
         let title = Some("Previous Conversation".into());
 
         let message_editor = cx.update(|window, cx| {
@@ -4450,7 +4526,7 @@ mod tests {
                     cx,
                 );
                 editor.insert_thread_summary(
-                    acp::SessionId::new("thread-123"),
+                    acp_v1::SessionId::new("thread-123"),
                     Some("Previous Conversation".into()),
                     window,
                     cx,
@@ -4508,7 +4584,7 @@ mod tests {
             editor
                 .session_capabilities
                 .write()
-                .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                .set_prompt_capabilities(acp_v1::PromptCapabilities::new().embedded_context(true));
         });
 
         let supported_modes = {
@@ -4564,7 +4640,7 @@ mod tests {
             editor
                 .session_capabilities
                 .write()
-                .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                .set_prompt_capabilities(acp_v1::PromptCapabilities::new().embedded_context(true));
         });
 
         let supported_modes = {
@@ -4716,7 +4792,10 @@ mod tests {
             content,
             vec![
                 "What is in ".into(),
-                acp::ContentBlock::ResourceLink(acp::ResourceLink::new("main.rs", main_rs_uri))
+                acp_v1::ContentBlock::ResourceLink(acp_v1::ResourceLink::new(
+                    "main.rs",
+                    main_rs_uri
+                ))
             ]
         );
 
@@ -4724,7 +4803,7 @@ mod tests {
             editor
                 .session_capabilities
                 .write()
-                .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true))
+                .set_prompt_capabilities(acp_v1::PromptCapabilities::new().embedded_context(true))
         });
 
         let content = message_editor
@@ -4738,9 +4817,9 @@ mod tests {
             content,
             vec![
                 "What is in ".into(),
-                acp::ContentBlock::Resource(acp::EmbeddedResource::new(
-                    acp::EmbeddedResourceResource::TextResourceContents(
-                        acp::TextResourceContents::new(file_content, main_rs_uri)
+                acp_v1::ContentBlock::Resource(acp_v1::EmbeddedResource::new(
+                    acp_v1::EmbeddedResourceResource::TextResourceContents(
+                        acp_v1::TextResourceContents::new(file_content, main_rs_uri)
                     )
                 ))
             ]
@@ -4861,7 +4940,7 @@ mod tests {
         pretty_assertions::assert_eq!(
             content,
             vec![
-                acp::ContentBlock::ResourceLink(acp::ResourceLink::new("test.txt", file_uri)),
+                acp_v1::ContentBlock::ResourceLink(acp_v1::ResourceLink::new("test.txt", file_uri)),
                 "何が問題?".into(),
             ]
         );
@@ -4873,7 +4952,7 @@ mod tests {
             });
         });
         let content = contents(&mut cx).await.unwrap().0;
-        let Some(acp::ContentBlock::ResourceLink(link)) = content.first() else {
+        let Some(acp_v1::ContentBlock::ResourceLink(link)) = content.first() else {
             panic!("expected the selection to be attached, got: {content:?}");
         };
         assert_eq!(
@@ -4885,9 +4964,9 @@ mod tests {
         // A file the user already mentioned by hand is not attached twice.
         message_editor.update_in(&mut cx, |message_editor, window, cx| {
             message_editor.set_message(
-                vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
-                    "test.txt", file_uri,
-                ))],
+                vec![acp_v1::ContentBlock::ResourceLink(
+                    acp_v1::ResourceLink::new("test.txt", file_uri),
+                )],
                 window,
                 cx,
             );
@@ -4901,9 +4980,9 @@ mod tests {
         let content = contents(&mut cx).await.unwrap().0;
         pretty_assertions::assert_eq!(
             content,
-            vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
-                "test.txt", file_uri
-            ))]
+            vec![acp_v1::ContentBlock::ResourceLink(
+                acp_v1::ResourceLink::new("test.txt", file_uri)
+            )]
         );
     }
 
@@ -4971,10 +5050,9 @@ mod tests {
                     window,
                     cx,
                 );
-                editor
-                    .session_capabilities
-                    .write()
-                    .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                editor.session_capabilities.write().set_prompt_capabilities(
+                    acp_v1::PromptCapabilities::new().embedded_context(true),
+                );
                 editor.set_thread(thread.downgrade());
                 editor
             });
@@ -5021,8 +5099,8 @@ mod tests {
         let contents = |cx: &mut VisualTestContext| {
             message_editor.update(cx, |message_editor, cx| message_editor.contents(false, cx))
         };
-        let attaches_file = |content: &[acp::ContentBlock]| {
-            matches!(content.first(), Some(acp::ContentBlock::Resource(_)))
+        let attaches_file = |content: &[acp_v1::ContentBlock]| {
+            matches!(content.first(), Some(acp_v1::ContentBlock::Resource(_)))
         };
 
         let first = contents(&mut cx).await.unwrap().0;
@@ -5033,7 +5111,11 @@ mod tests {
 
         // What the thread view does when that message is sent.
         thread.update(&mut cx, |thread, cx| {
-            thread.push_user_content_block(None, sent_file, cx);
+            thread.push_user_content_block(
+                None,
+                acp_thread::content::from_v1(sent_file).expect("an attached file converts"),
+                cx,
+            );
         });
         action_log.update(&mut cx, |action_log, cx| {
             action_log.buffer_read(buffer.clone(), cx);
@@ -5099,10 +5181,9 @@ mod tests {
                     window,
                     cx,
                 );
-                editor
-                    .session_capabilities
-                    .write()
-                    .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                editor.session_capabilities.write().set_prompt_capabilities(
+                    acp_v1::PromptCapabilities::new().embedded_context(true),
+                );
                 editor
             })
         });
@@ -5131,12 +5212,12 @@ mod tests {
         });
     }
 
-    fn resource_texts(blocks: &[acp::ContentBlock]) -> Vec<(String, String)> {
+    fn resource_texts(blocks: &[acp_v1::ContentBlock]) -> Vec<(String, String)> {
         blocks
             .iter()
             .filter_map(|block| match block {
-                acp::ContentBlock::Resource(acp::EmbeddedResource {
-                    resource: acp::EmbeddedResourceResource::TextResourceContents(resource),
+                acp_v1::ContentBlock::Resource(acp_v1::EmbeddedResource {
+                    resource: acp_v1::EmbeddedResourceResource::TextResourceContents(resource),
                     ..
                 }) => Some((resource.uri.clone(), resource.text.clone())),
                 _ => None,
@@ -5229,7 +5310,7 @@ mod tests {
             editor
                 .session_capabilities
                 .write()
-                .set_prompt_capabilities(acp::PromptCapabilities::new());
+                .set_prompt_capabilities(acp_v1::PromptCapabilities::new());
         });
         let blocks = message_editor
             .update(cx, |editor, cx| editor.contents(false, cx))
@@ -5240,7 +5321,7 @@ mod tests {
         assert_eq!(
             blocks
                 .iter()
-                .filter(|block| matches!(block, acp::ContentBlock::ResourceLink(_)))
+                .filter(|block| matches!(block, acp_v1::ContentBlock::ResourceLink(_)))
                 .count(),
             3,
             "{blocks:?}"
@@ -5256,10 +5337,10 @@ mod tests {
             setup_embedded_message_editor(json!({"big.txt": big.clone()}), cx).await;
         set_context_attachment_limits(128 * 1024, 16 * 1024, cx);
         let blocks = vec![
-            acp::ContentBlock::Text(acp::TextContent::new("見て ".to_string())),
-            acp::ContentBlock::Resource(acp::EmbeddedResource::new(
-                acp::EmbeddedResourceResource::TextResourceContents(
-                    acp::TextResourceContents::new(
+            acp_v1::ContentBlock::Text(acp_v1::TextContent::new("見て ".to_string())),
+            acp_v1::ContentBlock::Resource(acp_v1::EmbeddedResource::new(
+                acp_v1::EmbeddedResourceResource::TextResourceContents(
+                    acp_v1::TextResourceContents::new(
                         big.clone(),
                         MentionUri::File {
                             abs_path: path!("/project/big.txt").into(),
@@ -5413,7 +5494,7 @@ mod tests {
             editor
                 .session_capabilities
                 .write()
-                .set_prompt_capabilities(acp::PromptCapabilities::new());
+                .set_prompt_capabilities(acp_v1::PromptCapabilities::new());
         });
         let (chips, total) = estimates(cx);
         assert!(
@@ -5507,10 +5588,9 @@ mod tests {
                     window,
                     cx,
                 );
-                editor
-                    .session_capabilities
-                    .write()
-                    .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                editor.session_capabilities.write().set_prompt_capabilities(
+                    acp_v1::PromptCapabilities::new().embedded_context(true),
+                );
                 editor
             })
         });
@@ -5602,14 +5682,16 @@ mod tests {
         settle(&mut cx);
         message_editor.update_in(&mut cx, |message_editor, window, cx| {
             message_editor.set_message(
-                vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
-                    "test.txt",
-                    MentionUri::File {
-                        abs_path: path!("/dir/test.txt").into(),
-                    }
-                    .to_uri()
-                    .to_string(),
-                ))],
+                vec![acp_v1::ContentBlock::ResourceLink(
+                    acp_v1::ResourceLink::new(
+                        "test.txt",
+                        MentionUri::File {
+                            abs_path: path!("/dir/test.txt").into(),
+                        }
+                        .to_uri()
+                        .to_string(),
+                    ),
+                )],
                 window,
                 cx,
             );
@@ -5716,7 +5798,7 @@ mod tests {
         assert!(
             blocks.iter().any(|block| matches!(
                 block,
-                acp::ContentBlock::Text(text) if text.text.starts_with("[@a.txt](file:")
+                acp_v1::ContentBlock::Text(text) if text.text.starts_with("[@a.txt](file:")
             )),
             "the repeated mention should stay in the message as a link: {blocks:?}"
         );
@@ -6430,27 +6512,26 @@ mod tests {
             editor
                 .session_capabilities
                 .write()
-                .set_prompt_capabilities(acp::PromptCapabilities::new().embedded_context(true));
+                .set_prompt_capabilities(acp_v1::PromptCapabilities::new().embedded_context(true));
             editor.draft_content_blocks_snapshot(cx)
         });
 
         // Each selection mention must round-trip as a `Resource` block carrying
         // its URI and content, not as a `Text` block containing the fold
         // placeholder string.
-        let resource_uris: Vec<&str> =
-            blocks
-                .iter()
-                .filter_map(|block| match block {
-                    acp::ContentBlock::Resource(acp::EmbeddedResource {
-                        resource:
-                            acp::EmbeddedResourceResource::TextResourceContents(
-                                acp::TextResourceContents { uri, .. },
-                            ),
-                        ..
-                    }) => Some(uri.as_str()),
-                    _ => None,
-                })
-                .collect();
+        let resource_uris: Vec<&str> = blocks
+            .iter()
+            .filter_map(|block| match block {
+                acp_v1::ContentBlock::Resource(acp_v1::EmbeddedResource {
+                    resource:
+                        acp_v1::EmbeddedResourceResource::TextResourceContents(
+                            acp_v1::TextResourceContents { uri, .. },
+                        ),
+                    ..
+                }) => Some(uri.as_str()),
+                _ => None,
+            })
+            .collect();
         assert_eq!(
             resource_uris.len(),
             2,
@@ -6458,7 +6539,7 @@ mod tests {
         );
         assert!(resource_uris.contains(&fixture.first_uri.to_uri().to_string().as_str()));
         for block in &blocks {
-            if let acp::ContentBlock::Text(text) = block {
+            if let acp_v1::ContentBlock::Text(text) = block {
                 assert!(
                     !text.text.split_whitespace().any(|word| word == "selection"),
                     "text block must not contain bare fold placeholder: {:?}",
@@ -6860,7 +6941,7 @@ mod tests {
             message_editor
                 .session_capabilities
                 .write()
-                .set_prompt_capabilities(acp::PromptCapabilities::new().image(true));
+                .set_prompt_capabilities(acp_v1::PromptCapabilities::new().image(true));
         });
 
         let temporary_image_path = write_test_png_file(None);
@@ -7098,7 +7179,7 @@ mod tests {
 
         message_editor.update_in(cx, |editor, window, cx| {
             editor.set_message(
-                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
                     "hello world".to_string(),
                 ))],
                 window,
@@ -7112,6 +7193,93 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_source_message_known_text_remains_editable(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (message_editor, cx) = setup_message_editor(cx).await;
+
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_source_message(
+                vec![agent_client_protocol::schema::v2::ContentBlock::Text(
+                    agent_client_protocol::schema::v2::TextContent::new("original"),
+                )],
+                window,
+                cx,
+            );
+        });
+        let workspace = message_editor.read_with(cx, |editor, _| {
+            editor.workspace.upgrade().expect("message workspace")
+        });
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.active_pane().update(cx, |pane, cx| {
+                pane.add_item(
+                    Box::new(cx.new(|_| MessageEditorItem(message_editor.clone()))),
+                    true,
+                    true,
+                    None,
+                    window,
+                    cx,
+                );
+            });
+        });
+        cx.focus(&message_editor);
+        cx.simulate_input("edited");
+        assert!(
+            message_editor
+                .update(cx, |editor, cx| editor.text(cx))
+                .contains("edited")
+        );
+    }
+
+    #[gpui::test]
+    async fn test_source_message_unknown_content_indicated_with_known_text(
+        cx: &mut TestAppContext,
+    ) {
+        use agent_client_protocol::schema::v2 as acp_v2;
+
+        init_test(cx);
+        let (message_editor, cx) = setup_message_editor(cx).await;
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_read_only(true, cx);
+            editor.set_source_message(
+                vec![
+                    acp_v2::ContentBlock::Text(acp_v2::TextContent::new("visible text")),
+                    acp_v2::ContentBlock::Other(acp_v2::OtherContentBlock::new(
+                        "_future",
+                        Default::default(),
+                    )),
+                ],
+                window,
+                cx,
+            );
+            assert!(editor.text(cx).contains("visible text"));
+            assert!(editor.text(cx).contains("Unsupported message content"));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_source_message_unknown_annotation_indicated_with_text(cx: &mut TestAppContext) {
+        use agent_client_protocol::schema::v2 as acp_v2;
+
+        init_test(cx);
+        let (message_editor, cx) = setup_message_editor(cx).await;
+        message_editor.update_in(cx, |editor, window, cx| {
+            editor.set_read_only(true, cx);
+            editor.set_source_message(
+                vec![acp_v2::ContentBlock::Text(
+                    acp_v2::TextContent::new("annotated text").annotations(
+                        acp_v2::Annotations::new()
+                            .audience(vec![acp_v2::Role::Other("_future".into())]),
+                    ),
+                )],
+                window,
+                cx,
+            );
+            assert!(editor.text(cx).contains("annotated text"));
+            assert!(editor.text(cx).contains("Unsupported message content"));
+        });
+    }
+
+    #[gpui::test]
     async fn test_set_message_normalizes_crlf_before_mention(cx: &mut TestAppContext) {
         init_test(cx);
         let (message_editor, cx) = setup_message_editor(cx).await;
@@ -7119,8 +7287,8 @@ mod tests {
         message_editor.update_in(cx, |editor, window, cx| {
             editor.set_message(
                 vec![
-                    acp::ContentBlock::Text(acp::TextContent::new("before\r\n".to_string())),
-                    acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
+                    acp_v1::ContentBlock::Text(acp_v1::TextContent::new("before\r\n".to_string())),
+                    acp_v1::ContentBlock::ResourceLink(acp_v1::ResourceLink::new(
                         "file.txt",
                         "file:///project/file.txt",
                     )),
@@ -7146,7 +7314,7 @@ mod tests {
         // Set initial content.
         message_editor.update_in(cx, |editor, window, cx| {
             editor.set_message(
-                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
                     "old content".to_string(),
                 ))],
                 window,
@@ -7157,7 +7325,7 @@ mod tests {
         // Replace with new content.
         message_editor.update_in(cx, |editor, window, cx| {
             editor.set_message(
-                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
                     "new content".to_string(),
                 ))],
                 window,
@@ -7179,7 +7347,7 @@ mod tests {
 
         message_editor.update_in(cx, |editor, window, cx| {
             editor.append_message(
-                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
                     "appended".to_string(),
                 ))],
                 Some("\n\n"),
@@ -7203,7 +7371,7 @@ mod tests {
         // Seed initial content.
         message_editor.update_in(cx, |editor, window, cx| {
             editor.set_message(
-                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
                     "initial".to_string(),
                 ))],
                 window,
@@ -7214,7 +7382,7 @@ mod tests {
         // Append with separator.
         message_editor.update_in(cx, |editor, window, cx| {
             editor.append_message(
-                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
                     "appended".to_string(),
                 ))],
                 Some("\n\n"),
@@ -7267,7 +7435,7 @@ mod tests {
         // Seed plain-text prefix so the editor is non-empty before appending.
         message_editor.update_in(cx, |editor, window, cx| {
             editor.set_message(
-                vec![acp::ContentBlock::Text(acp::TextContent::new(
+                vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
                     "prefix text".to_string(),
                 ))],
                 window,
@@ -7278,10 +7446,9 @@ mod tests {
         // Append a message that contains a ResourceLink mention.
         message_editor.update_in(cx, |editor, window, cx| {
             editor.append_message(
-                vec![acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
-                    "file.txt",
-                    "file:///project/file.txt",
-                ))],
+                vec![acp_v1::ContentBlock::ResourceLink(
+                    acp_v1::ResourceLink::new("file.txt", "file:///project/file.txt"),
+                )],
                 Some("\n\n"),
                 window,
                 cx,

@@ -37,7 +37,7 @@ pub enum FilterSortOrder {
 }
 
 #[derive(Clone)]
-pub(crate) struct TabularDataPreviewSettings {
+pub(crate) struct TableViewSettings {
     pub(crate) rendering_with: RowRenderMechanism,
     pub(crate) vertical_alignment: VerticalAlignment,
     pub(crate) numbering_type: RowIdentifiers,
@@ -51,7 +51,7 @@ pub(crate) struct TabularDataPreviewSettings {
     pub(crate) first_row_is_header: bool,
 }
 
-impl Default for TabularDataPreviewSettings {
+impl Default for TableViewSettings {
     fn default() -> Self {
         Self {
             rendering_with: RowRenderMechanism::default(),
@@ -67,7 +67,7 @@ impl Default for TabularDataPreviewSettings {
     }
 }
 
-impl TabularDataPreviewSettings {
+impl TableViewSettings {
     /// `multiline_cells_enabled` only makes sense with `VariableList`, which
     /// supports per-row heights; `UniformList` requires every row to share one
     /// height, so multiline is never honored there regardless of the setting.

@@ -1284,6 +1284,7 @@ mod tests {
             sidebar_enabled: true,
             panel_thread_history: true,
             panel_tab_bar: Default::default(),
+            max_idle_retained_threads: 5,
             threads_sidebar: agent_settings::ThreadsSidebarSettings {
                 auto_open: true,
                 default_width: px(300.),

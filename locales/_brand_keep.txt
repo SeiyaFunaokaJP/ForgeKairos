@@ -52,6 +52,7 @@ message	fact	-	Help fix Zed by sending crash reports so we can fix critical issu
 message	fact	-	Help improve Zed by sending anonymous usage data
 message	service	-	This consent is shared with the \"Zed\" LLM provider on the AI page. Withdrawing it applies to both edit predictions and the agent.
 message	service	-	Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above.
+message	service	-	Zed's edit predictions not included in the Free plan.
 message	service	-	Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev.
 message	service	-	OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below.
 message	service	settings schema	Allow Zed to collect training data from open-source projects.

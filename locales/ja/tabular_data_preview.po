@@ -39,6 +39,9 @@ msgstr "前方一致"
 msgid "Blank"
 msgstr "空白"
 
+msgid "Cannot preview JSONL line {line_number}: expected a JSON object"
+msgstr "JSONL の {line_number} 行目をプレビューできません: JSON オブジェクトではありません"
+
 msgid "Cell Comparison ({} ↔ {})"
 msgstr "セルの比較 ({} ↔ {})"
 
@@ -207,6 +210,12 @@ msgstr "ここに 1 列挿入"
 msgid "Insert a row here"
 msgstr "ここに 1 行挿入"
 
+msgid "JSON Lines files can't be compared as tables"
+msgstr "JSON Lines のファイルは表として比較できません"
+
+msgid "JSON Lines files can't be edited in the grid. Open the text to edit them"
+msgstr "JSON Lines のファイルはグリッドでは編集できません。編集するにはテキストを開いてください"
+
 msgid "Joins the first condition with \"{}\" to show {}"
 msgstr "1 つ目の条件と「{}」でつないで、{}を表示します"
 
@@ -251,6 +260,9 @@ msgstr "貼り付け"
 
 msgid "Pick values, or filter with the conditions below"
 msgstr "値を選ぶか、下の条件で絞り込みます"
+
+msgid "Preview requires a single file"
+msgstr "プレビューには 1 つのファイルが必要です"
 
 msgid "Previous Difference"
 msgstr "前の差分"

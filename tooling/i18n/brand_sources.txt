@@ -45,7 +45,7 @@ crates/branding/src/branding.rs	identifier	ZedIndustries.Zed.Dev
 crates/branding/src/branding.rs	identifier	ZedIndustries.Zed.Nightly
 crates/branding/src/branding.rs	identifier	ZedIndustries.Zed.Preview
 crates/branding/src/branding.rs	identifier	dev.zed.Zed
-crates/browser_panel/src/webview_windows.rs	log	WebView2: the shared environment was created with proxy {:?}; restart Zed for browser.use_egress_proxy changes to take effect
+crates/browser_panel/src/webview_windows.rs	log	WebView2: the {profile:?} environment was created with proxy {:?}; restart Zed for browser.use_egress_proxy changes to take effect
 crates/cli/src/main.rs	identifier	Handshake after Zed spawn
 crates/cli/src/main.rs	identifier	Handshake before Zed spawn
 crates/collab/src/auth.rs	dev	Dev servers were removed in Zed 0.157 please upgrade to SSH remoting
@@ -93,6 +93,8 @@ crates/language_models/src/provider/cloud.rs	service	Failed to sign in with your
 crates/language_models/src/provider/cloud.rs	service	Fast mode routes requests through the upstream provider's fast mode or priority tier. The upstream provider's premium per-token pricing applies and is passed through to your Zed billing.
 crates/language_models/src/provider/cloud.rs	service	The configuration surface for Zed's hosted AI models, showing the user's connection status, current plan, trial eligibility, and entry points for enabling the Zed model provider.
 crates/language_models/src/provider/cloud.rs	service	You are not signed in to your Zed account. Sign in to continue.
+crates/language_models_cloud/src/language_models_cloud.rs	service	Not signed in to Zed.
+crates/language_models_cloud/src/language_models_cloud.rs	service	Zed rejected the credentials for this request.
 crates/markdown/examples/markdown_as_child.rs	dev	Zed Mono
 crates/node_runtime/src/node_runtime.rs	log	Zed managed Node.js binary at {} failed check with output: {:?}
 crates/node_runtime/src/node_runtime.rs	log	Zed managed Node.js binary at {} failed check, so re-downloading it. Error: {}

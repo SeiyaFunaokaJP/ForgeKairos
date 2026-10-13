@@ -27,6 +27,7 @@ branding.workspace = true
 buffer_diff.workspace = true
 chrono.workspace = true
 collections.workspace = true
+diffy.workspace = true
 # The editor-wide network allowlist, which a sandbox helper's proxy is handed
 # to nest a command's network inside — the WSL one's and a remote host's
 # alike (ADR-F17 / ADR-F46 / ADR-F18).
@@ -42,13 +43,13 @@ i18n.workspace = true
 itertools.workspace = true
 language.workspace = true
 language_model.workspace = true
+libc.workspace = true
 log.workspace = true
 markdown.workspace = true
 mime.workspace = true
 parking_lot = { workspace = true, optional = true }
 paths.workspace = true
 image.workspace = true
-portable-pty.workspace = true
 project.workspace = true
 sandbox.workspace = true
 serde.workspace = true

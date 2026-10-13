@@ -1033,6 +1033,22 @@ msgctxt "SoftWrap"
 msgid "Prefer Line"
 msgstr "折り返さない (旧)"
 
+msgctxt "SoftWrapIndent"
+msgid "Extra One"
+msgstr "1 段深く"
+
+msgctxt "SoftWrapIndent"
+msgid "Extra Two"
+msgstr "2 段深く"
+
+msgctxt "SoftWrapIndent"
+msgid "None"
+msgstr "インデントしない"
+
+msgctxt "SoftWrapIndent"
+msgid "Same"
+msgstr "元の行と同じ"
+
 msgctxt "StatusStyle"
 msgid "Icon"
 msgstr "アイコン"
@@ -1516,6 +1532,10 @@ msgstr "削除されたファイルを自動的に閉じます。"
 msgctxt "settings"
 msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
 msgstr "エージェントのコンテキストが大きくなりすぎたときに自動的に圧縮し、以前のメッセージを要約してモデルのコンテキストウィンドウに空きを作ります。"
+
+msgctxt "settings"
+msgid "Automatically open menus in the titlebar on hover."
+msgstr "タイトルバーのメニューを、ホバーしたときに自動で開きます。"
 
 msgctxt "settings"
 msgid "Automatically show a signature help pop-up."
@@ -2942,6 +2962,10 @@ msgid "How to highlight the current line."
 msgstr "現在の行をどのようにハイライトするかを設定します。"
 
 msgctxt "settings"
+msgid "How to indent soft-wrapped lines."
+msgstr "ソフト折り返しで続く行のインデントの方法を設定します。"
+
+msgctxt "settings"
 msgid "How to perform a buffer format."
 msgstr "バッファーのフォーマット方法を設定します。"
 
@@ -3262,6 +3286,10 @@ msgid "Max Content Width"
 msgstr "内容の最大幅"
 
 msgctxt "settings"
+msgid "Max Idle Threads"
+msgstr "アイドル状態のスレッドの最大数"
+
+msgctxt "settings"
 msgid "Max Output Tokens"
 msgstr "最大出力トークン数"
 
@@ -3316,6 +3344,10 @@ msgstr "警告を表示するまでのコミットメッセージのタイトル
 msgctxt "settings"
 msgid "Maximum number of columns to display in the minimap."
 msgstr "ミニマップに表示する最大の列数です。"
+
+msgctxt "settings"
+msgid "Maximum number of idle agent threads with loadable sessions to keep loaded. When the limit is exceeded, the least recently updated threads are unloaded."
+msgstr "セッションを読み込み直せるアイドル状態のエージェントのスレッドを、読み込んだまま残しておく最大数です。上限を超えると、更新の古いスレッドから解放します。"
 
 msgctxt "settings"
 msgid "Maximum number of lines to keep in scrollback history (max: 100,000; 0 disables scrolling)."
@@ -3472,6 +3504,10 @@ msgstr "マクロのフォルダーを閉じて開く"
 msgctxt "settings"
 msgid "Open Markdown Files in Preview"
 msgstr "Markdown ファイルをプレビューで開く"
+
+msgctxt "settings"
+msgid "Open Menus on Hover"
+msgstr "ホバーでメニューを開く"
 
 msgctxt "settings"
 msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
@@ -4460,6 +4496,10 @@ msgstr "スニペットの並び順"
 msgctxt "settings"
 msgid "Soft Wrap"
 msgstr "折り返し"
+
+msgctxt "settings"
+msgid "Soft Wrap Indent"
+msgstr "折り返した行のインデント"
 
 msgctxt "settings"
 msgid "Sort By"

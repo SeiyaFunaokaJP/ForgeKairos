@@ -8,9 +8,6 @@ impl PlanDefinitions {
     pub fn free_plan(&self) -> impl IntoElement {
         List::new()
             .child(ListBulletItem::new(i18n::t!(
-                "2,000 accepted edit predictions"
-            )))
-            .child(ListBulletItem::new(i18n::t!(
                 "Unlimited prompts with your AI API keys"
             )))
             .child(ListBulletItem::new(i18n::t!(

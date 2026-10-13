@@ -4,7 +4,7 @@
 
 文書サイト: <https://seiyafunaokajp.github.io/ForgeKairos/ja/> (ソースは `pages/`)。Zed との違いの一覧は [Zed からの変更点](pages/src/ja/changes.md)。
 
-ForgeKairos は [Zed](https://zed.dev) のフォーク (upstream のリリースを `git merge` で 1 版ずつ取り込む。現在 v1.22.0 ベース)。
+ForgeKairos は [Zed](https://zed.dev) のフォーク (upstream のリリースを `git merge` で 1 版ずつ取り込む。現在 v1.23.3 ベース)。
 日本語 UI、ネットワーク統制 (egress deny-by-default)、ローカル LLM 第一の AI 方針、
 そして VSCode が切り捨てた古い Linux への SSH リモート対応を自前改造で足した Windows 向け IDE。
 
@@ -114,7 +114,7 @@ Linux と macOS のパッケージは `pwsh script/bundle.ps1 -Os linux|macos|al
 ## upstream との関係
 
 - fork 元: [zed-industries/zed](https://github.com/zed-industries/zed) v1.17.2。
-  upstream のリリースタグを `git merge` で 1 版ずつ取り込む (rebase はしない。ADR-F63)。現在 v1.22.0 ベース
+  upstream のリリースタグを `git merge` で 1 版ずつ取り込む (rebase はしない。ADR-F63)。現在 v1.23.3 ベース
 - upstream の開発規約 (`.rules`、`./script/clippy`、GPUI イディオム) は引き続き遵守する
 - upstream 由来のドキュメント (`docs/src/`、`CONTRIBUTING.md` 等) はそのまま残っているが、
   フォーク独自機能の記述は本 README が正

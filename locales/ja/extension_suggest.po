@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Emmet expands abbreviations such as `ul>li*3` into HTML and `m10` into CSS."
+msgstr "Emmet は `ul>li*3` のような省略記法を HTML に、`m10` を CSS に展開します。"
+
+msgid "Emmet is available for this file"
+msgstr "このファイルでは Emmet を使えます"
+
+msgid "Install Emmet"
+msgstr "Emmet をインストール"

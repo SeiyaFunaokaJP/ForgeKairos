@@ -323,6 +323,9 @@ impl TableDiffView {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
+        if !refuse_comparison_if_not_delimited(&grid, cx) {
+            return;
+        }
         let pane = grid.read(cx);
         let Some(buffer) = pane.buffer(cx) else {
             return;
@@ -377,6 +380,9 @@ impl TableDiffView {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
+        if !refuse_comparison_if_not_delimited(&grid, cx) {
+            return;
+        }
         let pane = grid.read(cx);
         let Some(buffer) = pane.buffer(cx) else {
             return;
@@ -421,7 +427,7 @@ impl TableDiffView {
                 .extension()
                 .and_then(|extension| extension.to_str())
                 .and_then(crate::parser::TabularFormat::from_extension)
-                .map(crate::parser::TabularFormat::delimiter)
+                .and_then(crate::parser::TabularFormat::delimiter)
                 .unwrap_or(delimiter);
 
             match load_project_file(project, &path, cx).await {
@@ -1786,6 +1792,19 @@ fn column_characters(left: &DiffSide, right: &DiffSide, column_count: usize) -> 
 fn row_number_digits(left: &DiffSide, right: &DiffSide) -> usize {
     let last = left.last_row_number().max(right.last_row_number()).max(1);
     last.to_string().len().max(MINIMUM_ROW_NUMBER_DIGITS)
+}
+
+/// Whether the grid's file can be compared cell by cell, telling the user why
+/// not when it cannot: the comparison splits both sides into delimited fields,
+/// which a JSON Lines file does not have.
+fn refuse_comparison_if_not_delimited(grid: &Entity<TabularDataPreviewPane>, cx: &mut App) -> bool {
+    grid.update(cx, |grid, cx| {
+        if grid.current_format(cx).delimiter().is_some() {
+            return true;
+        }
+        grid.set_status_message(i18n::t!("JSON Lines files can't be compared as tables"), cx);
+        false
+    })
 }
 
 fn file_name(buffer: &Entity<Buffer>, cx: &App) -> String {

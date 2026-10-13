@@ -32,9 +32,13 @@ serde_json.workspace = true
 # ADR-F49 決定 21: checks the pinned Node.js archives against their digests.
 sha2.workspace = true
 smol.workspace = true
+thiserror.workspace = true
 util.workspace = true
 watch.workspace = true
 which.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 async-std.workspace = true

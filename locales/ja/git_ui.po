@@ -862,6 +862,9 @@ msgid "Diff ({count} file)"
 msgid_plural "Diff ({count} files)"
 msgstr[0] "差分 ({count} ファイル)"
 
+msgid "Discard"
+msgstr "破棄"
+
 msgid "Discard Changes"
 msgstr "変更を破棄"
 
@@ -874,11 +877,17 @@ msgstr "すべて破棄 (--hard)"
 msgid "Discard Tracked Changes"
 msgstr "追跡中の変更を破棄"
 
+msgid "Discard and Trash"
+msgstr "破棄してゴミ箱へ移動"
+
 msgid "Discard changes to these files?"
 msgstr "これらのファイルの変更を破棄しますか?"
 
-msgid "Discard changes to these files? New files are moved to the trash."
-msgstr "これらのファイルの変更を破棄しますか? 新しいファイルはゴミ箱へ移動します。"
+msgid "Discard changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "{tracked_count} 件のファイルの変更を破棄し、{untracked_count} 件のファイルをゴミ箱へ移動しますか?"
+
+msgid "Discard changes to {tracked_count} files?"
+msgstr "{tracked_count} 件のファイルの変更を破棄しますか?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "このファイルの変更を破棄し、最後のコミットの内容に戻します"
@@ -1028,6 +1037,9 @@ msgstr "リモートを作成できませんでした"
 msgid "Failed to drop stash"
 msgstr "スタッシュを破棄できませんでした"
 
+msgid "Failed to generate commit message: {error}"
+msgstr "コミットメッセージを生成できませんでした: {error}"
+
 msgid "Failed to generate commit message: {err}"
 msgstr "コミットメッセージを生成できませんでした: {err}"
 
@@ -1043,8 +1055,8 @@ msgstr "スタッシュを取り出せませんでした"
 msgid "Failed to rename branch"
 msgstr "ブランチ名を変更できませんでした"
 
-msgid "Failed to trash file"
-msgstr "ファイルをゴミ箱へ移動できませんでした"
+msgid "Failed to revert changes"
+msgstr "変更を元に戻せませんでした"
 
 msgid "Failed to trash files"
 msgstr "ファイルをゴミ箱へ移動できませんでした"
@@ -2640,6 +2652,9 @@ msgstr "これらのファイルをゴミ箱へ移動しますか?"
 
 msgid "Trash {count} Files"
 msgstr "{count} 個のファイルをゴミ箱へ移動"
+
+msgid "Trash {untracked_count} files?"
+msgstr "{untracked_count} 件のファイルをゴミ箱へ移動しますか?"
 
 msgid "Trash {}?"
 msgstr "{} をゴミ箱へ移動しますか?"

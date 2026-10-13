@@ -616,6 +616,22 @@ msgid "Contained between the left and right docks"
 msgstr "左右のドックの間に収まります"
 
 msgctxt "settings schema"
+msgid "Continuation lines get 1 extra indent level beyond the original."
+msgstr "折り返した行を、元の行より 1 段深くインデントします。"
+
+msgctxt "settings schema"
+msgid "Continuation lines get 2 extra indent levels beyond the original."
+msgstr "折り返した行を、元の行より 2 段深くインデントします。"
+
+msgctxt "settings schema"
+msgid "Continuation lines match the original line's indentation."
+msgstr "折り返した行を、元の行と同じ深さにインデントします。"
+
+msgctxt "settings schema"
+msgid "Continuation lines start at column 0."
+msgstr "折り返した行を 0 桁目から始めます。"
+
+msgctxt "settings schema"
 msgid "Control what info is collected by Zed."
 msgstr "Zed が収集する情報を制御します。"
 
@@ -1536,6 +1552,10 @@ msgid "How to highlight the current line in the minimap.\n\nDefault: inherits ed
 msgstr "ミニマップで現在の行をどのようにハイライトするかを設定します。\n\n既定値: エディターの行ハイライト設定を継承します"
 
 msgctxt "settings schema"
+msgid "How to indent soft-wrapped continuation lines.\n\nDefault: same"
+msgstr "ソフト折り返しで続く行のインデントの方法です。\n\n既定値: same"
+
+msgctxt "settings schema"
 msgid "How to order sibling entries in the project panel.\n\nDefault: directories_first"
 msgstr "プロジェクトパネルで同階層のエントリをどのように並べ替えるかを設定します。\n\n既定値: directories_first"
 
@@ -1798,6 +1818,10 @@ msgstr "ミニマップに表示する最大列数です。\n\n既定値: 80"
 msgctxt "settings schema"
 msgid "Maximum number of columns to keep in REPL's scrollback buffer.\nClamped with [20, 512] range.\n\nDefault: 128"
 msgstr "REPL のスクロールバッファーに保持する最大列数です。[20, 512] の範囲に制限されます。\n\n既定値: 128"
+
+msgctxt "settings schema"
+msgid "Maximum number of idle threads with loadable sessions to retain in the\nagent panel. Set to 0 to unload every eligible idle thread when it is\nno longer active.\n\nDefault: 5"
+msgstr "エージェントパネルに残しておく、セッションを読み込み直せるアイドル状態のスレッドの最大数です。0 にすると、対象のアイドル状態のスレッドは、アクティブでなくなった時点ですべて解放します。\n\n既定値: 5"
 
 msgctxt "settings schema"
 msgid "Maximum number of lines of output to display before scrolling.\nSet to 0 to disable output height limits.\n\nDefault: 0"
@@ -4302,6 +4326,10 @@ msgstr "外部ソースからドロップされたファイルを自動的に開
 msgctxt "settings schema"
 msgid "Whether to automatically open newly created files in the editor.\n\nDefault: true"
 msgstr "新しく作成されたファイルをエディターで自動的に開くかどうかを指定します。\n\n既定値: true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically open the menus in the title bar on hover.\n\nDefault: false"
+msgstr "タイトルバーのメニューを、ホバーしたときに自動で開くかどうか。\n\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether to automatically show a signature help pop-up or not.\n\nDefault: false"

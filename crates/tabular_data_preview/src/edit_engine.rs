@@ -724,7 +724,7 @@ impl<'a> EditEngine<'a> {
                 .iter()
                 .map_while(|cell| match cell {
                     TableCell::Real { position, .. } => Some(self.span_offsets(position)),
-                    TableCell::Virtual => None,
+                    TableCell::Generated(_) | TableCell::Virtual => None,
                 })
                 .collect(),
         })

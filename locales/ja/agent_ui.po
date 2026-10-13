@@ -158,6 +158,12 @@ msgstr "エージェントプロファイル"
 msgid "Agent Update Available"
 msgstr "エージェントの更新があります"
 
+msgid "Agent refused to respond to this request"
+msgstr "エージェントがこのリクエストへの応答を拒否しました"
+
+msgid "Agent stopped at the output token limit"
+msgstr "エージェントは出力トークンの上限で停止しました"
+
 msgid "Agent stopped due to an error"
 msgstr "エラーによりエージェントが停止しました"
 
@@ -302,6 +308,9 @@ msgstr "Claude Code の更新の確認を中止しました。"
 msgid "Canceled downloading the Linux build of Claude Code."
 msgstr "Linux 版 Claude Code の取得を中止しました。"
 
+msgid "Cancelled"
+msgstr "キャンセル済み"
+
 msgid "Cannot switch to the form because the JSON could not be read: {error}"
 msgstr "JSON を読み取れないため、フォームに切り替えられません: {error}"
 
@@ -431,9 +440,6 @@ msgstr "圧縮に失敗しました"
 msgid "Completed"
 msgstr "完了"
 
-msgid "Completed Plan"
-msgstr "完了した計画"
-
 msgid "Configure"
 msgstr "設定"
 
@@ -511,6 +517,9 @@ msgstr "このエージェントの応答をコピー"
 
 msgid "Copy as Markdown"
 msgstr "Markdown としてコピー"
+
+msgid "Copy into an empty composer. The saved submission is kept until discarded."
+msgstr "空の入力欄にコピーします。保存された送信内容は破棄するまで残ります。"
 
 msgid "Cost"
 msgstr "コスト"
@@ -695,6 +704,9 @@ msgstr "思考モードを無効にします"
 msgid "Disabled in Restricted Mode"
 msgstr "制限モードでは無効"
 
+msgid "Discard"
+msgstr "破棄"
+
 msgid "Discard Interrupted Edit"
 msgstr "中断された編集を破棄"
 
@@ -863,6 +875,9 @@ msgstr "セッションを取得しています…"
 
 msgid "Files & Directories"
 msgstr "ファイルとディレクトリ"
+
+msgid "Finished"
+msgstr "終了"
 
 msgid "Finished running tools"
 msgstr "ツールの実行が完了しました"
@@ -1094,6 +1109,15 @@ msgstr "サブエージェントを全画面表示"
 msgid "Manage AI Connections…"
 msgstr "AI の接続を管理…"
 
+msgid "Message"
+msgstr "メッセージ"
+
+msgid "Message cancelled"
+msgstr "メッセージの送信はキャンセルされました"
+
+msgid "Message failed to send: {}"
+msgstr "メッセージを送信できませんでした: {}"
+
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド"
 
@@ -1222,6 +1246,9 @@ msgstr "プロファイルはありません。"
 
 msgid "No recent projects found"
 msgstr "最近のプロジェクトが見つかりません"
+
+msgid "No text preview available"
+msgstr "テキストのプレビューはありません"
 
 msgid "No threads"
 msgstr "スレッドなし"
@@ -1517,6 +1544,9 @@ msgstr "サンドボックスの外で起動し直す…"
 msgid "Restart Transform"
 msgstr "変換を再実行"
 
+msgid "Restore"
+msgstr "元に戻す"
+
 msgid "Restore Checkpoint"
 msgstr "チェックポイントを復元"
 
@@ -1690,6 +1720,9 @@ msgstr "要約で送る"
 
 msgid "Send in Full"
 msgstr "全文で送る"
+
+msgid "Sending message…"
+msgstr "メッセージを送信中…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "署名とハッシュを確認してから接続先へ送ります。"
@@ -1889,6 +1922,9 @@ msgstr "エージェントの通信に許可リストへの追加が必要です
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "{provider} の API への接続が中断されました。ForgeKairos が自動的に再試行します。問題が続く場合は、ネットワーク接続を確認してください。"
 
+msgid "The conversation was rewound, but the message became read-only and was not resent."
+msgstr "会話は巻き戻しましたが、メッセージが読み取り専用になったため再送信していません。"
+
 msgid "The extension's settings must be a JSON object ({{ … }})."
 msgstr "拡張機能の設定は JSON オブジェクト ({{ … }}) にしてください。"
 
@@ -2051,6 +2087,9 @@ msgstr "この拡張機能の設定はフォームで表せないため、JSON �
 
 msgid "This internationalized address displays as {decoded_host}. Verify it carefully."
 msgstr "この国際化アドレスは {decoded_host} と表示されます。よく確認してください。"
+
+msgid "This message contains unsupported content and cannot be edited or resent."
+msgstr "このメッセージにはサポートされていない内容が含まれているため、編集や再送信はできません。"
 
 msgid "This model does not support tools."
 msgstr "このモデルはツールに対応していません。"
@@ -2238,6 +2277,9 @@ msgstr "完了待ち"
 msgid "Waiting for input"
 msgstr "入力を待っています"
 
+msgid "Waiting for message to appear…"
+msgstr "メッセージが表示されるのを待っています…"
+
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "許可リストへの反映を待っています…"
 
@@ -2294,6 +2336,9 @@ msgstr "Zed Pro トライアルの期限が切れました"
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "設定とログインは普段のものをそのまま使います。"
+
+msgid "[Unsupported message content — this message cannot be edited or resent]"
+msgstr "[サポートされていないメッセージの内容 — このメッセージは編集も再送信もできません]"
 
 msgid "a URI"
 msgstr "URI"
@@ -2511,10 +2556,6 @@ msgstr "{} トークン"
 msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— {count} 件のファイルを変更"
-
-msgid "— {count} step"
-msgid_plural "— {count} steps"
-msgstr[0] "— {count} ステップ"
 
 msgid "“{value}” contains potentially surprising Unicode characters"
 msgstr "「{value}」に予期しない Unicode 文字が含まれています"

@@ -51,6 +51,39 @@ pub(crate) struct TableDataEngine {
 }
 
 impl TableDataEngine {
+    pub(crate) fn set_contents(&mut self, contents: TableLikeContent) {
+        // Filters and sorting use column indexes. A delimited file's columns
+        // only move through the grid, which shifts its filters along with them,
+        // but a JSON Lines file's columns are its keys in the order they first
+        // appear, so an edit to the text can make the same index name a
+        // different field.
+        let has_generated_headers = |contents: &TableLikeContent| {
+            contents
+                .headers
+                .as_slice()
+                .iter()
+                .any(|cell| matches!(cell, TableCell::Generated(_)))
+        };
+        if (has_generated_headers(&self.contents) || has_generated_headers(&contents))
+            && self
+                .contents
+                .headers
+                .as_slice()
+                .iter()
+                .map(TableCell::display_value)
+                .ne(contents
+                    .headers
+                    .as_slice()
+                    .iter()
+                    .map(TableCell::display_value))
+        {
+            self.filter_stack = FilterStack::default();
+            self.applied_sorting = None;
+        }
+        self.contents = Arc::new(contents);
+        self.calculate_available_filters();
+    }
+
     pub(crate) fn d2d_mapping(&self) -> &DisplayToDataMapping {
         &self.d2d_mapping
     }

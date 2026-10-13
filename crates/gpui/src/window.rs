@@ -10,19 +10,20 @@ use crate::{
     Capslock, Context, Corners, CursorHideMode, CursorStyle, Decorations, DevicePixels,
     DispatchActionListener, DispatchNodeId, DispatchTree, DisplayId, Edges, Effect, Entity,
     EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
-    Hsla, InputHandler, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke,
-    KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent, MonochromeSprite,
-    MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, PathPromptOptions, Pixels,
-    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
-    PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
-    RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
-    SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
-    StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
-    SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextInputConfiguration,
-    TextInputStateChange, TextRenderingMode, TextStyle, TextStyleRefinement, ThermalState,
-    TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
-    WindowBounds, WindowControls, WindowDecorations, WindowOptions, WindowParams, WindowTextSystem,
-    WindowVisibility, point, prelude::*, px, rems, size, transparent_black,
+    Hsla, InputHandler, InputPreference, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent,
+    Keystroke, KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent,
+    MonochromeSprite, MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path,
+    PathPromptOptions, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler,
+    PlatformWindow, Point, PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render,
+    RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge,
+    SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow,
+    SharedString, Size, StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription,
+    SystemWindowTab, SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task,
+    TextInputConfiguration, TextInputStateChange, TextRenderingMode, TextStyle,
+    TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
+    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowDecorations,
+    WindowOptions, WindowParams, WindowTextSystem, WindowVisibility, point, prelude::*, px, rems,
+    size, transparent_black,
 };
 
 use crate::gestures::{GestureTuning, RecognizedTouchGesture, TouchGestureRecognizer};
@@ -2462,6 +2463,7 @@ impl Window {
     pub(crate) fn dispatch_keystroke_observers(
         &mut self,
         keystroke: &Keystroke,
+        input_preference: InputPreference,
         action: Option<&dyn Action>,
         context_stack: Vec<KeyContext>,
         cx: &mut App,
@@ -2470,6 +2472,7 @@ impl Window {
             (callback)(
                 &KeystrokeEvent {
                     keystroke: keystroke.clone(),
+                    input_preference,
                     action: action.map(|action| action.boxed_clone()),
                     context_stack: context_stack.clone(),
                 },
@@ -2482,6 +2485,7 @@ impl Window {
     pub(crate) fn dispatch_keystroke_interceptors(
         &mut self,
         keystroke: &Keystroke,
+        input_preference: InputPreference,
         context_stack: Vec<KeyContext>,
         cx: &mut App,
     ) {
@@ -2491,6 +2495,7 @@ impl Window {
                 (callback)(
                     &KeystrokeEvent {
                         keystroke: keystroke.clone(),
+                        input_preference,
                         action: None,
                         context_stack: context_stack.clone(),
                     },
@@ -5897,6 +5902,27 @@ impl Window {
         }
     }
 
+    // If modifiers are not excessive (e.g. AltGr), and the input handler is accepting text input,
+    // we prefer the text input over bindings.
+    fn input_preference(&mut self, event: &dyn Any, cx: &mut App) -> InputPreference {
+        let prefer_character_input = event
+            .downcast_ref::<KeyDownEvent>()
+            .is_some_and(|key_down_event| key_down_event.prefer_character_input);
+        if !prefer_character_input {
+            return InputPreference::KeyBindings;
+        }
+        let Some(mut input_handler) = self.platform_window.take_input_handler() else {
+            return InputPreference::KeyBindings;
+        };
+        let accepts_text_input = input_handler.accepts_text_input(self, cx);
+        self.platform_window.set_input_handler(input_handler);
+        if accepts_text_input {
+            InputPreference::CharacterInput
+        } else {
+            InputPreference::KeyBindings
+        }
+    }
+
     fn dispatch_key_event(&mut self, event: &dyn Any, cx: &mut App) {
         if self.invalidator.is_dirty() {
             self.draw(cx).clear(cx);
@@ -5951,16 +5977,31 @@ impl Window {
         }
 
         let Some(keystroke) = keystroke else {
-            self.finish_dispatch_key_event(event, None, dispatch_path, self.context_stack(), cx);
+            self.finish_dispatch_key_event(
+                event,
+                None,
+                InputPreference::KeyBindings,
+                dispatch_path,
+                self.context_stack(),
+                cx,
+            );
             return;
         };
 
+        let input_preference = self.input_preference(event, cx);
+
         cx.propagate_event = true;
-        self.dispatch_keystroke_interceptors(&keystroke, self.context_stack(), cx);
+        self.dispatch_keystroke_interceptors(
+            &keystroke,
+            input_preference,
+            self.context_stack(),
+            cx,
+        );
         if !cx.propagate_event {
             self.finish_dispatch_key_event(
                 event,
                 Some(&keystroke),
+                input_preference,
                 dispatch_path,
                 self.context_stack(),
                 cx,
@@ -6022,28 +6063,15 @@ impl Window {
             return;
         }
 
-        let skip_bindings = event
-            .downcast_ref::<KeyDownEvent>()
-            .filter(|key_down_event| key_down_event.prefer_character_input)
-            .map(|_| {
-                self.platform_window
-                    .take_input_handler()
-                    .map_or(false, |mut input_handler| {
-                        let accepts = input_handler.accepts_text_input(self, cx);
-                        self.platform_window.set_input_handler(input_handler);
-                        // If modifiers are not excessive (e.g. AltGr), and the input handler is accepting text input,
-                        // we prefer the text input over bindings.
-                        accepts
-                    })
-            })
-            .unwrap_or(false);
-
-        if !skip_bindings {
+        // Interceptors or replayed actions may have changed whether the input handler accepts text.
+        let input_preference = self.input_preference(event, cx);
+        if input_preference == InputPreference::KeyBindings {
             for binding in match_result.bindings {
                 self.dispatch_action_on_node(node_id, binding.action.as_ref(), cx);
                 if !cx.propagate_event {
                     self.dispatch_keystroke_observers(
                         &keystroke,
+                        input_preference,
                         Some(binding.action.as_ref()),
                         match_result.context_stack,
                         cx,
@@ -6057,6 +6085,7 @@ impl Window {
         self.finish_dispatch_key_event(
             event,
             Some(&keystroke),
+            input_preference,
             dispatch_path,
             match_result.context_stack,
             cx,
@@ -6106,6 +6135,7 @@ impl Window {
         &mut self,
         event: &dyn Any,
         recognized_keystroke: Option<&Keystroke>,
+        input_preference: InputPreference,
         dispatch_path: SmallVec<[DispatchNodeId; 32]>,
         context_stack: Vec<KeyContext>,
         cx: &mut App,
@@ -6121,7 +6151,7 @@ impl Window {
         }
 
         if let Some(keystroke) = recognized_keystroke {
-            self.dispatch_keystroke_observers(keystroke, None, context_stack, cx);
+            self.dispatch_keystroke_observers(keystroke, input_preference, None, context_stack, cx);
         }
     }
 
@@ -6325,6 +6355,7 @@ impl Window {
                 if !cx.propagate_event {
                     self.dispatch_keystroke_observers(
                         &replay.keystroke,
+                        InputPreference::KeyBindings,
                         Some(binding.action.as_ref()),
                         Vec::default(),
                         cx,
@@ -6900,6 +6931,16 @@ impl Window {
     /// with the window, for others it's just a simple global function call.
     pub fn play_system_bell(&self) {
         self.platform_window.play_system_bell()
+    }
+
+    /// Returns whether accessibility support is enabled for this window.
+    ///
+    /// This is false when the app was created with [`crate::Application::new_inaccessible`].
+    /// Unlike [`Self::is_a11y_active`], this does not depend on whether assistive
+    /// technology is currently connected, so it can be used to gate subscriptions
+    /// that are only needed for accessibility.
+    pub fn is_a11y_enabled(&self) -> bool {
+        self.a11y.is_enabled()
     }
 
     /// Returns whether accessibility features are active for this frame,
@@ -7555,6 +7596,12 @@ impl TryInto<SharedString> for ElementId {
         } else {
             anyhow::bail!("element id is not string")
         }
+    }
+}
+
+impl From<u64> for ElementId {
+    fn from(id: u64) -> Self {
+        ElementId::Integer(id)
     }
 }
 

@@ -67,10 +67,9 @@ impl Render for TabularDataPreviewPane {
                     .child(self.drag_pointer_tracker(cx)),
             );
 
-        let render_prep_duration = render_prep_start.elapsed();
         self.performance_metrics.timings.insert(
             "render_prep",
-            (render_prep_duration, std::time::Instant::now()),
+            (render_prep_start.elapsed(), std::time::Instant::now()),
         );
 
         let root = div()
@@ -141,6 +140,17 @@ impl TabularDataPreviewPane {
     /// The table, or the message that stands in for it. A reparse in flight
     /// keeps the table it already has rather than blanking the grid.
     fn render_grid_body(&self, cx: &mut Context<Self>) -> AnyElement {
+        if let Some(error) = &self.parse_error {
+            return div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .p_4()
+                .text_color(cx.theme().status().error)
+                .child(error.clone())
+                .into_any_element();
+        }
         if self.engine.contents.number_of_cols > 0 {
             return self.create_table(&self.column_widths.widths, cx);
         }

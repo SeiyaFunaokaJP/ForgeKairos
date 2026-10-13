@@ -40,7 +40,9 @@ impl project::ProjectItem for TabularBuffer {
         cx: &mut App,
     ) -> Option<Task<Result<Entity<Self>>>> {
         // Called for every file the user opens, so bail out before touching the project.
-        match path.path.extension() {
+        // A JSON Lines file stays a text file: the grid can only show it, so it
+        // is opened as a grid only through the preview actions.
+        let format = match path.path.extension() {
             Some(extension) => TabularFormat::from_extension(extension)?,
             // A file opened on its own is a worktree whose root is the file, so the path
             // within it is empty and the name to read the extension from is the worktree's.
@@ -53,7 +55,7 @@ impl project::ProjectItem for TabularBuffer {
             }
             None => return None,
         };
-        if !TabularDataSettings::get_global(cx).open_as_grid {
+        if !format.is_editable_in_grid() || !TabularDataSettings::get_global(cx).open_as_grid {
             return None;
         }
 

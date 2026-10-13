@@ -6671,6 +6671,12 @@ msgctxt "action documentation"
 msgid "vim::YankToEndOfLine"
 msgstr "カーソルから行末までをヤンクします。"
 
+#. Shows the bindings that can complete the pending key sequence. Must be bound to a
+#. single keystroke.
+msgctxt "action documentation"
+msgid "which_key::ShowPendingBindings"
+msgstr "入力途中のキーシーケンスを完成させられるキーバインドを表示します。1 回のキー入力に割り当てる必要があります。"
+
 #. Activates the last pane in the workspace.
 msgctxt "action documentation"
 msgid "workspace::ActivateLastPane"

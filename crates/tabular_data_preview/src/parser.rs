@@ -1,5 +1,8 @@
 use std::ops::Range;
-use std::sync::Arc;
+
+use anyhow::Context as _;
+use indexmap::{IndexMap, IndexSet};
+use serde_json::value::RawValue;
 
 use crate::{
     TabularDataPreviewPane,
@@ -25,12 +28,13 @@ pub(crate) struct EditorState {
     pub _subscription: Subscription,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TabularFormat {
     Csv,
     Tsv,
     Psv,
     Ssv,
+    JsonLines,
 }
 
 const TABULAR_FORMATS: &[(&str, TabularFormat)] = &[
@@ -38,6 +42,8 @@ const TABULAR_FORMATS: &[(&str, TabularFormat)] = &[
     ("tsv", TabularFormat::Tsv),
     ("psv", TabularFormat::Psv),
     ("ssv", TabularFormat::Ssv),
+    ("jsonl", TabularFormat::JsonLines),
+    ("ndjson", TabularFormat::JsonLines),
 ];
 
 impl TabularFormat {
@@ -52,12 +58,36 @@ impl TabularFormat {
             .map(|(_, format)| *format)
     }
 
-    pub(crate) fn delimiter(self) -> char {
+    /// `None` for JSON Lines, whose records are objects rather than delimited fields.
+    pub(crate) fn delimiter(self) -> Option<char> {
         match self {
-            TabularFormat::Csv => ',',
-            TabularFormat::Tsv => '\t',
-            TabularFormat::Psv => '|',
-            TabularFormat::Ssv => ';',
+            TabularFormat::Csv => Some(','),
+            TabularFormat::Tsv => Some('\t'),
+            TabularFormat::Psv => Some('|'),
+            TabularFormat::Ssv => Some(';'),
+            TabularFormat::JsonLines => None,
+        }
+    }
+
+    /// Whether the grid can write its edits back into a file of this format.
+    /// Its edit engine writes delimited fields, which would break a JSON Lines
+    /// record, so such a file is only shown.
+    pub(crate) fn is_editable_in_grid(self) -> bool {
+        self.delimiter().is_some()
+    }
+
+    fn parse(
+        self,
+        buffer_snapshot: &BufferSnapshot,
+        first_row_is_header: bool,
+    ) -> anyhow::Result<TableLikeContent> {
+        match self.delimiter() {
+            Some(delimiter) => Ok(from_buffer_with_delimiter(
+                buffer_snapshot,
+                delimiter,
+                first_row_is_header,
+            )),
+            None => from_json_lines(buffer_snapshot, first_row_is_header),
         }
     }
 }
@@ -69,19 +99,22 @@ pub(crate) fn editor_file_extension<'a>(editor: &Entity<Editor>, cx: &'a App) ->
 }
 
 impl TabularDataPreviewPane {
-    /// Delimiter of the previewed file, derived from its extension.
-    pub(crate) fn current_delimiter(&self, cx: &App) -> char {
+    /// Format of the previewed file, derived from its extension.
+    pub(crate) fn current_format(&self, cx: &App) -> TabularFormat {
         let extension = editor_file_extension(&self.active_editor_state.editor, cx);
 
         extension
             .and_then(TabularFormat::from_extension)
-            .map(TabularFormat::delimiter)
             .unwrap_or_else(|| {
-                log::warn!(
-                    "unrecognized tabular data extension {extension:?}, defaulting to comma delimiter"
-                );
-                ','
+                log::warn!("unrecognized tabular data extension {extension:?}, defaulting to CSV");
+                TabularFormat::Csv
             })
+    }
+
+    /// Delimiter of the previewed file, derived from its extension. A JSON Lines
+    /// file, which the grid never writes to, falls back to the comma.
+    pub(crate) fn current_delimiter(&self, cx: &App) -> char {
+        self.current_format(cx).delimiter().unwrap_or(',')
     }
 
     pub(crate) fn parse_from_active_editor(
@@ -141,23 +174,43 @@ impl TabularDataPreviewPane {
             return;
         }
 
-        let delimiter = self.current_delimiter(cx);
+        let format = self.current_format(cx);
         let first_row_is_header = self.settings.first_row_is_header;
         let instant = Instant::now();
-        let parsed_contents =
-            from_buffer_with_delimiter(&buffer_snapshot, delimiter, first_row_is_header);
+        let parsed_contents = format.parse(&buffer_snapshot, first_row_is_header);
         let parse_duration = instant.elapsed();
 
         // Dropping the pending task cancels a debounced parse that would redo this work.
         self.parsing_task = None;
+        self.last_parse_end_time = Some(Instant::now());
+        self.set_parsed_contents(parsed_contents, parse_duration, cx);
+    }
+
+    /// Shows a finished parse. A failed one keeps the table it had and puts the
+    /// reason in its place, until an edit makes the file parse again.
+    fn set_parsed_contents(
+        &mut self,
+        parsed_contents: anyhow::Result<TableLikeContent>,
+        parse_duration: Duration,
+        cx: &mut Context<Self>,
+    ) {
+        self.is_parsing = false;
         self.performance_metrics
             .timings
             .insert("Parsing", (parse_duration, Instant::now()));
-        self.engine.contents = Arc::new(parsed_contents);
-        self.engine.calculate_available_filters();
+        let parsed_contents = match parsed_contents {
+            Ok(contents) => contents,
+            Err(error) => {
+                self.parse_error = Some(format!("{error:#}").into());
+                cx.notify();
+                return;
+            }
+        };
+
+        log::debug!("Parsed {} rows", parsed_contents.rows.len());
+        self.parse_error = None;
+        self.engine.set_contents(parsed_contents);
         self.sync_column_widths(cx);
-        self.last_parse_end_time = Some(Instant::now());
-        self.is_parsing = false;
         self.apply_filter_sort(cx);
         cx.notify();
     }
@@ -190,7 +243,7 @@ impl TabularDataPreviewPane {
                 }
             }
 
-            let (buffer_snapshot, delimiter, first_row_is_header, parsed_version, parsed_as_header) =
+            let (buffer_snapshot, format, first_row_is_header, parsed_version, parsed_as_header) =
                 view.update(cx, |view, cx| {
                     let buffer_snapshot = editor
                         .read(cx)
@@ -201,7 +254,7 @@ impl TabularDataPreviewPane {
 
                     (
                         buffer_snapshot,
-                        view.current_delimiter(cx),
+                        view.current_format(cx),
                         view.settings.first_row_is_header,
                         view.engine.contents.source_version.clone(),
                         view.engine.contents.first_row_is_header,
@@ -209,6 +262,11 @@ impl TabularDataPreviewPane {
                 })?;
 
             let Some(buffer_snapshot) = buffer_snapshot else {
+                view.update(cx, |view, cx| {
+                    view.is_parsing = false;
+                    view.parse_error = Some(i18n::t!("Preview requires a single file").into());
+                    cx.notify();
+                })?;
                 return Ok(());
             };
 
@@ -224,30 +282,128 @@ impl TabularDataPreviewPane {
 
             let instant = Instant::now();
             let parsed_contents = cx
-                .background_spawn(async move {
-                    from_buffer_with_delimiter(&buffer_snapshot, delimiter, first_row_is_header)
-                })
+                .background_spawn(
+                    async move { format.parse(&buffer_snapshot, first_row_is_header) },
+                )
                 .await;
             let parse_duration = instant.elapsed();
             let parse_end_time: Instant = Instant::now();
             log::debug!("Parsed data in {}ms", parse_duration.as_millis());
             view.update(cx, move |view, cx| {
-                view.performance_metrics
-                    .timings
-                    .insert("Parsing", (parse_duration, Instant::now()));
-
-                log::debug!("Parsed {} rows", parsed_contents.rows.len());
-                view.engine.contents = Arc::new(parsed_contents);
-                view.engine.calculate_available_filters();
-                view.sync_column_widths(cx);
                 view.last_parse_end_time = Some(parse_end_time);
-
-                view.is_parsing = false;
-                view.apply_filter_sort(cx);
-                cx.notify();
+                view.set_parsed_contents(parsed_contents, parse_duration, cx);
             })
         })
     }
+}
+
+/// `first_row_is_header` is only recorded: the column names come from the
+/// keys of the records, so there is no header line to read.
+fn from_json_lines(
+    buffer_snapshot: &BufferSnapshot,
+    first_row_is_header: bool,
+) -> anyhow::Result<TableLikeContent> {
+    let text = buffer_snapshot.text();
+    let mut records = Vec::new();
+    let mut columns = IndexSet::new();
+    let mut line_numbers = Vec::new();
+    let mut row_spans = Vec::new();
+
+    let mut line_start = 0;
+    for (line_index, line_with_terminator) in text.split_inclusive('\n').enumerate() {
+        let line = line_with_terminator
+            .strip_suffix('\n')
+            .map(|line| line.strip_suffix('\r').unwrap_or(line))
+            .unwrap_or(line_with_terminator);
+        let line_range = line_start..line_start + line.len();
+        line_start += line_with_terminator.len();
+        // Ignore blank lines, but keep physical line numbers for the source gutter.
+        if line.trim().is_empty() {
+            continue;
+        }
+        let line_number = line_index + 1;
+        let record: IndexMap<String, &RawValue> =
+            serde_json::from_str(line).with_context(|| {
+                i18n::t!("Cannot preview JSONL line {line_number}: expected a JSON object")
+            })?;
+        columns.extend(record.keys().cloned());
+        records.push(record);
+        line_numbers.push(LineNumber::Line(line_number));
+        row_spans.push(span_for_range(buffer_snapshot, line_range));
+    }
+
+    let number_of_cols = columns.len();
+    let headers = TableRow::from_vec(
+        columns
+            .iter()
+            .map(|name| TableCell::Generated(name.clone().into()))
+            .collect(),
+        number_of_cols,
+    );
+    let rows = records
+        .into_iter()
+        .map(|record| {
+            let cells = columns
+                .iter()
+                .map(|name| {
+                    let Some(value) = record.get(name) else {
+                        return Ok(TableCell::Virtual);
+                    };
+                    let raw = value.get();
+                    // RawValue borrows the original text, so its span stays exact even
+                    // for repeated values, escaped strings, and large numbers.
+                    let start = (raw.as_ptr() as usize)
+                        .checked_sub(text.as_ptr() as usize)
+                        .context("JSON value is outside the source buffer")?;
+                    Ok(TableCell::from_buffer_position(
+                        compact_json(raw).into(),
+                        start,
+                        start + raw.len(),
+                        buffer_snapshot,
+                    ))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            Ok(TableRow::from_vec(cells, number_of_cols))
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    Ok(TableLikeContent {
+        headers,
+        rows,
+        line_numbers,
+        row_spans,
+        header_span: None,
+        number_of_cols,
+        first_row_is_header,
+        source_version: Some(buffer_snapshot.version().clone()),
+        source_byte_len: buffer_snapshot.len(),
+    })
+}
+
+fn compact_json(raw: &str) -> String {
+    // Reserializing through Value can round numbers. Remove only insignificant
+    // whitespace from the already validated JSON instead.
+    let mut compact = String::with_capacity(raw.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    for character in raw.chars() {
+        if in_string {
+            compact.push(character);
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_string = false;
+            }
+        } else if character == '"' {
+            in_string = true;
+            compact.push(character);
+        } else if !matches!(character, ' ' | '\t' | '\r' | '\n') {
+            compact.push(character);
+        }
+    }
+    compact
 }
 
 pub fn from_buffer_with_delimiter(
@@ -477,6 +633,204 @@ fn create_table_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use text::{Buffer, BufferId, ReplicaId, ToOffset};
+
+    fn snapshot(text: &str) -> anyhow::Result<BufferSnapshot> {
+        let buffer_id = BufferId::new(1).context("invalid test buffer ID")?;
+        Ok(Buffer::new(ReplicaId::LOCAL, buffer_id, text.to_owned())
+            .snapshot()
+            .clone())
+    }
+
+    fn values(row: &TableRow<TableCell>) -> Vec<Option<&str>> {
+        row.as_slice()
+            .iter()
+            .map(|cell| cell.display_value().map(|value| value.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn test_json_lines_columns_and_values() -> anyhow::Result<()> {
+        let input = concat!(
+            "{\"b\":null,\"a\":\"null\",\"nested\":{ \"items\": [1, true] }}\n",
+            "{\"b\":\"\",\"late\":123456789012345678901234567890}\n",
+            "{}"
+        );
+        let parsed = TabularFormat::JsonLines.parse(&snapshot(input)?, true)?;
+        assert_eq!(
+            values(&parsed.headers),
+            vec![Some("b"), Some("a"), Some("nested"), Some("late")]
+        );
+        assert_eq!(parsed.rows.len(), 3);
+        let rows: Vec<_> = parsed.rows.iter().map(values).collect();
+        assert_eq!(
+            rows,
+            vec![
+                vec![
+                    Some("null"),
+                    Some(r#""null""#),
+                    Some(r#"{"items":[1,true]}"#),
+                    None
+                ],
+                vec![
+                    Some(r#""""#),
+                    None,
+                    None,
+                    Some("123456789012345678901234567890")
+                ],
+                vec![None, None, None, None],
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_lines_columns_follow_first_seen_key_order() -> anyhow::Result<()> {
+        let input = concat!(
+            "{}\n",
+            "{\"id\":2,\"name\":\"Grace\",\"active\":true}\n",
+            "{\"name\":\"Ada\",\"tags\":[],\"id\":1,\"details\":{}}\n",
+            "{\"details\":{},\"active\":false,\"extra\":null}\n"
+        );
+        let parsed = from_json_lines(&snapshot(input)?, true)?;
+        assert_eq!(
+            values(&parsed.headers),
+            vec![
+                Some("id"),
+                Some("name"),
+                Some("active"),
+                Some("tags"),
+                Some("details"),
+                Some("extra")
+            ]
+        );
+        assert_eq!(
+            values(parsed.rows.get(2).context("missing record")?),
+            vec![
+                Some("1"),
+                Some(r#""Ada""#),
+                None,
+                Some("[]"),
+                Some("{}"),
+                None
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_lines_source_spans_and_line_numbers() -> anyhow::Result<()> {
+        let input =
+            "\r\n{\"é\": \"🦀\", \"same\": \"🦀\"}\r\n \t\r\n{\"é\": 1.234567890123456789e100}\n";
+        let snapshot = snapshot(input)?;
+        let parsed = from_json_lines(&snapshot, true)?;
+        let normalized_input = snapshot.text();
+        assert!(matches!(
+            parsed.line_numbers.as_slice(),
+            [LineNumber::Line(2), LineNumber::Line(4)]
+        ));
+        assert_eq!(values(&parsed.headers), vec![Some("é"), Some("same")]);
+        let first_row = parsed.rows.first().context("missing first row")?;
+        for (cell, expected_start) in first_row.as_slice().iter().zip([
+            normalized_input
+                .find("\"🦀\"")
+                .context("missing first value")?,
+            normalized_input
+                .rfind("\"🦀\"")
+                .context("missing second value")?,
+        ]) {
+            let TableCell::Real { position, .. } = cell else {
+                anyhow::bail!("expected a source-backed cell");
+            };
+            assert_eq!(position.start.to_offset(&snapshot), expected_start);
+            assert_eq!(
+                position.end.to_offset(&snapshot),
+                expected_start + "\"🦀\"".len()
+            );
+        }
+        assert_eq!(
+            values(parsed.rows.last().context("missing last row")?),
+            vec![Some("1.234567890123456789e100"), None]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_lines_compact_values_preserve_strings_and_numbers() -> anyhow::Result<()> {
+        let input = r#"{"value": { "text": "a b\t\"c\\", "numbers": [ -0, 1e999, 123456789012345678901234567890 ] }}"#;
+        let parsed = from_json_lines(&snapshot(input)?, true)?;
+        assert_eq!(
+            values(parsed.rows.first().context("missing row")?),
+            vec![Some(
+                r#"{"text":"a b\t\"c\\","numbers":[-0,1e999,123456789012345678901234567890]}"#
+            )]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_lines_empty_input_and_empty_objects() -> anyhow::Result<()> {
+        for input in ["", "\n \t\r\n"] {
+            let parsed = from_json_lines(&snapshot(input)?, true)?;
+            assert!(parsed.rows.is_empty());
+            assert_eq!(parsed.number_of_cols, 0);
+        }
+        let parsed = from_json_lines(&snapshot("{}\n{}\n")?, true)?;
+        assert_eq!(parsed.number_of_cols, 0);
+        assert_eq!(parsed.rows.len(), 2);
+        assert!(parsed.rows.iter().all(|row| row.cols() == 0));
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_lines_errors_identify_the_source_line() -> anyhow::Result<()> {
+        for invalid in [
+            "{",
+            "{\"a\":}",
+            "{} trailing",
+            "{} {}",
+            "[]",
+            "null",
+            "true",
+            "42",
+            "\"text\"",
+        ] {
+            let input = format!("{{}}\n\n{invalid}\n{{}}\n");
+            let result = from_json_lines(&snapshot(&input)?, true);
+            let Err(error) = result else {
+                anyhow::bail!("accepted invalid record: {invalid}");
+            };
+            assert!(error.to_string().contains("line 3"), "{error:#}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_dispatch() -> anyhow::Result<()> {
+        for extension in ["jsonl", "ndjson", "JSONL", "nDjSoN"] {
+            let format = TabularFormat::from_extension(extension).context("format not detected")?;
+            assert_eq!(format, TabularFormat::JsonLines);
+            assert_eq!(
+                format
+                    .parse(&snapshot("{\"name\":\"Ada\"}")?, true)?
+                    .rows
+                    .len(),
+                1
+            );
+        }
+        assert!(TabularFormat::from_extension("json").is_none());
+        for (extension, delimiter) in [("csv", ','), ("tsv", '\t'), ("psv", '|'), ("ssv", ';')] {
+            let input = format!("name{delimiter}age\nAda{delimiter}36");
+            let format = TabularFormat::from_extension(extension).context("format not detected")?;
+            let parsed = format.parse(&snapshot(&input)?, true)?;
+            assert_eq!(values(&parsed.headers), vec![Some("name"), Some("age")]);
+            assert_eq!(
+                values(parsed.rows.first().context("missing row")?),
+                vec![Some("Ada"), Some("36")]
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn test_csv_parsing_basic() {

@@ -255,6 +255,19 @@ pub(crate) fn expand_block_to_selection(block: CellBlock, rows: usize, cols: usi
 }
 
 impl TabularDataPreviewPane {
+    /// Whether the file's format lets the grid write to it, telling the user
+    /// where to edit it instead when it does not.
+    pub(crate) fn refuse_edit_if_read_only_format(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.current_format(cx).is_editable_in_grid() {
+            return true;
+        }
+        self.set_status_message(
+            i18n::t!("JSON Lines files can't be edited in the grid. Open the text to edit them"),
+            cx,
+        );
+        false
+    }
+
     ///// Cell editor /////
 
     pub(crate) fn start_editing(
@@ -270,6 +283,9 @@ impl TabularDataPreviewPane {
                 self.grid.editing = Some(CellEditMode::Edit);
                 cx.notify();
             }
+            return;
+        }
+        if !self.refuse_edit_if_read_only_format(cx) {
             return;
         }
         let cursor = self.grid.cursor;
@@ -444,7 +460,7 @@ impl TabularDataPreviewPane {
         edits: Vec<BufferEdit>,
         cx: &mut Context<Self>,
     ) -> Option<TransactionId> {
-        if edits.is_empty() {
+        if edits.is_empty() || !self.refuse_edit_if_read_only_format(cx) {
             return None;
         }
         let Some(buffer) = self

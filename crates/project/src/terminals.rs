@@ -1,11 +1,12 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use collections::HashMap;
-use gpui::{App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
+use gpui::{App, AppContext as _, AsyncApp, Context, Entity, Global, Task, WeakEntity};
 
 use futures::{FutureExt, future::Shared};
 use itertools::Itertools as _;
 use language::LanguageName;
 use remote::{Interactive, RemoteClient, RemoteConnectionOptions};
+use rpc::proto;
 use settings::{Settings, SettingsLocation};
 use std::{
     borrow::Cow,
@@ -548,6 +549,7 @@ impl Project {
                                             .command
                                             .as_ref()
                                             .map(|command| (command, &spawn_task.args)),
+                                        None,
                                         env,
                                         path,
                                         remote_client,
@@ -777,6 +779,8 @@ impl Project {
         } else {
             self.remote_client.clone()
         };
+        let shell_settings_worktree_id =
+            settings_location.map(|settings_location| settings_location.worktree_id.to_proto());
         let shell = match &remote_client {
             Some(remote_client) => remote_client
                 .read(cx)
@@ -806,14 +810,23 @@ impl Project {
             // A shell without a directory has had no environment to wait for,
             // and the command for it cannot be built until there is a
             // connection again.
+            let mut remote_shell = None;
             if let Some(remote_client) = &remote_client {
                 cx.update(|cx| remote_connection_settled(remote_client, cx))
                     .await;
+                remote_shell =
+                    remote_terminal_shell(remote_client, shell_settings_worktree_id, cx).await;
                 // Without a connection the host's shell was not known when
                 // the tab was opened, and this one's activation script would
                 // be written for the local default shell instead.
-                if let Some(remote_shell) = cx.update(|cx| remote_client.read(cx).shell()) {
-                    shell_kind = ShellKind::new(&remote_shell, path_style.is_windows());
+                let host_shell = match &remote_shell {
+                    Some(Shell::Program(program) | Shell::WithArguments { program, .. }) => {
+                        Some(program.clone())
+                    }
+                    Some(Shell::System) | None => cx.update(|cx| remote_client.read(cx).shell()),
+                };
+                if let Some(host_shell) = host_shell {
+                    shell_kind = ShellKind::new(&host_shell, path_style.is_windows());
                 }
             }
 
@@ -822,6 +835,9 @@ impl Project {
             // shell itself only starts once it is back (the environment of a
             // remote directory comes from the server).
             let persistent_session = match &remote_client {
+                // The session's attach starts the shell itself, which leaves
+                // no place for a configured shell's own arguments.
+                Some(_) if matches!(remote_shell, Some(Shell::WithArguments { .. })) => None,
                 Some(remote_client) => project.update(cx, |project, cx| {
                     session_request.launch(
                         RemoteSessionHost::of(remote_client.read(cx)),
@@ -860,15 +876,25 @@ impl Project {
                 .update(cx, move |_, cx| {
                     let (shell, env, remote_session) = {
                         match remote_client {
-                            Some(remote_client) => spawn_remote_command(
-                                None,
-                                env,
-                                path,
-                                remote_client,
-                                TaskSpawnEnvironment::Full,
-                                persistent_session.as_ref(),
-                                cx,
-                            )?,
+                            Some(remote_client) => {
+                                let (spawn_command, interactive_shell) = match &remote_shell {
+                                    Some(Shell::WithArguments { program, args, .. }) => {
+                                        (Some((program, args)), None)
+                                    }
+                                    Some(Shell::Program(program)) => (None, Some(program.as_str())),
+                                    Some(Shell::System) | None => (None, None),
+                                };
+                                spawn_remote_command(
+                                    spawn_command,
+                                    interactive_shell,
+                                    env,
+                                    path,
+                                    remote_client,
+                                    TaskSpawnEnvironment::Full,
+                                    persistent_session.as_ref(),
+                                    cx,
+                                )?
+                            }
                             None => (settings.shell, env, None),
                         }
                     };
@@ -1095,6 +1121,47 @@ impl Project {
     }
 }
 
+/// The `terminal.shell` that the remote server's settings give for the
+/// worktree. A server that cannot answer (one that predates the request)
+/// leaves the host's own shell in place rather than failing the terminal.
+async fn remote_terminal_shell(
+    remote_client: &Entity<RemoteClient>,
+    worktree_id: Option<u64>,
+    cx: &mut AsyncApp,
+) -> Option<Shell> {
+    let request = cx.update(|cx| {
+        remote_client
+            .read(cx)
+            .proto_client()
+            .request(proto::GetTerminalShell {
+                project_id: proto::REMOTE_SERVER_PROJECT_ID,
+                worktree_id,
+            })
+    });
+    let shell = async {
+        let response = request
+            .await
+            .context("failed to get terminal shell settings from remote server")?;
+        let shell = response
+            .shell
+            .context("remote server returned no terminal shell")?;
+        task::shell_from_proto(shell).context("remote server returned an invalid terminal shell")
+    }
+    .await;
+    match shell {
+        Ok(shell) => {
+            log::debug!(
+                "create_terminal_shell_internal: using remote terminal shell setting: {shell:?}"
+            );
+            Some(shell)
+        }
+        Err(error) => {
+            log::warn!("{error:#}; starting the remote host's default shell");
+            None
+        }
+    }
+}
+
 fn create_remote_shell(
     spawn_command: Option<(&String, &Vec<String>)>,
     env: HashMap<String, String>,
@@ -1104,6 +1171,7 @@ fn create_remote_shell(
 ) -> Result<(Shell, HashMap<String, String>)> {
     let (shell, env, _) = spawn_remote_command(
         spawn_command,
+        None,
         env,
         working_directory,
         remote_client,
@@ -1119,6 +1187,7 @@ fn create_remote_shell(
 /// through the session, which is then returned for the terminal to attach to.
 fn spawn_remote_command(
     spawn_command: Option<(&String, &Vec<String>)>,
+    interactive_shell: Option<&str>,
     mut env: HashMap<String, String>,
     mut working_directory: Option<Arc<Path>>,
     remote_client: Entity<RemoteClient>,
@@ -1141,7 +1210,9 @@ fn spawn_remote_command(
             // Only an interactive shell has a prompt to hang the report off, and
             // only an interactive shell is ever restarted after a dropped
             // connection.
-            let remote_shell = remote_client.read(cx).shell();
+            let remote_shell = interactive_shell
+                .map(str::to_string)
+                .or_else(|| remote_client.read(cx).shell());
             if let Some(remote_shell) = &remote_shell
                 && let Some((name, value)) = osc7_prompt_command_env(remote_shell)
             {
@@ -1940,6 +2011,7 @@ mod tests {
             .update(|cx| {
                 spawn_remote_command(
                     None,
+                    None,
                     HashMap::default(),
                     None,
                     remote_client.clone(),
@@ -1960,6 +2032,7 @@ mod tests {
         let (_, env, remote_session) = cx
             .update(|cx| {
                 spawn_remote_command(
+                    None,
                     None,
                     HashMap::default(),
                     None,
