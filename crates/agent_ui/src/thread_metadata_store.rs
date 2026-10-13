@@ -249,6 +249,14 @@ pub fn revoke_outside_sandbox_consents(cx: &mut App) -> Task<anyhow::Result<()>>
     })
 }
 
+/// ADR-F96: takes back the start outside the sandbox the user confirmed for
+/// `thread_id`, and that it was started there, once the user has started its
+/// agent again in the sandbox: its next session is in the sandbox's folder.
+pub fn forget_outside_sandbox_start(thread_id: ThreadId, cx: &mut App) {
+    forget_outside_sandbox_consents_of_thread(thread_id, cx);
+    forget_thread_started_outside_sandbox(thread_id, cx);
+}
+
 fn forget_outside_sandbox_consents_of_thread(thread_id: ThreadId, cx: &mut App) {
     let mut forgotten = Vec::new();
     cx.default_global::<OutsideSandboxConsents>()

@@ -31,7 +31,7 @@ use ide_query::AssistSource;
 use crate::sandboxing::{
     SandboxRequest, ThreadSandbox, ThreadSandboxGrants, sandbox_git_dirs,
     sandbox_worktree_writable_paths, sandboxing_available_for_project,
-    sandboxing_enabled_for_project,
+    sandboxing_enabled_for_thread,
 };
 use agent_client_protocol::schema::v1 as acp;
 use agent_settings::{
@@ -1452,6 +1452,12 @@ pub struct Thread {
     /// chat input's Git button switches it; a new thread starts with
     /// `agent.git_operations`.
     git_operations_enabled: bool,
+    /// Whether this thread runs terminal commands in the sandbox (ADR-F96): the
+    /// project's default when the thread was made or read back, then what the
+    /// chat input's sandbox button chose; `None` lets the settings decide. Not
+    /// saved: a thread read back after a restart of Zed starts from the
+    /// project's default again.
+    sandbox_choice: Option<bool>,
     prompt_capabilities_tx: watch::Sender<acp::PromptCapabilities>,
     pub(crate) prompt_capabilities_rx: watch::Receiver<acp::PromptCapabilities>,
     pub(crate) project: Entity<Project>,
@@ -1578,6 +1584,7 @@ impl Thread {
             .as_ref()
             .and_then(|model| model.speed);
         let git_operations_enabled = settings.git_operations;
+        let sandbox_choice = project::agent_sandbox::project_default_sandbox(project.read(cx), cx);
         let (prompt_capabilities_tx, prompt_capabilities_rx) =
             watch::channel(Self::prompt_capabilities(model.as_ref()));
         let model = match model {
@@ -1621,6 +1628,7 @@ impl Thread {
             speed,
             thinking_effort,
             git_operations_enabled,
+            sandbox_choice,
             prompt_capabilities_tx,
             prompt_capabilities_rx,
             project,
@@ -1646,6 +1654,7 @@ impl Thread {
         self.speed = parent.speed;
         self.thinking_enabled = parent.thinking_enabled;
         self.git_operations_enabled = parent.git_operations_enabled;
+        self.sandbox_choice = parent.sandbox_choice;
         self.thinking_effort = parent.thinking_effort.clone();
         self.summarization_model = parent.summarization_model.clone();
         self.profile_id = parent.profile_id.clone();
@@ -1950,6 +1959,7 @@ impl Thread {
         let git_operations_enabled = db_thread
             .git_operations_enabled
             .unwrap_or(settings.git_operations);
+        let sandbox_choice = project::agent_sandbox::project_default_sandbox(project.read(cx), cx);
 
         let saved_selection = db_thread.model.map(|model| SelectedModel {
             provider: model.provider.into(),
@@ -2016,6 +2026,7 @@ impl Thread {
             thinking_effort: db_thread.thinking_effort,
             speed: db_thread.speed,
             git_operations_enabled,
+            sandbox_choice,
             project,
             action_log,
             updated_at: db_thread.updated_at,
@@ -2046,7 +2057,7 @@ impl Thread {
         }
         let persistent = AgentSettings::get_global(cx).sandbox_permissions.clone();
         let git_dirs = sandbox_git_dirs(self.project.read(cx), cx);
-        let settings = crate::sandboxing::settings_thread_sandbox(&persistent)
+        let settings = crate::sandboxing::thread_sandbox(&persistent, self.sandbox_turned_off(cx))
             .with_protected_paths(git_dirs.clone());
         let thread = crate::sandboxing::policy_with_protected_paths(
             self.sandbox_grants.borrow().to_policy(),
@@ -2064,7 +2075,8 @@ impl Thread {
         }
 
         let persistent = AgentSettings::get_global(cx).sandbox_permissions.clone();
-        let settings_sandbox = crate::sandboxing::settings_thread_sandbox(&persistent);
+        let settings_sandbox =
+            crate::sandboxing::thread_sandbox(&persistent, self.sandbox_turned_off(cx));
         let thread_policy = self.sandbox_grants.borrow().to_policy();
 
         let project = self.project.read(cx);
@@ -2094,7 +2106,7 @@ impl Thread {
     /// Whether agent terminal commands are sandboxed for this thread's project,
     /// so the UI can decide whether to surface the sandbox status at all.
     pub fn sandboxing_enabled(&self, cx: &App) -> bool {
-        sandboxing_enabled_for_project(self.project.read(cx), cx)
+        sandboxing_enabled_for_thread(self.project.read(cx), self.sandbox_choice, cx)
     }
 
     /// Whether sandboxing is *applicable* for this thread's project (feature on,
@@ -2325,6 +2337,30 @@ impl Thread {
                 .ok();
         }
         cx.notify();
+    }
+
+    pub fn sandbox_choice(&self) -> Option<bool> {
+        self.sandbox_choice
+    }
+
+    /// Turns the sandbox on or off for this thread's terminal commands and the
+    /// subagents it is running, from the next request on (ADR-F96).
+    pub fn set_sandbox_choice(&mut self, sandbox: Option<bool>, cx: &mut Context<Self>) {
+        self.sandbox_choice = sandbox;
+        for subagent in &self.running_subagents {
+            subagent
+                .update(cx, |thread, cx| {
+                    thread.set_sandbox_choice(sandbox, cx);
+                })
+                .ok();
+        }
+        cx.notify();
+    }
+
+    /// Whether the sandbox is turned off for this thread, by its own choice
+    /// or the settings (ADR-F96).
+    pub fn sandbox_turned_off(&self, cx: &App) -> bool {
+        crate::sandboxing::sandbox_turned_off(self.sandbox_choice, cx)
     }
 
     pub fn thinking_effort(&self) -> Option<&String> {
@@ -4532,7 +4568,7 @@ impl Thread {
         // Terminal variants are configured by users under the canonical
         // `terminal` name. Expose the one matching the current sandbox state
         // to the model under that name.
-        let use_sandboxed_terminal = sandboxing_enabled_for_project(self.project.read(cx), cx);
+        let use_sandboxed_terminal = self.sandboxing_enabled(cx);
 
         // Tools that aren't allowed in restricted workspaces must never be
         // provided to the model while the workspace is restricted, regardless
@@ -4740,10 +4776,7 @@ impl Thread {
             model_name: self.model().map(|m| m.name().0.to_string()),
             date: Local::now().format("%Y-%m-%d").to_string(),
             user_agents_md,
-            sandboxing: crate::sandboxing::sandboxing_enabled_for_project(
-                self.project.read(cx),
-                cx,
-            ),
+            sandboxing: self.sandboxing_enabled(cx),
             is_linux: cfg!(target_os = "linux"),
             is_windows: cfg!(target_os = "windows"),
             restricted_workspace: TrustedWorktrees::has_restricted_worktrees(
@@ -6212,6 +6245,38 @@ impl ToolCallEventStream {
             sandbox_grants,
             permission_judge,
             thread,
+        }
+    }
+
+    /// The sandbox choice of the owning thread's chat input (ADR-F96), `None`
+    /// where it made none or the stream is not tied to a live thread.
+    pub(crate) fn thread_sandbox_choice(&self, cx: &App) -> Option<bool> {
+        self.thread
+            .as_ref()
+            .and_then(|thread| thread.upgrade())
+            .and_then(|thread| thread.read(cx).sandbox_choice())
+    }
+
+    /// Whether the owning thread's commands run in the sandbox in `project`
+    /// (ADR-F96).
+    pub(crate) fn sandboxing_enabled(&self, project: &Project, cx: &App) -> bool {
+        crate::sandboxing::sandboxing_enabled_for_thread(
+            project,
+            self.thread_sandbox_choice(cx),
+            cx,
+        )
+    }
+
+    /// Whether the sandbox is turned off for the owning thread (ADR-F96); for
+    /// a stream not tied to a live thread, whether the settings turn it off.
+    pub(crate) fn sandbox_turned_off(&self, cx: &App) -> bool {
+        match self.thread.as_ref().and_then(|thread| thread.upgrade()) {
+            Some(thread) => thread.read(cx).sandbox_turned_off(cx),
+            None => {
+                AgentSettings::get_global(cx)
+                    .sandbox_permissions
+                    .allow_unsandboxed
+            }
         }
     }
 
@@ -10690,6 +10755,160 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// ADR-F96: the chat input's sandbox switch turns the sandbox off for its thread only while
+    /// running outside the sandbox is allowed (ADR-F92), and back on whatever the settings say.
+    /// A new thread starts from the project's default, and without one the settings decide; a
+    /// project of several folders leaves the sandbox only when every folder's default says so.
+    #[gpui::test]
+    async fn test_thread_sandbox_choice(cx: &mut TestAppContext) {
+        use feature_flags::FeatureFlagAppExt as _;
+        use gpui::UpdateGlobal as _;
+        use util::path;
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            cx.update_flags(true, vec!["sandboxing".to_string()]);
+        });
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(path!("/a"), json!({})).await;
+        fs.insert_tree(path!("/b"), json!({})).await;
+        let project = Project::test(fs, [path!("/a").as_ref(), path!("/b").as_ref()], cx).await;
+        let (thread, subagent) = cx.update(|cx| {
+            let project_context = cx.new(|_cx| prompt_store::ProjectContext::default());
+            let context_server_store = project.read(cx).context_server_store();
+            let context_server_registry =
+                cx.new(|cx| ContextServerRegistry::new(context_server_store, cx));
+            let thread = cx.new(|cx| {
+                Thread::new(
+                    project.clone(),
+                    project_context,
+                    context_server_registry,
+                    Templates::new(),
+                    None,
+                    cx,
+                )
+            });
+            let subagent = cx.new(|cx| {
+                let mut subagent = Thread::new(
+                    project.clone(),
+                    cx.new(|_cx| prompt_store::ProjectContext::default()),
+                    cx.new(|cx| {
+                        ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                    }),
+                    Templates::new(),
+                    None,
+                    cx,
+                );
+                subagent.inherit_parent_settings(&thread, cx);
+                subagent
+            });
+            thread.update(cx, |thread, _| {
+                thread.running_subagents.push(subagent.downgrade())
+            });
+            (thread, subagent)
+        });
+        let set_user_settings = |json: &str, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                settings::SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(json, cx)
+                        .result()
+                        .expect("valid user settings");
+                });
+            });
+        };
+        let new_thread = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                cx.new(|cx| {
+                    Thread::new(
+                        project.clone(),
+                        cx.new(|_cx| prompt_store::ProjectContext::default()),
+                        cx.new(|cx| {
+                            ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                        }),
+                        Templates::new(),
+                        None,
+                        cx,
+                    )
+                })
+            })
+        };
+        let sandboxed_in = |thread: &Entity<Thread>, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let thread = thread.read(cx);
+                assert_eq!(
+                    thread.sandboxing_enabled(cx),
+                    !thread.sandbox_turned_off(cx)
+                );
+                thread.sandboxing_enabled(cx)
+            })
+        };
+        let sandboxed = |cx: &mut TestAppContext| sandboxed_in(&thread, cx);
+        let choose = |choice: Option<bool>, cx: &mut TestAppContext| {
+            cx.update(|cx| thread.update(cx, |thread, cx| thread.set_sandbox_choice(choice, cx)));
+        };
+
+        assert!(sandboxed(cx));
+        choose(Some(false), cx);
+        assert!(sandboxed(cx), "running outside the sandbox is not allowed");
+
+        set_user_settings(
+            r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } } }"#,
+            cx,
+        );
+        assert!(!sandboxed(cx));
+        assert!(
+            !cx.update(|cx| subagent.read(cx).sandboxing_enabled(cx)),
+            "the subagent follows"
+        );
+
+        set_user_settings(
+            r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true, "allow_unsandboxed": true } } }"#,
+            cx,
+        );
+        choose(Some(true), cx);
+        assert!(sandboxed(cx), "the thread's choice wins over the settings");
+        choose(None, cx);
+        assert!(!sandboxed(cx), "without a choice the settings decide");
+
+        let (key_a, key_b) = cx.update(|cx| {
+            let keys = project::agent_sandbox::project_thread_defaults_keys(project.read(cx), cx);
+            (keys[0].clone(), keys[1].clone())
+        });
+        let with_defaults = |a: serde_json::Value, b: serde_json::Value| {
+            let mut defaults = serde_json::Map::new();
+            defaults.insert(key_a.clone(), a);
+            defaults.insert(key_b.clone(), b);
+            json!({ "agent": {
+                "sandbox_permissions": { "allow_outside_sandbox": true },
+                "project_thread_defaults": defaults,
+            }})
+            .to_string()
+        };
+        set_user_settings(&with_defaults(json!({ "sandbox": false }), json!({})), cx);
+        assert!(
+            sandboxed_in(&new_thread(cx), cx),
+            "a folder that says nothing keeps the sandbox"
+        );
+        set_user_settings(
+            &with_defaults(json!({ "sandbox": false }), json!({ "sandbox": false })),
+            cx,
+        );
+        assert!(
+            sandboxed(cx),
+            "the default is for new threads, not this one"
+        );
+        let new = new_thread(cx);
+        assert!(!sandboxed_in(&new, cx), "every folder says so");
+        cx.update(|cx| new.update(cx, |thread, cx| thread.set_sandbox_choice(Some(true), cx)));
+        assert!(
+            sandboxed_in(&new, cx),
+            "the thread's choice wins over the project's default"
+        );
     }
 
     /// ADR-F89: the browser tools reach the model only while the built-in

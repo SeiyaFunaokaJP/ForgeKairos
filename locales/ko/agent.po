@@ -408,6 +408,9 @@ msgstr "터미널 명령"
 msgid "The review was stopped because the settings changed"
 msgstr "설정이 변경되어 검토를 중지했습니다"
 
+msgid "The sandbox is turned off for this thread"
+msgstr "이 스레드에서는 샌드박스가 꺼져 있습니다"
+
 msgid "The settings allow writing anywhere in the file system"
 msgstr "설정에서 파일 시스템의 모든 위치에 쓰기를 허용합니다"
 

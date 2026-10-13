@@ -1408,7 +1408,7 @@ impl ThreadView {
             ViewEvent::NewTerminal(tool_call_id) => {
                 if AgentSettings::get_global(cx).expand_terminal_card {
                     self.entry_view_state.update(cx, |state, _cx| {
-                        state.expand_tool_call(tool_call_id.clone());
+                        state.auto_expand_terminal(tool_call_id.clone());
                     });
                 }
             }
@@ -4886,6 +4886,7 @@ impl ThreadView {
                                     .children(self.render_token_usage(cx))
                                     .children(self.render_tool_permission_control(cx))
                                     .children(self.render_git_operations_toggle(cx))
+                                    .children(self.render_sandbox_toggle(cx))
                                     .children(self.profile_selector.clone())
                                     // 思考の制御はモデルセレクターの直左に置く。
                                     // 左クラスターに埋もれていて見つからないという
@@ -6388,6 +6389,221 @@ impl ThreadView {
                 .into_any_element(),
         )
     }
+
+    /// Whether this thread runs in the sandbox, for its sandbox switch (ADR-F96): the built-in
+    /// agent's terminal commands, or the external agent as a whole. `None` where there is no
+    /// sandbox to switch: a project kind without one, or a collaborator's project.
+    fn thread_sandboxed(&self, cx: &App) -> Option<bool> {
+        if self.thread.read(cx).project().read(cx).is_via_collab() {
+            return None;
+        }
+        if let Some(thread) = self.as_native_thread(cx) {
+            let thread = thread.read(cx);
+            return thread
+                .sandboxing_available(cx)
+                .then(|| !thread.sandbox_turned_off(cx));
+        }
+        let server_view = self.server_view.upgrade()?;
+        let server_view = server_view.read(cx);
+        server_view
+            .is_external_agent()
+            .then(|| !server_view.runs_outside_sandbox(cx))
+    }
+
+    /// The thread's sandbox switch (ADR-F96). The built-in agent runs this thread's terminal
+    /// commands in or out of the sandbox from the next one on; an external agent runs in or out
+    /// of it as a whole, so it is started again there. A right click picks what new threads in
+    /// this project start with; "outside" there needs running outside the sandbox allowed, as the
+    /// button does.
+    fn render_sandbox_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let sandboxed = self.thread_sandboxed(cx)?;
+        let native = self.as_native_thread(cx).is_some();
+        let (tooltip_title, tooltip_meta) = match (sandboxed, native) {
+            (true, true) => (
+                i18n::t!("Sandbox: On"),
+                i18n::t!(
+                    "Terminal commands run in the sandbox. Click to run this thread's commands \
+                     outside it; each one still asks first. Right-click to set the default for \
+                     this project."
+                ),
+            ),
+            (false, true) => (
+                i18n::t!("Sandbox: Off"),
+                i18n::t!(
+                    "Terminal commands run outside the sandbox, and each one asks first. Click to \
+                     turn the sandbox back on for this thread. Right-click to set the default for \
+                     this project."
+                ),
+            ),
+            (true, false) => (
+                i18n::t!("Sandbox: On"),
+                i18n::t!(
+                    "The agent runs in the sandbox. Click to start it again outside the sandbox, \
+                     in a new session. Right-click to set the default for this project."
+                ),
+            ),
+            (false, false) => (
+                i18n::t!("Sandbox: Off"),
+                i18n::t!(
+                    "The agent runs outside the sandbox and may use its own tools without asking. \
+                     Click to start it again in the sandbox, in a new session. Right-click to set \
+                     the default for this project."
+                ),
+            ),
+        };
+        let button = IconButton::new(
+            "thread-sandbox",
+            if sandboxed {
+                IconName::Lock
+            } else {
+                IconName::LockOff
+            },
+        )
+        .icon_size(IconSize::Small)
+        .icon_color(if sandboxed {
+            Color::Muted
+        } else {
+            Color::Warning
+        })
+        .tooltip(move |_window, cx| Tooltip::with_meta(tooltip_title, None, tooltip_meta, cx))
+        .on_click(cx.listener(move |this, _, window, cx| {
+            this.toggle_thread_sandbox(sandboxed, window, cx);
+        }));
+        let project = self.thread.read(cx).project().clone();
+        Some(
+            right_click_menu("thread-sandbox-default")
+                .trigger(move |_, _, _| button)
+                .menu(move |window, cx| {
+                    let project = project.clone();
+                    ContextMenu::build(window, cx, move |menu, _, cx| {
+                        let current =
+                            project::agent_sandbox::project_default_sandbox(project.read(cx), cx);
+                        let entry =
+                            |menu: ContextMenu, label: &'static str, value: Option<bool>| {
+                                let project = project.clone();
+                                menu.toggleable_entry(
+                                    label,
+                                    current == value,
+                                    IconPosition::Start,
+                                    None,
+                                    move |window, cx| {
+                                        if value != Some(false) {
+                                            set_project_default_sandbox(&project, value, cx);
+                                            return;
+                                        }
+                                        let fs = project.read(cx).fs().clone();
+                                        let allowed =
+                                        crate::sandboxed_claude_code::allow_outside_sandbox_first(
+                                            fs, window, cx,
+                                        );
+                                        let project = project.clone();
+                                        cx.spawn(async move |cx| {
+                                            if allowed.await {
+                                                cx.update(|cx| {
+                                                    set_project_default_sandbox(&project, value, cx)
+                                                });
+                                            }
+                                        })
+                                        .detach();
+                                    },
+                                )
+                            };
+                        let menu = menu.header(i18n::t!("New Threads in This Project"));
+                        let menu = entry(menu, i18n::t!("Follow the Settings"), None);
+                        let menu = entry(menu, i18n::t!("In the Sandbox"), Some(true));
+                        entry(menu, i18n::t!("Outside the Sandbox"), Some(false))
+                    })
+                })
+                .into_any_element(),
+        )
+    }
+
+    /// Turns the sandbox on or off for this thread (ADR-F96). Turning it off first makes sure
+    /// running outside the sandbox is allowed at all (ADR-F92).
+    fn toggle_thread_sandbox(
+        &mut self,
+        sandboxed: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let fs = self.thread.read(cx).project().read(cx).fs().clone();
+        if let Some(thread) = self.as_native_thread(cx) {
+            if !sandboxed {
+                thread.update(cx, |thread, cx| thread.set_sandbox_choice(Some(true), cx));
+                cx.notify();
+                return;
+            }
+            let allowed = crate::sandboxed_claude_code::allow_outside_sandbox_first(fs, window, cx);
+            cx.spawn(async move |this, cx| {
+                if !allowed.await {
+                    return;
+                }
+                this.update(cx, |_this, cx| {
+                    thread.update(cx, |thread, cx| thread.set_sandbox_choice(Some(false), cx));
+                    cx.notify();
+                })
+                .log_err();
+            })
+            .detach();
+            return;
+        }
+        let Some(server_view) = self.server_view.upgrade() else {
+            return;
+        };
+        if !sandboxed {
+            server_view.update(cx, |server_view, cx| {
+                if server_view.can_restart_in_sandbox(cx) {
+                    server_view.restart_in_sandbox(window, cx);
+                }
+            });
+            return;
+        }
+        let allowed = crate::sandboxed_claude_code::allow_outside_sandbox_first(fs, window, cx);
+        let server_view = server_view.downgrade();
+        cx.spawn_in(window, async move |_this, cx| {
+            if !allowed.await {
+                return;
+            }
+            server_view
+                .update_in(cx, |server_view, window, cx| {
+                    if server_view.can_restart_outside_sandbox(cx) {
+                        server_view.restart_outside_sandbox(window, cx);
+                    }
+                })
+                .log_err();
+        })
+        .detach();
+    }
+}
+
+/// Writes what new threads in `project` start with, in the user's settings file, under each of
+/// its folders (ADR-F96); `None` removes it, so that the settings decide.
+fn set_project_default_sandbox(project: &Entity<Project>, sandbox: Option<bool>, cx: &mut App) {
+    let keys = project::agent_sandbox::project_thread_defaults_keys(project.read(cx), cx);
+    if keys.is_empty() {
+        return;
+    }
+    let fs = project.read(cx).fs().clone();
+    update_settings_file(fs, cx, move |settings, _| {
+        let defaults = settings
+            .agent
+            .get_or_insert_default()
+            .project_thread_defaults
+            .get_or_insert_default();
+        for key in keys {
+            match sandbox {
+                Some(sandbox) => defaults.entry(key).or_default().sandbox = Some(sandbox),
+                None => {
+                    if let Some(entry) = defaults.get_mut(&key) {
+                        entry.sandbox = None;
+                        if *entry == settings::ProjectThreadDefaultsContent::default() {
+                            defaults.remove(&key);
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 struct TokenUsageTooltip {

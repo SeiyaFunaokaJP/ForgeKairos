@@ -3703,6 +3703,10 @@ msgid "What `git reset` keeps of the changes."
 msgstr "Ce que `git reset` conserve des modifications."
 
 msgctxt "settings schema"
+msgid "What a new agent thread starts with in a project, keyed by the absolute\npath of the project's folder (for a project on a remote host, the\nhost's connection, `#`, then the path there). The chat input's buttons\ncan still change it for one thread; that change is not saved. Only read\nfrom the user settings file.\n\nDefault: {}"
+msgstr "Comment une nouvelle conversation d'agent démarre dans un projet, indexé par le chemin absolu du dossier du projet (pour un projet sur un hôte distant : la connexion de l'hôte, `#`, puis le chemin sur cet hôte). Les boutons de la zone de saisie du chat peuvent toujours le modifier pour une conversation ; cette modification n'est pas enregistrée. Lu uniquement depuis le fichier de paramètres utilisateur.\n\nPar défaut : {}"
+
+msgctxt "settings schema"
 msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
 msgstr "Paramètres de base à partir desquels appliquer les remplacements de ce profil.\n\n- `user` : s'applique par-dessus les paramètres de l'utilisateur (par défaut)\n- `default` : s'applique par-dessus les paramètres par défaut de ForgeKairos, en ignorant les personnalisations de l'utilisateur"
 
@@ -4137,6 +4141,10 @@ msgstr "Indique si le panneau de l'agent doit s'ouvrir au démarrage, même si s
 msgctxt "settings schema"
 msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the\nleft or right.\n\nWhen enabled, `default_width` does not control the panel width, and resetting the panel\nrestores the default proportion.\n\nDefault: true"
 msgstr "Indique si le panneau de l'agent doit utiliser un dimensionnement flexible (proportionnel) lorsqu'il est ancré à gauche ou à droite.\n\nSi cette option est activée, `default_width` ne contrôle pas la largeur du panneau, et la réinitialisation du panneau rétablit la proportion par défaut.\n\nValeur par défaut : true"
+
+msgctxt "settings schema"
+msgid "Whether the agent's terminal commands run in the sandbox. `false` runs\nthem outside it, which needs `sandbox_permissions.allow_outside_sandbox`;\nexternal agents then start outside it without asking."
+msgstr "Si les commandes du terminal de l'agent s'exécutent dans le bac à sable. `false` les exécute hors de celui-ci, ce qui nécessite `sandbox_permissions.allow_outside_sandbox` ; les agents externes démarrent alors hors du bac à sable sans demander."
 
 msgctxt "settings schema"
 msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"

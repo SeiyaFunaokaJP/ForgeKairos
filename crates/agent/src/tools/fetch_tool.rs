@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::{borrow::Cow, cell::RefCell};
 
 use agent_client_protocol::schema::v1 as acp;
-use agent_settings::AgentSettings;
 use anyhow::{Context as _, Result, bail};
 use futures::{AsyncReadExt as _, FutureExt as _};
 use gpui::{App, AppContext as _, Task};
@@ -11,7 +10,6 @@ use html_to_markdown::{TagHandler, convert_html_to_markdown, markdown};
 use http_client::{AsyncBody, HttpClientWithUrl};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use settings::Settings as _;
 use ui::SharedString;
 use util::markdown::{MarkdownEscaped, MarkdownInlineCode};
 
@@ -274,8 +272,9 @@ impl AgentTool for FetchTool {
             // request may proceed. With the sandbox turned off the terminal
             // already runs without isolation, so fetch's restrictions are
             // dropped too, including hosts that can't be granted individually
-            // (loopback and IP literals). No per-thread choice lifts them
-            // (ADR-F46).
+            // (loopback and IP literals). No grant the model asks for lifts
+            // them (ADR-F46); the user turning the sandbox off for this thread
+            // (ADR-F96) does.
             //
             // Crucially, this authorization is applied to every redirect hop as
             // well as the initial URL, so a granted host can't 30x-redirect the
@@ -287,10 +286,7 @@ impl AgentTool for FetchTool {
             // sandboxed either, so gating fetch by host would provide no
             // isolation; skip it entirely (the pre-sandboxing behavior).
             let unsandboxed = cx.update(|cx| {
-                !crate::sandboxing::sandboxing_enabled(cx)
-                    || AgentSettings::get_global(cx)
-                        .sandbox_permissions
-                        .allow_unsandboxed
+                !crate::sandboxing::sandboxing_enabled(cx) || event_stream.sandbox_turned_off(cx)
             });
 
             let mut current_url = input.url.clone();

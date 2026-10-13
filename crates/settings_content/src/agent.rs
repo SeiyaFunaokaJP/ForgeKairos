@@ -1,4 +1,4 @@
-use collections::{HashMap, IndexMap};
+use collections::{BTreeMap, HashMap, IndexMap};
 use schemars::{JsonSchema, json_schema};
 use serde::{Deserialize, Serialize};
 use settings_macros::{MergeFrom, with_fallible_options};
@@ -451,6 +451,14 @@ pub struct AgentSettingsContent {
     ///
     /// Default: true
     pub git_operations: Option<bool>,
+    /// What a new agent thread starts with in a project, keyed by the absolute
+    /// path of the project's folder (for a project on a remote host, the
+    /// host's connection, `#`, then the path there). The chat input's buttons
+    /// can still change it for one thread; that change is not saved. Only read
+    /// from the user settings file.
+    ///
+    /// Default: {}
+    pub project_thread_defaults: Option<BTreeMap<String, ProjectThreadDefaultsContent>>,
     /// Limits on how much of an attachment (a file, a directory, a selection,
     /// a fetched page, diagnostics or a branch diff) is sent to the agent.
     /// Anything over these limits is sent as an outline or a reference the
@@ -1168,6 +1176,15 @@ impl JsonSchema for GrantedWritePathContent {
             ]
         })
     }
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct ProjectThreadDefaultsContent {
+    /// Whether the agent's terminal commands run in the sandbox. `false` runs
+    /// them outside it, which needs `sandbox_permissions.allow_outside_sandbox`;
+    /// external agents then start outside it without asking.
+    pub sandbox: Option<bool>,
 }
 
 #[with_fallible_options]

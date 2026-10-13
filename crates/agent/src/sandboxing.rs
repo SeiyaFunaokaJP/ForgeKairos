@@ -97,7 +97,13 @@ pub(crate) fn policy_with_protected_paths(
 /// sandbox entirely; otherwise the writable-path and host grants form its
 /// scope. The per-thread overrides come from [`ThreadSandboxGrants::to_policy`].
 pub fn settings_thread_sandbox(persistent: &SandboxPermissions) -> ThreadSandbox {
-    if persistent.allow_unsandboxed {
+    thread_sandbox(persistent, persistent.allow_unsandboxed)
+}
+
+/// [`settings_thread_sandbox`] for a thread whose sandbox is turned off or not
+/// as [`sandbox_turned_off`] says, rather than as the setting alone does.
+pub(crate) fn thread_sandbox(persistent: &SandboxPermissions, turned_off: bool) -> ThreadSandbox {
+    if turned_off {
         ThreadSandbox::Unsandboxed
     } else {
         ThreadSandbox::Sandboxed(settings_sandbox_policy(persistent))
@@ -149,11 +155,32 @@ pub fn settings_sandbox_policy(persistent: &SandboxPermissions) -> SandboxPolicy
 /// omit the sandbox section from the system prompt, because every command would
 /// run without a wrap regardless (and, per ADR-F46, ask for approval each
 /// time).
-pub(crate) fn sandboxing_enabled_for_project(project: &Project, cx: &App) -> bool {
-    sandboxing_available_for_project(project, cx)
-        && !AgentSettings::get_global(cx)
-            .sandbox_permissions
-            .allow_unsandboxed
+///
+/// ADR-F96: a thread may turn the sandbox on or off for itself
+/// (`thread_choice`, `None` where the settings decide); see
+/// [`sandbox_turned_off`].
+pub(crate) fn sandboxing_enabled_for_thread(
+    project: &Project,
+    thread_choice: Option<bool>,
+    cx: &App,
+) -> bool {
+    sandboxing_available_for_project(project, cx) && !sandbox_turned_off(thread_choice, cx)
+}
+
+/// ADR-F96: whether the sandbox is turned off for a thread: by its own choice
+/// (which starts as the project's default), else by the `allow_unsandboxed`
+/// setting. A choice to turn it off counts only while running outside the
+/// sandbox is allowed at all (ADR-F92); otherwise the commands stay in the
+/// sandbox.
+pub(crate) fn sandbox_turned_off(thread_choice: Option<bool>, cx: &App) -> bool {
+    match thread_choice {
+        Some(sandbox) => !sandbox && project::agent_sandbox::outside_sandbox_allowed(cx),
+        None => {
+            AgentSettings::get_global(cx)
+                .sandbox_permissions
+                .allow_unsandboxed
+        }
+    }
 }
 
 /// Whether agent-run terminal commands should be wrapped in an OS-level

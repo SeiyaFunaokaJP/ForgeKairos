@@ -200,6 +200,9 @@ msgstr "Todas as ferramentas estão desabilitadas porque este projeto não é co
 msgid "Allow"
 msgstr "Permitir"
 
+msgid "Allow Running Outside the Sandbox?"
+msgstr "Permitir execução fora do sandbox?"
+
 msgid "Allowed for this thread:"
 msgstr "Permitido para esta conversa:"
 
@@ -892,6 +895,9 @@ msgstr "Concluída"
 msgid "Finished running tools"
 msgstr "Execução de ferramentas concluída"
 
+msgid "Follow the Settings"
+msgstr "Seguir as configurações"
+
 msgid "Follow the {}"
 msgstr "Seguir {}"
 
@@ -991,6 +997,9 @@ msgstr "Na fila"
 
 msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
 msgstr "Tanto na aprovação automática quanto no julgamento por IA, as regras de segurança integradas, seus padrões de negação e de confirmação, o sandbox e a confirmação de escritas em arquivos de configurações continuam valendo. Os comandos de terminal são executados dentro do sandbox, e as operações com arquivos fora do projeto e as adições de rede são confirmadas em todos os modos. Os comandos de terminal executados fora do sandbox também são confirmados todas as vezes. As ferramentas disponíveis são escolhidas pelo perfil, não pelo modo. No julgamento por IA, o que está sendo julgado (comandos e caminhos) é enviado ao provedor do modelo julgador, por isso um modelo local é recomendado."
+
+msgid "In the Sandbox"
+msgstr "Dentro do sandbox"
 
 msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
 msgstr "No sandbox, o Claude Code se conecta somente aos hosts da Anthropic a seguir. Eles são adicionados à lista de permissões de todo o IDE e também se aplicam aos comandos do agente integrado.\nHosts que precisam ser permitidos: {hosts}"
@@ -1174,6 +1183,9 @@ msgstr "Nova aba"
 
 msgid "New Thread"
 msgstr "Nova conversa"
+
+msgid "New Threads in This Project"
+msgstr "Novas conversas neste projeto"
 
 msgid "New Thread…"
 msgstr "Nova conversa…"
@@ -1646,6 +1658,12 @@ msgstr "É executado fora do sandbox (com as permissões do próprio ForgeKairos
 msgid "Sandbox"
 msgstr "Sandbox"
 
+msgid "Sandbox: Off"
+msgstr "Sandbox: desativado"
+
+msgid "Sandbox: On"
+msgstr "Sandbox: ativado"
+
 msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
 msgstr "Sandboxes com acesso de escrita a um local em uma unidade do Windows podem não fornecer isolamento completo do sistema de arquivos."
 
@@ -1802,6 +1820,9 @@ msgstr "Iniciar (somente esta conversa)"
 msgid "Start (This Time Only)"
 msgstr "Iniciar (somente desta vez)"
 
+msgid "Start Again in the Sandbox"
+msgstr "Reiniciar dentro do sandbox"
+
 msgid "Start Claude Code outside the sandbox?"
 msgstr "Iniciar o Claude Code fora do sandbox?"
 
@@ -1819,6 +1840,9 @@ msgstr "Iniciar fora do sandbox…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "Iniciar `{program}` fora do sandbox?"
+
+msgid "Start the Agent Again in the Sandbox?"
+msgstr "Reiniciar o agente dentro do sandbox?"
 
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "Iniciado fora do sandbox, este agente é executado com as permissões do próprio ForgeKairos e também pode executar os hooks e os servidores MCP do projeto. Você será consultado para cada conversa antes de ela iniciar."
@@ -1904,6 +1928,12 @@ msgstr "Destino"
 msgid "Terminal"
 msgstr "Terminal"
 
+msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
+msgstr "Os comandos do terminal são executados dentro do sandbox. Clique para executar os comandos desta conversa fora dele; cada um ainda pede confirmação. Clique com o botão direito para definir o padrão deste projeto."
+
+msgid "Terminal commands run outside the sandbox, and each one asks first. Click to turn the sandbox back on for this thread. Right-click to set the default for this project."
+msgstr "Os comandos do terminal são executados fora do sandbox, e cada um pede confirmação. Clique para reativar o sandbox nesta conversa. Clique com o botão direito para definir o padrão deste projeto."
+
 msgid "Terminal inline assistant error: {}"
 msgstr "Erro do assistente embutido do terminal: {}"
 
@@ -1930,6 +1960,15 @@ msgstr "O agente pode preparar, fazer commit, trocar de branch etc., com os hook
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "O agente não pode usar `getDiagnostics`, então não vê os erros e avisos que o editor mostra. {reason}"
+
+msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "O agente é executado dentro do sandbox. Clique para reiniciá-lo fora do sandbox, em uma nova sessão. Clique com o botão direito para definir o padrão deste projeto."
+
+msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "O agente é executado fora do sandbox e pode usar as próprias ferramentas sem perguntar. Clique para reiniciá-lo dentro do sandbox, em uma nova sessão. Clique com o botão direito para definir o padrão deste projeto."
+
+msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
+msgstr "O agente para e reinicia dentro do sandbox. A conversa continua em uma nova sessão: a atual é mantida fora do sandbox, onde o agente no sandbox não consegue lê-la."
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "O agente foi adicionado ao settings.json, mas ainda não foi carregado. Abra-o mais tarde pelo menu +."
@@ -2214,6 +2253,12 @@ msgstr "Tentar novamente"
 
 msgid "Try to restart the agent"
 msgstr "Tentar reiniciar o agente"
+
+msgid "Turn On and Continue"
+msgstr "Ativar e continuar"
+
+msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "Desativar o sandbox requer \"Permitir execução fora do sandbox\" (Configurações > IA > Sandbox), que está desativado. Ativá-lo? Ele permanece ativado até que você o desative lá."
 
 msgid "Type anything to edit"
 msgstr "Digite qualquer coisa para editar"

@@ -15,7 +15,7 @@ use std::{
 
 use crate::sandboxing::{
     NetworkRequest, sandbox_git_dirs, sandbox_worktree_writable_paths,
-    sandboxing_enabled_for_project, unsandboxed_execution_reason,
+    sandboxing_available_for_project, unsandboxed_execution_reason,
 };
 use crate::{AgentTool, ThreadEnvironment, ToolCallEventStream, ToolInput};
 
@@ -537,7 +537,7 @@ async fn run_terminal_tool(
             let working_dir =
                 working_dir(&input.cd, &project, cx).map_err(|err| err.to_string())?;
             let sandboxing =
-                input.sandbox.is_some() && sandboxing_enabled_for_project(project.read(cx), cx);
+                input.sandbox.is_some() && event_stream.sandboxing_enabled(project.read(cx), cx);
             // ADR-F46: auto-approval only applies inside the sandbox, and a
             // sandbox that may write anywhere but the protected paths (the
             // settings switch) counts as outside it.
@@ -569,7 +569,13 @@ async fn run_terminal_tool(
                         i18n::in_english(|| unsandboxed_execution_reason(project.read(cx), cx));
                     return Err(outside_sandbox_not_allowed_message(&reason));
                 }
-                let reason = unsandboxed_execution_reason(project.read(cx), cx);
+                let reason = if sandboxing_available_for_project(project.read(cx), cx)
+                    && event_stream.thread_sandbox_choice(cx) == Some(false)
+                {
+                    i18n::t!("The sandbox is turned off for this thread").to_string()
+                } else {
+                    unsandboxed_execution_reason(project.read(cx), cx)
+                };
                 event_stream.authorize_unsandboxed_command(input.command.clone(), reason, false, cx)
             };
             let is_local_project = project.read(cx).is_local();

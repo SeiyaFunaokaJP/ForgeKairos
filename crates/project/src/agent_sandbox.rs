@@ -326,6 +326,63 @@ pub fn outside_sandbox_allowed(cx: &App) -> bool {
             .unwrap_or(false)
 }
 
+/// ADR-F96: the keys `project`'s folders are kept under in
+/// `agent.project_thread_defaults`: a local folder's absolute path, or for a
+/// project on a remote host the host's connection, `#`, then the path there
+/// (the shape of ADR-F93's `git.project_accounts`). Empty for a
+/// collaborator's project, which no default applies to.
+pub fn project_thread_defaults_keys(project: &Project, cx: &App) -> Vec<String> {
+    if project.is_via_collab() {
+        return Vec::new();
+    }
+    let connection = project.remote_client().map(|client| {
+        remote::remote_connection_identity(&client.read(cx).connection_options()).persistence_key()
+    });
+    project
+        .visible_worktrees(cx)
+        .map(|worktree| {
+            let path = worktree.read(cx).abs_path();
+            match &connection {
+                Some(connection) => format!("{connection}#{}", path.to_string_lossy()),
+                None => path.to_string_lossy().into_owned(),
+            }
+        })
+        .collect()
+}
+
+/// ADR-F96: whether a new thread in `project` runs its agent's terminal
+/// commands in the sandbox, as the user's own settings file has it for the
+/// project's folders (`agent.project_thread_defaults.<folder>.sandbox`), or
+/// `None` where it says nothing. A project of several folders runs outside
+/// the sandbox only when every one of them says so: a folder that asks for
+/// the sandbox, or says nothing, keeps it.
+///
+/// This is what the user chose, not what runs: running outside the sandbox
+/// also needs [`outside_sandbox_allowed`].
+pub fn project_default_sandbox(project: &Project, cx: &App) -> Option<bool> {
+    let choices = project_thread_defaults_keys(project, cx)
+        .into_iter()
+        .map(|key| {
+            crate::worktree_code_execution::from_user_settings(cx, |content| {
+                content
+                    .agent
+                    .as_ref()?
+                    .project_thread_defaults
+                    .as_ref()?
+                    .get(&key)?
+                    .sandbox
+            })
+        })
+        .collect::<Vec<_>>();
+    if choices.contains(&Some(true)) {
+        Some(true)
+    } else if !choices.is_empty() && choices.iter().all(|choice| *choice == Some(false)) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// ADR-F49 decision 19: whether the user has chosen, in their own settings
 /// file, to start `agent_id` outside its sandbox every time
 /// (`agent_servers.<id>.run_outside_sandbox`), and running outside the

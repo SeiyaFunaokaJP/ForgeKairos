@@ -3703,6 +3703,10 @@ msgid "What `git reset` keeps of the changes."
 msgstr "`git reset` 對變更的保留方式。"
 
 msgctxt "settings schema"
+msgid "What a new agent thread starts with in a project, keyed by the absolute\npath of the project's folder (for a project on a remote host, the\nhost's connection, `#`, then the path there). The chat input's buttons\ncan still change it for one thread; that change is not saved. Only read\nfrom the user settings file.\n\nDefault: {}"
+msgstr "新的代理會話在各專案中如何開始，以專案資料夾的絕對路徑為鍵（遠端主機上的專案為主機的連線、`#`，再接該主機上的路徑）。聊天輸入欄的按鈕仍可為單一會話變更它；該變更不會儲存。只從使用者設定檔讀取。\n\n預設值：{}"
+
+msgctxt "settings schema"
 msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
 msgstr "套用此設定檔的覆寫之前，要從哪一組基礎設定開始。\n\n- `user`：套用在使用者設定之上（預設）\n- `default`：套用在 ForgeKairos 的預設設定之上，忽略使用者的自訂"
 
@@ -4137,6 +4141,10 @@ msgstr "即使上次關閉了其停駐區，是否仍在啟動時開啟代理面
 msgctxt "settings schema"
 msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the\nleft or right.\n\nWhen enabled, `default_width` does not control the panel width, and resetting the panel\nrestores the default proportion.\n\nDefault: true"
 msgstr "代理面板停駐於左側或右側時，是否使用彈性（依比例）大小。\n\n啟用時，`default_width` 不會控制面板寬度，重設面板會還原預設比例。\n\n預設值：true"
+
+msgctxt "settings schema"
+msgid "Whether the agent's terminal commands run in the sandbox. `false` runs\nthem outside it, which needs `sandbox_permissions.allow_outside_sandbox`;\nexternal agents then start outside it without asking."
+msgstr "代理的終端機命令是否在沙箱內執行。設為 `false` 會在沙箱外執行，這需要 `sandbox_permissions.allow_outside_sandbox`；外部代理隨後會不經詢問就在沙箱外啟動。"
 
 msgctxt "settings schema"
 msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"

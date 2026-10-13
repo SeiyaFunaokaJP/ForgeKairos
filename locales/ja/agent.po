@@ -405,6 +405,9 @@ msgstr "ターミナルコマンド"
 msgid "The review was stopped because the settings changed"
 msgstr "設定が変わったため判定を中止しました"
 
+msgid "The sandbox is turned off for this thread"
+msgstr "このスレッドではサンドボックスがオフになっています"
+
 msgid "The settings allow writing anywhere in the file system"
 msgstr "設定でファイルシステムへの書き込みがすべて許可されています"
 

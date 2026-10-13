@@ -200,6 +200,9 @@ msgstr "由于此项目不受信任，所有工具均已禁用"
 msgid "Allow"
 msgstr "允许"
 
+msgid "Allow Running Outside the Sandbox?"
+msgstr "允许在沙盒外运行？"
+
 msgid "Allowed for this thread:"
 msgstr "本次会话中允许："
 
@@ -891,6 +894,9 @@ msgstr "已完成"
 msgid "Finished running tools"
 msgstr "工具运行完成"
 
+msgid "Follow the Settings"
+msgstr "遵循设置"
+
 msgid "Follow the {}"
 msgstr "跟随 {}"
 
@@ -988,6 +994,9 @@ msgstr "队列中"
 
 msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
 msgstr "无论是“全自动”还是“AI 判定”，内置安全规则、你设置的拒绝和确认模式、沙盒以及写入设置文件时的确认仍然适用。终端命令在沙盒内运行，在任何模式下，项目之外的文件操作和网络添加都需要确认。在沙盒外运行的终端命令也每次都需要确认。可用的工具由配置文件决定，而不是由模式决定。使用“AI 判定”时，被判定的内容（命令和路径）会发送给判定所用模型的提供商，因此建议使用本地模型。"
+
+msgid "In the Sandbox"
+msgstr "沙盒内"
 
 msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
 msgstr "在沙盒中，Claude Code 只会连接以下 Anthropic 主机。这些主机会添加到 IDE 全局的允许列表中，也适用于内置智能体的命令。\n需要允许的主机：{hosts}"
@@ -1171,6 +1180,9 @@ msgstr "新建标签页"
 
 msgid "New Thread"
 msgstr "新建会话"
+
+msgid "New Threads in This Project"
+msgstr "此项目中的新会话"
 
 msgid "New Thread…"
 msgstr "新建会话…"
@@ -1643,6 +1655,12 @@ msgstr "在沙盒外运行（使用 ForgeKairos 自身的权限）"
 msgid "Sandbox"
 msgstr "沙盒"
 
+msgid "Sandbox: Off"
+msgstr "沙盒：关"
+
+msgid "Sandbox: On"
+msgstr "沙盒：开"
+
 msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
 msgstr "可写入 Windows 驱动器位置的沙盒可能无法提供完整的文件系统隔离。"
 
@@ -1799,6 +1817,9 @@ msgstr "启动（仅此会话）"
 msgid "Start (This Time Only)"
 msgstr "启动（仅此一次）"
 
+msgid "Start Again in the Sandbox"
+msgstr "在沙盒内重新启动"
+
 msgid "Start Claude Code outside the sandbox?"
 msgstr "在沙盒外启动 Claude Code？"
 
@@ -1816,6 +1837,9 @@ msgstr "在沙盒外启动…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "在沙盒外启动 `{program}`？"
+
+msgid "Start the Agent Again in the Sandbox?"
+msgstr "在沙盒内重新启动智能体？"
 
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "在沙盒外启动时，此智能体以 ForgeKairos 自身的权限运行，还可以运行项目的钩子和 MCP 服务器。每个会话启动前都会询问你。"
@@ -1901,6 +1925,12 @@ msgstr "目标"
 msgid "Terminal"
 msgstr "终端"
 
+msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
+msgstr "终端命令在沙盒内运行。点击以在沙盒外运行此会话的命令；每条命令仍会先询问。右键点击以设置此项目的默认值。"
+
+msgid "Terminal commands run outside the sandbox, and each one asks first. Click to turn the sandbox back on for this thread. Right-click to set the default for this project."
+msgstr "终端命令在沙盒外运行，每条命令都会先询问。点击以为此会话重新开启沙盒。右键点击以设置此项目的默认值。"
+
 msgid "Terminal inline assistant error: {}"
 msgstr "终端内联助手错误：{}"
 
@@ -1927,6 +1957,15 @@ msgstr "智能体可以暂存、提交、切换分支等，但钩子已关闭且
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "智能体无法使用 `getDiagnostics`，因此看不到编辑器显示的错误和警告。{reason}"
+
+msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "智能体在沙盒内运行。点击以在沙盒外以新会话重新启动它。右键点击以设置此项目的默认值。"
+
+msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "智能体在沙盒外运行，可能会不经询问就使用自己的工具。点击以在沙盒内以新会话重新启动它。右键点击以设置此项目的默认值。"
+
+msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
+msgstr "智能体会停止，然后在沙盒内重新启动。对话将在新会话中继续：当前会话保留在沙盒外，沙盒内的智能体无法读取它。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "智能体已添加到 settings.json，但尚未加载。请稍后从 + 菜单中打开它。"
@@ -2210,6 +2249,12 @@ msgstr "重试"
 
 msgid "Try to restart the agent"
 msgstr "尝试重启智能体"
+
+msgid "Turn On and Continue"
+msgstr "开启并继续"
+
+msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "关闭沙盒需要开启“允许在沙盒外运行”（设置 > AI > 沙盒），但它目前已关闭。要开启吗？在设置中关闭之前，它会一直保持开启。"
 
 msgid "Type anything to edit"
 msgstr "输入任意内容以编辑"

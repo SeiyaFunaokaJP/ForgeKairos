@@ -867,6 +867,10 @@ pub struct ConversationView {
     /// its session was started, although the user's settings start this
     /// agent outside every time.
     resumed_in_sandbox_despite_choice: bool,
+    /// ADR-F96: the user started the agent again in its sandbox with the chat
+    /// input's sandbox button, so this view stays there whatever the settings
+    /// and the project's default say, until the button lets it out again.
+    kept_in_sandbox: bool,
     agent_server_store: Entity<AgentServerStore>,
     workspace: WeakEntity<Workspace>,
     project: Entity<Project>,
@@ -1249,6 +1253,14 @@ impl ConversationView {
             &agent,
             &connection_store,
             &connection_key,
+            Self::project_default_starts_outside(
+                &agent,
+                &project,
+                thread_id,
+                resume_session_id.is_some(),
+                false,
+                cx,
+            ),
             cx,
         );
         let resumed_in_sandbox_despite_choice = Self::resumes_in_sandbox_despite_choice(
@@ -1283,6 +1295,7 @@ impl ConversationView {
             connection_key: connection_key.clone(),
             outside_sandbox,
             resumed_in_sandbox_despite_choice,
+            kept_in_sandbox: false,
             agent_server_store,
             workspace,
             project: project.clone(),
@@ -1413,7 +1426,9 @@ impl ConversationView {
     pub(crate) fn retry_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let place = match self.outside_sandbox {
             Some(id) => ConnectionPlace::OutsideSandbox(id),
-            None if self.resumed_in_sandbox_despite_choice => ConnectionPlace::InSandbox,
+            None if self.resumed_in_sandbox_despite_choice || self.kept_in_sandbox => {
+                ConnectionPlace::InSandbox
+            }
             None => ConnectionPlace::AsTheSettingsSay,
         };
         self.connection_store.update(cx, |store, cx| {
@@ -1487,12 +1502,21 @@ impl ConversationView {
         // gone (it failed to start, the idle disconnect took it, an update
         // superseded it) is started again outside — the user confirmed that
         // for this thread, not for one connection.
+        let project_default_starts_outside = Self::project_default_starts_outside(
+            &self.agent,
+            &self.project,
+            self.thread_id,
+            resume_session_id.is_some(),
+            self.kept_in_sandbox,
+            cx,
+        );
         self.outside_sandbox = Self::outside_sandbox_for_start(
             self.outside_sandbox,
             self.thread_id,
             &self.agent,
             &self.connection_store,
             &self.connection_key,
+            project_default_starts_outside,
             cx,
         );
         self.resumed_in_sandbox_despite_choice = Self::resumes_in_sandbox_despite_choice(
@@ -1508,7 +1532,7 @@ impl ConversationView {
             self.connection_store.clone(),
             self.connection_key.clone(),
             self.outside_sandbox,
-            self.resumed_in_sandbox_despite_choice,
+            self.resumed_in_sandbox_despite_choice || self.kept_in_sandbox,
             self.thread_id,
             resume_session_id,
             work_dirs,
@@ -2343,12 +2367,21 @@ impl ConversationView {
         // The same rule [`Self::reset`] follows: the idle disconnect took the
         // connection, not the user's consent for this thread (ADR-F49 決定 19,
         // 8c), so a draft started outside the sandbox comes back outside it.
+        let project_default_starts_outside = Self::project_default_starts_outside(
+            &self.agent,
+            &self.project,
+            self.thread_id,
+            false,
+            self.kept_in_sandbox,
+            cx,
+        );
         self.outside_sandbox = Self::outside_sandbox_for_start(
             self.outside_sandbox,
             self.thread_id,
             &self.agent,
             &self.connection_store,
             &self.connection_key,
+            project_default_starts_outside,
             cx,
         );
         self.resumed_in_sandbox_despite_choice = false;
@@ -2357,7 +2390,7 @@ impl ConversationView {
             self.connection_store.clone(),
             self.connection_key.clone(),
             self.outside_sandbox,
-            false,
+            self.kept_in_sandbox,
             self.thread_id,
             None,
             work_dirs,
@@ -5082,7 +5115,7 @@ impl ConversationView {
     /// as long as that agent runs — whichever slot of the store holds it, and
     /// after an update has superseded it — and holds for the user's choice to
     /// start every start outside as for the one start they confirmed.
-    fn runs_outside_sandbox(&self, _cx: &App) -> bool {
+    pub(crate) fn runs_outside_sandbox(&self, _cx: &App) -> bool {
         match &self.server_state {
             ServerState::Connected(connected) => connected.connection.runs_outside_sandbox(),
             ServerState::Loading {
@@ -5097,7 +5130,7 @@ impl ConversationView {
         }
     }
 
-    fn is_external_agent(&self) -> bool {
+    pub(crate) fn is_external_agent(&self) -> bool {
         self.agent.clone().downcast::<NativeAgentServer>().is_none()
     }
 
@@ -5130,6 +5163,7 @@ impl ConversationView {
             && (outside_sandbox_consented(self.thread_id, self.agent.agent_id(), cx)
                 || thread_started_outside_sandbox(self.thread_id, cx)
                 || (!self.resumed_in_sandbox_despite_choice
+                    && !self.kept_in_sandbox
                     && agent_servers::runs_outside_sandbox_by_user_choice(
                         self.agent.agent_id().0.as_ref(),
                         cx,
@@ -5167,6 +5201,7 @@ impl ConversationView {
             && self.is_external_agent()
             && !self.project.read(cx).is_via_collab()
             && (self.resumed_in_sandbox_despite_choice
+                || self.kept_in_sandbox
                 || !agent_servers::runs_outside_sandbox_by_user_choice(
                     self.agent.agent_id().0.as_ref(),
                     cx,
@@ -5179,6 +5214,26 @@ impl ConversationView {
         matches!(self.server_state, ServerState::Connected(_))
             && !self.runs_outside_sandbox(cx)
             && self.can_offer_start_outside_sandbox(cx)
+    }
+
+    /// ADR-F96: whether the project's default starts this external agent
+    /// outside its sandbox (`agent.project_thread_defaults.<folder>.sandbox`
+    /// is false) without asking: for a new thread, and for one read back that
+    /// was started outside — a thread started in the sandbox is read back
+    /// where its session is. Not after the sandbox button kept the view in.
+    fn project_default_starts_outside(
+        agent: &Rc<dyn AgentServer>,
+        project: &Entity<Project>,
+        thread_id: ThreadId,
+        resuming: bool,
+        kept_in_sandbox: bool,
+        cx: &App,
+    ) -> bool {
+        !kept_in_sandbox
+            && agent.clone().downcast::<NativeAgentServer>().is_none()
+            && project::agent_sandbox::outside_sandbox_allowed(cx)
+            && project::agent_sandbox::project_default_sandbox(project.read(cx), cx) == Some(false)
+            && (!resuming || thread_started_outside_sandbox(thread_id, cx))
     }
 
     /// ADR-F49 決定 19 (8c): the connection outside the sandbox a start of
@@ -5194,6 +5249,7 @@ impl ConversationView {
         agent: &Rc<dyn AgentServer>,
         connection_store: &Entity<AgentConnectionStore>,
         connection_key: &Agent,
+        project_default_starts_outside: bool,
         cx: &mut App,
     ) -> Option<OutsideSandboxConnectionId> {
         // ADR-F92: once running outside is no longer allowed, a start goes
@@ -5209,7 +5265,8 @@ impl ConversationView {
         {
             return Some(id);
         }
-        if !outside_sandbox_consented(thread_id, agent.agent_id(), cx)
+        if !(outside_sandbox_consented(thread_id, agent.agent_id(), cx)
+            || project_default_starts_outside)
             || agent_servers::runs_outside_sandbox_by_user_choice(agent.agent_id().0.as_ref(), cx)
         {
             return None;
@@ -5315,6 +5372,47 @@ impl ConversationView {
         self.start_agent_outside_sandbox(OutsideSandboxStart::RestartingThread, window, cx);
     }
 
+    /// ADR-F96: whether the chat input's sandbox button can start this
+    /// connected thread's agent again in its sandbox.
+    pub(crate) fn can_restart_in_sandbox(&self, cx: &App) -> bool {
+        matches!(self.server_state, ServerState::Connected(_))
+            && self.is_external_agent()
+            && self.runs_outside_sandbox(cx)
+    }
+
+    /// ADR-F96: starts this connected thread's agent again in its sandbox,
+    /// after asking. As with [`Self::restart_outside_sandbox`], its session
+    /// stays where it was started, so the conversation goes on in a new one.
+    pub(crate) fn restart_in_sandbox(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let answer = window.prompt(
+            PromptLevel::Info,
+            i18n::t!("Start the Agent Again in the Sandbox?"),
+            Some(i18n::t!(
+                "The agent stops and starts again in the sandbox. The conversation goes on in a \
+                 new session: the current one is kept outside the sandbox, where the agent in the \
+                 sandbox cannot read it."
+            )),
+            &[
+                PromptButton::ok(i18n::t!("Start Again in the Sandbox")),
+                PromptButton::cancel(i18n::t!("Cancel")),
+            ],
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if !answer.await.is_ok_and(|index| index == 0) {
+                return;
+            }
+            this.update_in(cx, |this, window, cx| {
+                crate::thread_metadata_store::forget_outside_sandbox_start(this.thread_id, cx);
+                this.outside_sandbox = None;
+                this.kept_in_sandbox = true;
+                this.reset_with(ResetSession::Fresh, window, cx);
+            })
+            .log_err();
+        })
+        .detach();
+    }
+
     fn start_agent_outside_sandbox(
         &mut self,
         start: OutsideSandboxStart,
@@ -5337,6 +5435,7 @@ impl ConversationView {
             }
             this.update_in(cx, |this, window, cx| {
                 consent_to_outside_sandbox(this.thread_id, this.agent.agent_id(), cx);
+                this.kept_in_sandbox = false;
                 let key = this.connection_key.clone();
                 let agent = this.agent.clone();
                 // Kept apart from the connections other views share: the user
@@ -10372,6 +10471,62 @@ pub(crate) mod tests {
             )),
             "and the thread is written down as one started outside"
         );
+    }
+
+    /// ADR-F96: the chat input's sandbox button starts a thread let out of the
+    /// sandbox again in it, after asking, in a new session; the thread is no
+    /// longer written down as one started outside, and stays in the sandbox
+    /// even where the user's settings start this agent outside every time.
+    #[gpui::test]
+    async fn test_a_thread_started_outside_starts_again_in_the_sandbox(cx: &mut TestAppContext) {
+        init_test(cx);
+        let server = Rc::new(OutsideCapableAgentServer::new(None));
+        let (view, cx) = open_outside_capable_view(server.clone(), None, None, cx).await;
+        assert!(!view.read_with(cx, |view, cx| view.can_restart_in_sandbox(cx)));
+        view.update_in(cx, |view, window, cx| {
+            view.restart_outside_sandbox(window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
+        cx.run_until_parked();
+        assert_eq!(server.starts(), (1, 1));
+        assert!(view.read_with(cx, |view, cx| view.can_restart_in_sandbox(cx)));
+        let session_outside = view.read_with(cx, |view, _| view.root_session_id.clone());
+
+        view.update_in(cx, |view, window, cx| view.restart_in_sandbox(window, cx));
+        cx.run_until_parked();
+        let (_message, detail) = cx.pending_prompt().expect("asked first");
+        assert!(detail.contains("new session"), "{detail}");
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
+        assert_eq!(server.starts(), (1, 1), "declining changes nothing");
+
+        view.update_in(cx, |view, window, cx| view.restart_in_sandbox(window, cx));
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Start Again in the Sandbox");
+        cx.run_until_parked();
+        assert!(is_connected(&view, cx));
+        assert!(!view.read_with(cx, |view, cx| view.runs_outside_sandbox(cx)));
+        assert!(!shows_outside_sandbox_banner(&view, cx));
+        let session_in_the_sandbox = view.read_with(cx, |view, _| view.root_session_id.clone());
+        assert!(session_in_the_sandbox.is_some());
+        assert_ne!(session_in_the_sandbox, session_outside, "a new session");
+        assert!(
+            !view.read_with(cx, |view, cx| thread_started_outside_sandbox(
+                view.thread_id,
+                cx
+            )),
+            "no longer written down as started outside"
+        );
+        assert!(
+            !view.read_with(cx, |view, cx| outside_sandbox_consented(
+                view.thread_id,
+                view.agent.agent_id(),
+                cx
+            )),
+            "nor as consented to"
+        );
+        assert!(view.read_with(cx, |view, cx| view.can_restart_outside_sandbox(cx)));
     }
 
     /// ADR-F49 決定 19 (8c): the consent is the thread's. When the idle

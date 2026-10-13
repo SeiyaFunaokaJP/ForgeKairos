@@ -412,6 +412,9 @@ msgstr "Comando do terminal"
 msgid "The review was stopped because the settings changed"
 msgstr "A avaliação foi interrompida porque as configurações mudaram"
 
+msgid "The sandbox is turned off for this thread"
+msgstr "O sandbox está desativado nesta conversa"
+
 msgid "The settings allow writing anywhere in the file system"
 msgstr "As configurações permitem escrever em qualquer lugar do sistema de arquivos"
 

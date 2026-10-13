@@ -3704,6 +3704,10 @@ msgid "What `git reset` keeps of the changes."
 msgstr "`git reset` で変更をどう残すかです。"
 
 msgctxt "settings schema"
+msgid "What a new agent thread starts with in a project, keyed by the absolute\npath of the project's folder (for a project on a remote host, the\nhost's connection, `#`, then the path there). The chat input's buttons\ncan still change it for one thread; that change is not saved. Only read\nfrom the user settings file.\n\nDefault: {}"
+msgstr "新しいエージェントのスレッドをプロジェクトごとにどう始めるか。キーはプロジェクトのフォルダーの絶対パスです (リモートホスト上のプロジェクトは、ホストの接続、`#`、そのホスト上のパスの順)。チャット入力欄のボタンでスレッドごとに変えることもできますが、その変更は保存されません。ユーザー設定ファイルからのみ読み込まれます。\n\n既定値: {}"
+
+msgctxt "settings schema"
 msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
 msgstr "このプロファイルのオーバーライドを適用する前に使用するベース設定を指定します。\n\n- `user`: ユーザー設定の上に適用します (既定)\n- `default`: ユーザーのカスタマイズを無視して、ForgeKairos の既定設定の上に適用します"
 
@@ -4138,6 +4142,10 @@ msgstr "前回ドックを閉じていても、起動時にエージェントパ
 msgctxt "settings schema"
 msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the\nleft or right.\n\nWhen enabled, `default_width` does not control the panel width, and resetting the panel\nrestores the default proportion.\n\nDefault: true"
 msgstr "エージェントパネルを左右にドックしたときに、可変 (比例) サイズを使用するかどうかを設定します。\n\n有効にすると、`default_width` はパネルの幅を制御しなくなり、パネルをリセットすると既定の比率に戻ります。\n\n既定値: true"
+
+msgctxt "settings schema"
+msgid "Whether the agent's terminal commands run in the sandbox. `false` runs\nthem outside it, which needs `sandbox_permissions.allow_outside_sandbox`;\nexternal agents then start outside it without asking."
+msgstr "エージェントのターミナルのコマンドをサンドボックスの中で実行するかどうか。`false` にするとサンドボックスの外で実行します (`sandbox_permissions.allow_outside_sandbox` が必要)。外部エージェントは確認なしでサンドボックスの外で起動します。"
 
 msgctxt "settings schema"
 msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"

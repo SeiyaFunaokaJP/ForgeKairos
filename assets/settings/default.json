@@ -1490,6 +1490,16 @@
     // call follows the "git" tool permissions (confirmed by default). The Git
     // button next to the chat input turns this on or off for one thread.
     "git_operations": true,
+    // What a new agent thread starts with in a project, keyed by the absolute
+    // path of the project's folder (on a remote host: the host's connection,
+    // `#`, then the path there), for example
+    // `{ "/home/me/project": { "sandbox": false } }`. `"sandbox": false` runs
+    // the agent's terminal commands outside the sandbox (and starts external
+    // agents outside it), which needs
+    // `sandbox_permissions.allow_outside_sandbox`. Right-click the sandbox
+    // button next to the chat input to set it. Only the user settings file is
+    // read.
+    "project_thread_defaults": {},
     // Limits on how much of each chat attachment is sent to the agent. Anything
     // over them is sent as an outline or a reference the agent can follow up on.
     "context_attachments": {

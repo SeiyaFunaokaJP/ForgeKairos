@@ -3703,6 +3703,10 @@ msgid "What `git reset` keeps of the changes."
 msgstr "O que o `git reset` mantém das alterações."
 
 msgctxt "settings schema"
+msgid "What a new agent thread starts with in a project, keyed by the absolute\npath of the project's folder (for a project on a remote host, the\nhost's connection, `#`, then the path there). The chat input's buttons\ncan still change it for one thread; that change is not saved. Only read\nfrom the user settings file.\n\nDefault: {}"
+msgstr "Como uma nova conversa do agente começa em um projeto, pelo caminho absoluto da pasta do projeto (para um projeto em um host remoto: a conexão do host, `#` e depois o caminho lá). Os botões da caixa de entrada do chat ainda podem alterá-lo para uma conversa; essa alteração não é salva. Lido apenas do arquivo de configurações do usuário.\n\nPadrão: {}"
+
+msgctxt "settings schema"
 msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
 msgstr "Quais configurações base usar como ponto de partida antes de aplicar as substituições deste perfil.\n\n- `user`: aplica sobre as configurações do usuário (padrão)\n- `default`: aplica sobre as configurações padrão do ForgeKairos, ignorando as personalizações do usuário"
 
@@ -4137,6 +4141,10 @@ msgstr "Define se o painel do agente deve ser aberto na inicialização, mesmo q
 msgctxt "settings schema"
 msgid "Whether the agent panel should use flexible (proportional) sizing when docked to the\nleft or right.\n\nWhen enabled, `default_width` does not control the panel width, and resetting the panel\nrestores the default proportion.\n\nDefault: true"
 msgstr "Define se o painel do agente deve usar dimensionamento flexível (proporcional) quando posicionado à esquerda ou à direita.\n\nQuando habilitado, `default_width` não controla a largura do painel, e redefinir o painel restaura a proporção padrão.\n\nPadrão: true"
+
+msgctxt "settings schema"
+msgid "Whether the agent's terminal commands run in the sandbox. `false` runs\nthem outside it, which needs `sandbox_permissions.allow_outside_sandbox`;\nexternal agents then start outside it without asking."
+msgstr "Se os comandos do terminal do agente são executados dentro do sandbox. `false` os executa fora dele, o que requer `sandbox_permissions.allow_outside_sandbox`; os agentes externos então iniciam fora do sandbox sem perguntar."
 
 msgctxt "settings schema"
 msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"

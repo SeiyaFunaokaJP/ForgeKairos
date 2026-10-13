@@ -200,6 +200,9 @@ msgstr "Tous les outils sont désactivés, car ce projet n'est pas approuvé"
 msgid "Allow"
 msgstr "Autoriser"
 
+msgid "Allow Running Outside the Sandbox?"
+msgstr "Autoriser l'exécution hors du bac à sable ?"
+
 msgid "Allowed for this thread:"
 msgstr "Autorisé pour cette conversation :"
 
@@ -892,6 +895,9 @@ msgstr "Terminé"
 msgid "Finished running tools"
 msgstr "Exécution des outils terminée"
 
+msgid "Follow the Settings"
+msgstr "Suivre les paramètres"
+
 msgid "Follow the {}"
 msgstr "Suivre {}"
 
@@ -991,6 +997,9 @@ msgstr "En file d'attente"
 
 msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
 msgstr "En mode Approbation automatique comme en mode L'IA décide, les règles de sécurité intégrées, vos modèles de refus et de confirmation, le bac à sable et la confirmation des écritures dans les fichiers de paramètres continuent de s'appliquer. Les commandes de terminal s'exécutent dans le bac à sable, et les opérations sur des fichiers hors du projet ainsi que les ajouts réseau sont confirmés dans tous les modes. Les commandes de terminal exécutées hors du bac à sable sont également confirmées à chaque fois. Les outils disponibles sont choisis par le profil, pas par le mode. Avec L'IA décide, ce qui est jugé (commandes et chemins) est envoyé au fournisseur du modèle qui juge : un modèle local est donc recommandé."
+
+msgid "In the Sandbox"
+msgstr "Dans le bac à sable"
 
 msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
 msgstr "Dans le bac à sable, Claude Code se connecte uniquement aux hôtes Anthropic suivants. Ils sont ajoutés à la liste d'autorisation de l'IDE et s'appliquent aussi aux commandes de l'agent intégré.\nHôtes à autoriser : {hosts}"
@@ -1174,6 +1183,9 @@ msgstr "Nouvel onglet"
 
 msgid "New Thread"
 msgstr "Nouvelle conversation"
+
+msgid "New Threads in This Project"
+msgstr "Nouvelles conversations dans ce projet"
 
 msgid "New Thread…"
 msgstr "Nouvelle conversation…"
@@ -1646,6 +1658,12 @@ msgstr "S'exécute hors du bac à sable (avec les propres autorisations de Forge
 msgid "Sandbox"
 msgstr "Bac à sable"
 
+msgid "Sandbox: Off"
+msgstr "Bac à sable : désactivé"
+
+msgid "Sandbox: On"
+msgstr "Bac à sable : activé"
+
 msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
 msgstr "Les bacs à sable disposant d'un accès en écriture à un emplacement sur un lecteur Windows peuvent ne pas assurer une isolation complète du système de fichiers."
 
@@ -1802,6 +1820,9 @@ msgstr "Démarrer (cette conversation uniquement)"
 msgid "Start (This Time Only)"
 msgstr "Démarrer (cette fois uniquement)"
 
+msgid "Start Again in the Sandbox"
+msgstr "Redémarrer dans le bac à sable"
+
 msgid "Start Claude Code outside the sandbox?"
 msgstr "Démarrer Claude Code hors du bac à sable ?"
 
@@ -1819,6 +1840,9 @@ msgstr "Démarrer hors du bac à sable…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "Démarrer `{program}` hors du bac à sable ?"
+
+msgid "Start the Agent Again in the Sandbox?"
+msgstr "Redémarrer l'agent dans le bac à sable ?"
 
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "Démarré hors du bac à sable, cet agent s'exécute avec les propres autorisations de ForgeKairos et peut aussi exécuter les hooks et les serveurs MCP du projet. Une confirmation vous sera demandée pour chaque conversation avant son démarrage."
@@ -1904,6 +1928,12 @@ msgstr "Cible"
 msgid "Terminal"
 msgstr "Terminal"
 
+msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
+msgstr "Les commandes du terminal s'exécutent dans le bac à sable. Cliquez pour exécuter les commandes de cette conversation hors de celui-ci ; chacune demande toujours une confirmation. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "Terminal commands run outside the sandbox, and each one asks first. Click to turn the sandbox back on for this thread. Right-click to set the default for this project."
+msgstr "Les commandes du terminal s'exécutent hors du bac à sable, et chacune demande une confirmation. Cliquez pour réactiver le bac à sable pour cette conversation. Clic droit pour définir la valeur par défaut de ce projet."
+
 msgid "Terminal inline assistant error: {}"
 msgstr "Erreur de l'assistant inline du terminal : {}"
 
@@ -1930,6 +1960,15 @@ msgstr "L'agent peut indexer, valider, changer de branche, etc., avec les hooks 
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "L'agent ne peut pas utiliser `getDiagnostics` : il ne voit donc pas les erreurs et avertissements affichés par l'éditeur. {reason}"
+
+msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "L'agent s'exécute dans le bac à sable. Cliquez pour le redémarrer hors du bac à sable, dans une nouvelle session. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "L'agent s'exécute hors du bac à sable et peut utiliser ses propres outils sans demander. Cliquez pour le redémarrer dans le bac à sable, dans une nouvelle session. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
+msgstr "L'agent s'arrête et redémarre dans le bac à sable. La conversation se poursuit dans une nouvelle session : la session actuelle est conservée hors du bac à sable, où l'agent du bac à sable ne peut pas la lire."
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "L'agent a été ajouté à settings.json, mais il n'a pas encore été chargé. Ouvrez-le plus tard depuis le menu +."
@@ -2214,6 +2253,12 @@ msgstr "Réessayer"
 
 msgid "Try to restart the agent"
 msgstr "Essayer de redémarrer l'agent"
+
+msgid "Turn On and Continue"
+msgstr "Activer et continuer"
+
+msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "Désactiver le bac à sable nécessite \"Autoriser l'exécution hors du bac à sable\" (Paramètres > IA > Bac à sable), qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
 
 msgid "Type anything to edit"
 msgstr "Saisissez du texte pour modifier"
