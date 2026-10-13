@@ -359,6 +359,9 @@ msgstr "言語サーバー「{name}」の実行ファイル"
 msgid "Body is required."
 msgstr "本文を入力してください。"
 
+msgid "Browse…"
+msgstr "参照…"
+
 msgid "Can't save to the project settings file because no project is open."
 msgstr "プロジェクトが開かれていないため、プロジェクトの設定ファイルに保存できません。"
 
@@ -1248,6 +1251,9 @@ msgstr "省略可。トークンでサインインする HTTPS のホスト (git
 msgid "Optional. The key commits are signed with when signing is on (user.signingkey)."
 msgstr "省略可。署名がオンのときにコミットの署名に使う鍵 (user.signingkey)。"
 
+msgid "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set. A passphrase is asked for each time."
+msgstr "任意。SSH のリモートへのプッシュ・プル・フェッチで使う秘密鍵のファイル (この鍵だけを使います)。ローカルのプロジェクトのみ。GIT_SSH_COMMAND・GIT_SSH・core.sshCommand が設定されているときは使いません。パスフレーズはその都度尋ねます。"
+
 msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
 msgstr "または環境変数 {env_var_name} を設定し、ForgeKairos を再起動すると反映されます。"
 
@@ -1541,6 +1547,9 @@ msgstr "実行ホスト"
 
 msgid "SKILL.md file exceeds maximum size of {}KB"
 msgstr "SKILL.md のサイズが上限の {}KB を超えています。"
+
+msgid "SSH Key"
+msgstr "SSH 鍵"
 
 msgid "Save"
 msgstr "保存"

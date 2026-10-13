@@ -3,6 +3,7 @@
 //! module only knows how an identity reaches a git process.
 
 use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
@@ -14,6 +15,9 @@ pub struct GitIdentity {
     pub email: String,
     pub signing_key: Option<String>,
     pub https_login: Option<GitHttpsLogin>,
+    /// The private key SSH remotes are reached with. Local repositories only: it is a path on
+    /// this machine, and never sent to a remote server.
+    pub ssh_key: Option<PathBuf>,
 }
 
 /// The HTTPS host an account's token belongs to, and the login it goes with.
@@ -65,7 +69,42 @@ impl GitIdentity {
             email: email.to_string(),
             signing_key: signing_key.map(str::to_string),
             https_login,
+            ssh_key: None,
         })
+    }
+
+    /// This identity, reaching SSH remotes with the private key at `ssh_key`, which must be an
+    /// absolute path.
+    pub fn with_ssh_key(mut self, ssh_key: Option<&Path>) -> Result<Self> {
+        let Some(ssh_key) = ssh_key.filter(|ssh_key| !ssh_key.as_os_str().is_empty()) else {
+            self.ssh_key = None;
+            return Ok(self);
+        };
+        // The path is put in a command that a shell runs (`GIT_SSH_COMMAND`); quoting keeps
+        // anything else in it literal, but a line break would end the command.
+        anyhow::ensure!(
+            !ssh_key.to_string_lossy().chars().any(char::is_control),
+            i18n::t!("The account's SSH key path contains a control character")
+        );
+        anyhow::ensure!(
+            ssh_key.is_absolute(),
+            i18n::t!("The account's SSH key must be given as an absolute path")
+        );
+        self.ssh_key = Some(ssh_key.to_path_buf());
+        Ok(self)
+    }
+
+    /// The `GIT_SSH_COMMAND` that makes ssh offer only this identity's key, if it has one.
+    ///
+    /// git runs the command through a shell (Git for Windows through its own `sh`), so the path
+    /// is quoted for a POSIX shell: inside single quotes, spaces, backslashes and `$` stay as
+    /// they are.
+    pub fn ssh_command(&self) -> Option<String> {
+        let ssh_key = self.ssh_key.as_ref()?;
+        Some(format!(
+            "ssh -i {} -o IdentitiesOnly=yes",
+            shell_single_quote(&ssh_key.to_string_lossy())
+        ))
     }
 
     /// The environment that makes git commit as this identity. The variables win over every
@@ -168,6 +207,10 @@ impl GitHttpsLogin {
     }
 }
 
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +281,57 @@ mod tests {
                 login: "ada".into()
             }
         );
+    }
+
+    #[test]
+    fn test_ssh_command_offers_only_the_accounts_key() {
+        let without_key = identity();
+        assert_eq!(without_key.ssh_command(), None);
+
+        let absolute = if cfg!(windows) {
+            r"C:\Users\Ada Work\.ssh\id_ed25519"
+        } else {
+            "/home/Ada Work/.ssh/id_ed25519"
+        };
+        let with_key = identity()
+            .with_ssh_key(Some(Path::new(absolute)))
+            .unwrap();
+        assert_eq!(
+            with_key.ssh_command().unwrap(),
+            format!("ssh -i '{absolute}' -o IdentitiesOnly=yes")
+        );
+        assert_eq!(
+            identity().with_ssh_key(None).unwrap().ssh_command(),
+            None
+        );
+        assert_eq!(
+            identity()
+                .with_ssh_key(Some(Path::new("")))
+                .unwrap()
+                .ssh_command(),
+            None
+        );
+
+        assert!(
+            identity()
+                .with_ssh_key(Some(Path::new("id_ed25519")))
+                .is_err(),
+            "a relative path depends on where git runs"
+        );
+        let with_line_break = format!("{absolute}\ntouch pwned");
+        assert!(
+            identity()
+                .with_ssh_key(Some(Path::new(&with_line_break)))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_shell_single_quote_keeps_everything_literal() {
+        assert_eq!(shell_single_quote("a b"), "'a b'");
+        assert_eq!(shell_single_quote(r"C:\a\b"), r"'C:\a\b'");
+        assert_eq!(shell_single_quote("$(x)`y`"), "'$(x)`y`'");
+        assert_eq!(shell_single_quote("it's"), r"'it'\''s'");
     }
 
     #[test]

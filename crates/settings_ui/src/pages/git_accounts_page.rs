@@ -24,6 +24,7 @@ pub(crate) struct GitAccountForm {
     login: Entity<Editor>,
     token: Entity<Editor>,
     signing_key: Entity<Editor>,
+    ssh_key: Entity<Editor>,
     /// The host and login the form's fields name now, which `token_stored` is about.
     token_login: Option<GitHttpsLogin>,
     /// Whether the credential store has a token for `token_login`; `None` until that has been
@@ -264,6 +265,19 @@ fn open_form(
             window,
             cx,
         ),
+        ssh_key: new_input(
+            if cfg!(target_os = "windows") {
+                r"~\.ssh\id_ed25519"
+            } else {
+                "~/.ssh/id_ed25519"
+            },
+            existing
+                .as_ref()
+                .and_then(|account| non_empty(account.ssh_key.as_deref())),
+            false,
+            window,
+            cx,
+        ),
         token_login: None,
         token_stored: None,
         error: None,
@@ -419,6 +433,30 @@ fn render_form(
             &form.signing_key,
             cx,
         ))
+        .child(
+            v_flex()
+                .gap_1()
+                .child(Label::new(i18n::t!("SSH Key")))
+                .child(
+                    Label::new(i18n::t!(
+                        "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set. A passphrase is asked for each time."
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(div().flex_1().min_w_0().child(input_box(&form.ssh_key, cx)))
+                        .child(
+                            Button::new("git-account-ssh-key-browse", i18n::t!("Browse…"))
+                                .label_size(LabelSize::Small)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    choose_ssh_key(this, window, cx)
+                                })),
+                        ),
+                ),
+        )
         .when_some(form.error.clone(), |this, error| {
             this.child(
                 h_flex()
@@ -471,6 +509,7 @@ fn save_form(settings_window: &mut SettingsWindow, cx: &mut Context<SettingsWind
         host: optional(text(&form.host, cx)),
         login: optional(text(&form.login, cx)),
         signing_key: optional(text(&form.signing_key, cx)),
+        ssh_key: optional(text(&form.ssh_key, cx)),
     };
     let original_id = form.original_id.clone();
     let token = form.token.read(cx).text(cx);
@@ -561,6 +600,58 @@ fn save_form(settings_window: &mut SettingsWindow, cx: &mut Context<SettingsWind
         .log_err();
     }));
     cx.notify();
+}
+
+fn choose_ssh_key(
+    settings_window: &mut SettingsWindow,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    if settings_window.git_account_form.is_none() {
+        return;
+    }
+    let starting_directory = paths::home_dir().join(".ssh");
+    // Attached to the settings window: a dialog shown for the whole application goes to
+    // whichever window happens to be active.
+    let paths = window.prompt_for_paths(
+        gpui::PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some(i18n::t!("Select").into()),
+            starting_directory: Some(starting_directory),
+        },
+        cx,
+    );
+    cx.spawn_in(window, async move |this, cx| {
+        let picked = match paths.await {
+            Ok(Ok(Some(paths))) => paths.into_iter().next(),
+            // Dismissed, or the dialog went away with the window.
+            Ok(Ok(None)) | Err(_) => None,
+            Ok(Err(error)) => {
+                this.update(cx, |this, cx| {
+                    if let Some(form) = this.git_account_form.as_mut() {
+                        form.error = Some(i18n::t!("Couldn't choose the file: {error}").into());
+                    }
+                    cx.notify();
+                })
+                .log_err();
+                None
+            }
+        };
+        let Some(path) = picked else {
+            return;
+        };
+        this.update_in(cx, |this, window, cx| {
+            if let Some(form) = this.git_account_form.as_ref() {
+                form.ssh_key.update(cx, |editor, cx| {
+                    editor.set_text(path.to_string_lossy().to_string(), window, cx);
+                });
+            }
+        })
+        .log_err();
+    })
+    .detach();
 }
 
 fn remove_form_token(settings_window: &mut SettingsWindow, cx: &mut Context<SettingsWindow>) {

@@ -875,6 +875,10 @@ pub struct GitAccountContent {
     pub login: Option<String>,
     /// The key commits are signed with (`user.signingkey`), when signing is on.
     pub signing_key: Option<String>,
+    /// The private key file (an absolute path, or one starting with `~`) that pushing, pulling
+    /// and fetching reach SSH remotes with, offered alone (`IdentitiesOnly`). Local projects
+    /// only. Not used when `GIT_SSH_COMMAND`, `GIT_SSH` or `core.sshCommand` is set.
+    pub ssh_key: Option<String>,
 }
 
 #[with_fallible_options]

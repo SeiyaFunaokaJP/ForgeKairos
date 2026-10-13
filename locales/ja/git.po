@@ -113,6 +113,9 @@ msgstr "「{prefix}:」の指定が食い違っています。"
 msgid "The MR box has no commits."
 msgstr "箱にコミットがありません。"
 
+msgid "The SSH key of the picked git account was not found: {path}"
+msgstr "選択中の Git アカウントの SSH 鍵が見つかりません: {path}"
+
 msgid "The account has no email"
 msgstr "アカウントにメールアドレスがありません"
 
@@ -124,6 +127,12 @@ msgstr "アカウントにログイン名がありません"
 
 msgid "The account has no user name"
 msgstr "アカウントにユーザー名がありません"
+
+msgid "The account's SSH key must be given as an absolute path"
+msgstr "アカウントの SSH 鍵は絶対パスで指定してください"
+
+msgid "The account's SSH key path contains a control character"
+msgstr "アカウントの SSH 鍵のパスに制御文字が含まれています"
 
 msgid "The account's host must be a host name such as github.com, optionally with a port"
 msgstr "アカウントのホストは github.com のようなホスト名にしてください (ポートは付けられます)"

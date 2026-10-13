@@ -3614,6 +3614,7 @@ mod git_account_tests {
                         host: Some("github.com".to_string()),
                         login: Some("ada-work".to_string()),
                         signing_key: None,
+                        ssh_key: None,
                     }]);
                     let project_accounts = git.project_accounts.get_or_insert_default();
                     match account_id {

@@ -6,7 +6,7 @@
 //! settings that point an account at another host cannot get that account's token sent there.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
@@ -114,7 +114,23 @@ pub fn identity_for_account(account: &GitAccountContent) -> Result<GitIdentity> 
         &account.email,
         account.signing_key.as_deref(),
         https_login_for_account(account)?,
-    )
+    )?
+    .with_ssh_key(ssh_key_path(account).as_deref())
+}
+
+/// The account's SSH key as a path on this machine, with a leading `~` for the home directory.
+pub fn ssh_key_path(account: &GitAccountContent) -> Option<PathBuf> {
+    let ssh_key = account.ssh_key.as_deref().map(str::trim)?;
+    if ssh_key.is_empty() {
+        return None;
+    }
+    let home_relative = ssh_key
+        .strip_prefix("~/")
+        .or_else(|| ssh_key.strip_prefix("~\\"));
+    Some(match home_relative {
+        Some(rest) => paths::home_dir().join(rest),
+        None => PathBuf::from(ssh_key),
+    })
 }
 
 /// Whether `id` can name an account: it is written into settings and shown in pickers.
@@ -417,6 +433,7 @@ mod tests {
             host: Some("github.com".to_string()),
             login: Some("ada-work".to_string()),
             signing_key: None,
+            ssh_key: None,
         }
     }
 
@@ -581,6 +598,35 @@ mod tests {
         assert_eq!(overlaid["GIT_AUTHOR_EMAIL"], "ada@work.example");
         assert_eq!(overlaid["GIT_COMMITTER_NAME"], "Ada Work");
         assert_eq!(overlaid["GIT_COMMITTER_EMAIL"], "ada@work.example");
+    }
+
+    #[test]
+    fn test_ssh_key_path() {
+        let mut with_key = account("work");
+        assert_eq!(ssh_key_path(&with_key), None);
+        assert_eq!(identity_for_account(&with_key).unwrap().ssh_key, None);
+
+        with_key.ssh_key = Some("~/.ssh/id_work".to_string());
+        let expected = paths::home_dir().join(".ssh/id_work");
+        assert_eq!(ssh_key_path(&with_key), Some(expected.clone()));
+        assert_eq!(
+            identity_for_account(&with_key).unwrap().ssh_key,
+            Some(expected)
+        );
+
+        with_key.ssh_key = Some("  ".to_string());
+        assert_eq!(identity_for_account(&with_key).unwrap().ssh_key, None);
+
+        with_key.ssh_key = Some("id_work".to_string());
+        assert!(
+            identity_for_account(&with_key).is_err(),
+            "a relative key path would depend on where git runs"
+        );
+        let repo = PathBuf::from("/work/repo");
+        assert!(matches!(
+            account_choice(&settings(vec![with_key], &[(&repo, "work")]), &repo),
+            GitAccountChoice::Unavailable { .. }
+        ));
     }
 
     #[test]

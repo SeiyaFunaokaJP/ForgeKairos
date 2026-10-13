@@ -5061,9 +5061,14 @@ impl GitRepository for RealGitRepository {
                     i18n::tc!("git result", "Force push (--force-with-lease)"),
                 )?;
             }
+            let ssh_command = git.account_ssh_command(&env).await?;
             let mut command = git.build_command(&["push"]).await;
+            command.envs(env.iter()).envs(
+                ssh_command
+                    .as_ref()
+                    .map(|ssh_command| ("GIT_SSH_COMMAND", ssh_command)),
+            );
             command
-                .envs(env.iter())
                 .args(options.map(PushOptions::flag))
                 .arg(remote_name)
                 .arg(format!("{}:{}", branch_name, remote_branch_name))
@@ -5105,8 +5110,13 @@ impl GitRepository for RealGitRepository {
             .with_identity(identity);
             git.ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Pull"))
                 .await?;
+            let ssh_command = git.account_ssh_command(&env).await?;
             let mut command = git.build_command(&["pull"]).await;
-            command.envs(env.iter());
+            command.envs(env.iter()).envs(
+                ssh_command
+                    .as_ref()
+                    .map(|ssh_command| ("GIT_SSH_COMMAND", ssh_command)),
+            );
 
             if rebase {
                 command.arg("--rebase");
@@ -5151,9 +5161,15 @@ impl GitRepository for RealGitRepository {
             .with_identity(identity);
             git.ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Fetch"))
                 .await?;
+            let ssh_command = git.account_ssh_command(&env).await?;
             let mut command = git.build_command(&["fetch", &remote_name]).await;
             command
                 .envs(env.iter())
+                .envs(
+                    ssh_command
+                        .as_ref()
+                        .map(|ssh_command| ("GIT_SSH_COMMAND", ssh_command)),
+                )
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
@@ -7992,6 +8008,53 @@ impl GitBinary {
     fn with_identity_environment_only(mut self) -> Self {
         self.identity_options = false;
         self
+    }
+
+    /// ADR-F93: the `GIT_SSH_COMMAND` a push, pull or fetch is given for the identity's SSH key.
+    ///
+    /// An SSH command the user already chose wins and is left whole: `GIT_SSH_COMMAND` or
+    /// `GIT_SSH` in `environment` or Zed's own environment, or `core.sshCommand` in a trusted
+    /// repository's configuration (an untrusted one's is replaced by plain `ssh` anyway). Such a
+    /// command may not be OpenSSH, or may pick its key itself, so adding `-i` to it is not safe.
+    async fn account_ssh_command(
+        &self,
+        environment: &HashMap<String, String>,
+    ) -> Result<Option<String>> {
+        let Some(identity) = self.identity.as_ref().filter(|_| self.identity_options) else {
+            return Ok(None);
+        };
+        let (Some(ssh_key), Some(ssh_command)) = (&identity.ssh_key, identity.ssh_command()) else {
+            return Ok(None);
+        };
+        for variable in ["GIT_SSH_COMMAND", "GIT_SSH"] {
+            let is_set = environment
+                .get(variable)
+                .is_some_and(|value| !value.is_empty())
+                || std::env::var_os(variable).is_some_and(|value| !value.is_empty());
+            if is_set {
+                log::info!("{variable} is set, so the git account's SSH key is not used");
+                return Ok(None);
+            }
+        }
+        if self.is_trusted {
+            let output = self
+                .build_command(&["config", "--get", "core.sshCommand"])
+                .await
+                .envs(environment.iter())
+                .output()
+                .await?;
+            if output.status.success() && !output.stdout.trim_ascii().is_empty() {
+                log::info!("core.sshCommand is set, so the git account's SSH key is not used");
+                return Ok(None);
+            }
+        }
+        if smol::fs::metadata(ssh_key).await.is_err() {
+            bail!(i18n::t!(
+                "The SSH key of the picked git account was not found: {path}",
+                path = ssh_key.display()
+            ));
+        }
+        Ok(Some(ssh_command))
     }
 
     pub(crate) async fn build_command<S>(&self, args: &[S]) -> util::command::Command
@@ -11307,6 +11370,179 @@ mod tests {
             .unwrap(),
             "store"
         );
+    }
+
+    /// ADR-F93: a fetch, pull or push of a repository whose account has an SSH key reaches SSH
+    /// remotes with that key only, unless the user already chose an SSH command; the agent's git
+    /// commands never get one. `ssh` is a script that records how git ran it.
+    #[gpui::test]
+    async fn test_account_ssh_key_reaches_ssh_remotes(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        git_command(
+            &repo_dir,
+            ["remote", "add", "origin", "ssh://git@example.invalid/repo.git"],
+        );
+        let fake_bin = temp_dir.path().join("fake bin");
+        fs::create_dir_all(&fake_bin).unwrap();
+        let record = temp_dir.path().join("ssh-calls.txt");
+        // `printf` rather than `echo` so that git's quoting of the arguments is not reinterpreted.
+        fs::write(
+            fake_bin.join("ssh"),
+            format!(
+                "#!/bin/sh\nfor argument in \"$@\"; do printf '[%s]' \"$argument\" >> '{}'; done\nprintf '\\n' >> '{}'\nexit 1\n",
+                record.display().to_string().replace('\\', "/"),
+                record.display().to_string().replace('\\', "/"),
+            ),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(fake_bin.join("ssh"), fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let key_dir = temp_dir.path().join("my keys");
+        fs::create_dir_all(&key_dir).unwrap();
+        let key = key_dir.join("id_ed25519");
+        fs::write(&key, "not a real key").unwrap();
+
+        let path = std::env::join_paths(
+            std::iter::once(fake_bin.clone())
+                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
+        )
+        .unwrap()
+        .into_string()
+        .unwrap();
+        let environment = |extra: &[(&str, &str)]| {
+            let mut environment = HashMap::from_iter([
+                ("PATH".to_string(), path.clone()),
+                ("GIT_ASKPASS".to_string(), "false".to_string()),
+            ]);
+            for (key, value) in extra {
+                environment.insert(key.to_string(), value.to_string());
+            }
+            Arc::new(environment)
+        };
+
+        let repo = RealGitRepository::new(
+            &repo_dir.join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        repo.set_trusted(true);
+        let with_key = |key: &Path| {
+            Arc::new(
+                GitIdentity::new("Ada Work", "ada@work.example", None, None)
+                    .unwrap()
+                    .with_ssh_key(Some(key))
+                    .unwrap(),
+            )
+        };
+        let fetch = |environment: Arc<HashMap<String, String>>| {
+            repo.fetch(
+                FetchOptions::Remote(Remote {
+                    name: "origin".into(),
+                }),
+                AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {}),
+                environment,
+                cx.to_async(),
+            )
+        };
+        let take_calls = || {
+            let calls = fs::read_to_string(&record).unwrap_or_default();
+            fs::remove_file(&record).ok();
+            calls
+        };
+
+        // Without an account, git's own choice of ssh runs, given no key.
+        fetch(environment(&[])).await.unwrap_err();
+        let calls = take_calls();
+        assert!(calls.contains("[git@example.invalid]"), "{calls}");
+        assert!(!calls.contains("[-i]"), "{calls}");
+
+        repo.set_identity(Some(with_key(&key)));
+        fetch(environment(&[])).await.unwrap_err();
+        let calls = take_calls();
+        assert!(
+            calls.contains(&format!(
+                "[-i][{}][-o][IdentitiesOnly=yes]",
+                key.display()
+            )),
+            "{calls}"
+        );
+
+        git_command(&repo_dir, ["commit", "--allow-empty", "-m", "first"]);
+        repo.push(
+            "main".into(),
+            "main".into(),
+            "origin".into(),
+            None,
+            AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {}),
+            environment(&[]),
+            cx.to_async(),
+        )
+        .await
+        .unwrap_err();
+        repo.pull(
+            Some("main".into()),
+            "origin".into(),
+            false,
+            AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {}),
+            environment(&[]),
+            cx.to_async(),
+        )
+        .await
+        .unwrap_err();
+        let calls = take_calls();
+        assert_eq!(
+            calls
+                .matches(&format!("[-i][{}][-o][IdentitiesOnly=yes]", key.display()))
+                .count(),
+            2,
+            "{calls}"
+        );
+
+        // An SSH command the user chose is kept as it is.
+        fetch(environment(&[("GIT_SSH_COMMAND", "ssh -o UserChose=yes")]))
+            .await
+            .unwrap_err();
+        let calls = take_calls();
+        assert!(calls.contains("[-o][UserChose=yes]"), "{calls}");
+        assert!(!calls.contains("[-i]"), "{calls}");
+
+        git_command(
+            &repo_dir,
+            ["config", "core.sshCommand", "ssh -o FromConfig=yes"],
+        );
+        fetch(environment(&[])).await.unwrap_err();
+        let calls = take_calls();
+        assert!(calls.contains("[-o][FromConfig=yes]"), "{calls}");
+        assert!(!calls.contains("[-i]"), "{calls}");
+        git_command(&repo_dir, ["config", "--unset", "core.sshCommand"]);
+
+        // The agent's commands never reach a remote, and take none of the account's options.
+        let agent_git = repo.git_binary().with_identity_environment_only();
+        assert_eq!(
+            agent_git
+                .account_ssh_command(&environment(&[]))
+                .await
+                .unwrap(),
+            None
+        );
+        // A key that is not there is named, and ssh does not run.
+        repo.set_identity(Some(with_key(&key_dir.join("missing"))));
+        let error = fetch(environment(&[])).await.unwrap_err();
+        assert!(
+            format!("{error:#}").contains(&key_dir.join("missing").display().to_string()),
+            "{error:#}"
+        );
+        assert_eq!(take_calls(), "");
     }
 
     /// ADR-F93 with ADR-F90: an agent's command through `run_command_without_hooks` commits as the
