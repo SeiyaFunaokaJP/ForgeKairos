@@ -611,6 +611,10 @@ pub(crate) fn open_ai_choice(
             });
         }
         AiChoiceTarget::NativeThread { provider_id } => {
+            if !may_start_native_thread(provider_id, cx) {
+                set_up_provider(Some(provider_id.clone()), window, cx);
+                return;
+            }
             let Some(fs) = workspace
                 .upgrade()
                 .and_then(|workspace| workspace.read(cx).panel::<AgentPanel>(cx))
@@ -664,6 +668,14 @@ fn set_up_provider(provider_id: Option<SharedString>, window: &mut Window, cx: &
     );
 }
 
+/// ADR-F09 / F10: a thread on a provider needs AI turned on and, for an
+/// external provider, the user's consent. Whatever is missing is the setup
+/// window's to ask for (or, for AI being off, to point at).
+fn may_start_native_thread(provider_id: &SharedString, cx: &App) -> bool {
+    AgentSettings::get_global(cx).enabled(cx)
+        && agent_settings::ai_vendor::language_model_provider_is_consented(provider_id, cx)
+}
+
 pub(crate) fn init(cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, _, _| {
         workspace.register_action(
@@ -674,10 +686,15 @@ pub(crate) fn init(cx: &mut App) {
                 if workspace.panel::<AgentPanel>(cx).is_none() {
                     return;
                 }
+                let provider_id = SharedString::from(action.provider.clone());
+                // The action can be bound to a key, so it does not take the
+                // setup window's word that the provider is ready.
+                if !may_start_native_thread(&provider_id, cx) {
+                    set_up_provider(Some(provider_id), window, cx);
+                    return;
+                }
                 workspace.focus_panel::<AgentPanel>(window, cx);
-                let target = AiChoiceTarget::NativeThread {
-                    provider_id: action.provider.clone().into(),
-                };
+                let target = AiChoiceTarget::NativeThread { provider_id };
                 let workspace = cx.entity().downgrade();
                 // The panel is updated through the workspace, which this
                 // handler is still updating.
@@ -1364,5 +1381,149 @@ mod tests {
             ["codex-acp"],
             "an agent added under the same id, from anywhere, is not installed over"
         );
+    }
+
+    mod native_thread_gate {
+        use std::cell::RefCell;
+        use std::path::Path;
+        use std::rc::Rc;
+
+        use agent_settings::ai_vendor::LanguageModelProviderConsentCheck;
+        use fs::FakeFs;
+        use gpui::{TestAppContext, VisualTestContext};
+        use serde_json::json;
+        use workspace::MultiWorkspace;
+
+        use super::super::*;
+
+        struct Gate {
+            set_ups: Rc<RefCell<Vec<Option<String>>>>,
+            workspace: WeakEntity<Workspace>,
+            cx: VisualTestContext,
+        }
+
+        async fn gate(cx: &mut TestAppContext) -> Gate {
+            crate::test_support::init_test(cx);
+            cx.update(|cx| {
+                agent::ThreadStore::init_global(cx);
+                crate::thread_metadata_store::ThreadMetadataStore::init_global(cx);
+                language_model::LanguageModelRegistry::test(cx);
+                init(cx);
+            });
+            let fs = FakeFs::new(cx.executor());
+            cx.update(|cx| <dyn Fs>::set_global(fs.clone(), cx));
+            fs.insert_tree("/project", json!({})).await;
+            let project = Project::test(fs, [Path::new("/project")], cx).await;
+            let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+            let workspace = window
+                .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+                .expect("the window is open");
+            let mut cx = VisualTestContext::from_window(window.into(), cx);
+            let set_ups = Rc::new(RefCell::new(Vec::new()));
+            workspace.update_in(&mut cx, |workspace, window, cx| {
+                let panel = cx.new(|cx| AgentPanel::new(workspace, window, cx));
+                workspace.add_panel(panel, window, cx);
+                let set_ups = set_ups.clone();
+                workspace.register_action(
+                    move |_, action: &zed_actions::agent::SetUpLanguageModelProvider, _, _| {
+                        set_ups.borrow_mut().push(action.provider.clone());
+                    },
+                );
+            });
+            cx.run_until_parked();
+            Gate {
+                set_ups,
+                workspace: workspace.downgrade(),
+                cx,
+            }
+        }
+
+        impl Gate {
+            fn set_ai_enabled(&mut self, enabled: bool) {
+                self.cx.update(|_, cx| {
+                    AgentSettings::override_global(
+                        AgentSettings {
+                            enabled,
+                            ..AgentSettings::get_global(cx).clone()
+                        },
+                        cx,
+                    );
+                });
+            }
+
+            fn set_consent(&mut self, check: fn(&str, &App) -> bool) {
+                self.cx.update(|_, cx| {
+                    cx.set_global(LanguageModelProviderConsentCheck(check));
+                });
+            }
+
+            /// What the action, as a key binding would send it, asked the
+            /// setup window for.
+            fn start(&mut self) -> Vec<Option<String>> {
+                self.set_ups.borrow_mut().clear();
+                self.cx
+                    .dispatch_action(zed_actions::agent::NewThreadWithLanguageModelProvider {
+                        provider: "fake".to_string(),
+                    });
+                self.cx.run_until_parked();
+                self.set_ups.borrow().clone()
+            }
+
+            /// The same, chosen from the `+` menu.
+            fn choose(&mut self) -> Vec<Option<String>> {
+                self.set_ups.borrow_mut().clear();
+                let workspace = self.workspace.clone();
+                self.cx.update(|window, cx| {
+                    open_ai_choice(
+                        &AiChoiceTarget::NativeThread {
+                            provider_id: "fake".into(),
+                        },
+                        &workspace,
+                        window,
+                        cx,
+                    );
+                });
+                self.cx.run_until_parked();
+                self.set_ups.borrow().clone()
+            }
+        }
+
+        #[gpui::test]
+        async fn the_action_starts_no_thread_without_ai_on_and_the_consent(
+            cx: &mut TestAppContext,
+        ) {
+            let mut gate = gate(cx).await;
+            let to_setup = vec![Some("fake".to_string())];
+
+            gate.set_ai_enabled(true);
+            assert_eq!(
+                gate.start(),
+                to_setup,
+                "with nothing to say the consent was given, it is the setup window's to ask"
+            );
+
+            gate.set_consent(|_, _| false);
+            assert_eq!(gate.start(), to_setup);
+            assert_eq!(
+                gate.choose(),
+                to_setup,
+                "a provider signed in by an environment variable still asks first"
+            );
+
+            gate.set_consent(|provider_id, _| provider_id == "fake");
+            gate.set_ai_enabled(false);
+            assert_eq!(
+                gate.start(),
+                to_setup,
+                "AI off (ADR-F09) is the setup window's to point at, consent or not"
+            );
+
+            gate.set_ai_enabled(true);
+            assert_eq!(
+                gate.start(),
+                Vec::<Option<String>>::new(),
+                "AI on and the consent given: the thread starts without the setup window"
+            );
+        }
     }
 }

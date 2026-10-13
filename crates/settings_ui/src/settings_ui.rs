@@ -463,6 +463,7 @@ pub fn init(cx: &mut App) {
     cx.set_global(queue);
     pages::init_launch_approval_prompts(cx);
     pages::init_compatible_provider_removal(cx);
+    pages::init_provider_setup(cx);
 
     cx.on_action(|_: &OpenSettings, cx| {
         open_settings_editor(None, None, None, cx);
@@ -1063,6 +1064,9 @@ pub struct SettingsWindow {
     /// Whether the official `claude` CLI is on this machine's PATH, looked up
     /// once when the LLM providers page first renders (ADR-F20).
     pub(crate) claude_cli: pages::ClaudeCliState,
+    /// Why an API key typed on the LLM providers page was not saved (ADR-F88).
+    pub(crate) api_key_save_errors:
+        collections::HashMap<language_model::LanguageModelProviderId, SharedString>,
     skill_creator_page: Option<(Entity<pages::SkillCreatorPage>, Subscription)>,
 }
 
@@ -2155,6 +2159,7 @@ impl SettingsWindow {
             external_agent_add_focus_handle: cx.focus_handle(),
             claude_code_effort: None,
             claude_cli: pages::ClaudeCliState::default(),
+            api_key_save_errors: Default::default(),
             skill_creator_page: None,
         };
 
@@ -5863,6 +5868,7 @@ pub mod test {
                 external_agent_add_focus_handle: cx.focus_handle(),
                 claude_code_effort: None,
                 claude_cli: pages::ClaudeCliState::default(),
+                api_key_save_errors: Default::default(),
                 skill_creator_page: None,
             }
         }
@@ -6008,6 +6014,7 @@ pub mod test {
             external_agent_add_focus_handle: cx.focus_handle(),
             claude_code_effort: None,
             claude_cli: pages::ClaudeCliState::default(),
+            api_key_save_errors: Default::default(),
             skill_creator_page: None,
         };
 

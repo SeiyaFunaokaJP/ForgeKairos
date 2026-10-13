@@ -14,7 +14,7 @@ use project::AgentId;
 use project::agent_server_store::{AgentServerStore, AgentServersUpdated};
 use ui::{CommonAnimationExt as _, Modal, ModalFooter, ModalHeader, Section, prelude::*};
 use util::ResultExt as _;
-use workspace::{ModalView, Workspace};
+use workspace::{DismissDecision, ModalView, Workspace};
 
 use crate::NewExternalAgentThread;
 use crate::agent_registry_ui::{
@@ -220,10 +220,14 @@ impl AgentInstallModal {
         cx.notify();
     }
 
+    /// Once the hosts are on their way, closing would leave them added with
+    /// nothing installed.
+    fn is_writing_hosts(&self) -> bool {
+        self.consent.as_ref().is_some_and(|consent| consent.waiting)
+    }
+
     fn cancel(&mut self, _: &menu::Cancel, _: &mut Window, cx: &mut Context<Self>) {
-        // Once the hosts are on their way, closing would leave them added
-        // with nothing installed.
-        if self.consent.as_ref().is_some_and(|consent| consent.waiting) {
+        if self.is_writing_hosts() {
             return;
         }
         cx.emit(DismissEvent);
@@ -238,7 +242,13 @@ impl Focusable for AgentInstallModal {
     }
 }
 
-impl ModalView for AgentInstallModal {}
+impl ModalView for AgentInstallModal {
+    /// A click outside the window or another modal closes it without going
+    /// through [`Self::cancel`].
+    fn on_before_dismiss(&mut self, _: &mut Window, _: &mut Context<Self>) -> DismissDecision {
+        DismissDecision::Dismiss(!self.is_writing_hosts())
+    }
+}
 
 impl Render for AgentInstallModal {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -487,6 +497,34 @@ mod tests {
         });
         cx.run_until_parked();
         assert!(modal.read_with(cx, |modal, _| modal.thread_requested));
+    }
+
+    #[gpui::test]
+    async fn the_window_stays_while_the_hosts_are_being_added(cx: &mut TestAppContext) {
+        let (harness, mut cx) = harness(cx).await;
+        let cx = &mut cx;
+        let modal = harness.open(cx);
+        modal.update_in(cx, |modal, window, cx| modal.confirm(window, cx));
+        cx.run_until_parked();
+        assert!(modal.read_with(cx, |modal, _| modal.is_writing_hosts()));
+
+        harness.workspace.update_in(cx, |workspace, window, cx| {
+            workspace.hide_modal(window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            harness.modal(cx).is_some(),
+            "closing it now would leave the hosts added with nothing installed"
+        );
+
+        harness
+            .policy
+            .set(policy_allowing(&["nodejs.org", "registry.npmjs.org"]));
+        cx.run_until_parked();
+        assert!(
+            harness.settings_file().await.contains(AGENT_ID),
+            "the install the hosts were added for goes ahead"
+        );
     }
 
     #[gpui::test]

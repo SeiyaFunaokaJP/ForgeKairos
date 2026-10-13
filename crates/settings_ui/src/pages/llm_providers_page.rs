@@ -12,7 +12,8 @@ use std::{
 use editor::Editor;
 use futures::AsyncReadExt as _;
 use gpui::{
-    AnyView, Entity, Focusable as _, FutureExt as _, PromptLevel, ScrollHandle, Task, prelude::*,
+    AnyView, Entity, Focusable as _, FutureExt as _, PromptLevel, ScrollHandle, Task, WeakEntity,
+    prelude::*,
 };
 use http_client::{AsyncBody, EgressDenied, HttpClient, Request, StatusCode};
 use language_model::{
@@ -635,9 +636,13 @@ fn render_provider_section(
         }
         _ => {
             let body = match provider.settings_view(cx) {
-                Some(ProviderSettingsView::ApiKey(config)) => {
-                    render_api_key_providers_item(provider, provider_name.clone(), config, cx)
-                }
+                Some(ProviderSettingsView::ApiKey(config)) => render_api_key_providers_item(
+                    provider,
+                    provider_name.clone(),
+                    config,
+                    settings_window.api_key_save_errors.get(&provider_id).cloned(),
+                    cx,
+                ),
                 Some(ProviderSettingsView::Inline(settings)) => {
                     let view = get_or_create_configuration_view(
                         settings_window,
@@ -792,9 +797,17 @@ fn render_api_key_providers_item(
     provider: &Arc<dyn LanguageModelProvider>,
     provider_name: SharedString,
     config: ApiKeyConfiguration,
-    _cx: &mut Context<SettingsWindow>,
+    save_error: Option<SharedString>,
+    cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
     let provider_id = provider.id();
+    let settings_window = cx.entity().downgrade();
+    let save_error = save_error.map(|error| {
+        Label::new(error)
+            .size(LabelSize::Small)
+            .color(Color::Error)
+            .into_any_element()
+    });
     let has_key = config.has_key;
     let is_from_env_var = config.is_from_env_var;
     let env_var_name = config.env_var_name;
@@ -820,12 +833,17 @@ fn render_api_key_providers_item(
             .on_click({
                 let provider = provider.clone();
                 move |_, _, cx| {
-                    provider.set_api_key(None, cx).detach_and_log_err(cx);
+                    let save = provider.set_api_key(None, cx);
+                    report_api_key_save(settings_window.clone(), provider.id(), save, cx);
                 }
             })
             .into_any_element();
 
-        return v_flex().gap_2().child(card).into_any_element();
+        return v_flex()
+            .gap_2()
+            .child(card)
+            .children(save_error)
+            .into_any_element();
     }
 
     let input_id = format!("{}-api-key-input", provider_id.0);
@@ -898,13 +916,48 @@ fn render_api_key_providers_item(
                             let provider = provider.clone();
                             move |api_key, _window, cx| {
                                 if let Some(key) = api_key.filter(|key| !key.is_empty()) {
-                                    provider.set_api_key(Some(key), cx).detach_and_log_err(cx);
+                                    let save = provider.set_api_key(Some(key), cx);
+                                    report_api_key_save(
+                                        settings_window.clone(),
+                                        provider.id(),
+                                        save,
+                                        cx,
+                                    );
                                 }
                             }
                         }),
                 ),
         )
+        .children(save_error)
         .into_any_element()
+}
+
+/// ADR-F88: a key the credential store refused is said so under the field,
+/// rather than only in the log while the page looks as if it was saved.
+fn report_api_key_save(
+    settings_window: WeakEntity<SettingsWindow>,
+    provider_id: LanguageModelProviderId,
+    save: Task<anyhow::Result<()>>,
+    cx: &mut App,
+) {
+    cx.spawn(async move |cx| {
+        let result = save.await;
+        settings_window.update(cx, |settings_window, cx| {
+            match result {
+                Ok(()) => {
+                    settings_window.api_key_save_errors.remove(&provider_id);
+                }
+                Err(error) => {
+                    settings_window.api_key_save_errors.insert(
+                        provider_id,
+                        i18n::t!("The API key could not be saved: {error:#}").into(),
+                    );
+                }
+            }
+            cx.notify();
+        })
+    })
+    .detach_and_log_err(cx);
 }
 
 /// Stands in for a link inside a translated sentence, so that each language can
@@ -3831,6 +3884,36 @@ mod provider_edit_tests {
             "custom_headers": { "X-Team": "llm" },
             "no_api_key": true
         })
+    }
+
+    #[gpui::test]
+    async fn a_key_the_credential_store_refuses_is_reported_on_the_page(cx: &mut TestAppContext) {
+        init_test(cx, json!({})).await;
+        let (settings_window, cx) = open_settings_window(cx);
+        let provider_id = LanguageModelProviderId("openai".into());
+        let report = |save: anyhow::Result<()>, cx: &mut VisualTestContext| {
+            settings_window.update(cx, |_, cx| {
+                report_api_key_save(
+                    cx.entity().downgrade(),
+                    provider_id.clone(),
+                    Task::ready(save),
+                    cx,
+                );
+            });
+            cx.run_until_parked();
+            settings_window.read_with(cx, |settings_window, _| {
+                settings_window.api_key_save_errors.get(&provider_id).cloned()
+            })
+        };
+
+        let error = report(Err(anyhow::anyhow!("the credential store is locked")), cx)
+            .expect("the page says the key was not saved");
+        assert!(error.contains("locked"), "with the store's reason: {error}");
+        assert_eq!(
+            report(Ok(()), cx),
+            None,
+            "a later save that works clears it"
+        );
     }
 
     #[gpui::test]

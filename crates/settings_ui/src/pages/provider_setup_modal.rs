@@ -105,6 +105,17 @@ fn missing_consent(provider_id: &LanguageModelProviderId, cx: &App) -> Option<Co
         .filter(|target| !external_ai_consent::is_acknowledged(&target.key, cx))
 }
 
+/// Registers [`missing_consent`] as the rule the agent panel checks before it
+/// starts a thread on a provider, so the two never disagree on what needs one.
+pub(crate) fn init(cx: &mut App) {
+    cx.set_global(agent_settings::ai_vendor::LanguageModelProviderConsentCheck(
+        |provider_id, cx| {
+            missing_consent(&LanguageModelProviderId(provider_id.to_string().into()), cx)
+                .is_none()
+        },
+    ));
+}
+
 pub(crate) fn provider_step(provider_id: &LanguageModelProviderId, cx: &mut App) -> SetupStep {
     let ai_enabled = agent_settings::AgentSettings::get_global(cx).enabled(cx);
     let provider = LanguageModelRegistry::read_global(cx).provider(provider_id);
@@ -987,6 +998,7 @@ mod tests {
     #[derive(Default)]
     struct FakeCredentials {
         keys: Mutex<HashMap<String, Vec<u8>>>,
+        refuse_writes: AtomicBool,
     }
 
     impl FakeCredentials {
@@ -1021,6 +1033,10 @@ mod tests {
             password: &'a [u8],
             _cx: &'a AsyncApp,
         ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'a>> {
+            if self.refuse_writes.load(Ordering::SeqCst) {
+                return async move { Err(anyhow::anyhow!("the credential store is locked")) }
+                    .boxed_local();
+            }
             self.keys
                 .lock()
                 .expect("credentials lock")
@@ -1204,6 +1220,60 @@ mod tests {
             harness.modal(cx).is_none(),
             "the window closes once the thread is asked for"
         );
+    }
+
+    /// ADR-F88 through a real provider's key state: the credential store's
+    /// refusal reaches the window instead of reading as a saved key.
+    #[gpui::test]
+    async fn a_key_the_credential_store_refuses_starts_no_thread(cx: &mut TestAppContext) {
+        let (harness, mut cx) = harness(
+            cx,
+            with_anthropic_model(json!({
+                "agent": { "enabled": true },
+                "acknowledged_external_ai_providers": ["anthropic"]
+            })),
+        )
+        .await;
+        let cx = &mut cx;
+        harness
+            .credentials
+            .refuse_writes
+            .store(true, Ordering::SeqCst);
+        harness.open("anthropic", cx);
+        assert_eq!(harness.step(cx), SetupStep::ApiKey);
+
+        harness.save_key("sk-test-key", cx);
+        let modal = harness.modal(cx).expect("the window stays to try again");
+        let error = modal
+            .read_with(cx, |modal, _| modal.error.clone())
+            .expect("the failure is shown");
+        assert!(error.contains("locked"), "{error}");
+        assert_eq!(
+            harness.step(cx),
+            SetupStep::ApiKey,
+            "a key only in memory would be gone at the next start"
+        );
+        assert!(harness.threads.borrow().is_empty());
+    }
+
+    /// The agent panel starts a thread on a provider only once this crate's
+    /// consent rule says so (`NewThreadWithLanguageModelProvider` can be
+    /// bound to a key).
+    #[gpui::test]
+    async fn the_agent_panel_reads_the_consent_from_here(cx: &mut TestAppContext) {
+        let (harness, mut cx) = harness(cx, json!({ "agent": { "enabled": true } })).await;
+        let cx = &mut cx;
+        let consented = |cx: &mut VisualTestContext| {
+            cx.update(|_, cx| {
+                agent_settings::ai_vendor::language_model_provider_is_consented("anthropic", cx)
+            })
+        };
+        assert!(!consented(cx), "an external provider before the consent");
+        harness.open("anthropic", cx);
+        let modal = harness.modal(cx).expect("the setup window is open");
+        modal.update(cx, |modal, cx| modal.acknowledge(true, cx));
+        cx.run_until_parked();
+        assert!(consented(cx));
     }
 
     #[gpui::test]

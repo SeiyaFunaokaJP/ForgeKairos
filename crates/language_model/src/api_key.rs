@@ -110,11 +110,12 @@ impl ApiKeyState {
             )));
         }
         cx.spawn(async move |ent, cx| {
+            // ADR-F88: a key the credential store refused must not read as
+            // saved, or it would be gone at the next start without a word.
             if let Some(key) = &key {
                 provider
                     .write_credentials(&url, "Bearer", key.as_bytes(), cx)
-                    .await
-                    .log_err();
+                    .await?;
             } else {
                 provider.delete_credentials(&url, cx).await.log_err();
             }
@@ -294,5 +295,81 @@ impl Display for ApiKeySource {
             ApiKeySource::EnvVar(var) => write!(f, "environment variable {}", var),
             ApiKeySource::SystemKeychain => write!(f, "system keychain"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::Future;
+    use std::pin::Pin;
+
+    use gpui::{AppContext as _, TestAppContext};
+
+    use super::*;
+
+    struct RefusingCredentials;
+
+    impl CredentialsProvider for RefusingCredentials {
+        fn read_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<(String, Vec<u8>)>>> + 'a>> {
+            Box::pin(async { Ok(None) })
+        }
+
+        fn write_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _username: &'a str,
+            _password: &'a [u8],
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+            Box::pin(async { Err(anyhow!("the credential store is locked")) })
+        }
+
+        fn delete_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    struct Holder(ApiKeyState);
+
+    #[gpui::test]
+    async fn a_key_the_credential_store_refuses_is_not_taken_as_saved(cx: &mut TestAppContext) {
+        let url = SharedString::from("https://api.example.com");
+        let holder = cx.new(|_| {
+            Holder(ApiKeyState::new(
+                url.clone(),
+                EnvVar {
+                    name: "FORGEKAIROS_TEST_UNSET_API_KEY".into(),
+                    value: None,
+                },
+            ))
+        });
+        let store = holder.update(cx, |holder, cx| {
+            holder.0.store(
+                url.clone(),
+                Some("secret".to_string()),
+                |holder: &mut Holder| &mut holder.0,
+                Arc::new(RefusingCredentials),
+                cx,
+            )
+        });
+        let error = store
+            .await
+            .expect_err("the caller hears that the key was not saved");
+        assert!(
+            error.to_string().contains("locked"),
+            "the store's reason reaches the caller: {error:#}"
+        );
+        assert!(
+            !holder.read_with(cx, |holder, _| holder.0.has_key()),
+            "a key that is only in memory would be gone at the next start"
+        );
     }
 }

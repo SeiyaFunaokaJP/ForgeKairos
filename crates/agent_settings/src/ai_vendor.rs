@@ -86,6 +86,22 @@ pub fn is_language_model_provider_offered_before_setup(provider_id: &str) -> boo
     )
 }
 
+/// ADR-F10: whether a language model provider may be used without asking for
+/// the external-AI consent first. The rule (which hosts count as external,
+/// where the consent is kept) lives with the consent screens in `settings_ui`,
+/// which registers it here; the agent panel cannot depend on that crate.
+#[derive(Clone, Copy)]
+pub struct LanguageModelProviderConsentCheck(pub fn(&str, &gpui::App) -> bool);
+
+impl gpui::Global for LanguageModelProviderConsentCheck {}
+
+/// `false` while nothing has registered the rule: a thread on a provider that
+/// cannot be shown to be consented goes through the setup window instead.
+pub fn language_model_provider_is_consented(provider_id: &str, cx: &gpui::App) -> bool {
+    cx.try_global::<LanguageModelProviderConsentCheck>()
+        .is_some_and(|check| (check.0)(provider_id, cx))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
