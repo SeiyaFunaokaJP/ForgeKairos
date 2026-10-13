@@ -219,6 +219,39 @@ pub fn language_options(cx: &App) -> Vec<LocaleInfo> {
     i18n_catalog::available_locales(user_locales_directory.as_deref())
 }
 
+/// Which of `available_tags` the UI is shown in when `ui_language` is the tag `value`,
+/// the way `resolve` negotiates it (`zh-TW` shows `zh-Hant`), so the settings UI can
+/// name that language without rewriting the setting. English is `en`, whether or not
+/// it is listed. `None` when `value` is not a language tag or has no translation, as
+/// the UI then falls back to English with a warning.
+pub fn shown_tag<'a>(
+    value: &str,
+    available_tags: impl IntoIterator<Item = &'a str>,
+) -> Option<String> {
+    let normalized = i18n_catalog::normalize_tag(value.trim());
+    if normalized.eq_ignore_ascii_case(i18n_catalog::ENGLISH) {
+        return Some(i18n_catalog::ENGLISH.to_string());
+    }
+    if !i18n_catalog::is_valid_tag(&normalized) {
+        return None;
+    }
+    let available: Vec<LocaleInfo> = available_tags
+        .into_iter()
+        .filter(|tag| !tag.eq_ignore_ascii_case(i18n_catalog::ENGLISH))
+        .map(|tag| LocaleInfo {
+            tag: tag.to_string(),
+            display_name: tag.to_string(),
+            source: i18n_catalog::LocaleSource::Embedded,
+        })
+        .collect();
+    match i18n_catalog::negotiate(std::slice::from_ref(&normalized), &available) {
+        Some(tag) => Some(tag),
+        None => i18n_catalog::base_language(&normalized)
+            .eq_ignore_ascii_case(i18n_catalog::ENGLISH)
+            .then(|| i18n_catalog::ENGLISH.to_string()),
+    }
+}
+
 /// Installs the catalog for `language` and returns the problems to show the user.
 fn apply(language: &UiLanguage, user_locales_directory: Option<&Path>) -> Vec<String> {
     let (catalog, problems) = resolve(language, user_locales_directory);
@@ -404,6 +437,30 @@ mod tests {
         assert_eq!(
             UiLanguage::from_setting(Some("pt-BR")),
             UiLanguage::Tag("pt-BR".to_string())
+        );
+    }
+
+    #[test]
+    fn shown_tag_is_the_language_a_setting_negotiates_to() {
+        let available = ["de", "ja", "pt-BR", "zh-Hans", "zh-Hant"];
+        let shown = |value: &str| shown_tag(value, available);
+        assert_eq!(shown("ja").as_deref(), Some("ja"));
+        assert_eq!(shown(" JA ").as_deref(), Some("ja"));
+        assert_eq!(shown("ja-JP").as_deref(), Some("ja"));
+        assert_eq!(shown("zh-TW").as_deref(), Some("zh-Hant"));
+        assert_eq!(shown("zh_HK.UTF-8").as_deref(), Some("zh-Hant"));
+        assert_eq!(shown("zh-CN").as_deref(), Some("zh-Hans"));
+        assert_eq!(shown("zh").as_deref(), Some("zh-Hans"));
+        assert_eq!(shown("pt-PT").as_deref(), Some("pt-BR"));
+        assert_eq!(shown("pt").as_deref(), Some("pt-BR"));
+        assert_eq!(shown("en").as_deref(), Some("en"));
+        assert_eq!(shown("en-GB").as_deref(), Some("en"));
+        assert_eq!(shown("xx-YY"), None);
+        assert_eq!(shown("not a tag"), None);
+        assert_eq!(shown_tag("zh-TW", ["zh-Hans"]), None);
+        assert_eq!(
+            shown_tag("pt-PT", ["en", "pt-BR"]).as_deref(),
+            Some("pt-BR")
         );
     }
 

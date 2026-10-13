@@ -52,10 +52,12 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "japanese"; MessagesFile: "{#ResourcesDir}\messages\Default.ja.isl,{#ResourcesDir}\messages\ja.isl"; InfoBeforeFile: "script\terms\notice.ja.rtf"
 Name: "english"; MessagesFile: "compiler:Default.isl,{#ResourcesDir}\messages\en.isl"; InfoBeforeFile: "script\terms\notice.en.rtf"
 Name: "simplifiedChinese"; MessagesFile: "{#ResourcesDir}\messages\Default.zh-cn.isl,{#ResourcesDir}\messages\zh-cn.isl"; InfoBeforeFile: "script\terms\notice.zh-cn.rtf"
+; Inno Setup's own Traditional Chinese file is unofficial, so the fork ships one. Language
+; detection never gives Simplified to Traditional Chinese Windows (zh-TW, zh-HK, zh-MO) or
+; Traditional to Simplified (zh-CN, zh-SG), even by the primary language.
+Name: "traditionalChinese"; MessagesFile: "{#ResourcesDir}\messages\Default.zh-tw.isl,{#ResourcesDir}\messages\zh-tw.isl"; InfoBeforeFile: "script\terms\notice.zh-tw.rtf"
 ; Inno Setup ships these message files itself. The notice has no translation in these
-; languages yet, so they show the English one. Traditional Chinese has no message file
-; (Inno Setup's is unofficial and not in the repository): Windows set to it gets the
-; Simplified Chinese setup, which Inno Setup matches by the primary language.
+; languages yet, so they show the English one.
 Name: "german"; MessagesFile: "compiler:Languages\German.isl,{#ResourcesDir}\messages\de.isl"; InfoBeforeFile: "script\terms\notice.en.rtf"
 Name: "french"; MessagesFile: "compiler:Languages\French.isl,{#ResourcesDir}\messages\fr.isl"; InfoBeforeFile: "script\terms\notice.en.rtf"
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl,{#ResourcesDir}\messages\es.isl"; InfoBeforeFile: "script\terms\notice.en.rtf"

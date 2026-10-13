@@ -28,6 +28,7 @@ ErrorTitle=エラー
 SetupLdrStartupMessage=%1 をインストールします。続行しますか？
 LdrCannotCreateTemp=一時ファイルを作成できません。セットアップを中止します。
 LdrCannotExecTemp=一時フォルダーのファイルを実行できません。セットアップを中止します。
+HelpTextNote=
 
 ; *** Startup error messages
 LastErrorMessage=%1.%n%nエラー %2: %3

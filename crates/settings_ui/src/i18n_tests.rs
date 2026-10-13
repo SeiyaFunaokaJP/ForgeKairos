@@ -1723,6 +1723,13 @@ fn display_language_offers_the_system_english_and_every_translation(cx: &mut Tes
     assert_eq!(current_label(&choices, "ja"), "日本語");
     assert_eq!(current_label(&choices, "JA"), "日本語");
     assert_eq!(current_label(&choices, "xx-YY"), "xx-YY");
+    // The setting is kept as written; the dropdown names the language it is shown in.
+    assert_eq!(current_label(&choices, "zh-TW"), "繁體中文");
+    assert_eq!(current_label(&choices, "zh-HK"), "繁體中文");
+    assert_eq!(current_label(&choices, "zh-CN"), "简体中文");
+    assert_eq!(current_label(&choices, "pt-PT"), "Português (Brasil)");
+    assert_eq!(current_label(&choices, "ja-JP"), "日本語");
+    assert_eq!(current_label(&choices, "en-GB"), "English");
 
     drop(_japanese);
     let _english = LocaleOverride::new(None);
