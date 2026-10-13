@@ -498,6 +498,9 @@ msgstr "並べ替えは 1 件ずつです。1 件だけをドラッグしてく�
 msgid "Commits as {name} <{email}> (git account \"{id}\")"
 msgstr "{name} <{email}> としてコミットします (Git アカウント「{id}」)"
 
+msgid "Commits as {name} <{email}> (git account \"{id}\"). The account's SSH key is not used: {reason}"
+msgstr "{name} <{email}> としてコミットします (Git アカウント「{id}」)。アカウントの SSH 鍵は使われていません: {reason}"
+
 msgid "Commits on feature that the default branch does not have"
 msgstr "feature にあって、デフォルトブランチに無いコミット"
 
@@ -2479,6 +2482,9 @@ msgstr "リベースは終わりましたが、「{fixup_subject}」コミット
 
 msgid "The rebase stopped while folding into {short} (a conflict, for example). Continue or abort it from the Git panel's banner. Even after aborting, the changes stay at the tip as the \"{fixup_subject}\" commit ({}). Skipping that commit takes the changes out of the history (recoverable from git reflog). Previous tip: {}"
 msgstr "{short} に入れる途中でリベースが止まりました (コンフリクトなど)。Git パネルのバナーから続行か中止をしてください。中止しても、変更は「{fixup_subject}」コミット ({}) として先頭に残ります。そのコミットでスキップすると変更は履歴から外れます (git reflog から戻せます)。元の先頭: {}"
+
+msgid "The remote host may still commit as the git account picked before, as it did not take the change ({reason}), so commits are refused there. Pick an account again, or reconnect to the remote server."
+msgstr "リモートのホストが変更を受け取らなかったため ({reason})、前に選んだ Git アカウントのままコミットする恐れがあり、そこでのコミットを止めています。アカウントを選び直すか、リモートのサーバーに接続し直してください。"
 
 msgid "The replayed commits of yours get new SHAs"
 msgstr "付け直した自分のコミットの SHA が変わります"

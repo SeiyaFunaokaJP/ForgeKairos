@@ -439,7 +439,7 @@ fn render_form(
                 .child(Label::new(i18n::t!("SSH Key")))
                 .child(
                     Label::new(i18n::t!(
-                        "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set. A passphrase is asked for each time."
+                        "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set, which Git for Windows does in its system configuration when installed to use the external OpenSSH. A passphrase is asked for each time."
                     ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),

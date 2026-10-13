@@ -1251,8 +1251,8 @@ msgstr "省略可。トークンでサインインする HTTPS のホスト (git
 msgid "Optional. The key commits are signed with when signing is on (user.signingkey)."
 msgstr "省略可。署名がオンのときにコミットの署名に使う鍵 (user.signingkey)。"
 
-msgid "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set. A passphrase is asked for each time."
-msgstr "任意。SSH のリモートへのプッシュ・プル・フェッチで使う秘密鍵のファイル (この鍵だけを使います)。ローカルのプロジェクトのみ。GIT_SSH_COMMAND・GIT_SSH・core.sshCommand が設定されているときは使いません。パスフレーズはその都度尋ねます。"
+msgid "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set, which Git for Windows does in its system configuration when installed to use the external OpenSSH. A passphrase is asked for each time."
+msgstr "任意。SSH のリモートへのプッシュ・プル・フェッチで使う秘密鍵のファイル (この鍵だけを使います)。ローカルのプロジェクトのみ。GIT_SSH_COMMAND・GIT_SSH・core.sshCommand が設定されているときは使いません (Git for Windows を「外部の OpenSSH を使う」設定で入れると、システムの設定に core.sshCommand が書かれます)。パスフレーズはその都度尋ねます。"
 
 msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
 msgstr "または環境変数 {env_var_name} を設定し、ForgeKairos を再起動すると反映されます。"

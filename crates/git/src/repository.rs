@@ -3160,6 +3160,15 @@ pub trait GitRepository: Send + Sync {
     fn identity(&self) -> Option<Arc<GitIdentity>> {
         None
     }
+
+    /// ADR-F93: why push, pull and fetch do not use the SSH key of the identity, when it has one:
+    /// an SSH command the user chose wins over it. `environment` is the repository's own.
+    fn account_ssh_key_unused_reason(
+        &self,
+        _environment: Arc<HashMap<String, String>>,
+    ) -> BoxFuture<'_, Result<Option<String>>> {
+        futures::future::ready(Ok(None)).boxed()
+    }
 }
 
 pub enum DiffType {
@@ -5976,6 +5985,24 @@ impl GitRepository for RealGitRepository {
     fn identity(&self) -> Option<Arc<GitIdentity>> {
         self.identity.lock().clone()
     }
+
+    fn account_ssh_key_unused_reason(
+        &self,
+        environment: Arc<HashMap<String, String>>,
+    ) -> BoxFuture<'_, Result<Option<String>>> {
+        let git = self.git_binary();
+        async move {
+            if git
+                .identity
+                .as_ref()
+                .is_none_or(|identity| identity.ssh_key.is_none())
+            {
+                return Ok(None);
+            }
+            git.user_ssh_command(&environment).await
+        }
+        .boxed()
+    }
 }
 
 async fn run_commit_data_reader(
@@ -8026,14 +8053,37 @@ impl GitBinary {
         let (Some(ssh_key), Some(ssh_command)) = (&identity.ssh_key, identity.ssh_command()) else {
             return Ok(None);
         };
+        if let Some(reason) = self.user_ssh_command(environment).await? {
+            log::info!("the git account's SSH key is not used: {reason}");
+            return Ok(None);
+        }
+        if smol::fs::metadata(ssh_key).await.is_err() {
+            bail!(i18n::t!(
+                "The SSH key of the picked git account was not found: {path}",
+                path = ssh_key.display()
+            ));
+        }
+        Ok(Some(ssh_command))
+    }
+
+    /// Why an SSH command the user chose wins over the identity's key: `GIT_SSH_COMMAND` or
+    /// `GIT_SSH` in `environment` or Zed's own environment, or `core.sshCommand` in a trusted
+    /// repository's configuration, the system's included (Git for Windows set to use the
+    /// external OpenSSH sets it there). An untrusted repository's is replaced by plain `ssh`.
+    async fn user_ssh_command(
+        &self,
+        environment: &HashMap<String, String>,
+    ) -> Result<Option<String>> {
         for variable in ["GIT_SSH_COMMAND", "GIT_SSH"] {
             let is_set = environment
                 .get(variable)
                 .is_some_and(|value| !value.is_empty())
                 || std::env::var_os(variable).is_some_and(|value| !value.is_empty());
             if is_set {
-                log::info!("{variable} is set, so the git account's SSH key is not used");
-                return Ok(None);
+                return Ok(Some(i18n::t!(
+                    "{variable} is set in the environment",
+                    variable = variable
+                )));
             }
         }
         if self.is_trusted {
@@ -8044,17 +8094,13 @@ impl GitBinary {
                 .output()
                 .await?;
             if output.status.success() && !output.stdout.trim_ascii().is_empty() {
-                log::info!("core.sshCommand is set, so the git account's SSH key is not used");
-                return Ok(None);
+                return Ok(Some(i18n::t!(
+                    "core.sshCommand is set in git's configuration (Git for Windows sets it when told to use the external OpenSSH)"
+                )
+                .to_string()));
             }
         }
-        if smol::fs::metadata(ssh_key).await.is_err() {
-            bail!(i18n::t!(
-                "The SSH key of the picked git account was not found: {path}",
-                path = ssh_key.display()
-            ));
-        }
-        Ok(Some(ssh_command))
+        Ok(None)
     }
 
     pub(crate) async fn build_command<S>(&self, args: &[S]) -> util::command::Command
@@ -11385,7 +11431,12 @@ mod tests {
         git_init_repo(&repo_dir);
         git_command(
             &repo_dir,
-            ["remote", "add", "origin", "ssh://git@example.invalid/repo.git"],
+            [
+                "remote",
+                "add",
+                "origin",
+                "ssh://git@example.invalid/repo.git",
+            ],
         );
         let fake_bin = temp_dir.path().join("fake bin");
         fs::create_dir_all(&fake_bin).unwrap();
@@ -11410,10 +11461,9 @@ mod tests {
         let key = key_dir.join("id_ed25519");
         fs::write(&key, "not a real key").unwrap();
 
-        let path = std::env::join_paths(
-            std::iter::once(fake_bin.clone())
-                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
-        )
+        let path = std::env::join_paths(std::iter::once(fake_bin.clone()).chain(
+            std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+        ))
         .unwrap()
         .into_string()
         .unwrap();
@@ -11470,10 +11520,7 @@ mod tests {
         fetch(environment(&[])).await.unwrap_err();
         let calls = take_calls();
         assert!(
-            calls.contains(&format!(
-                "[-i][{}][-o][IdentitiesOnly=yes]",
-                key.display()
-            )),
+            calls.contains(&format!("[-i][{}][-o][IdentitiesOnly=yes]", key.display())),
             "{calls}"
         );
 
@@ -11508,13 +11555,30 @@ mod tests {
             "{calls}"
         );
 
-        // An SSH command the user chose is kept as it is.
+        assert_eq!(
+            repo.account_ssh_key_unused_reason(environment(&[]))
+                .await
+                .unwrap(),
+            None
+        );
+
+        // An SSH command the user chose is kept as it is, and the panel is told why the key is
+        // not used.
         fetch(environment(&[("GIT_SSH_COMMAND", "ssh -o UserChose=yes")]))
             .await
             .unwrap_err();
         let calls = take_calls();
         assert!(calls.contains("[-o][UserChose=yes]"), "{calls}");
         assert!(!calls.contains("[-i]"), "{calls}");
+        let reason = repo
+            .account_ssh_key_unused_reason(environment(&[(
+                "GIT_SSH_COMMAND",
+                "ssh -o UserChose=yes",
+            )]))
+            .await
+            .unwrap()
+            .expect("GIT_SSH_COMMAND wins over the key");
+        assert!(reason.contains("GIT_SSH_COMMAND"), "{reason}");
 
         git_command(
             &repo_dir,
@@ -11524,6 +11588,12 @@ mod tests {
         let calls = take_calls();
         assert!(calls.contains("[-o][FromConfig=yes]"), "{calls}");
         assert!(!calls.contains("[-i]"), "{calls}");
+        let reason = repo
+            .account_ssh_key_unused_reason(environment(&[]))
+            .await
+            .unwrap()
+            .expect("core.sshCommand wins over the key");
+        assert!(reason.contains("core.sshCommand"), "{reason}");
         git_command(&repo_dir, ["config", "--unset", "core.sshCommand"]);
 
         // The agent's commands never reach a remote, and take none of the account's options.

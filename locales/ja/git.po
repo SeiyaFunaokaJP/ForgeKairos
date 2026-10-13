@@ -197,6 +197,9 @@ msgstr "このプロジェクトは信頼されていないため、古い git (
 msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot turn off hooks, so \"{operation}\" cannot run. Trust the project to run it."
 msgstr "このプロジェクトは信頼されていないため、古い git ({minimum} 未満。いまの git は {version}) ではフックを止められず、{operation}を実行できません。プロジェクトを信頼すると実行できます。"
 
+msgid "core.sshCommand is set in git's configuration (Git for Windows sets it when told to use the external OpenSSH)"
+msgstr "git の設定に core.sshCommand があります (Git for Windows を「外部の OpenSSH を使う」設定にすると書かれます)"
+
 msgid "git exited with status {code}."
 msgstr "git がステータス {code} で終了しました。"
 
@@ -211,6 +214,9 @@ msgstr "未信頼のリポジトリの filter を無効化できなかったた�
 
 msgid "unknown version"
 msgstr "版不明"
+
+msgid "{variable} is set in the environment"
+msgstr "環境変数 {variable} が設定されています"
 
 msgctxt "commit search"
 msgid "Author"

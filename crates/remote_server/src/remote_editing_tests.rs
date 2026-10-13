@@ -5796,6 +5796,39 @@ async fn test_remote_git_account_is_picked_on_the_client(
         git(&work_dir, &["log", "-1", "--format=%s|%an"]),
         "as the host's git again|Host User"
     );
+
+    // An account the host took stays in effect there until it takes git's own configuration,
+    // so a switch back that does not reach it refuses commits too.
+    server_cx.update(|cx| cx.remove_global::<IgnoreGitAccountIdentityForTests>());
+    pick("ada@work.example", true, cx);
+    settle(cx, server_cx);
+    assert_eq!(status(cx), Some(RemoteGitAccountStatus::Applied));
+    server_cx.update(|cx| cx.set_global(IgnoreGitAccountIdentityForTests));
+    pick("ada@work.example", false, cx);
+    settle(cx, server_cx);
+    assert!(
+        matches!(
+            status(cx),
+            Some(RemoteGitAccountStatus::NotApplied {
+                commits_refused: true,
+                ..
+            })
+        ),
+        "{:?}",
+        status(cx)
+    );
+    let error = commit("must not be made as the account", cx)
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("not in effect on the remote host"),
+        "{error:#}"
+    );
+    assert_eq!(
+        git(&work_dir, &["log", "-1", "--format=%s"]),
+        "as the host's git again"
+    );
 }
 
 /// ADR-F90: the host says which repositories the user opened (there when the folder was opened,

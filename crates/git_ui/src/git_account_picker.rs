@@ -42,11 +42,18 @@ pub(crate) fn render_git_account_picker(
     let choice = account_choice_for_key(settings, &key);
     let accounts = settings.accounts.clone();
     // ADR-F93: on a remote host, what its server made of the pick.
-    let not_applied_reason = match repository.read(cx).remote_git_account_status() {
-        Some(RemoteGitAccountStatus::NotApplied { reason }) => Some(reason.clone()),
-        _ => None,
-    };
-    if let (Some(reason), GitAccountChoice::GitConfig) = (&not_applied_reason, &choice) {
+    let (not_applied_reason, commits_refused) =
+        match repository.read(cx).remote_git_account_status() {
+            Some(RemoteGitAccountStatus::NotApplied {
+                reason,
+                commits_refused,
+            }) => (Some(reason.clone()), *commits_refused),
+            _ => (None, false),
+        };
+    let ssh_key_unused_reason = repository.read(cx).ssh_key_unused_reason().cloned();
+    if let (Some(reason), GitAccountChoice::GitConfig, false) =
+        (&not_applied_reason, &choice, commits_refused)
+    {
         return disabled_picker(i18n::t!(
             "This remote host's server does not support git accounts ({reason}); update it to pick one. The project commits and pushes as git is configured on the host.",
             reason = reason
@@ -54,6 +61,15 @@ pub(crate) fn render_git_account_picker(
     }
 
     let (label, color, tooltip): (SharedString, Color, SharedString) = match &choice {
+        GitAccountChoice::GitConfig | GitAccountChoice::Unavailable { .. } if commits_refused => (
+            SharedString::default(),
+            Color::Warning,
+            i18n::t!(
+                "The remote host may still commit as the git account picked before, as it did not take the change ({reason}), so commits are refused there. Pick an account again, or reconnect to the remote server.",
+                reason = not_applied_reason.as_deref().unwrap_or_default()
+            )
+            .into(),
+        ),
         GitAccountChoice::GitConfig => (
             SharedString::default(),
             Color::Muted,
@@ -70,17 +86,31 @@ pub(crate) fn render_git_account_picker(
             )
             .into(),
         ),
-        GitAccountChoice::Account(account) => (
-            account.id.clone().into(),
-            Color::Default,
-            i18n::t!(
-                "Commits as {name} <{email}> (git account \"{id}\")",
-                name = account.name,
-                email = account.email,
-                id = account.id
-            )
-            .into(),
-        ),
+        GitAccountChoice::Account(account) => match &ssh_key_unused_reason {
+            Some(reason) => (
+                account.id.clone().into(),
+                Color::Warning,
+                i18n::t!(
+                    "Commits as {name} <{email}> (git account \"{id}\"). The account's SSH key is not used: {reason}",
+                    name = account.name,
+                    email = account.email,
+                    id = account.id,
+                    reason = reason
+                )
+                .into(),
+            ),
+            None => (
+                account.id.clone().into(),
+                Color::Default,
+                i18n::t!(
+                    "Commits as {name} <{email}> (git account \"{id}\")",
+                    name = account.name,
+                    email = account.email,
+                    id = account.id
+                )
+                .into(),
+            ),
+        },
         GitAccountChoice::Unavailable { id, reason } => (
             id.clone().into(),
             Color::Warning,
@@ -131,7 +161,9 @@ pub(crate) fn render_git_account_picker(
                         .handler({
                             let key = key.clone();
                             let fs = fs.clone();
-                            move |_, cx| set_project_account_for_key(key.clone(), None, fs.clone(), cx)
+                            move |_, cx| {
+                                set_project_account_for_key(key.clone(), None, fs.clone(), cx)
+                            }
                         }),
                 );
                 for account in &accounts {

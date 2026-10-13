@@ -418,9 +418,13 @@ pub enum RemoteGitAccountStatus {
     Pending,
     Applied,
     /// The server did not take it: one from before git accounts, which does not know the
-    /// message, or one that refused it. Its git configuration decides, and the commands that
-    /// make commits refuse to run while an account is picked.
-    NotApplied { reason: String },
+    /// message, or one that refused it. The commands that make commits refuse to run
+    /// (`commits_refused`) while an account is picked, or while the host may still hold the
+    /// account it took before.
+    NotApplied {
+        reason: String,
+        commits_refused: bool,
+    },
 }
 
 /// On a client of a remote server, what the host was told of a repository's account.
@@ -428,9 +432,12 @@ pub(crate) struct RemoteGitAccount {
     /// `None` until the host was told anything.
     sent: Option<Option<Arc<GitIdentity>>>,
     status: Option<RemoteGitAccountStatus>,
-    /// Done once the host answered: an error when an account was picked and the host did not
-    /// take it.
+    /// Done once the host answered: an error when the host did not take what it was sent and
+    /// may now commit as an account the user did not pick.
     pub(crate) applied: Shared<Task<Result<(), SharedString>>>,
+    /// Whether the host may hold an account: one was sent, and the host has not since taken
+    /// git's own configuration. Switching back to git's own configuration must then reach it.
+    host_may_hold_account: bool,
 }
 
 impl Default for RemoteGitAccount {
@@ -439,6 +446,7 @@ impl Default for RemoteGitAccount {
             sent: None,
             status: None,
             applied: Task::ready(Ok(())).shared(),
+            host_may_hold_account: false,
         }
     }
 }
@@ -456,13 +464,17 @@ impl RemoteGitAccount {
     /// configuration with `None`). Only the identity's public part goes: never a token, nor
     /// its SSH key, a path on this machine.
     pub(crate) fn send(
+        &mut self,
         repository_id: RepositoryId,
         identity: Option<Arc<GitIdentity>>,
         state: Shared<Task<Result<RepositoryState, String>>>,
         cx: &mut Context<Repository>,
-    ) -> Self {
+    ) {
         let message_identity = identity.as_deref().map(identity_to_proto);
-        let account_picked = identity.is_some();
+        let held_before = self.host_may_hold_account;
+        // An account picked before and taken by the host stays in effect there until the host
+        // takes git's own configuration, so failing to tell it so must stop commits too.
+        let commits_refused = identity.is_some() || held_before;
         let applied = cx
             .spawn({
                 let identity = identity.clone();
@@ -475,29 +487,37 @@ impl RemoteGitAccount {
                             log::warn!("the remote server did not take the git account: {error:#}");
                             RemoteGitAccountStatus::NotApplied {
                                 reason: format!("{error:#}"),
+                                commits_refused,
                             }
                         }
                     };
                     this.update(cx, |repository, cx| {
                         let account = &mut repository.remote_git_account;
                         if account.sent.as_ref() == Some(&identity) {
+                            match (&result, &identity) {
+                                (Ok(()), None) => account.host_may_hold_account = false,
+                                // The host kept what it had before this account.
+                                (Err(_), Some(_)) => account.host_may_hold_account = held_before,
+                                _ => {}
+                            }
                             account.status = Some(status);
                             cx.notify();
                         }
                     })
                     .ok();
                     match result {
-                        Err(error) if account_picked => Err(format!("{error:#}").into()),
+                        Err(error) if commits_refused => Err(format!("{error:#}").into()),
                         _ => Ok(()),
                     }
                 }
             })
             .shared();
-        Self {
-            sent: Some(identity),
-            status: Some(RemoteGitAccountStatus::Pending),
-            applied,
+        if identity.is_some() {
+            self.host_may_hold_account = true;
         }
+        self.sent = Some(identity);
+        self.status = Some(RemoteGitAccountStatus::Pending);
+        self.applied = applied;
     }
 }
 

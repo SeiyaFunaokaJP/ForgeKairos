@@ -3900,4 +3900,126 @@ mod git_account_tests {
             "Committer <committer@example.com>|Committer <committer@example.com>"
         );
     }
+
+    /// An SSH command the user chose wins over the account's SSH key, and the git panel is told
+    /// why the key is not used rather than only the log.
+    #[gpui::test]
+    async fn test_the_panel_is_told_when_the_ssh_key_is_not_used(cx: &mut TestAppContext) {
+        use collections::HashSet;
+        use project::trusted_worktrees::{self, DbTrustedPaths, PathTrust, TrustedWorktrees};
+
+        init_settings(cx);
+        cx.update(|cx| trusted_worktrees::init(DbTrustedPaths::default(), cx));
+        let root = TempTree::new(json!({ "project": {}, "keys": { "id_work": "not a key" } }));
+        let work_dir = root.path().join("project");
+        init_repository(&work_dir);
+        let ssh_key = root.path().join("keys").join("id_work");
+
+        let project =
+            Project::test_with_worktree_trust(RealFs::new(None, cx.executor()), [&*work_dir], cx)
+                .await;
+        let tree = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+        });
+        tree.flush_fs_events(cx).await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let worktree_store = project.read_with(cx, |project, _| project.worktree_store());
+        let worktree_id = tree.read_with(cx, |tree, _| tree.id());
+        let trusted_worktrees = cx.update(|cx| {
+            TrustedWorktrees::try_get_global(cx).expect("the trust store is initialized")
+        });
+        trusted_worktrees.update(cx, |store, cx| {
+            store.trust(
+                &worktree_store,
+                HashSet::from_iter([PathTrust::Worktree(worktree_id)]),
+                cx,
+            );
+        });
+        cx.executor().run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .repositories(cx)
+                .values()
+                .next()
+                .expect("the project has a repository")
+                .clone()
+        });
+        let key = repository.read_with(cx, |repository, _| {
+            project_account_key(&repository.work_directory_abs_path)
+        });
+        let pick = |ssh_key: Option<&Path>, cx: &mut TestAppContext| {
+            let key = key.clone();
+            let ssh_key = ssh_key.map(|ssh_key| ssh_key.to_string_lossy().into_owned());
+            cx.update(|cx| {
+                cx.update_global::<SettingsStore, _>(|store, cx| {
+                    store.update_user_settings(cx, |settings| {
+                        let git = settings.git.get_or_insert_default();
+                        git.accounts = Some(vec![GitAccountContent {
+                            id: "work".to_string(),
+                            name: "Ada Work".to_string(),
+                            email: "ada@work.example".to_string(),
+                            host: None,
+                            login: None,
+                            signing_key: None,
+                            ssh_key,
+                        }]);
+                        git.project_accounts
+                            .get_or_insert_default()
+                            .insert(key, "work".to_string());
+                    })
+                })
+            });
+            cx.executor().run_until_parked();
+        };
+        let reason = |cx: &mut TestAppContext| {
+            repository.read_with(cx, |repository, _| {
+                repository
+                    .ssh_key_unused_reason()
+                    .map(|reason| reason.to_string())
+            })
+        };
+
+        // The reason comes from a git process, which `run_until_parked` does not wait for.
+        let wait_for = async |expect_reason: bool, cx: &mut TestAppContext| {
+            for _ in 0..200 {
+                if reason(cx).is_some() == expect_reason {
+                    break;
+                }
+                cx.background_executor
+                    .timer(std::time::Duration::from_millis(20))
+                    .await;
+                cx.executor().run_until_parked();
+            }
+            reason(cx)
+        };
+
+        git(
+            &work_dir,
+            &["config", "core.sshCommand", "ssh -o FromConfig=yes"],
+        );
+        pick(Some(&ssh_key), cx);
+        let unused = wait_for(true, cx)
+            .await
+            .expect("core.sshCommand wins over the key");
+        assert!(unused.contains("core.sshCommand"), "{unused}");
+
+        pick(None, cx);
+        assert_eq!(
+            wait_for(false, cx).await,
+            None,
+            "an account without a key has nothing to say"
+        );
+
+        pick(Some(&ssh_key), cx);
+        assert!(wait_for(true, cx).await.is_some());
+        git(&work_dir, &["config", "--unset", "core.sshCommand"]);
+        pick(None, cx);
+        pick(Some(&ssh_key), cx);
+        assert_eq!(wait_for(false, cx).await, None, "the key is used");
+    }
 }

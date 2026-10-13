@@ -817,6 +817,9 @@ pub struct Repository {
     identity_from_client: Option<Arc<git::account::GitIdentity>>,
     /// ADR-F93: on a client of a remote server, what the host was told of the picked account.
     pub(crate) remote_git_account: crate::git_accounts::RemoteGitAccount,
+    /// ADR-F93: why push, pull and fetch do not use the picked account's SSH key, when they do
+    /// not: an SSH command the user chose wins over it.
+    ssh_key_unused_reason: Option<SharedString>,
 }
 
 /// Which halves of a repository's state a scheduled scan recomputes.
@@ -7152,6 +7155,7 @@ impl Repository {
                 Ok(RepositoryState::Local(state))
             })
             .shared();
+        self.refresh_ssh_key_unused_reason(cx).detach();
     }
 
     /// ForgeKairos (ADR-F93): the identity this repository's git commands run as.
@@ -7179,9 +7183,39 @@ impl Repository {
                 && state.backend.identity() != identity
             {
                 state.backend.set_identity(identity);
-                this.update(cx, |_, cx| cx.notify()).ok();
+            }
+            if let Ok(refreshed) =
+                this.update(cx, |this, cx| this.refresh_ssh_key_unused_reason(cx))
+            {
+                refreshed.await;
             }
         })
+    }
+
+    fn refresh_ssh_key_unused_reason(&mut self, cx: &mut Context<Self>) -> Task<()> {
+        let state = self.repository_state.clone();
+        cx.spawn(async move |this, cx| {
+            let Ok(RepositoryState::Local(state)) = state.await else {
+                return;
+            };
+            let ssh_key_unused_reason = state
+                .backend
+                .account_ssh_key_unused_reason(state.environment.clone())
+                .await
+                .log_err()
+                .flatten()
+                .map(SharedString::from);
+            this.update(cx, |this, cx| {
+                this.ssh_key_unused_reason = ssh_key_unused_reason;
+                cx.notify();
+            })
+            .ok();
+        })
+    }
+
+    /// ADR-F93: why push, pull and fetch do not use the picked account's SSH key, if they do not.
+    pub fn ssh_key_unused_reason(&self) -> Option<&SharedString> {
+        self.ssh_key_unused_reason.as_ref()
     }
 
     /// ADR-F93: tells the remote server the account picked for this repository under
@@ -7200,8 +7234,7 @@ impl Repository {
         }
         let id = self.id;
         let state = self.repository_state.clone();
-        self.remote_git_account =
-            crate::git_accounts::RemoteGitAccount::send(id, identity, state, cx);
+        self.remote_git_account.send(id, identity, state, cx);
         cx.notify();
     }
 
@@ -7306,6 +7339,7 @@ impl Repository {
             commit_data_handler: CommitDataHandlerState::Closed,
             identity_from_client: None,
             remote_git_account: Default::default(),
+            ssh_key_unused_reason: None,
         };
         repo.respawn_local_worker(project_environment, fs, is_trusted, cx);
         cx.subscribe_self(Self::handle_subscribe_self).detach();
@@ -7361,6 +7395,7 @@ impl Repository {
             commit_data_handler: CommitDataHandlerState::Closed,
             identity_from_client: None,
             remote_git_account: Default::default(),
+            ssh_key_unused_reason: None,
         }
     }
 
