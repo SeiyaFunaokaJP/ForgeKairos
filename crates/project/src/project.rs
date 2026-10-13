@@ -1610,7 +1610,14 @@ impl Project {
                     cx,
                 )
             });
-            git_store.update(cx, |git_store, _| git_store.set_project(weak_self.clone()));
+            // ADR-F93: the choices of the host's repositories' git accounts are kept under it.
+            let git_account_connection =
+                remote::remote_connection_identity(&remote.read(cx).connection_options())
+                    .persistence_key();
+            git_store.update(cx, |git_store, cx| {
+                git_store.set_project(weak_self.clone());
+                git_store.set_remote_git_account_connection(Some(git_account_connection), cx);
+            });
 
             let task_store = cx.new(|cx| {
                 TaskStore::remote(

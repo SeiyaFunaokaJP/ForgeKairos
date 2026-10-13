@@ -259,6 +259,28 @@ message GitRunCommandResponse {
   bool hooks_disabled = 4;
 }
 
+// client -> remote_server (ADR-F93). The git account a repository on the host
+// commits as, picked in the client's settings. Only what the host's git may be
+// told: never a token, nor a key file of the client's machine. A host from
+// before this message answers with an error, which the client takes as "not
+// applied" rather than letting commits go out under another name.
+message SetGitAccountIdentity {
+  uint64 project_id = 1;
+  uint64 repository_id = 2;
+  // Absent: commit and push as git is configured on the host.
+  optional GitAccountIdentity identity = 3;
+}
+
+message GitAccountIdentity {
+  string name = 1;
+  string email = 2;
+  optional string signing_key = 3;
+  // The HTTPS login whose password prompts the client answers (with the
+  // token it keeps), so that the host's credential helpers stand aside.
+  optional string https_host = 4;
+  optional string https_login = 5;
+}
+
 // Stops the server's `SearchCommits` with this `search_id` from the same client, and its git.
 message CancelSearchCommits {
   uint64 project_id = 1;

@@ -5538,6 +5538,229 @@ async fn test_remote_git_command_without_hooks(
     );
 }
 
+/// ADR-F93: the account picked on the client, under the host's connection and the
+/// repository's path there, is who commits on the host are made as. The host is told only the
+/// account's public part. A host that does not take it (a server from before git accounts) makes
+/// the picker say so, and commits are refused rather than made as someone else.
+#[gpui::test]
+async fn test_remote_git_account_is_picked_on_the_client(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    use project::git_accounts::{IgnoreGitAccountIdentityForTests, RemoteGitAccountStatus};
+    use settings::GitAccountContent;
+
+    #[allow(clippy::disallowed_methods)]
+    #[track_caller]
+    fn git(work_dir: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .current_dir(work_dir)
+            .args(args)
+            .output()
+            .expect("git should run");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string()
+    }
+
+    cx.executor().allow_parking();
+    server_cx.executor().allow_parking();
+    let temp_dir = tempfile::tempdir().expect("a directory for the test");
+    let work_dir = temp_dir.path().join("project");
+    std::fs::create_dir_all(&work_dir).expect("the project directory");
+    git(&work_dir, &["init"]);
+    for (key, value) in [
+        ("user.name", "Host User"),
+        ("user.email", "host@example.com"),
+        ("commit.gpgsign", "false"),
+    ] {
+        git(&work_dir, &["config", key, value]);
+    }
+
+    let server_fs: Arc<dyn Fs> = fs::RealFs::new(None, server_cx.executor());
+    let (project, headless_project) = init_test_with_fs(server_fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(&work_dir, true, cx)
+        })
+        .await
+        .unwrap();
+    let settle = |cx: &mut TestAppContext, server_cx: &mut TestAppContext| {
+        for _ in 0..3 {
+            server_cx.run_until_parked();
+            cx.run_until_parked();
+        }
+    };
+    // The host scans a real directory, on threads of its own.
+    let mut repository = None;
+    for _ in 0..200 {
+        settle(cx, server_cx);
+        repository = project.update(cx, |project, cx| project.active_repository(cx));
+        if repository.is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let repository = repository.expect("the client gets the host's repository");
+    settle(cx, server_cx);
+    let key = project.read_with(cx, |project, cx| {
+        project
+            .git_store()
+            .read(cx)
+            .git_account_key(repository.read(cx))
+            .expect("git accounts apply to a remote server's repositories")
+    });
+    assert!(key.starts_with("mock:"), "{key}");
+    assert!(key.ends_with(&*work_dir.to_string_lossy()), "{key}");
+    let status = |cx: &mut TestAppContext| {
+        repository.read_with(cx, |repository, _| {
+            repository.remote_git_account_status().cloned()
+        })
+    };
+    assert_eq!(status(cx), Some(RemoteGitAccountStatus::Applied));
+
+    let pick = |email: &str, picked: bool, cx: &mut TestAppContext| {
+        let key = key.clone();
+        let email = email.to_string();
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    let git = settings.git.get_or_insert_default();
+                    git.accounts = Some(vec![GitAccountContent {
+                        id: "work".to_string(),
+                        name: "Ada Work".to_string(),
+                        email,
+                        host: Some("github.com".to_string()),
+                        login: Some("ada-work".to_string()),
+                        signing_key: None,
+                        ssh_key: Some(path!("/home/ada/.ssh/id_work").to_string()),
+                    }]);
+                    let project_accounts = git.project_accounts.get_or_insert_default();
+                    if picked {
+                        project_accounts.insert(key, "work".to_string());
+                    } else {
+                        project_accounts.remove(&key);
+                    }
+                })
+            })
+        });
+    };
+    let commit = |message: &str, cx: &mut TestAppContext| {
+        let askpass = askpass::AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {});
+        repository.update(cx, |repository, cx| {
+            repository.commit(
+                message.to_string().into(),
+                None,
+                git::repository::CommitOptions {
+                    allow_empty: true,
+                    ..Default::default()
+                },
+                askpass,
+                cx,
+            )
+        })
+    };
+    let host_identity = |server_cx: &mut TestAppContext| {
+        let repository = headless_project.read_with(server_cx, |headless_project, cx| {
+            headless_project
+                .git_store
+                .read(cx)
+                .repositories()
+                .values()
+                .next()
+                .expect("the host has the repository")
+                .clone()
+        });
+        let identity = repository.update(server_cx, |repository, _| {
+            repository.send_job("read the identity", None, |state, _| async move {
+                match state {
+                    project::git_store::RepositoryState::Local(local) => local.backend.identity(),
+                    project::git_store::RepositoryState::Remote(_) => None,
+                }
+            })
+        });
+        identity
+    };
+
+    pick("ada@work.example", true, cx);
+    settle(cx, server_cx);
+    assert_eq!(status(cx), Some(RemoteGitAccountStatus::Applied));
+    let identity = host_identity(server_cx)
+        .await
+        .unwrap()
+        .expect("the host was told the account");
+    assert_eq!(identity.name, "Ada Work");
+    assert_eq!(
+        identity.https_login.as_ref().map(|login| login.login.as_str()),
+        Some("ada-work"),
+        "the host's credential helpers stand aside for the login"
+    );
+    assert_eq!(identity.ssh_key, None, "a key path of the client stays there");
+    commit("as the account", cx).await.unwrap().unwrap();
+    assert_eq!(
+        git(&work_dir, &["log", "-1", "--format=%an <%ae>|%cn <%ce>"]),
+        "Ada Work <ada@work.example>|Ada Work <ada@work.example>"
+    );
+
+    // The host's own user settings, which a remote server is sent too, pick nothing there.
+    pick("ada@work.example", false, cx);
+    settle(cx, server_cx);
+    assert_eq!(host_identity(server_cx).await.unwrap(), None);
+    commit("as the host's git", cx).await.unwrap().unwrap();
+    assert_eq!(
+        git(&work_dir, &["log", "-1", "--format=%an <%ae>"]),
+        "Host User <host@example.com>"
+    );
+
+    // A host that does not take the account.
+    server_cx.update(|cx| cx.set_global(IgnoreGitAccountIdentityForTests));
+    pick("ada@other.example", true, cx);
+    settle(cx, server_cx);
+    assert!(
+        matches!(status(cx), Some(RemoteGitAccountStatus::NotApplied { .. })),
+        "{:?}",
+        status(cx)
+    );
+    let error = commit("must not be made", cx).await.unwrap().unwrap_err();
+    assert!(
+        format!("{error:#}").contains("not in effect on the remote host"),
+        "{error:#}"
+    );
+    let output = repository
+        .update(cx, |repository, _| {
+            repository.run_git_command(
+                vec![
+                    "commit".to_string(),
+                    "--allow-empty".to_string(),
+                    "-m".to_string(),
+                    "must not be made either".to_string(),
+                ],
+                None,
+            )
+        })
+        .await
+        .unwrap();
+    assert!(output.is_err(), "{output:?}");
+    assert_eq!(
+        git(&work_dir, &["log", "-1", "--format=%s"]),
+        "as the host's git"
+    );
+
+    // Picking git's own configuration again commits as the host's git, as the picker says.
+    pick("ada@other.example", false, cx);
+    settle(cx, server_cx);
+    commit("as the host's git again", cx).await.unwrap().unwrap();
+    assert_eq!(
+        git(&work_dir, &["log", "-1", "--format=%s|%an"]),
+        "as the host's git again|Host User"
+    );
+}
+
 /// ADR-F90: the host says which repositories the user opened (there when the folder was opened,
 /// or made with the editor's `git init`), and the client goes by what the host says.
 #[gpui::test]

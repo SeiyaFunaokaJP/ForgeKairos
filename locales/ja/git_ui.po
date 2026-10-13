@@ -1173,8 +1173,8 @@ msgstr "Git の操作ガイド (やりたいことから操作を探せます)"
 msgid "Git Panel"
 msgstr "Git パネル"
 
-msgid "Git accounts apply to local projects only. This project commits and pushes as git is configured on its host."
-msgstr "Git アカウントはローカルのプロジェクトにだけ使えます。このプロジェクトは接続先の git の設定どおりにコミット・プッシュします。"
+msgid "Git accounts don't apply to a project shared by a collaborator. It commits and pushes as git is configured on its host."
+msgstr "共同編集者が共有したプロジェクトには Git アカウントを使えません。共有元の git の設定どおりにコミット・プッシュします。"
 
 msgid "Git's Own Configuration"
 msgstr "git 自身の設定に従う"
@@ -2437,6 +2437,9 @@ msgstr "既存の「{}」({previous}) は新しいコミットを指すように
 msgid "The folder of the patch file was removed from the project."
 msgstr "パッチファイルのあるフォルダーがプロジェクトから外されました。"
 
+msgid "The git account \"{id}\" is not in effect on the remote host ({reason}), so commits are refused there. Update the remote server, or pick Git's Own Configuration."
+msgstr "Git アカウント「{id}」がリモートのホストで有効になっていないため ({reason})、そこでのコミットを止めています。リモートのサーバーを更新するか、「git 自身の設定に従う」を選んでください。"
+
 msgid "The git account \"{id}\" picked for this repository cannot be used ({reason}), so it commits and pushes as git is configured."
 msgstr "このリポジトリに選んだ Git アカウント「{id}」は使えないため ({reason})、git の設定どおりにコミット・プッシュします。"
 
@@ -2574,6 +2577,9 @@ msgstr "基点側でもこのファイルが変わったため、差分に基点
 
 msgid "This is the tip of the current branch. There is nothing to pick."
 msgstr "現在のブランチの先頭のコミットです。取り込むものがありません。"
+
+msgid "This remote host's server does not support git accounts ({reason}); update it to pick one. The project commits and pushes as git is configured on the host."
+msgstr "このリモートのホストのサーバーは Git アカウントに対応していません ({reason})。選ぶにはサーバーを更新してください。このプロジェクトは接続先の git の設定どおりにコミット・プッシュします。"
 
 msgid "This throws away the current tip {short_new} and goes back to {short_old} (git reset --hard).\nThe commits the reorder made can then only be found through the reflog."
 msgstr "現在の先頭 {short_new} を捨てて {short_old} に戻します (git reset --hard)。\n並べ替えでできたコミットは reflog からしか辿れなくなります。"

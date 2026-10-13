@@ -1,13 +1,15 @@
 //! ForgeKairos (ADR-F93): the git panel's control for which git account the active repository
 //! commits and pushes as.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use gpui::{Anchor, AnyElement, App, Entity, SharedString, prelude::*};
 use project::{
     Fs, Project,
-    git_accounts::{GitAccountChoice, account_choice, set_project_account},
+    git_accounts::{
+        GitAccountChoice, RemoteGitAccountStatus, account_choice_for_key,
+        set_project_account_for_key,
+    },
     git_store::Repository,
     project_settings::ProjectSettings,
 };
@@ -25,22 +27,31 @@ pub(crate) fn render_git_account_picker(
     fs: Arc<dyn Fs>,
     cx: &App,
 ) -> AnyElement {
-    let applies = project.read(cx).git_store().read(cx).applies_git_accounts();
-    if !applies {
-        return IconButton::new("git-account-picker", IconName::UserRoundPen)
-            .icon_size(IconSize::Small)
-            .icon_color(Color::Disabled)
-            .disabled(true)
-            .tooltip(Tooltip::text(i18n::t!(
-                "Git accounts apply to local projects only. This project commits and pushes as git is configured on its host."
-            )))
-            .into_any_element();
-    }
+    let Some(key) = project
+        .read(cx)
+        .git_store()
+        .read(cx)
+        .git_account_key(repository.read(cx))
+    else {
+        return disabled_picker(i18n::t!(
+            "Git accounts don't apply to a project shared by a collaborator. It commits and pushes as git is configured on its host."
+        ));
+    };
 
-    let work_directory: Arc<Path> = repository.read(cx).work_directory_abs_path.clone();
     let settings = &ProjectSettings::get_global(cx).git;
-    let choice = account_choice(settings, &work_directory);
+    let choice = account_choice_for_key(settings, &key);
     let accounts = settings.accounts.clone();
+    // ADR-F93: on a remote host, what its server made of the pick.
+    let not_applied_reason = match repository.read(cx).remote_git_account_status() {
+        Some(RemoteGitAccountStatus::NotApplied { reason }) => Some(reason.clone()),
+        _ => None,
+    };
+    if let (Some(reason), GitAccountChoice::GitConfig) = (&not_applied_reason, &choice) {
+        return disabled_picker(i18n::t!(
+            "This remote host's server does not support git accounts ({reason}); update it to pick one. The project commits and pushes as git is configured on the host.",
+            reason = reason
+        ));
+    }
 
     let (label, color, tooltip): (SharedString, Color, SharedString) = match &choice {
         GitAccountChoice::GitConfig => (
@@ -48,6 +59,16 @@ pub(crate) fn render_git_account_picker(
             Color::Muted,
             i18n::t!("Commits and pushes as git is configured. Click to pick a git account.")
                 .into(),
+        ),
+        GitAccountChoice::Account(account) if not_applied_reason.is_some() => (
+            account.id.clone().into(),
+            Color::Warning,
+            i18n::t!(
+                "The git account \"{id}\" is not in effect on the remote host ({reason}), so commits are refused there. Update the remote server, or pick Git's Own Configuration.",
+                id = account.id,
+                reason = not_applied_reason.as_deref().unwrap_or_default()
+            )
+            .into(),
         ),
         GitAccountChoice::Account(account) => (
             account.id.clone().into(),
@@ -94,7 +115,7 @@ pub(crate) fn render_git_account_picker(
         .trigger_with_tooltip(trigger, Tooltip::text(tooltip))
         .anchor(Anchor::BottomRight)
         .menu(move |window, cx| {
-            let work_directory = work_directory.clone();
+            let key = key.clone();
             let fs = fs.clone();
             let accounts = accounts.clone();
             let choice = choice.clone();
@@ -108,9 +129,9 @@ pub(crate) fn render_git_account_picker(
                     ContextMenuEntry::new(i18n::t!("Git's Own Configuration"))
                         .toggleable(IconPosition::Start, picked_id.is_none())
                         .handler({
-                            let work_directory = work_directory.clone();
+                            let key = key.clone();
                             let fs = fs.clone();
-                            move |_, cx| set_project_account(&work_directory, None, fs.clone(), cx)
+                            move |_, cx| set_project_account_for_key(key.clone(), None, fs.clone(), cx)
                         }),
                 );
                 for account in &accounts {
@@ -120,11 +141,11 @@ pub(crate) fn render_git_account_picker(
                         ContextMenuEntry::new(label)
                             .toggleable(IconPosition::Start, picked_id.as_ref() == Some(&id))
                             .handler({
-                                let work_directory = work_directory.clone();
+                                let key = key.clone();
                                 let fs = fs.clone();
                                 move |_, cx| {
-                                    set_project_account(
-                                        &work_directory,
+                                    set_project_account_for_key(
+                                        key.clone(),
                                         Some(id.clone()),
                                         fs.clone(),
                                         cx,
@@ -148,5 +169,14 @@ pub(crate) fn render_git_account_picker(
                 )
             }))
         })
+        .into_any_element()
+}
+
+fn disabled_picker(tooltip: impl Into<SharedString>) -> AnyElement {
+    IconButton::new("git-account-picker", IconName::UserRoundPen)
+        .icon_size(IconSize::Small)
+        .icon_color(Color::Disabled)
+        .disabled(true)
+        .tooltip(Tooltip::text(tooltip.into()))
         .into_any_element()
 }

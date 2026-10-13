@@ -94,7 +94,8 @@ message Envelope {
     SymbolIndexExpandMember symbol_index_expand_member = 10072;
     SymbolIndexExpandMemberResponse symbol_index_expand_member_response = 10073;
     SymbolIndexTypeTree symbol_index_type_tree = 10074;
-    SymbolIndexTypeTreeResponse symbol_index_type_tree_response = 10075; // jp-enhance current max
+    SymbolIndexTypeTreeResponse symbol_index_type_tree_response = 10075;
+    SetGitAccountIdentity set_git_account_identity = 10076; // jp-enhance current max
 
     Hello hello = 4;
     Ack ack = 5;

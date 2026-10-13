@@ -131,6 +131,9 @@ pub struct GitStore {
     /// in these; a repository that appears later may be one the agent made from its sandbox,
     /// configuration and all.
     repositories_opened_by_user: Rc<RefCell<HashSet<Arc<Path>>>>,
+    /// ADR-F93: for a client of a remote server, the host's connection, which the choices of
+    /// its repositories' git accounts are kept under.
+    remote_git_account_connection: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -810,6 +813,10 @@ pub struct Repository {
     initial_graph_data: HashMap<(LogSource, LogOrder), InitialGitGraphData>,
     commit_data_handler: CommitDataHandlerState,
     commit_data: HashMap<Oid, CommitDataState>,
+    /// ADR-F93: on a remote server, the account the client picked for this repository.
+    identity_from_client: Option<Arc<git::account::GitIdentity>>,
+    /// ADR-F93: on a client of a remote server, what the host was told of the picked account.
+    pub(crate) remote_git_account: crate::git_accounts::RemoteGitAccount,
 }
 
 /// Which halves of a repository's state a scheduled scan recomputes.
@@ -1195,6 +1202,7 @@ impl GitStore {
             blob_read_limiter: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_READS)),
             worktrees_in_initial_scan: HashSet::default(),
             repositories_opened_by_user: Rc::default(),
+            remote_git_account_connection: None,
             diffs: HashMap::default(),
             buffer_ids_by_index_text_buffer_id: HashMap::default(),
         };
@@ -1261,11 +1269,87 @@ impl GitStore {
 
     fn apply_git_accounts(&mut self, cx: &mut Context<Self>) {
         let applies = self.applies_git_accounts();
+        let remote_connection = self.remote_git_account_connection().map(str::to_string);
         for repository in self.repositories.values() {
             repository.update(cx, |repository, cx| {
-                repository.apply_git_account(applies, cx)
+                if let Some(remote_connection) = &remote_connection {
+                    repository.send_remote_git_account(remote_connection, cx);
+                } else {
+                    repository.apply_git_account(applies, cx).detach();
+                }
             });
         }
+    }
+
+    /// ADR-F93: makes this store, a client of a remote server, pick its repositories' git
+    /// accounts under `connection` (the host's `RemoteConnectionIdentity::persistence_key`)
+    /// and tell the host.
+    pub fn set_remote_git_account_connection(
+        &mut self,
+        connection: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.remote_git_account_connection = connection;
+        self.apply_git_accounts(cx);
+    }
+
+    /// The host connection the choices of this store's repositories are kept under: only for a
+    /// client of a remote server (not a collaborator's guest, whose host has its own accounts).
+    pub fn remote_git_account_connection(&self) -> Option<&str> {
+        match &self.state {
+            GitStoreState::Remote {
+                upstream_project_id,
+                ..
+            } if *upstream_project_id == proto::REMOTE_SERVER_PROJECT_ID => {
+                self.remote_git_account_connection.as_deref()
+            }
+            _ => None,
+        }
+    }
+
+    /// The key `repository`'s git account is picked under in `git.project_accounts`, or `None`
+    /// where git accounts do not apply.
+    pub fn git_account_key(&self, repository: &Repository) -> Option<String> {
+        if self.applies_git_accounts() {
+            Some(crate::git_accounts::project_account_key(
+                &repository.work_directory_abs_path,
+            ))
+        } else {
+            self.remote_git_account_connection().map(|connection| {
+                crate::git_accounts::remote_project_account_key(
+                    connection,
+                    &repository.work_directory_abs_path,
+                )
+            })
+        }
+    }
+
+    /// Whether the user trusts a worktree of `worktree_store` that `work_directory_abs_path`, a
+    /// repository on the remote host, is in or holds. A local repository's backend knows its own
+    /// trust.
+    fn remote_repository_is_trusted(
+        worktree_store: &Entity<WorktreeStore>,
+        work_directory_abs_path: &Path,
+        cx: &mut App,
+    ) -> bool {
+        let Some(trusted_worktrees) = TrustedWorktrees::try_get_global(cx) else {
+            return false;
+        };
+        let worktree_ids = worktree_store
+            .read(cx)
+            .worktrees()
+            .filter(|worktree| {
+                let worktree_path = worktree.read(cx).abs_path();
+                work_directory_abs_path.starts_with(worktree_path.as_ref())
+                    || worktree_path.starts_with(work_directory_abs_path)
+            })
+            .map(|worktree| worktree.read(cx).id())
+            .collect::<Vec<_>>();
+        worktree_ids.into_iter().any(|worktree_id| {
+            trusted_worktrees.update(cx, |trusted_worktrees, cx| {
+                trusted_worktrees.can_trust(worktree_store, worktree_id, cx)
+            })
+        })
     }
 
     pub fn init(client: &AnyProtoClient) {
@@ -1290,6 +1374,7 @@ impl GitStore {
         client.add_entity_request_handler(Self::handle_stash_apply);
         client.add_entity_request_handler(Self::handle_stash_drop);
         client.add_entity_request_handler(Self::handle_commit);
+        client.add_entity_request_handler(Self::handle_set_git_account_identity);
         client.add_entity_request_handler(Self::handle_run_hook);
         client.add_entity_request_handler(Self::handle_reset);
         client.add_entity_request_handler(Self::handle_show);
@@ -3690,6 +3775,11 @@ impl GitStore {
 
             if is_new {
                 this.refresh_diff_base_for_repo(id, cx);
+                if let Some(connection) = this.remote_git_account_connection().map(str::to_string)
+                    && let Some(repo) = this.repositories.get(&id)
+                {
+                    repo.update(cx, |repo, cx| repo.send_remote_git_account(&connection, cx));
+                }
             }
 
             this.active_repo_id.get_or_insert_with(|| {
@@ -4074,6 +4164,46 @@ impl GitStore {
                 repository_handle.run_hook(hook, cx)
             })
             .await??;
+        Ok(proto::Ack {})
+    }
+
+    /// ADR-F93: on a remote server, the account the client picked for a repository. Only from
+    /// the client this store serves as its remote server: a collaborator must not choose who
+    /// the host's commits are made as.
+    async fn handle_set_git_account_identity(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::SetGitAccountIdentity>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::Ack> {
+        #[cfg(any(test, feature = "test-support"))]
+        if cx.update(|cx| cx.has_global::<crate::git_accounts::IgnoreGitAccountIdentityForTests>())
+        {
+            anyhow::bail!("no handler registered for SetGitAccountIdentity");
+        }
+        let identity = envelope
+            .payload
+            .identity
+            .map(crate::git_accounts::identity_from_proto)
+            .transpose()?
+            .map(Arc::new);
+        let serves_remote_client = this.read_with(&cx, |this, _| match &this.state {
+            GitStoreState::Local { downstream, .. } => downstream.as_ref().is_some_and(
+                |downstream| downstream.project_id.0 == proto::REMOTE_SERVER_PROJECT_ID,
+            ),
+            GitStoreState::Remote { .. } => false,
+        });
+        anyhow::ensure!(
+            serves_remote_client,
+            "git accounts are set only by a remote server's client"
+        );
+        let repository_id = RepositoryId::from_proto(envelope.payload.repository_id);
+        let repository = Self::repository_for_request(&this, repository_id, &mut cx)?;
+        repository
+            .update(&mut cx, |repository, cx| {
+                repository.identity_from_client = identity;
+                repository.apply_git_account(false, cx)
+            })
+            .await;
         Ok(proto::Ack {})
     }
 
@@ -7029,7 +7159,9 @@ impl Repository {
         cx: &App,
     ) -> Option<Arc<git::account::GitIdentity>> {
         if !applies {
-            return None;
+            // A remote server's user settings are the client's, keyed by its paths; the client
+            // tells it the account instead.
+            return self.identity_from_client.clone();
         }
         crate::git_accounts::resolve_identity(
             &ProjectSettings::get_global(cx).git,
@@ -7037,7 +7169,7 @@ impl Repository {
         )
     }
 
-    fn apply_git_account(&mut self, applies: bool, cx: &mut Context<Self>) {
+    fn apply_git_account(&mut self, applies: bool, cx: &mut Context<Self>) -> Task<()> {
         let identity = self.git_account_identity(applies, cx);
         let state = self.repository_state.clone();
         cx.spawn(async move |this, cx| {
@@ -7048,7 +7180,65 @@ impl Repository {
                 this.update(cx, |_, cx| cx.notify()).ok();
             }
         })
-        .detach();
+    }
+
+    /// ADR-F93: tells the remote server the account picked for this repository under
+    /// `connection`, unless it was told that already.
+    fn send_remote_git_account(&mut self, connection: &str, cx: &mut Context<Self>) {
+        let key = crate::git_accounts::remote_project_account_key(
+            connection,
+            &self.snapshot.work_directory_abs_path,
+        );
+        let identity = crate::git_accounts::resolve_identity_for_key(
+            &ProjectSettings::get_global(cx).git,
+            &key,
+        );
+        if self.remote_git_account.sent() == Some(&identity) {
+            return;
+        }
+        let id = self.id;
+        let state = self.repository_state.clone();
+        self.remote_git_account =
+            crate::git_accounts::RemoteGitAccount::send(id, identity, state, cx);
+        cx.notify();
+    }
+
+    /// ADR-F93: what the remote server was told of this repository's git account, and whether
+    /// it took it. `None` until the host has been told (and always for a local repository).
+    pub fn remote_git_account_status(
+        &self,
+    ) -> Option<&crate::git_accounts::RemoteGitAccountStatus> {
+        self.remote_git_account.status()
+    }
+
+    /// ADR-F93: for a remote repository, the account whose HTTPS login the client answers the
+    /// host's git prompts for (the one the host took), and whether the user trusts the
+    /// repository; the token stays on the client and only answers the prompt.
+    fn remote_account_for_askpass(
+        &self,
+        cx: &mut App,
+    ) -> (Option<Arc<git::account::GitIdentity>>, bool) {
+        let Some(Some(identity)) = self.remote_git_account.sent().cloned() else {
+            return (None, false);
+        };
+        if self.remote_git_account.status()
+            != Some(&crate::git_accounts::RemoteGitAccountStatus::Applied)
+        {
+            return (None, false);
+        }
+        let Some(worktree_store) = self
+            .git_store
+            .upgrade()
+            .map(|git_store| git_store.read(cx).worktree_store.clone())
+        else {
+            return (None, false);
+        };
+        let is_trusted = GitStore::remote_repository_is_trusted(
+            &worktree_store,
+            &self.work_directory_abs_path,
+            cx,
+        );
+        (Some(identity), is_trusted)
     }
 
     fn reinitialize_local_backend(
@@ -7112,6 +7302,8 @@ impl Repository {
             initial_graph_data: Default::default(),
             commit_data: Default::default(),
             commit_data_handler: CommitDataHandlerState::Closed,
+            identity_from_client: None,
+            remote_git_account: Default::default(),
         };
         repo.respawn_local_worker(project_environment, fs, is_trusted, cx);
         cx.subscribe_self(Self::handle_subscribe_self).detach();
@@ -7165,6 +7357,8 @@ impl Repository {
             initial_graph_data: Default::default(),
             commit_data: Default::default(),
             commit_data_handler: CommitDataHandlerState::Closed,
+            identity_from_client: None,
+            remote_git_account: Default::default(),
         }
     }
 
@@ -9110,6 +9304,7 @@ impl Repository {
         let id = self.id;
         let askpass_delegates = self.askpass_delegates.clone();
         let askpass_id = util::post_inc(&mut self.latest_askpass_id);
+        let account_applied = self.remote_git_account.applied.clone();
 
         self.send_job(
             "commit",
@@ -9126,6 +9321,8 @@ impl Repository {
                             .await
                     }
                     RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
+                        crate::git_accounts::ensure_remote_git_account_applied(account_applied)
+                            .await?;
                         let _askpass_operation =
                             RemoteAskPassOperation::new(askpass_id, askpass, askpass_delegates);
                         let (name, email) = name_and_email.unzip();
@@ -9259,6 +9456,7 @@ impl Repository {
             });
 
         let this = cx.weak_entity();
+        let (remote_identity, remote_is_trusted) = self.remote_account_for_askpass(cx);
         self.send_job(
             "fetch",
             Some("git fetch".into()),
@@ -9284,6 +9482,12 @@ impl Repository {
                         result
                     }
                     RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
+                        let askpass = crate::git_accounts::askpass_with_account_token(
+                            remote_identity,
+                            remote_is_trusted,
+                            askpass,
+                            &mut cx,
+                        );
                         let _askpass_operation =
                             RemoteAskPassOperation::new(askpass_id, askpass, askpass_delegates);
 
@@ -9334,6 +9538,7 @@ impl Repository {
             });
 
         let this = cx.weak_entity();
+        let (remote_identity, remote_is_trusted) = self.remote_account_for_askpass(cx);
         self.send_job(
             "push",
             Some(format!("git push {} {} {}:{}", args, remote, branch, remote_branch).into()),
@@ -9368,6 +9573,12 @@ impl Repository {
                         result.map(PushOutput::honoured)
                     }
                     RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
+                        let askpass = crate::git_accounts::askpass_with_account_token(
+                            remote_identity,
+                            remote_is_trusted,
+                            askpass,
+                            &mut cx,
+                        );
                         let _askpass_operation =
                             RemoteAskPassOperation::new(askpass_id, askpass, askpass_delegates);
                         let (proto_options, force_without_lease) = push_options_to_proto(options);
@@ -9406,7 +9617,7 @@ impl Repository {
         remote: SharedString,
         rebase: bool,
         askpass: AskPassDelegate,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> oneshot::Receiver<Result<RemoteCommandOutput>> {
         let askpass_delegates = self.askpass_delegates.clone();
         let askpass_id = util::post_inc(&mut self.latest_askpass_id);
@@ -9420,6 +9631,8 @@ impl Repository {
         if let Some(b) = &branch {
             status.push_str(&format!(" {}", b));
         }
+        let (remote_identity, remote_is_trusted) = self.remote_account_for_askpass(cx);
+        let account_applied = self.remote_git_account.applied.clone();
 
         self.send_job(
             "pull",
@@ -9449,6 +9662,15 @@ impl Repository {
                             .await
                     }
                     RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
+                        // A pull may merge, making a commit as whoever the host's git is.
+                        crate::git_accounts::ensure_remote_git_account_applied(account_applied)
+                            .await?;
+                        let askpass = crate::git_accounts::askpass_with_account_token(
+                            remote_identity,
+                            remote_is_trusted,
+                            askpass,
+                            &mut cx,
+                        );
                         let _askpass_operation =
                             RemoteAskPassOperation::new(askpass_id, askpass, askpass_delegates);
                         let response = client
@@ -10312,10 +10534,15 @@ impl Repository {
     ) -> oneshot::Receiver<Result<GitCommandOutput>> {
         let id = self.id;
         let status = SharedString::from(format!("git {}", args.join(" ")));
+        let account_applied = crate::git_accounts::command_makes_commits(&args)
+            .then(|| self.remote_git_account.applied.clone());
         self.send_job(
             "run_git_command",
             Some(status),
             move |repo, _cx| async move {
+                if let Some(account_applied) = account_applied {
+                    crate::git_accounts::ensure_remote_git_account_applied(account_applied).await?;
+                }
                 Self::run_command_in_job(&repo, id, args, stdin, command_env).await
             },
         )
@@ -10333,10 +10560,15 @@ impl Repository {
     ) -> oneshot::Receiver<Result<GitCommandOutput>> {
         let id = self.id;
         let status = SharedString::from(format!("git {}", args.join(" ")));
+        let account_applied = crate::git_accounts::command_makes_commits(&args)
+            .then(|| self.remote_git_account.applied.clone());
         self.send_job(
             "run_git_command",
             Some(status),
             move |repo, _cx| async move {
+                if let Some(account_applied) = account_applied {
+                    crate::git_accounts::ensure_remote_git_account_applied(account_applied).await?;
+                }
                 match repo {
                     RepositoryState::Local(LocalRepositoryState {
                         backend,

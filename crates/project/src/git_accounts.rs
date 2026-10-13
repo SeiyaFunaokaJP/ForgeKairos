@@ -8,23 +8,39 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use askpass::{AskPassDelegate, EncryptedPassword};
 use collections::HashMap;
 use fs::Fs;
+use futures::FutureExt as _;
 use futures::channel::oneshot;
+use futures::future::Shared;
 pub use git::account::GitHttpsLogin;
 use git::account::{GitHttpsPrompt, GitIdentity};
-use gpui::{App, AppContext as _, AsyncApp, Task};
+use gpui::{App, AppContext as _, AsyncApp, Context, FutureExt as _, SharedString, Task};
+use rpc::proto;
 use settings::GitAccountContent;
 
-use crate::git_store::{LocalRepositoryState, RepositoryState};
+use crate::git_store::{
+    LocalRepositoryState, RemoteRepositoryState, Repository, RepositoryId, RepositoryState,
+};
 use crate::project_settings::GitSettings;
 
 /// The key a repository's choice is kept under in `git.project_accounts`.
 pub fn project_account_key(work_directory_abs_path: &Path) -> String {
     work_directory_abs_path.to_string_lossy().into_owned()
+}
+
+/// The key the choice for a repository on a remote host is kept under: the host's connection
+/// (`RemoteConnectionIdentity::persistence_key`, such as `ssh:ada@example.com:22`) and the
+/// repository's path there. It never equals a local key, which is a bare absolute path.
+pub fn remote_project_account_key(connection_key: &str, work_directory_abs_path: &Path) -> String {
+    format!(
+        "{connection_key}#{}",
+        work_directory_abs_path.to_string_lossy()
+    )
 }
 
 /// What a repository has picked, as the git panel shows it.
@@ -42,19 +58,19 @@ pub enum GitAccountChoice {
 }
 
 pub fn account_choice(settings: &GitSettings, work_directory_abs_path: &Path) -> GitAccountChoice {
-    account_choice_in(
-        &settings.accounts,
-        &settings.project_accounts,
-        work_directory_abs_path,
-    )
+    account_choice_for_key(settings, &project_account_key(work_directory_abs_path))
+}
+
+pub fn account_choice_for_key(settings: &GitSettings, key: &str) -> GitAccountChoice {
+    account_choice_in(&settings.accounts, &settings.project_accounts, key)
 }
 
 fn account_choice_in(
     accounts: &[GitAccountContent],
     project_accounts: &BTreeMap<String, String>,
-    work_directory_abs_path: &Path,
+    key: &str,
 ) -> GitAccountChoice {
-    let Some(id) = project_accounts.get(&project_account_key(work_directory_abs_path)) else {
+    let Some(id) = project_accounts.get(key) else {
         return GitAccountChoice::GitConfig;
     };
     let Some(account) = accounts.iter().find(|account| &account.id == id) else {
@@ -77,23 +93,19 @@ pub fn resolve_identity(
     settings: &GitSettings,
     work_directory_abs_path: &Path,
 ) -> Option<Arc<GitIdentity>> {
-    identity_from_choice(
-        account_choice(settings, work_directory_abs_path),
-        work_directory_abs_path,
-    )
+    resolve_identity_for_key(settings, &project_account_key(work_directory_abs_path))
 }
 
-fn identity_from_choice(
-    choice: GitAccountChoice,
-    work_directory_abs_path: &Path,
-) -> Option<Arc<GitIdentity>> {
+pub fn resolve_identity_for_key(settings: &GitSettings, key: &str) -> Option<Arc<GitIdentity>> {
+    identity_from_choice(account_choice_for_key(settings, key), key)
+}
+
+fn identity_from_choice(choice: GitAccountChoice, key: &str) -> Option<Arc<GitIdentity>> {
     match choice {
         GitAccountChoice::Account(account) => identity_for_account(&account).ok().map(Arc::new),
         GitAccountChoice::GitConfig => None,
         GitAccountChoice::Unavailable { id, reason } => {
-            log::warn!(
-                "the git account {id:?} picked for {work_directory_abs_path:?} is not used: {reason}"
-            );
+            log::warn!("the git account {id:?} picked for {key:?} is not used: {reason}");
             None
         }
     }
@@ -225,7 +237,21 @@ pub fn set_project_account(
     fs: Arc<dyn Fs>,
     cx: &App,
 ) {
-    let key = project_account_key(work_directory_abs_path);
+    set_project_account_for_key(
+        project_account_key(work_directory_abs_path),
+        account_id,
+        fs,
+        cx,
+    );
+}
+
+/// [`set_project_account`] for the repository whose choice is kept under `key`.
+pub fn set_project_account_for_key(
+    key: String,
+    account_id: Option<String>,
+    fs: Arc<dyn Fs>,
+    cx: &App,
+) {
     settings::update_settings_file(fs, cx, move |settings, _| {
         let git = settings.git.get_or_insert_default();
         let project_accounts = git.project_accounts.get_or_insert_default();
@@ -381,6 +407,187 @@ pub(crate) fn with_account_environment(state: &RepositoryState) -> RepositorySta
     }
 }
 
+/// How long a remote server has to take a repository's account. One that knows the message
+/// answers at once; one from before it answers with an error, and a test double may not answer.
+const REMOTE_GIT_ACCOUNT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What a remote server made of the account picked for one of its repositories (ADR-F93).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RemoteGitAccountStatus {
+    /// Sent, not answered yet.
+    Pending,
+    Applied,
+    /// The server did not take it: one from before git accounts, which does not know the
+    /// message, or one that refused it. Its git configuration decides, and the commands that
+    /// make commits refuse to run while an account is picked.
+    NotApplied { reason: String },
+}
+
+/// On a client of a remote server, what the host was told of a repository's account.
+pub(crate) struct RemoteGitAccount {
+    /// `None` until the host was told anything.
+    sent: Option<Option<Arc<GitIdentity>>>,
+    status: Option<RemoteGitAccountStatus>,
+    /// Done once the host answered: an error when an account was picked and the host did not
+    /// take it.
+    pub(crate) applied: Shared<Task<Result<(), SharedString>>>,
+}
+
+impl Default for RemoteGitAccount {
+    fn default() -> Self {
+        Self {
+            sent: None,
+            status: None,
+            applied: Task::ready(Ok(())).shared(),
+        }
+    }
+}
+
+impl RemoteGitAccount {
+    pub(crate) fn sent(&self) -> Option<&Option<Arc<GitIdentity>>> {
+        self.sent.as_ref()
+    }
+
+    pub(crate) fn status(&self) -> Option<&RemoteGitAccountStatus> {
+        self.status.as_ref()
+    }
+
+    /// Tells the host of the repository in `state` to commit as `identity` (git's own
+    /// configuration with `None`). Only the identity's public part goes: never a token, nor
+    /// its SSH key, a path on this machine.
+    pub(crate) fn send(
+        repository_id: RepositoryId,
+        identity: Option<Arc<GitIdentity>>,
+        state: Shared<Task<Result<RepositoryState, String>>>,
+        cx: &mut Context<Repository>,
+    ) -> Self {
+        let message_identity = identity.as_deref().map(identity_to_proto);
+        let account_picked = identity.is_some();
+        let applied = cx
+            .spawn({
+                let identity = identity.clone();
+                async move |this, cx| {
+                    let result =
+                        set_remote_identity(repository_id, message_identity, state, cx).await;
+                    let status = match &result {
+                        Ok(()) => RemoteGitAccountStatus::Applied,
+                        Err(error) => {
+                            log::warn!("the remote server did not take the git account: {error:#}");
+                            RemoteGitAccountStatus::NotApplied {
+                                reason: format!("{error:#}"),
+                            }
+                        }
+                    };
+                    this.update(cx, |repository, cx| {
+                        let account = &mut repository.remote_git_account;
+                        if account.sent.as_ref() == Some(&identity) {
+                            account.status = Some(status);
+                            cx.notify();
+                        }
+                    })
+                    .ok();
+                    match result {
+                        Err(error) if account_picked => Err(format!("{error:#}").into()),
+                        _ => Ok(()),
+                    }
+                }
+            })
+            .shared();
+        Self {
+            sent: Some(identity),
+            status: Some(RemoteGitAccountStatus::Pending),
+            applied,
+        }
+    }
+}
+
+async fn set_remote_identity(
+    repository_id: RepositoryId,
+    identity: Option<proto::GitAccountIdentity>,
+    state: Shared<Task<Result<RepositoryState, String>>>,
+    cx: &mut AsyncApp,
+) -> Result<()> {
+    let RepositoryState::Remote(RemoteRepositoryState { project_id, client }) =
+        state.await.map_err(|error| anyhow!(error))?
+    else {
+        anyhow::bail!("not a remote repository");
+    };
+    client
+        .request(proto::SetGitAccountIdentity {
+            project_id: project_id.0,
+            repository_id: repository_id.to_proto(),
+            identity,
+        })
+        .with_timeout(REMOTE_GIT_ACCOUNT_TIMEOUT, cx.background_executor())
+        .await
+        .map_err(|_| anyhow!(i18n::t!("The remote server did not answer")))??;
+    Ok(())
+}
+
+/// Fails, with the reason, when an account is picked for a remote repository and its host did
+/// not take it: a commit made there now would be made as someone else. Waits for the host's
+/// answer first.
+pub(crate) async fn ensure_remote_git_account_applied(
+    applied: Shared<Task<Result<(), SharedString>>>,
+) -> Result<()> {
+    applied.await.map_err(|reason| {
+        anyhow!(i18n::t!(
+            "The git account picked for this repository is not in effect on the remote host ({reason}), so nothing was done. Update the remote server, or pick \"Git's Own Configuration\" for this repository.",
+            reason = reason
+        ))
+    })
+}
+
+/// Subcommands run through `GitRunCommand` that make commits, which wait for the remote host to
+/// take the picked account.
+pub(crate) fn command_makes_commits(args: &[String]) -> bool {
+    args.first().is_some_and(|subcommand| {
+        matches!(
+            subcommand.as_str(),
+            "am" | "cherry-pick" | "commit" | "commit-tree" | "merge" | "rebase" | "revert" | "tag"
+        )
+    })
+}
+
+pub fn identity_to_proto(identity: &GitIdentity) -> proto::GitAccountIdentity {
+    proto::GitAccountIdentity {
+        name: identity.name.clone(),
+        email: identity.email.clone(),
+        signing_key: identity.signing_key.clone(),
+        https_host: identity
+            .https_login
+            .as_ref()
+            .map(|login| login.host.clone()),
+        https_login: identity
+            .https_login
+            .as_ref()
+            .map(|login| login.login.clone()),
+    }
+}
+
+/// Checked as the client's settings are: the host runs git with these values.
+pub fn identity_from_proto(identity: proto::GitAccountIdentity) -> Result<GitIdentity> {
+    let https_login = match (identity.https_host, identity.https_login) {
+        (Some(host), Some(login)) => Some(GitHttpsLogin::new(&host, &login)?),
+        (None, None) => None,
+        _ => anyhow::bail!("a git account's HTTPS host and login go together"),
+    };
+    GitIdentity::new(
+        &identity.name,
+        &identity.email,
+        identity.signing_key.as_deref(),
+        https_login,
+    )
+}
+
+/// Makes a remote server answer `SetGitAccountIdentity` with the error a server from before it
+/// answers with. Set on the server's app.
+#[cfg(any(test, feature = "test-support"))]
+pub struct IgnoreGitAccountIdentityForTests;
+
+#[cfg(any(test, feature = "test-support"))]
+impl gpui::Global for IgnoreGitAccountIdentityForTests {}
+
 /// Never logs what it was given: the errors of these conversions can carry the bytes.
 fn token_answer(token: Vec<u8>) -> Option<EncryptedPassword> {
     let token = match String::from_utf8(token) {
@@ -454,11 +661,15 @@ mod tests {
     }
 
     fn account_choice(settings: &Settings, path: &Path) -> GitAccountChoice {
-        account_choice_in(&settings.accounts, &settings.project_accounts, path)
+        account_choice_in(
+            &settings.accounts,
+            &settings.project_accounts,
+            &project_account_key(path),
+        )
     }
 
     fn resolve_identity(settings: &Settings, path: &Path) -> Option<Arc<GitIdentity>> {
-        identity_from_choice(account_choice(settings, path), path)
+        identity_from_choice(account_choice(settings, path), &project_account_key(path))
     }
 
     #[test]
@@ -627,6 +838,66 @@ mod tests {
             account_choice(&settings(vec![with_key], &[(&repo, "work")]), &repo),
             GitAccountChoice::Unavailable { .. }
         ));
+    }
+
+    #[test]
+    fn test_remote_identity_carries_no_secret() {
+        use rpc::proto::Message as _;
+
+        let mut with_key = account("work");
+        with_key.ssh_key = Some(util::path!("/home/ada/.ssh/id_work").to_string());
+        with_key.signing_key = Some("ABCD1234".to_string());
+        let identity = identity_for_account(&with_key).unwrap();
+        let message = identity_to_proto(&identity);
+        let bytes = message.encode_to_vec();
+        assert!(
+            !bytes
+                .windows(b"id_work".len())
+                .any(|window| window == b"id_work"),
+            "the key path is the client's"
+        );
+
+        let received = identity_from_proto(message).unwrap();
+        assert_eq!(received.ssh_key, None);
+        assert_eq!(
+            received,
+            GitIdentity {
+                ssh_key: None,
+                ..identity
+            }
+        );
+
+        let half_login = proto::GitAccountIdentity {
+            https_login: None,
+            ..identity_to_proto(&received)
+        };
+        assert!(identity_from_proto(half_login).is_err());
+        let invalid = proto::GitAccountIdentity {
+            name: "Ada\nEve".to_string(),
+            ..identity_to_proto(&received)
+        };
+        assert!(identity_from_proto(invalid).is_err());
+    }
+
+    #[test]
+    fn test_remote_keys_are_apart_from_local_ones() {
+        let path = Path::new("/home/ada/repo");
+        let remote = remote_project_account_key("ssh:ada@example.com:22", path);
+        assert_eq!(remote, "ssh:ada@example.com:22#/home/ada/repo");
+        assert_ne!(remote, project_account_key(path));
+        assert_ne!(
+            remote,
+            remote_project_account_key("ssh:ada@other.example:22", path)
+        );
+    }
+
+    #[test]
+    fn test_commands_that_make_commits() {
+        let args = |args: &[&str]| args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
+        assert!(command_makes_commits(&args(&["commit", "-m", "x"])));
+        assert!(command_makes_commits(&args(&["cherry-pick", "abc"])));
+        assert!(!command_makes_commits(&args(&["log", "-1"])));
+        assert!(!command_makes_commits(&[]));
     }
 
     #[test]

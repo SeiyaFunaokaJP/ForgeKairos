@@ -419,6 +419,9 @@ msgstr "プロジェクトの設定にある言語サーバー「{server_name}�
 msgid "The first commit cannot be dropped. The repository's first commit has no parent."
 msgstr "最初のコミットは捨てられません。リポジトリの最初のコミットには親がありません。"
 
+msgid "The git account picked for this repository is not in effect on the remote host ({reason}), so nothing was done. Update the remote server, or pick \"Git's Own Configuration\" for this repository."
+msgstr "このリポジトリに選んだ Git アカウントがリモートのホストで有効になっていないため ({reason})、何もしませんでした。リモートのサーバーを更新するか、このリポジトリで「git 自身の設定に従う」を選んでください。"
+
 msgid "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started"
 msgstr "起動の承認を確認できないため、プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは起動しません"
 
@@ -472,6 +475,9 @@ msgstr "リモートホストが応答しません。"
 
 msgid "The remote host sent a kind of warning this IDE cannot show"
 msgstr "接続先から、この IDE が表示できない種類の警告が届きました"
+
+msgid "The remote server did not answer"
+msgstr "リモートのサーバーが応答しませんでした"
 
 msgid "The remote server is too old to run git with hooks turned off, so the AI cannot run git commands there. Update the remote server to let it."
 msgstr "リモートサーバーが古く、フックを無効にして git を実行できないため、AI はそこで git コマンドを実行できません。実行させるにはリモートサーバーを更新してください。"

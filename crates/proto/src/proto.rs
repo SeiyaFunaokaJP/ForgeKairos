@@ -75,6 +75,7 @@ messages!(
     (InstallDevToolResponse, Background),
     (GitRunCommand, Background),
     (GitRunCommandResponse, Background),
+    (SetGitAccountIdentity, Background),
     (CancelSearchCommits, Background),
     (GetClangdMemoryUsage, Background),
     (GetClangdMemoryUsageResponse, Background),
