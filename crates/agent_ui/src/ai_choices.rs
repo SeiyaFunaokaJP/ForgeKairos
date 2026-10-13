@@ -8,7 +8,7 @@
 //! entries from plain data so that what the menu offers can be tested without
 //! a window; the rest of this file turns them into menu rows and acts on them.
 
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 
 use agent_settings::AgentSettings;
 use agent_settings::ai_vendor::{
@@ -22,7 +22,10 @@ use gpui::{App, Entity, FocusHandle, SharedString, WeakEntity, Window};
 use language_model::{ConfiguredModel, IconOrSvg, LanguageModelRegistry};
 use project::{AgentId, Project};
 use settings::{LanguageModelSelection, Settings as _, update_settings_file};
-use ui::{ContextMenuItem, DocumentationAside, KeyBinding, prelude::*};
+use ui::{
+    ContextMenu, ContextMenuItem, DocumentationAside, KeyBinding, ListItem, ListItemSpacing,
+    prelude::*,
+};
 use util::ResultExt as _;
 use workspace::Workspace;
 
@@ -472,7 +475,165 @@ pub(crate) fn choice_badges(choice: &AiChoice) -> Vec<SharedString> {
     badges
 }
 
-fn choice_explanation(choice: &AiChoice) -> SharedString {
+/// What runs the thread a model picker belongs to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ThreadRunner {
+    BuiltInAgent,
+    ExternalAgent(AgentId),
+}
+
+impl ThreadRunner {
+    pub(crate) fn of_agent(agent_id: &AgentId) -> Self {
+        if agent_id == &*agent::ZED_AGENT_ID {
+            Self::BuiltInAgent
+        } else {
+            Self::ExternalAgent(agent_id.clone())
+        }
+    }
+}
+
+/// What picking an entry does to the thread the picker belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AiChoiceTransition {
+    /// The thread's own runner: the picker lists its models in the entry's
+    /// place, and choosing one switches this thread's model.
+    SameThread,
+    /// Another runner, which cannot take over this thread's conversation.
+    NewThread,
+    /// The official CLI, in a tab of its own.
+    NewTab,
+    /// Nothing starts yet: the provider still needs setting up.
+    SetUp,
+}
+
+/// `runner` is `None` where no thread is open (the sidebar's menu): then
+/// every AI starts a thread of its own.
+pub(crate) fn choice_transition(
+    choice: &AiChoice,
+    runner: Option<&ThreadRunner>,
+) -> AiChoiceTransition {
+    match (&choice.target, runner) {
+        (
+            AiChoiceTarget::SetUpProvider { .. }
+            | AiChoiceTarget::SetUpModels { .. }
+            | AiChoiceTarget::InstallExternalAgent { .. },
+            _,
+        ) => AiChoiceTransition::SetUp,
+        (AiChoiceTarget::LaunchClaudeCode, _) => AiChoiceTransition::NewTab,
+        (AiChoiceTarget::NativeThread { .. }, Some(ThreadRunner::BuiltInAgent)) => {
+            AiChoiceTransition::SameThread
+        }
+        (
+            AiChoiceTarget::ExternalAgentThread { agent_id },
+            Some(ThreadRunner::ExternalAgent(current)),
+        ) if agent_id == current => AiChoiceTransition::SameThread,
+        (AiChoiceTarget::NativeThread { .. } | AiChoiceTarget::ExternalAgentThread { .. }, _) => {
+            AiChoiceTransition::NewThread
+        }
+    }
+}
+
+pub(crate) fn transition_label(transition: AiChoiceTransition) -> Option<SharedString> {
+    match transition {
+        AiChoiceTransition::NewThread => Some(i18n::t!("New Thread").into()),
+        AiChoiceTransition::NewTab => Some(i18n::t!("New Tab").into()),
+        AiChoiceTransition::SameThread | AiChoiceTransition::SetUp => None,
+    }
+}
+
+/// What a picker's query is matched against. The vendor is part of it so
+/// that 「openai」 finds Codex too; the badges are not, since a fuzzy match
+/// over them finds almost anything.
+pub(crate) fn choice_search_text(vendor: AiVendor, choice: &AiChoice) -> String {
+    let text = format!("{}/{}", vendor_label(vendor), choice.label);
+    match &choice.target {
+        AiChoiceTarget::ExternalAgentThread { agent_id } => format!("{text} {}", agent_id.0),
+        _ => text,
+    }
+}
+
+fn ai_choice_icon(icon: &AiChoiceIcon) -> Icon {
+    match icon {
+        AiChoiceIcon::Icon(icon) => Icon::new(*icon),
+        AiChoiceIcon::Svg(path) => Icon::from_external_svg(path.clone()),
+    }
+    .size(IconSize::Small)
+    .color(Color::Muted)
+}
+
+fn badge_color(needs_setup: bool) -> Color {
+    if needs_setup {
+        Color::Accent
+    } else {
+        Color::Muted
+    }
+}
+
+fn choice_label_color(needs_setup: bool) -> Color {
+    if needs_setup {
+        Color::Muted
+    } else {
+        Color::Default
+    }
+}
+
+/// A model picker's row for `choice`: the same icon, name and badges as the
+/// `+` menu's, stacked to fit the picker's width, and what choosing it opens.
+pub(crate) fn render_ai_choice_picker_row(
+    ix: usize,
+    choice: &AiChoice,
+    transition: AiChoiceTransition,
+    selected: bool,
+) -> AnyElement {
+    let needs_setup = choice.needs_setup();
+    let badges = choice_badges(choice).join(" · ");
+    ListItem::new(("ai-choice", ix))
+        .inset(true)
+        .spacing(ListItemSpacing::Sparse)
+        .toggle_state(selected)
+        .child(
+            h_flex()
+                .w_full()
+                .min_w_0()
+                .gap_1p5()
+                .child(ai_choice_icon(&choice.icon))
+                .child(
+                    v_flex()
+                        .min_w_0()
+                        .child(
+                            Label::new(choice.label.clone())
+                                .color(choice_label_color(needs_setup))
+                                .truncate(),
+                        )
+                        .child(
+                            Label::new(badges)
+                                .size(LabelSize::XSmall)
+                                .color(badge_color(needs_setup))
+                                .truncate(),
+                        ),
+                ),
+        )
+        .when_some(transition_label(transition), |this, label| {
+            this.end_slot(
+                h_flex()
+                    .pr_2()
+                    .gap_0p5()
+                    .child(
+                        Label::new(label)
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        Icon::new(IconName::ArrowUpRight)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    ),
+            )
+        })
+        .into_any_element()
+}
+
+pub(crate) fn choice_explanation(choice: &AiChoice) -> SharedString {
     match &choice.target {
         AiChoiceTarget::LaunchClaudeCode => i18n::t!(
             "Launches the official Claude Code CLI in a tab of this panel. You sign in on the CLI's screen."
@@ -505,12 +666,139 @@ fn choice_explanation(choice: &AiChoice) -> SharedString {
     }
 }
 
+/// Runs what a menu entry opens. The `+` menu runs it at once; the sidebar
+/// first brings the project the menu belongs to forward.
+pub type AiChoiceRunner = Rc<dyn Fn(Box<dyn FnOnce(&mut Window, &mut App)>, &mut Window, &mut App)>;
+
+pub(crate) fn run_at_once() -> AiChoiceRunner {
+    Rc::new(|open, window, cx| open(window, cx))
+}
+
+/// A row of the `+` menu (and of the sidebar's, which shows the same).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum AiChoiceMenuRow {
+    Separator,
+    Header(AiVendor),
+    Choice(AiChoice),
+    /// ADR-F49 決定 19: placed right after Claude Code.
+    ClaudeCodeOutsideSandbox,
+}
+
+pub(crate) fn ai_choice_menu_rows(sections: Vec<AiChoiceSection>) -> Vec<AiChoiceMenuRow> {
+    let mut rows = Vec::new();
+    for (index, section) in sections.into_iter().enumerate() {
+        if index > 0 {
+            rows.push(AiChoiceMenuRow::Separator);
+        }
+        rows.push(AiChoiceMenuRow::Header(section.vendor));
+        for choice in section.choices {
+            let is_claude_code = choice.target == AiChoiceTarget::LaunchClaudeCode;
+            rows.push(AiChoiceMenuRow::Choice(choice));
+            if is_claude_code {
+                rows.push(AiChoiceMenuRow::ClaudeCodeOutsideSandbox);
+            }
+        }
+    }
+    rows
+}
+
+/// Adds the AI sections to `menu`, the same way for the `+` menu and the
+/// sidebar's: what each opens goes through `run`.
+pub(crate) fn add_ai_choice_rows(
+    mut menu: ContextMenu,
+    sections: Vec<AiChoiceSection>,
+    workspace: WeakEntity<Workspace>,
+    focus_handle: FocusHandle,
+    run: AiChoiceRunner,
+    cx: &App,
+) -> ContextMenu {
+    for row in ai_choice_menu_rows(sections) {
+        menu = match row {
+            AiChoiceMenuRow::Separator => menu.separator(),
+            AiChoiceMenuRow::Header(vendor) => menu.header(vendor_label(vendor)),
+            AiChoiceMenuRow::Choice(choice) => menu.item(ai_choice_menu_item(
+                choice,
+                workspace.clone(),
+                focus_handle.clone(),
+                run.clone(),
+                cx,
+            )),
+            AiChoiceMenuRow::ClaudeCodeOutsideSandbox => menu.item(
+                crate::agent_panel::claude_code_outside_sandbox_menu_entry(cx).handler({
+                    let run = run.clone();
+                    move |window, cx| {
+                        run(
+                            Box::new(|window, cx| {
+                                window.dispatch_action(
+                                    Box::new(
+                                        zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
+                                    ),
+                                    cx,
+                                )
+                            }),
+                            window,
+                            cx,
+                        )
+                    }
+                }),
+            ),
+        };
+    }
+    menu
+}
+
+/// The AI sections for a new thread in `workspace`'s project, as its agent
+/// panel's `+` menu shows them. The sidebar's project menu asks this too, so
+/// that the two never differ.
+pub(crate) fn ai_choice_sections_for_workspace(
+    workspace: &Entity<Workspace>,
+    cx: &App,
+) -> Option<Vec<AiChoiceSection>> {
+    let panel = workspace.read(cx).panel::<AgentPanel>(cx)?;
+    Some(panel.read(cx).new_thread_ai_context(cx).sections(cx))
+}
+
+/// What the AI sections for a new thread are gathered from.
+#[derive(Clone)]
+pub(crate) struct NewThreadAiContext {
+    pub(crate) project: Entity<Project>,
+    pub(crate) selected_agent: Agent,
+    pub(crate) supports_terminal: bool,
+}
+
+impl NewThreadAiContext {
+    pub(crate) fn sections(&self, cx: &App) -> Vec<AiChoiceSection> {
+        build_ai_choice_sections(&gather_ai_choice_inputs(
+            &self.project,
+            self.selected_agent.clone(),
+            self.supports_terminal,
+            cx,
+        ))
+    }
+}
+
+/// The sidebar's share of the `+` menu: the AI sections for a new thread in
+/// `workspace`, opened through `run`, which brings that project forward first.
+pub fn add_ai_choices_for_workspace(
+    menu: ContextMenu,
+    workspace: &Entity<Workspace>,
+    focus_handle: FocusHandle,
+    run: AiChoiceRunner,
+    cx: &App,
+) -> ContextMenu {
+    let Some(sections) = ai_choice_sections_for_workspace(workspace, cx) else {
+        return menu;
+    };
+    add_ai_choice_rows(menu, sections, workspace.downgrade(), focus_handle, run, cx)
+}
+
 /// A menu row for `choice`: its icon and name, then its badges, and the
 /// `NewThread` shortcut on the entry the shortcut opens.
 pub(crate) fn ai_choice_menu_item(
     choice: AiChoice,
     workspace: WeakEntity<Workspace>,
     focus_handle: FocusHandle,
+    run: AiChoiceRunner,
     cx: &App,
 ) -> ContextMenuItem {
     let badges = choice_badges(&choice);
@@ -526,12 +814,6 @@ pub(crate) fn ai_choice_menu_item(
     } = choice;
     ContextMenuItem::custom_entry(
         move |_window, cx| {
-            let icon = match &icon {
-                AiChoiceIcon::Icon(icon) => Icon::new(*icon),
-                AiChoiceIcon::Svg(path) => Icon::from_external_svg(path.clone()),
-            }
-            .size(IconSize::Small)
-            .color(Color::Muted);
             h_flex()
                 .w_full()
                 .min_w_0()
@@ -541,20 +823,12 @@ pub(crate) fn ai_choice_menu_item(
                     h_flex()
                         .min_w_0()
                         .gap_1p5()
-                        .child(icon)
-                        .child(Label::new(label.clone()).color(if needs_setup {
-                            Color::Muted
-                        } else {
-                            Color::Default
-                        }))
+                        .child(ai_choice_icon(&icon))
+                        .child(Label::new(label.clone()).color(choice_label_color(needs_setup)))
                         .children(badges.iter().map(|badge| {
-                            Label::new(badge.clone()).size(LabelSize::XSmall).color(
-                                if needs_setup {
-                                    Color::Accent
-                                } else {
-                                    Color::Muted
-                                },
-                            )
+                            Label::new(badge.clone())
+                                .size(LabelSize::XSmall)
+                                .color(badge_color(needs_setup))
                         })),
                 )
                 .when(is_current, |this| {
@@ -569,10 +843,18 @@ pub(crate) fn ai_choice_menu_item(
                 })
                 .into_any_element()
         },
-        move |window, cx| open_ai_choice(&target, &workspace, window, cx),
+        move |window, cx| {
+            let target = target.clone();
+            let workspace = workspace.clone();
+            run(
+                Box::new(move |window, cx| open_ai_choice(&target, &workspace, window, cx)),
+                window,
+                cx,
+            )
+        },
         Some(DocumentationAside::new(
             crate::ui::documentation_aside_side(cx),
-            std::rc::Rc::new(move |_| Label::new(explanation.clone()).into_any_element()),
+            Rc::new(move |_| Label::new(explanation.clone()).into_any_element()),
         )),
     )
 }
@@ -1293,6 +1575,164 @@ mod tests {
                 .all(|choice| !choice.is_current),
             "OpenAI still needs its key, so no entry carries the shortcut"
         );
+    }
+
+    #[test]
+    fn only_the_thread_s_own_runner_switches_in_place() {
+        let sections = build_ai_choice_sections(&everything());
+        let transition = |label: &str, runner: Option<&ThreadRunner>| {
+            choice_transition(choice(&sections, label), runner)
+        };
+        let built_in = ThreadRunner::BuiltInAgent;
+        let claude_agent = ThreadRunner::of_agent(&AgentId::new("claude-acp"));
+        assert_eq!(
+            claude_agent,
+            ThreadRunner::ExternalAgent(AgentId::new("claude-acp"))
+        );
+        assert_eq!(
+            ThreadRunner::of_agent(&agent::ZED_AGENT_ID),
+            ThreadRunner::BuiltInAgent
+        );
+
+        assert_eq!(
+            transition("Anthropic", Some(&built_in)),
+            AiChoiceTransition::SameThread,
+            "another provider's model is a model switch of the built-in agent"
+        );
+        assert_eq!(
+            transition("Mistral", Some(&built_in)),
+            AiChoiceTransition::SameThread
+        );
+        assert_eq!(
+            transition("Claude Agent", Some(&built_in)),
+            AiChoiceTransition::NewThread
+        );
+        assert_eq!(
+            transition("Claude Agent", Some(&claude_agent)),
+            AiChoiceTransition::SameThread
+        );
+        assert_eq!(
+            transition("Codex", Some(&claude_agent)),
+            AiChoiceTransition::NewThread,
+            "another external agent cannot take over this agent's session"
+        );
+        assert_eq!(
+            transition("Anthropic", Some(&claude_agent)),
+            AiChoiceTransition::NewThread,
+            "the built-in agent cannot continue an external agent's thread"
+        );
+        for runner in [None, Some(&built_in), Some(&claude_agent)] {
+            assert_eq!(
+                transition("Claude Code", runner),
+                AiChoiceTransition::NewTab
+            );
+            assert_eq!(transition("OpenAI", runner), AiChoiceTransition::SetUp);
+        }
+        assert_eq!(
+            transition("Anthropic", None),
+            AiChoiceTransition::NewThread,
+            "with no thread open, everything starts one"
+        );
+        assert_eq!(
+            transition_label(AiChoiceTransition::NewThread).as_deref(),
+            Some("New Thread")
+        );
+        assert_eq!(transition_label(AiChoiceTransition::SameThread), None);
+    }
+
+    #[test]
+    fn the_menu_rows_are_the_sections_with_the_outside_the_sandbox_entry_after_claude_code() {
+        let rows = ai_choice_menu_rows(build_ai_choice_sections(&everything()));
+        let described = rows
+            .iter()
+            .map(|row| match row {
+                AiChoiceMenuRow::Separator => "---".to_string(),
+                AiChoiceMenuRow::Header(vendor) => format!("# {}", vendor_label(*vendor)),
+                AiChoiceMenuRow::Choice(choice) => choice.label.to_string(),
+                AiChoiceMenuRow::ClaudeCodeOutsideSandbox => "outside".to_string(),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            described,
+            [
+                "# Claude (Anthropic)",
+                "Claude Code",
+                "outside",
+                "Claude Agent",
+                "Anthropic",
+                "---",
+                "# OpenAI",
+                "Codex",
+                "ChatGPT Subscription",
+                "OpenAI",
+                "---",
+                "# Google",
+                "Gemini CLI",
+                "Google AI",
+                "---",
+                "# Local Models",
+                "Ollama",
+                "---",
+                "# Other",
+                "OpenCode",
+                "Mistral",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_vendor_s_name_is_part_of_what_a_query_matches() {
+        let sections = build_ai_choice_sections(&everything());
+        assert_eq!(
+            choice_search_text(AiVendor::OpenAi, choice(&sections, "Codex")),
+            "OpenAI/Codex codex-acp"
+        );
+        assert_eq!(
+            choice_search_text(AiVendor::Anthropic, choice(&sections, "Claude Code")),
+            "Claude (Anthropic)/Claude Code"
+        );
+    }
+
+    /// The sidebar's project menu and the agent panel's `+` menu are made
+    /// from the same panel's choices.
+    #[gpui::test]
+    async fn the_sidebar_offers_what_the_panel_s_plus_menu_offers(cx: &mut gpui::TestAppContext) {
+        crate::conversation_view::tests::init_test(cx);
+        cx.update(|cx| {
+            agent::ThreadStore::init_global(cx);
+            LanguageModelRegistry::test(cx);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/project", serde_json::json!({ "file.txt": "" }))
+            .await;
+        let project = Project::test(fs, [std::path::Path::new("/project")], cx).await;
+        let multi_workspace = cx.add_window(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace = multi_workspace
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the window is open");
+        let cx = &mut gpui::VisualTestContext::from_window(multi_workspace.into(), cx);
+
+        assert_eq!(
+            cx.update(|_, cx| ai_choice_sections_for_workspace(&workspace, cx)),
+            None,
+            "without the panel there is nothing to start a thread in"
+        );
+
+        let panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| AgentPanel::new(workspace, window, cx));
+            workspace.add_panel(panel.clone(), window, cx);
+            panel
+        });
+        let (from_sidebar, from_plus_menu) = cx.update(|_, cx| {
+            (
+                ai_choice_sections_for_workspace(&workspace, cx),
+                panel.read(cx).new_thread_ai_context(cx).sections(cx),
+            )
+        });
+        assert!(!from_plus_menu.is_empty());
+        assert_eq!(from_sidebar, Some(from_plus_menu));
     }
 
     #[test]

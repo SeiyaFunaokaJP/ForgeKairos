@@ -88,6 +88,7 @@ pub use crate::message_editor::MessageEditorEvent;
 pub use crate::thread_item::ThreadItem;
 pub use crate::thread_metadata_store::ThreadId;
 pub use agent_diff::{AgentDiffPane, AgentDiffToolbar};
+pub use ai_choices::{AiChoiceRunner, add_ai_choices_for_workspace};
 pub use conversation_view::open_markdown_in_workspace;
 pub use conversation_view::{ConversationView, StateChange};
 pub use external_source_prompt::ExternalSourcePrompt;

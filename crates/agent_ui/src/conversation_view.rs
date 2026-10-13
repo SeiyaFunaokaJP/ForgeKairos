@@ -1856,6 +1856,7 @@ impl ConversationView {
         let model_selector;
         let agent_launchers = crate::model_selector::agent_launch_source(
             self.project.downgrade(),
+            self.workspace.clone(),
             self.agent.agent_id(),
         );
         if let Some(config_options) = config_options_provider {
@@ -12038,6 +12039,9 @@ pub(crate) mod tests {
     #[gpui::test]
     async fn test_rewind_views(cx: &mut TestAppContext) {
         init_test(cx);
+        // The model selector lists the other AIs (ADR-F94), among them the
+        // language model providers.
+        cx.update(language_model::LanguageModelRegistry::test);
 
         let fs = FakeFs::new(cx.executor());
         fs.insert_tree(
@@ -12212,6 +12216,9 @@ pub(crate) mod tests {
     #[gpui::test]
     async fn test_regenerate_keeps_pending_subagent_edits(cx: &mut TestAppContext) {
         init_test(cx);
+        // The model selector lists the other AIs (ADR-F94), among them the
+        // language model providers.
+        cx.update(language_model::LanguageModelRegistry::test);
 
         let fs = FakeFs::new(cx.executor());
         fs.insert_tree(

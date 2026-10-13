@@ -161,9 +161,6 @@ msgstr "エージェントの更新があります"
 msgid "Agent stopped due to an error"
 msgstr "エラーによりエージェントが停止しました"
 
-msgid "Agents"
-msgstr "エージェント"
-
 msgid "Agree and Install"
 msgstr "了承してインストール"
 
@@ -1136,11 +1133,11 @@ msgstr "新しいエージェントスレッド"
 msgid "New Profile"
 msgstr "新しいプロファイル"
 
+msgid "New Tab"
+msgstr "新しいタブ"
+
 msgid "New Thread"
 msgstr "新しいスレッド"
-
-msgid "New Thread with {agent}"
-msgstr "{agent} で新しいスレッド"
 
 msgid "New Thread…"
 msgstr "新規スレッド…"

@@ -21,12 +21,18 @@ use ui::{DocumentationAside, IntoElement, prelude::*};
 use util::ResultExt;
 use zed_actions::agent::OpenSettings;
 
-use crate::NewExternalAgentThread;
-use crate::agent_panel::{ExternalAgentMenuItem, external_agent_menu_items};
+use crate::Agent;
+use crate::ai_choices::{
+    AiChoice, AiChoiceSection, AiChoiceTarget, AiChoiceTransition, ThreadRunner,
+    choice_search_text, choice_transition, gather_ai_choice_inputs, render_ai_choice_picker_row,
+    vendor_label,
+};
 use crate::ui::{
     ModelSelectorFooter, ModelSelectorGroupHeader, ModelSelectorHeader, ModelSelectorListItem,
     documentation_aside_side,
 };
+use agent_settings::ai_vendor::AiVendor;
+use workspace::Workspace;
 
 pub type ModelSelector = Picker<ModelPickerDelegate>;
 
@@ -44,7 +50,6 @@ pub fn acp_model_selector(
 }
 
 const FAVORITES_LABEL: &str = i18n::msg!("Favorites");
-const AGENTS_GROUP_NAME: &str = i18n::msg!("Agents");
 /// A list without a group name of its own (an ACP agent's ungrouped options, a
 /// flat model list) is only folded from this many entries on. Claude's ACP
 /// model list has a handful: folding it would cost a click without making the
@@ -57,7 +62,6 @@ pub(crate) enum PickerGroupKey {
     Named(SharedString),
     /// The list that has no group name of its own, headed 「すべて」.
     Ungrouped,
-    Agents,
 }
 
 /// The groups the user folded or unfolded, kept for as long as the selector
@@ -139,6 +143,12 @@ pub(crate) trait PickerItem: Clone {
     type Id: Clone + Eq + std::hash::Hash;
 
     fn item_id(&self) -> &Self::Id;
+
+    /// The language model provider of a built-in agent's model, which the
+    /// agent writes before a `/` in the id.
+    fn native_provider_id(&self) -> Option<&str> {
+        None
+    }
 }
 
 impl PickerItem for AgentModelInfo {
@@ -146,6 +156,13 @@ impl PickerItem for AgentModelInfo {
 
     fn item_id(&self) -> &AgentModelId {
         &self.id
+    }
+
+    fn native_provider_id(&self) -> Option<&str> {
+        self.id
+            .as_ref()
+            .split_once('/')
+            .map(|(provider_id, _)| provider_id)
     }
 }
 
@@ -173,15 +190,22 @@ pub(crate) enum PickerRow<T> {
 }
 
 /// Lays out a model or option picker: お気に入り first, then each group behind
-/// its own heading, then the エージェント section.
+/// its own heading, then, where the picker offers other AIs (ADR-F94), one
+/// section per vendor in the `+` menu's order.
+///
+/// In a vendor's section each AI the `+` menu lists is a row that starts it,
+/// except the thread's own runner (the built-in agent's providers, or the
+/// external agent the thread runs): its models' groups stand in that row's
+/// place, so that switching among them stays in this thread. Groups that
+/// belong to no single entry (the built-in agent's 「おすすめ」 across
+/// providers) stay above the sections.
 ///
 /// With favorites the other groups start folded, since the favorites are what
 /// the user picks from; the exception is the first group holding the entry in
 /// use when that entry is not a favorite, so that its check mark stays in
 /// sight. Without favorites every group starts open, as it always did. While
-/// searching every group starts open so that no match is hidden. The
-/// エージェント section starts folded unless searching. Whatever the user
-/// folded or unfolded wins over all of these.
+/// searching every group starts open so that no match is hidden. Whatever the
+/// user folded or unfolded wins over all of these.
 ///
 /// The defaults go by the favorites the popover opened with while it is open
 /// ([`GroupCollapseState::hold_favorites_at_open`]); the お気に入り section and
@@ -190,7 +214,7 @@ pub(crate) fn build_picker_rows<T: PickerItem>(
     groups: Vec<PickerGroup<T>>,
     favorites: &HashSet<T::Id>,
     active: Option<&T::Id>,
-    agents: Vec<AgentLaunchEntry>,
+    ai_choices: Option<PickerAiChoices>,
     collapse: &GroupCollapseState<T::Id>,
     ungrouped_name: &'static str,
 ) -> Vec<PickerRow<T>> {
@@ -222,18 +246,26 @@ pub(crate) fn build_picker_rows<T: PickerItem>(
         None
     };
 
-    let mut rows = Vec::new();
-    if has_favorites {
-        rows.push(PickerRow::Label(i18n::tr(FAVORITES_LABEL).into()));
-        rows.extend(favorite_items.into_iter().map(|item| PickerRow::Item {
-            item,
-            is_favorite: true,
-        }));
-    }
+    let owners = groups
+        .iter()
+        .map(|group| {
+            let choices = ai_choices.as_ref()?;
+            let owner = group_owner(group, &choices.runner)?;
+            choices
+                .sections
+                .iter()
+                .flat_map(|section| &section.choices)
+                .any(|choice| choice.target == owner)
+                .then_some(owner)
+        })
+        .collect::<Vec<_>>();
 
-    for (group_index, group) in groups.into_iter().enumerate() {
+    let push_group = |rows: &mut Vec<PickerRow<T>>,
+                      group_index: usize,
+                      group: PickerGroup<T>,
+                      in_vendor_section: bool| {
         if group.items.is_empty() {
-            continue;
+            return;
         }
         let count = group.items.len();
         let (key, name, foldable) = match group.name {
@@ -256,31 +288,85 @@ pub(crate) fn build_picker_rows<T: PickerItem>(
                 expanded,
             });
             if !expanded {
-                continue;
+                return;
             }
-        } else if has_favorites {
+        } else if has_favorites && !in_vendor_section {
             rows.push(PickerRow::Label(name));
         }
         rows.extend(group.items.into_iter().map(|item| {
             let is_favorite = favorites.contains(item.item_id());
             PickerRow::Item { item, is_favorite }
         }));
+    };
+
+    let mut rows = Vec::new();
+    if has_favorites {
+        rows.push(PickerRow::Label(i18n::tr(FAVORITES_LABEL).into()));
+        rows.extend(favorite_items.into_iter().map(|item| PickerRow::Item {
+            item,
+            is_favorite: true,
+        }));
     }
 
-    if !agents.is_empty() {
-        let expanded = collapse.is_expanded(&PickerGroupKey::Agents, is_searching);
-        rows.push(PickerRow::Group {
-            key: PickerGroupKey::Agents,
-            name: i18n::tr(AGENTS_GROUP_NAME).into(),
-            count: agents.len(),
-            expanded,
-        });
-        if expanded {
-            rows.extend(agents.into_iter().map(PickerRow::Agent));
+    let mut groups = groups.into_iter().map(Some).collect::<Vec<_>>();
+    for (group_index, slot) in groups.iter_mut().enumerate() {
+        if owners.get(group_index).is_some_and(Option::is_none)
+            && let Some(group) = slot.take()
+        {
+            push_group(&mut rows, group_index, group, false);
+        }
+    }
+
+    if let Some(PickerAiChoices { runner, sections }) = ai_choices {
+        for section in sections {
+            let mut section_rows = Vec::new();
+            for choice in section.choices {
+                let transition = choice_transition(&choice, Some(&runner));
+                if transition == AiChoiceTransition::SameThread {
+                    for (group_index, slot) in groups.iter_mut().enumerate() {
+                        if owners.get(group_index).and_then(Option::as_ref) == Some(&choice.target)
+                            && let Some(group) = slot.take()
+                        {
+                            push_group(&mut section_rows, group_index, group, true);
+                        }
+                    }
+                } else {
+                    section_rows.push(PickerRow::Agent(AgentLaunchEntry {
+                        vendor: section.vendor,
+                        choice,
+                        transition,
+                    }));
+                }
+            }
+            if !section_rows.is_empty() {
+                rows.push(PickerRow::Label(vendor_label(section.vendor)));
+                rows.extend(section_rows);
+            }
         }
     }
 
     rows
+}
+
+/// The `+` menu's entry whose models `group` lists, if it is one entry's.
+fn group_owner<T: PickerItem>(
+    group: &PickerGroup<T>,
+    runner: &ThreadRunner,
+) -> Option<AiChoiceTarget> {
+    match runner {
+        ThreadRunner::ExternalAgent(agent_id) => Some(AiChoiceTarget::ExternalAgentThread {
+            agent_id: agent_id.clone(),
+        }),
+        ThreadRunner::BuiltInAgent => {
+            let mut providers = group.items.iter().map(PickerItem::native_provider_id);
+            let first = providers.next()??;
+            providers.all(|provider| provider == Some(first)).then(|| {
+                AiChoiceTarget::NativeThread {
+                    provider_id: SharedString::from(first.to_string()),
+                }
+            })
+        }
+    }
 }
 
 /// Where the selection starts: on the entry in use, else on the first entry.
@@ -319,7 +405,7 @@ pub(crate) enum RowAnchor<Id> {
         id: Id,
         among_favorites: bool,
     },
-    Agent(AgentLaunchAction),
+    Agent(AiChoiceTarget),
 }
 
 fn favorites_section_len<T>(rows: &[PickerRow<T>]) -> usize {
@@ -346,7 +432,7 @@ pub(crate) fn row_anchor<T: PickerItem>(
             id: item.item_id().clone(),
             among_favorites: ix < favorites_section_len(rows),
         }),
-        PickerRow::Agent(entry) => Some(RowAnchor::Agent(entry.action.clone())),
+        PickerRow::Agent(entry) => Some(RowAnchor::Agent(entry.choice.target.clone())),
     }
 }
 
@@ -356,9 +442,9 @@ pub(crate) fn anchor_row_index<T: PickerItem>(
 ) -> Option<usize> {
     match anchor {
         RowAnchor::Group(key) => group_row_index(rows, key),
-        RowAnchor::Agent(action) => rows
-            .iter()
-            .position(|row| matches!(row, PickerRow::Agent(entry) if &entry.action == action)),
+        RowAnchor::Agent(target) => rows.iter().position(
+            |row| matches!(row, PickerRow::Agent(entry) if &entry.choice.target == target),
+        ),
         RowAnchor::Item {
             id,
             among_favorites,
@@ -428,136 +514,89 @@ pub(crate) fn render_group_header<T>(
     )
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum AgentLaunchAction {
-    /// The official Claude Code CLI in a tab of the panel.
-    ClaudeCodeCli,
-    NewThread(AgentId),
-}
-
-impl AgentLaunchAction {
-    pub(crate) fn to_action(&self) -> Box<dyn Action> {
-        match self {
-            Self::ClaudeCodeCli => Box::new(zed_actions::terminal::LaunchClaudeCode::default()),
-            Self::NewThread(agent) => Box::new(NewExternalAgentThread {
-                agent: agent.clone(),
-            }),
-        }
-    }
-}
-
-/// A row of the エージェント section at the bottom of a model selector.
+/// A row of a model picker that starts another AI than the thread's (or
+/// opens its settings), as the `+` menu lists it.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct AgentLaunchEntry {
-    pub(crate) label: SharedString,
-    pub(crate) icon: AgentModelIcon,
-    pub(crate) action: AgentLaunchAction,
+    pub(crate) vendor: AiVendor,
+    pub(crate) choice: AiChoice,
+    pub(crate) transition: AiChoiceTransition,
 }
 
-impl AgentLaunchEntry {
-    fn search_text(&self) -> String {
-        let label = grouped_search_text(Some(i18n::tr(AGENTS_GROUP_NAME)), &self.label);
-        match &self.action {
-            AgentLaunchAction::NewThread(agent_id) => format!("{label} {}", agent_id.0),
-            AgentLaunchAction::ClaudeCodeCli => label,
-        }
-    }
+/// The `+` menu's sections, for a picker of a thread `runner` runs.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PickerAiChoices {
+    pub(crate) runner: ThreadRunner,
+    pub(crate) sections: Vec<AiChoiceSection>,
 }
 
-/// Asked for the エージェント section's rows each time the list is built, so
-/// that an agent added while the thread is open shows up.
-pub(crate) type AgentLaunchSource = Rc<dyn Fn(&App) -> Vec<AgentLaunchEntry>>;
-
-/// What a thread of `current_agent` can start from its model selector: the
-/// same agents the panel's `+` menu offers, minus the one already running.
-pub(crate) fn agent_launch_entries(
-    current_agent: &AgentId,
-    supports_terminal: bool,
-    external_agents: Vec<ExternalAgentMenuItem>,
-) -> Vec<AgentLaunchEntry> {
-    let mut entries = Vec::new();
-    if current_agent != &*agent::ZED_AGENT_ID {
-        entries.push(AgentLaunchEntry {
-            label: i18n::t!(
-                "New Thread with {agent}",
-                agent = agent::NATIVE_AGENT_DISPLAY_NAME
-            )
-            .into(),
-            icon: AgentModelIcon::Named(IconName::ZedAgent),
-            action: AgentLaunchAction::NewThread(agent::ZED_AGENT_ID.clone()),
-        });
-    }
-    if supports_terminal {
-        entries.push(AgentLaunchEntry {
-            label: i18n::t!("Launch Claude Code").into(),
-            icon: AgentModelIcon::Named(IconName::Terminal),
-            action: AgentLaunchAction::ClaudeCodeCli,
-        });
-    }
-    entries.extend(
-        external_agents
-            .into_iter()
-            .filter(|agent| &agent.id != current_agent)
-            .map(|agent| AgentLaunchEntry {
-                label: i18n::t!("New Thread with {agent}", agent = agent.display_name).into(),
-                icon: agent
-                    .icon_path
-                    .map(AgentModelIcon::Path)
-                    .unwrap_or(AgentModelIcon::Named(IconName::Sparkle)),
-                action: AgentLaunchAction::NewThread(agent.id),
-            }),
-    );
-    entries
+/// What a thread's model picker offers besides the thread's own models.
+#[derive(Clone)]
+pub(crate) struct AgentLaunchSource {
+    /// Asked each time the list is built, so that an agent added while the
+    /// thread is open shows up. `None` where nothing else can be started.
+    pub(crate) choices: Rc<dyn Fn(&App) -> Option<PickerAiChoices>>,
+    pub(crate) open: Rc<dyn Fn(&AiChoiceTarget, &mut Window, &mut App)>,
 }
 
-/// The エージェント section's rows for a thread in `project`.
+/// The other AIs for a thread of `current_agent` in `project`: the `+` menu's.
 ///
-/// Holds the project weakly: the picker that calls this sits behind the thread
-/// view's `PopoverMenuHandle`, and nothing reached from there may keep a
-/// strong hold on what owns the thread view.
+/// Holds the project and the workspace weakly: the picker that calls this
+/// sits behind the thread view's `PopoverMenuHandle`, and nothing reached
+/// from there may keep a strong hold on what owns the thread view.
 pub(crate) fn agent_launch_source(
     project: WeakEntity<Project>,
+    workspace: WeakEntity<Workspace>,
     current_agent: AgentId,
 ) -> AgentLaunchSource {
-    Rc::new(move |cx| {
-        let Some(project) = project.upgrade() else {
-            return Vec::new();
-        };
-        let project = project.read(cx);
-        // Both launchers open in the panel, which refuses them without a
-        // folder (`AgentPanel::new_external_agent_thread`).
-        if project.visible_worktrees(cx).next().is_none() {
-            return Vec::new();
-        }
-        // A collab guest can only run the host's Zed Agent
-        // (`AgentPanel::select_agent`), so its external agents would be dead rows.
-        let external_agents = if project.is_via_collab() {
-            Vec::new()
-        } else {
-            external_agent_menu_items(project.agent_server_store().read(cx), cx)
-        };
-        agent_launch_entries(
-            &current_agent,
-            project.supports_terminal(cx),
-            external_agents,
-        )
-    })
+    let runner = ThreadRunner::of_agent(&current_agent);
+    AgentLaunchSource {
+        choices: Rc::new(move |cx| {
+            let project = project.upgrade()?;
+            // What they start opens in the panel, which refuses it without a
+            // folder (`AgentPanel::new_external_agent_thread`).
+            if project.read(cx).visible_worktrees(cx).next().is_none() {
+                return None;
+            }
+            let supports_terminal = project.read(cx).supports_terminal(cx);
+            // Which AI is "current" only matters to the `+` menu's shortcut.
+            let inputs =
+                gather_ai_choice_inputs(&project, Agent::NativeAgent, supports_terminal, cx);
+            Some(PickerAiChoices {
+                runner: runner.clone(),
+                sections: crate::ai_choices::build_ai_choice_sections(&inputs),
+            })
+        }),
+        open: Rc::new(move |target, window, cx| {
+            crate::ai_choices::open_ai_choice(target, &workspace, window, cx)
+        }),
+    }
 }
 
+/// Keeps the entries `query` matches, and always the thread's own runner's,
+/// which only place its models.
 pub(crate) async fn filter_agent_launch_entries(
-    entries: Vec<AgentLaunchEntry>,
+    choices: Option<PickerAiChoices>,
     query: &str,
     executor: BackgroundExecutor,
-) -> Vec<AgentLaunchEntry> {
+) -> Option<PickerAiChoices> {
+    let mut choices = choices?;
     if query.is_empty() {
-        return entries;
+        return Some(choices);
     }
-    let candidates = entries
+    let candidates = choices
+        .sections
         .iter()
+        .flat_map(|section| {
+            section
+                .choices
+                .iter()
+                .map(move |choice| choice_search_text(section.vendor, choice))
+        })
         .enumerate()
-        .map(|(ix, entry)| StringMatchCandidate::new(ix, &entry.search_text()))
+        .map(|(ix, text)| StringMatchCandidate::new(ix, &text))
         .collect::<Vec<_>>();
-    let mut matches = match_strings(
+    let matched = match_strings(
         &candidates,
         query,
         false,
@@ -566,12 +605,21 @@ pub(crate) async fn filter_agent_launch_entries(
         &Default::default(),
         executor,
     )
-    .await;
-    matches.sort_unstable_by_key(|mat| (Reverse(OrderedFloat(mat.score)), mat.candidate_id));
-    matches
-        .into_iter()
-        .filter_map(|mat| entries.get(mat.candidate_id).cloned())
-        .collect()
+    .await
+    .into_iter()
+    .map(|mat| mat.candidate_id)
+    .collect::<HashSet<_>>();
+    let mut index = 0;
+    let runner = choices.runner.clone();
+    for section in &mut choices.sections {
+        section.choices.retain(|choice| {
+            let keep = matched.contains(&index)
+                || choice_transition(choice, Some(&runner)) == AiChoiceTransition::SameThread;
+            index += 1;
+            keep
+        });
+    }
+    Some(choices)
 }
 
 pub(crate) fn render_agent_launch_row(
@@ -579,13 +627,23 @@ pub(crate) fn render_agent_launch_row(
     entry: &AgentLaunchEntry,
     selected: bool,
 ) -> AnyElement {
-    ModelSelectorListItem::new(ix, entry.label.clone())
-        .map(|this| match &entry.icon {
-            AgentModelIcon::Path(path) => this.icon_path(path.clone()),
-            AgentModelIcon::Named(icon) => this.icon(*icon),
-        })
-        .is_focused(selected)
-        .into_any_element()
+    render_ai_choice_picker_row(ix, &entry.choice, entry.transition, selected)
+}
+
+/// Starts what `entry` names once the picker that confirmed it is done
+/// updating: it may replace the thread view the picker lives in.
+pub(crate) fn open_agent_launch_entry(
+    source: Option<&AgentLaunchSource>,
+    entry: &AgentLaunchEntry,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let Some(source) = source else {
+        return;
+    };
+    let open = source.open.clone();
+    let target = entry.choice.target.clone();
+    window.defer(cx, move |window, cx| open(&target, window, cx));
 }
 
 type ModelPickerEntry = PickerRow<AgentModelInfo>;
@@ -597,7 +655,7 @@ pub struct ModelPickerDelegate {
     /// The last search's results. Folding a group rebuilds the rows from these
     /// on the spot, because `confirm` cannot call `Picker::refresh`.
     filtered_models: AgentModelList,
-    filtered_agents: Vec<AgentLaunchEntry>,
+    filtered_agents: Option<PickerAiChoices>,
     agent_launchers: Option<AgentLaunchSource>,
     collapse: GroupCollapseState<AgentModelId>,
     /// Keeps the selection where it was when the list is updated for a fold
@@ -695,7 +753,7 @@ impl ModelPickerDelegate {
             filtered_entries: Vec::new(),
             models: None,
             filtered_models: AgentModelList::Flat(Vec::new()),
-            filtered_agents: Vec::new(),
+            filtered_agents: None,
             agent_launchers,
             collapse: GroupCollapseState::default(),
             reselect_row: None,
@@ -843,8 +901,7 @@ impl PickerDelegate for ModelPickerDelegate {
         let agents = self
             .agent_launchers
             .as_ref()
-            .map(|agent_launchers| agent_launchers(cx))
-            .unwrap_or_default();
+            .and_then(|agent_launchers| (agent_launchers.choices)(cx));
         let executor = cx.background_executor().clone();
 
         cx.spawn_in(window, async move |this, cx| {
@@ -900,7 +957,7 @@ impl PickerDelegate for ModelPickerDelegate {
                 self.toggle_group(key, expanded, window, cx);
             }
             Some(PickerRow::Agent(entry)) => {
-                window.dispatch_action(entry.action.to_action(), cx);
+                open_agent_launch_entry(self.agent_launchers.as_ref(), entry, window, cx);
                 cx.emit(DismissEvent);
             }
             Some(PickerRow::Label(_)) | None => {}
@@ -925,7 +982,23 @@ impl PickerDelegate for ModelPickerDelegate {
                 Some(ModelSelectorHeader::new(title, ix > 1).into_any_element())
             }
             PickerRow::Group { .. } => render_group_header(&self.filtered_entries, ix, selected),
-            PickerRow::Agent(entry) => Some(render_agent_launch_row(ix, entry, selected)),
+            PickerRow::Agent(entry) => {
+                let description = crate::ai_choices::choice_explanation(&entry.choice);
+                Some(
+                    div()
+                        .id(("ai-choice-row", ix))
+                        .on_hover(cx.listener(move |menu, hovered, _, cx| {
+                            if *hovered {
+                                menu.delegate.selected_description = Some((ix, description.clone()));
+                            } else if matches!(menu.delegate.selected_description, Some((id, _)) if id == ix) {
+                                menu.delegate.selected_description = None;
+                            }
+                            cx.notify();
+                        }))
+                        .child(render_agent_launch_row(ix, entry, selected))
+                        .into_any_element(),
+                )
+            }
             PickerRow::Item {
                 item: model_info,
                 is_favorite,
@@ -1019,7 +1092,7 @@ fn info_list_to_picker_entries(
     model_list: AgentModelList,
     favorites: &HashSet<AgentModelId>,
     active: Option<&AgentModelId>,
-    agents: Vec<AgentLaunchEntry>,
+    agents: Option<PickerAiChoices>,
     collapse: &GroupCollapseState<AgentModelId>,
 ) -> Vec<ModelPickerEntry> {
     let groups = match model_list {
@@ -1108,6 +1181,11 @@ mod tests {
     use std::cell::{Cell, RefCell};
 
     use super::*;
+    use crate::agent_panel::{ExternalAgentMenuItem, external_agent_menu_items};
+    use crate::ai_choices::{
+        AiChoiceIcon, AiChoiceInputs, AiPlacement, ExternalAgentInput, NativeProviderInput,
+        build_ai_choice_sections,
+    };
 
     fn create_model_list(grouped_models: Vec<(&str, Vec<&str>)>) -> AgentModelList {
         AgentModelList::Grouped(IndexMap::from_iter(grouped_models.into_iter().map(
@@ -1195,7 +1273,7 @@ mod tests {
                     ..
                 } => format!("{} {name} ({count})", if *expanded { "▼" } else { "▶" }),
                 PickerRow::Item { item, .. } => item.id.to_string(),
-                PickerRow::Agent(entry) => format!("@ {}", entry.label),
+                PickerRow::Agent(entry) => format!("@ {}", entry.choice.label),
             })
             .collect()
     }
@@ -1207,7 +1285,7 @@ mod tests {
         collapse: &GroupCollapseState<AgentModelId>,
     ) -> Vec<ModelPickerEntry> {
         let active = active.map(AgentModelId::new);
-        info_list_to_picker_entries(models, favorites, active.as_ref(), Vec::new(), collapse)
+        info_list_to_picker_entries(models, favorites, active.as_ref(), None, collapse)
     }
 
     fn external_agent(id: &str, display_name: &str) -> ExternalAgentMenuItem {
@@ -1907,98 +1985,282 @@ mod tests {
         assert!(!dismissed.get());
     }
 
-    #[gpui::test]
-    fn the_agent_section_leaves_out_the_agent_already_running(_cx: &mut TestAppContext) {
-        let external_agents = vec![
-            external_agent("claude-acp", "Claude Agent"),
-            external_agent("codex-acp", "Codex"),
-        ];
-        let labels = |entries: Vec<AgentLaunchEntry>| {
-            entries
-                .into_iter()
-                .map(|entry| entry.label.to_string())
-                .collect::<Vec<_>>()
-        };
-
-        assert_eq!(
-            labels(agent_launch_entries(
-                &AgentId::new("claude-acp"),
-                true,
-                external_agents.clone()
-            )),
-            vec![
-                format!("New Thread with {}", agent::NATIVE_AGENT_DISPLAY_NAME),
-                "Launch Claude Code".to_string(),
-                "New Thread with Codex".to_string(),
-            ]
-        );
-        assert_eq!(
-            labels(agent_launch_entries(
-                &agent::ZED_AGENT_ID,
-                false,
-                external_agents
-            )),
-            vec!["New Thread with Claude Agent", "New Thread with Codex"],
-            "no Zed Agent row in a Zed Agent thread, and no CLI without a terminal"
-        );
+    fn native_provider(id: &str, name: &str, authenticated: bool) -> NativeProviderInput {
+        NativeProviderInput {
+            id: id.to_string().into(),
+            name: name.to_string().into(),
+            icon: AiChoiceIcon::Icon(IconName::Sparkle),
+            authenticated,
+            has_models: true,
+        }
     }
 
-    #[gpui::test]
-    async fn searching_claude_finds_the_cli_and_the_claude_agent(cx: &mut TestAppContext) {
-        let entries = agent_launch_entries(
-            &agent::ZED_AGENT_ID,
-            true,
-            vec![
-                external_agent("claude-acp", "Claude Agent"),
-                external_agent("codex-acp", "Codex"),
-            ],
-        );
-
-        let found = filter_agent_launch_entries(entries, "claude", cx.executor()).await;
-
-        let mut actions = found
-            .into_iter()
-            .map(|entry| entry.action)
-            .collect::<Vec<_>>();
-        actions.sort_by_key(|action| format!("{action:?}"));
-        assert_eq!(
-            actions,
-            vec![
-                AgentLaunchAction::ClaudeCodeCli,
-                AgentLaunchAction::NewThread(AgentId::new("claude-acp")),
-            ]
-        );
+    fn registry_agent(id: &str, name: &str) -> ExternalAgentInput {
+        ExternalAgentInput {
+            id: AgentId::new(id.to_string()),
+            display_name: name.to_string().into(),
+            icon_path: None,
+            from_registry: true,
+            outside_by_choice: false,
+            subscription_sign_in_allowed: true,
+        }
     }
 
-    #[gpui::test]
-    async fn the_agent_section_is_a_folded_heading_at_the_bottom_until_searched(
-        cx: &mut TestAppContext,
-    ) {
-        init_picker_test(cx);
-        let launched_agents = Rc::new(RefCell::new(Vec::<AgentId>::new()));
-        let launched_cli = Rc::new(Cell::new(0));
-        cx.update(|cx| {
-            let launched_agents = launched_agents.clone();
-            cx.on_action(move |action: &NewExternalAgentThread, _| {
-                launched_agents.borrow_mut().push(action.agent.clone());
-            });
-            let launched_cli = launched_cli.clone();
-            cx.on_action(move |_: &zed_actions::terminal::LaunchClaudeCode, _| {
-                launched_cli.set(launched_cli.get() + 1);
-            });
-        });
-        let agent_launchers: AgentLaunchSource = Rc::new(|_| {
-            agent_launch_entries(
-                &AgentId::new("claude-acp"),
-                true,
-                vec![
-                    external_agent("claude-acp", "Claude Agent"),
-                    external_agent("codex-acp", "Codex"),
+    /// What the `+` menu offers in these tests: Claude through the CLI, its
+    /// ACP agent and an API key; OpenAI through Codex and an API key; Google
+    /// still to be set up.
+    fn ai_choices(runner: ThreadRunner) -> PickerAiChoices {
+        PickerAiChoices {
+            runner,
+            sections: build_ai_choice_sections(&AiChoiceInputs {
+                native_providers: vec![
+                    native_provider("anthropic", "Anthropic", true),
+                    native_provider("openai", "OpenAI", true),
+                    native_provider("google", "Google AI", false),
                 ],
-            )
-        });
+                native_default_provider: Some("anthropic".into()),
+                external_agents: vec![
+                    registry_agent("claude-acp", "Claude Agent"),
+                    registry_agent("codex-acp", "Codex"),
+                ],
+                claude_code: Some(AiPlacement::Sandbox),
+                installable_agents: Vec::new(),
+                selected_agent: Agent::NativeAgent,
+            }),
+        }
+    }
+
+    fn claude_agent_runner() -> ThreadRunner {
+        ThreadRunner::ExternalAgent(AgentId::new("claude-acp"))
+    }
+
+    fn launch_source(
+        runner: ThreadRunner,
+        opened: Rc<RefCell<Vec<AiChoiceTarget>>>,
+    ) -> AgentLaunchSource {
+        AgentLaunchSource {
+            choices: Rc::new(move |_| Some(ai_choices(runner.clone()))),
+            open: Rc::new(move |target, _, _| opened.borrow_mut().push(target.clone())),
+        }
+    }
+
+    fn transitions(entries: &[ModelPickerEntry]) -> Vec<(String, AiChoiceTransition)> {
+        entries
+            .iter()
+            .filter_map(|entry| match entry {
+                PickerRow::Agent(entry) => Some((entry.choice.label.to_string(), entry.transition)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A thread of the built-in agent: its providers' models sit in their
+    /// vendors' sections where the `+` menu lists the provider, next to the
+    /// vendor's other ways in, which open a thread or a tab of their own.
+    #[gpui::test]
+    fn the_built_in_agent_s_models_sit_in_their_vendor_s_section(_cx: &mut TestAppContext) {
+        let models = create_model_list(vec![
+            (
+                "Recommended",
+                vec!["anthropic/claude-sonnet", "openai/gpt-5"],
+            ),
+            (
+                "Anthropic",
+                vec!["anthropic/claude-sonnet", "anthropic/claude-opus"],
+            ),
+            ("OpenAI", vec!["openai/gpt-5"]),
+        ]);
+        let entries = info_list_to_picker_entries(
+            models,
+            &HashSet::default(),
+            None,
+            Some(ai_choices(ThreadRunner::BuiltInAgent)),
+            &GroupCollapseState::default(),
+        );
+
+        assert_eq!(
+            entry_labels(&entries),
+            vec![
+                "▼ Recommended (2)",
+                "anthropic/claude-sonnet",
+                "openai/gpt-5",
+                "# Claude (Anthropic)",
+                "@ Claude Code",
+                "@ Claude Agent",
+                "▼ Anthropic (2)",
+                "anthropic/claude-sonnet",
+                "anthropic/claude-opus",
+                "# OpenAI",
+                "@ Codex",
+                "▼ OpenAI (1)",
+                "openai/gpt-5",
+                "# Google",
+                "@ Google AI",
+                "# Local Models",
+                "@ Local Model (Ollama, LM Studio, …)",
+            ],
+            "a group across providers stays above the sections"
+        );
+        assert_eq!(
+            transitions(&entries),
+            vec![
+                ("Claude Code".to_string(), AiChoiceTransition::NewTab),
+                ("Claude Agent".to_string(), AiChoiceTransition::NewThread),
+                ("Codex".to_string(), AiChoiceTransition::NewThread),
+                ("Google AI".to_string(), AiChoiceTransition::SetUp),
+                (
+                    "Local Model (Ollama, LM Studio, …)".to_string(),
+                    AiChoiceTransition::SetUp
+                ),
+            ]
+        );
+    }
+
+    /// A thread of an external agent: its own models stand where the `+`
+    /// menu lists it, and the built-in agent's providers become rows that
+    /// open a new thread.
+    #[gpui::test]
+    fn an_external_agent_s_models_stand_in_its_own_row(_cx: &mut TestAppContext) {
+        let entries = info_list_to_picker_entries(
+            AgentModelList::Flat(vec![
+                acp_thread::AgentModelInfo {
+                    id: AgentModelId::new("default"),
+                    name: "Default".into(),
+                    description: None,
+                    icon: None,
+                    is_latest: false,
+                    disabled: None,
+                    cost: None,
+                },
+                acp_thread::AgentModelInfo {
+                    id: AgentModelId::new("opus"),
+                    name: "Opus".into(),
+                    description: None,
+                    icon: None,
+                    is_latest: false,
+                    disabled: None,
+                    cost: None,
+                },
+            ]),
+            &create_favorites(vec!["opus"]),
+            Some(&AgentModelId::new("opus")),
+            Some(ai_choices(claude_agent_runner())),
+            &GroupCollapseState::default(),
+        );
+
+        assert_eq!(
+            entry_labels(&entries),
+            vec![
+                "# Favorites",
+                "opus",
+                "# Claude (Anthropic)",
+                "@ Claude Code",
+                "default",
+                "opus",
+                "@ Anthropic",
+                "# OpenAI",
+                "@ Codex",
+                "@ OpenAI",
+                "# Google",
+                "@ Google AI",
+                "# Local Models",
+                "@ Local Model (Ollama, LM Studio, …)",
+            ],
+            "no 「All」 heading inside the vendor's section"
+        );
+        let transitions = transitions(&entries);
+        assert!(transitions.contains(&("Anthropic".to_string(), AiChoiceTransition::NewThread)));
+        assert!(
+            !transitions.iter().any(|(label, _)| label == "Claude Agent"),
+            "the thread's own agent is not offered as another thread"
+        );
+    }
+
+    #[gpui::test]
+    fn without_other_ais_the_picker_lists_only_the_models(_cx: &mut TestAppContext) {
+        let models = || {
+            create_model_list(vec![
+                ("Anthropic", vec!["anthropic/claude-opus"]),
+                ("OpenAI", vec!["openai/gpt-5"]),
+            ])
+        };
+        assert_eq!(
+            entry_labels(&info_list_to_picker_entries(
+                models(),
+                &HashSet::default(),
+                None,
+                None,
+                &GroupCollapseState::default(),
+            )),
+            vec![
+                "▼ Anthropic (1)",
+                "anthropic/claude-opus",
+                "▼ OpenAI (1)",
+                "openai/gpt-5",
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn searching_keeps_the_matches_and_the_thread_s_own_models(cx: &mut TestAppContext) {
+        let found = filter_agent_launch_entries(
+            Some(ai_choices(claude_agent_runner())),
+            "claude",
+            cx.executor(),
+        )
+        .await
+        .expect("choices");
+        let mut targets = found
+            .sections
+            .iter()
+            .flat_map(|section| &section.choices)
+            .map(|choice| choice.target.clone())
+            .collect::<Vec<_>>();
+        targets.sort_by_key(|target| format!("{target:?}"));
+        assert_eq!(
+            targets,
+            vec![
+                AiChoiceTarget::ExternalAgentThread {
+                    agent_id: AgentId::new("claude-acp")
+                },
+                AiChoiceTarget::LaunchClaudeCode,
+                AiChoiceTarget::NativeThread {
+                    provider_id: "anthropic".into()
+                },
+            ],
+            "the vendor's name finds its entries"
+        );
+
+        let found = filter_agent_launch_entries(
+            Some(ai_choices(claude_agent_runner())),
+            "codex",
+            cx.executor(),
+        )
+        .await
+        .expect("choices");
+        let labels = found
+            .sections
+            .iter()
+            .flat_map(|section| &section.choices)
+            .map(|choice| choice.label.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            labels,
+            vec!["Claude Agent", "Codex"],
+            "the thread's own agent stays, to place its models"
+        );
+    }
+
+    #[gpui::test]
+    async fn another_ai_is_started_from_its_vendor_s_section(cx: &mut TestAppContext) {
+        init_picker_test(cx);
+        let opened = Rc::new(RefCell::new(Vec::<AiChoiceTarget>::new()));
         let selector = Rc::new(TestModelSelector::new());
-        let (picker, cx) = open_picker(selector.clone(), Some(agent_launchers), cx);
+        let (picker, cx) = open_picker(
+            selector.clone(),
+            Some(launch_source(claude_agent_runner(), opened.clone())),
+            cx,
+        );
         let dismissed = Rc::new(Cell::new(0));
         cx.update({
             let dismissed = dismissed.clone();
@@ -2011,14 +2273,20 @@ mod tests {
         });
 
         assert_eq!(
-            picker_labels(&picker, cx),
-            vec!["auto", "manual", "▶ Agents (3)"],
-            "one folded heading below the models, without the agent already running"
+            picker_labels(&picker, cx).get(..4),
+            Some(
+                &[
+                    "# Claude (Anthropic)".to_string(),
+                    "@ Claude Code".to_string(),
+                    "auto".to_string(),
+                    "manual".to_string(),
+                ][..]
+            ),
         );
         picker.read_with(cx, |picker, _| {
             assert_eq!(
-                picker.delegate.selected_index, 0,
-                "the selection starts on the models"
+                picker.delegate.selected_index, 2,
+                "the selection starts on the model in use"
             );
         });
 
@@ -2026,23 +2294,22 @@ mod tests {
             picker.set_query("codex", window, cx)
         });
         cx.run_until_parked();
-        assert_eq!(
-            picker_labels(&picker, cx),
-            vec!["▼ Agents (1)", "@ New Thread with Codex"]
-        );
+        assert_eq!(picker_labels(&picker, cx), vec!["# OpenAI", "@ Codex"]);
         cx.update(|window, _| window.refresh());
         cx.run_until_parked();
         picker.update_in(cx, |picker, window, cx| {
             assert_eq!(
                 picker.delegate.selected_index, 1,
-                "on the agent, not its heading"
+                "on the agent, not its vendor's heading"
             );
             picker.delegate.confirm(false, window, cx);
         });
         cx.run_until_parked();
         assert_eq!(
-            launched_agents.borrow().as_slice(),
-            &[AgentId::new("codex-acp")]
+            opened.borrow().as_slice(),
+            &[AiChoiceTarget::ExternalAgentThread {
+                agent_id: AgentId::new("codex-acp")
+            }]
         );
         assert_eq!(dismissed.get(), 1);
 
@@ -2052,39 +2319,47 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             picker_labels(&picker, cx),
-            vec!["▼ Agents (1)", "@ Launch Claude Code"]
+            vec!["# Claude (Anthropic)", "@ Claude Code"]
         );
         picker.update_in(cx, |picker, window, cx| {
             picker.delegate.confirm(false, window, cx);
         });
         cx.run_until_parked();
-        assert_eq!(launched_cli.get(), 1);
+        assert_eq!(
+            opened.borrow().last(),
+            Some(&AiChoiceTarget::LaunchClaudeCode)
+        );
         assert_eq!(dismissed.get(), 2);
         assert!(
             selector.selected_models.borrow().is_empty(),
-            "starting an agent does not change this thread's model"
+            "starting another AI does not change this thread's model"
         );
     }
 
     #[gpui::test]
-    async fn the_agent_section_does_not_keep_the_project_alive(cx: &mut TestAppContext) {
+    async fn the_other_ais_do_not_keep_the_project_alive(cx: &mut TestAppContext) {
         crate::test_support::init_test(cx);
         let fs = FakeFs::new(cx.executor());
         fs.insert_tree("/project", serde_json::json!({ "file.txt": "" }))
             .await;
         let project = project::Project::test(fs, [std::path::Path::new("/project")], cx).await;
-        let agent_launchers = agent_launch_source(project.downgrade(), agent::ZED_AGENT_ID.clone());
-        assert!(
-            !cx.update(|cx| agent_launchers(cx)).is_empty(),
-            "a project with a folder offers agents to start"
+        cx.update(language_model::LanguageModelRegistry::test);
+        let agent_launchers = agent_launch_source(
+            project.downgrade(),
+            WeakEntity::new_invalid(),
+            agent::ZED_AGENT_ID.clone(),
         );
+        let choices = cx
+            .update(|cx| (agent_launchers.choices)(cx))
+            .expect("a project with a folder offers other AIs");
+        assert_eq!(choices.runner, ThreadRunner::BuiltInAgent);
 
         let released = project.downgrade();
         drop(project);
         cx.run_until_parked();
 
         released.assert_released();
-        assert!(cx.update(|cx| agent_launchers(cx)).is_empty());
+        assert!(cx.update(|cx| (agent_launchers.choices)(cx)).is_none());
     }
 
     fn star(selector: &TestModelSelector, model: &str, cx: &mut VisualTestContext) {
@@ -2204,29 +2479,20 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn without_a_folder_there_is_no_agent_section(cx: &mut TestAppContext) {
+    async fn without_a_folder_no_other_ai_is_offered(cx: &mut TestAppContext) {
         crate::test_support::init_test(cx);
         let fs = FakeFs::new(cx.executor());
         let project = project::Project::test(fs, [], cx).await;
-        let agent_launchers = agent_launch_source(project.downgrade(), AgentId::new("claude-acp"));
+        let agent_launchers = agent_launch_source(
+            project.downgrade(),
+            WeakEntity::new_invalid(),
+            AgentId::new("claude-acp"),
+        );
 
         assert!(
-            cx.update(|cx| agent_launchers(cx)).is_empty(),
+            cx.update(|cx| (agent_launchers.choices)(cx)).is_none(),
             "the panel refuses to start a thread or the CLI without a folder"
         );
-    }
-
-    fn claude_acp_launchers() -> AgentLaunchSource {
-        Rc::new(|_| {
-            agent_launch_entries(
-                &AgentId::new("claude-acp"),
-                true,
-                vec![
-                    external_agent("claude-acp", "Claude Agent"),
-                    external_agent("codex-acp", "Codex"),
-                ],
-            )
-        })
     }
 
     #[gpui::test]
@@ -2240,15 +2506,25 @@ mod tests {
             vec!["claude-sonnet"],
             "claude-sonnet",
         ));
-        let (picker, cx) = open_picker(selector, Some(claude_acp_launchers()), cx);
-        let browsing = vec![
-            "# Favorites",
-            "claude-sonnet",
-            "▶ Anthropic (2)",
-            "▶ OpenAI (2)",
-            "▶ Agents (3)",
-        ];
-        assert_eq!(picker_labels(&picker, cx), browsing);
+        let opened = Rc::new(RefCell::new(Vec::new()));
+        let (picker, cx) = open_picker(
+            selector,
+            Some(launch_source(claude_agent_runner(), opened)),
+            cx,
+        );
+        let browsing = picker_labels(&picker, cx);
+        assert_eq!(
+            browsing.get(..5),
+            Some(
+                &[
+                    "# Favorites".to_string(),
+                    "claude-sonnet".to_string(),
+                    "# Claude (Anthropic)".to_string(),
+                    "@ Claude Code".to_string(),
+                    "▶ Anthropic (2)".to_string(),
+                ][..]
+            )
+        );
 
         picker.update_in(cx, |picker, window, cx| picker.set_query("   ", window, cx));
         cx.run_until_parked();
@@ -2261,9 +2537,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn japanese_queries_name_the_recommended_group_and_the_agent_section(
-        cx: &mut TestAppContext,
-    ) {
+    async fn queries_name_the_recommended_group_and_a_vendor(cx: &mut TestAppContext) {
         init_picker_test(cx);
         let selector = Rc::new(TestModelSelector::grouped(
             vec![
@@ -2273,7 +2547,12 @@ mod tests {
             vec![],
             "gpt-5",
         ));
-        let (picker, cx) = open_picker(selector, Some(claude_acp_launchers()), cx);
+        let opened = Rc::new(RefCell::new(Vec::new()));
+        let (picker, cx) = open_picker(
+            selector,
+            Some(launch_source(claude_agent_runner(), opened)),
+            cx,
+        );
 
         picker.update_in(cx, |picker, window, cx| {
             picker.set_query("Recommended", window, cx)
@@ -2281,24 +2560,14 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             picker_labels(&picker, cx),
-            vec!["▼ Recommended (1)", "claude-sonnet"]
+            vec!["# Claude (Anthropic)", "▼ Recommended (1)", "claude-sonnet"]
         );
 
         picker.update_in(cx, |picker, window, cx| {
-            picker.set_query("Agents", window, cx)
+            picker.set_query("Google", window, cx)
         });
         cx.run_until_parked();
-        let mut labels = picker_labels(&picker, cx);
-        assert_eq!(labels.first().map(String::as_str), Some("▼ Agents (3)"));
-        labels.sort();
-        let mut expected = vec![
-            "@ Launch Claude Code".to_string(),
-            "@ New Thread with Codex".to_string(),
-            format!("@ New Thread with {}", agent::NATIVE_AGENT_DISPLAY_NAME),
-            "▼ Agents (3)".to_string(),
-        ];
-        expected.sort();
-        assert_eq!(labels, expected);
+        assert_eq!(picker_labels(&picker, cx), vec!["# Google", "@ Google AI"]);
     }
 
     #[gpui::test]

@@ -2593,6 +2593,7 @@ impl Sidebar {
 
         let this = cx.weak_entity();
         let key = key.clone();
+        let menu_focus_handle = focus_handle.clone();
 
         PopoverMenu::new(SharedString::from(format!(
             "{id_prefix}project-header-new-thread-menu-{ix}"
@@ -2616,6 +2617,7 @@ impl Sidebar {
         .menu(move |window, cx| {
             let this = this.clone();
             let key = key.clone();
+            let focus_handle = menu_focus_handle.clone();
             let open_workspaces = open_workspaces.clone();
             let active_workspace = this
                 .read_with(cx, |sidebar, cx| {
@@ -2690,6 +2692,33 @@ impl Sidebar {
                         .filter(|workspace| open_workspaces.contains(workspace))
                         .cloned()
                         .or_else(|| open_workspaces.first().cloned());
+
+                    // ADR-F94: the AIs the agent panel's `+` menu offers, for a
+                    // thread in the workspace marked above (or the group's
+                    // first), so that picking one here needs no second menu.
+                    if let Some(base_workspace) = base_workspace.clone() {
+                        let run: agent_ui::AiChoiceRunner = Rc::new({
+                            let this = this.clone();
+                            let key = key.clone();
+                            let workspace = base_workspace.clone();
+                            move |open, window, cx| {
+                                this.update(cx, |sidebar, cx| {
+                                    sidebar.set_group_expanded(&key, true, cx);
+                                    sidebar.selection = None;
+                                    sidebar
+                                        .open_ai_choice_in_workspace(&workspace, open, window, cx);
+                                })
+                                .ok();
+                            }
+                        });
+                        menu = agent_ui::add_ai_choices_for_workspace(
+                            menu.separator(),
+                            &base_workspace,
+                            focus_handle.clone(),
+                            run,
+                            cx,
+                        );
+                    }
 
                     // Only offer worktree creation when the base project can
                     // actually create one; otherwise the submenu would expand to
@@ -7082,6 +7111,41 @@ impl Sidebar {
                 thread_id: draft_id,
                 session_id: None,
                 workspace: workspace.clone(),
+            });
+        }
+    }
+
+    /// Brings `workspace` forward with its agent panel, then runs what an
+    /// entry of the AI sections opens there.
+    fn open_ai_choice_in_workspace(
+        &mut self,
+        workspace: &Entity<Workspace>,
+        open: Box<dyn FnOnce(&mut Window, &mut App)>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if workspace_path_list(workspace, cx).paths().is_empty() {
+            return;
+        }
+        let Some(multi_workspace) = self.multi_workspace.upgrade() else {
+            return;
+        };
+        let was_active = multi_workspace.read(cx).workspace() == workspace;
+        multi_workspace.update(cx, |multi_workspace, cx| {
+            multi_workspace.activate(workspace.clone(), None, window, cx);
+        });
+        workspace.update(cx, |workspace, cx| {
+            workspace.focus_panel::<AgentPanel>(window, cx);
+        });
+        if was_active {
+            open(window, cx);
+        } else {
+            // An action dispatched in this window reaches the workspace the
+            // last frame drew (Claude Code's launch is one of the workspace's
+            // actions). Next-frame callbacks run before that frame is drawn,
+            // so the one just brought forward is drawn by the frame after.
+            window.on_next_frame(move |window, _| {
+                window.on_next_frame(move |window, cx| open(window, cx));
             });
         }
     }

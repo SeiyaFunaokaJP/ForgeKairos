@@ -2470,6 +2470,15 @@ impl AgentPanel {
         &self.connection_store
     }
 
+    /// What the `+` menu's AI sections are made from (ADR-F94).
+    pub(crate) fn new_thread_ai_context(&self, cx: &App) -> crate::ai_choices::NewThreadAiContext {
+        crate::ai_choices::NewThreadAiContext {
+            project: self.project.clone(),
+            selected_agent: self.selected_agent.clone(),
+            supports_terminal: self.supports_terminal(cx),
+        }
+    }
+
     pub fn selected_agent(&self, cx: &App) -> Agent {
         if self.project.read(cx).is_via_collab() {
             Agent::NativeAgent
@@ -7222,7 +7231,7 @@ pub(crate) struct ExternalAgentMenuItem {
 /// ADR-F49 決定 19: サンドボックスが使える環境でも、外で動かしたい人の入口。
 /// 確認はアクション側で毎回 (設定で常に外にしていれば出さない)。`+` メニューは
 /// これを「Claude Code」の直後に置く (ADR-F94)。
-fn claude_code_outside_sandbox_menu_entry(cx: &App) -> ContextMenuEntry {
+pub(crate) fn claude_code_outside_sandbox_menu_entry(cx: &App) -> ContextMenuEntry {
     ContextMenuEntry::new(i18n::t!("Launch Claude Code Outside the Sandbox…"))
         .action(Box::new(
             zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
@@ -8116,19 +8125,15 @@ impl AgentPanel {
         let new_thread_menu_builder: Rc<
             dyn Fn(&mut Window, &mut App) -> Option<Entity<ContextMenu>>,
         > = {
-            let selected_agent = self.selected_agent.clone();
+            // Taken now rather than when the menu opens: the menu can be
+            // opened from one of this panel's own actions, while it is being
+            // updated and cannot be read.
+            let ai_context = self.new_thread_ai_context(cx);
             let workspace = self.workspace.clone();
-            let project = self.project.clone();
             let focus_handle = focus_handle.clone();
 
             Rc::new(move |window, cx| {
-                let inputs = crate::ai_choices::gather_ai_choice_inputs(
-                    &project,
-                    selected_agent.clone(),
-                    supports_terminal,
-                    cx,
-                );
-                let mut sections = crate::ai_choices::build_ai_choice_sections(&inputs);
+                let mut sections = ai_context.sections(cx);
                 // While the terminal is showing, `NewThread` opens another
                 // terminal, so no AI entry is what the shortcut repeats.
                 if showing_terminal {
@@ -8141,26 +8146,14 @@ impl AgentPanel {
                 }
 
                 Some(ContextMenu::build(window, cx, |mut menu, _window, cx| {
-                    menu = menu.context(focus_handle.clone());
-                    for (index, section) in sections.into_iter().enumerate() {
-                        if index > 0 {
-                            menu = menu.separator();
-                        }
-                        menu = menu.header(crate::ai_choices::vendor_label(section.vendor));
-                        for choice in section.choices {
-                            let is_claude_code = choice.target
-                                == crate::ai_choices::AiChoiceTarget::LaunchClaudeCode;
-                            menu = menu.item(crate::ai_choices::ai_choice_menu_item(
-                                choice,
-                                workspace.clone(),
-                                focus_handle.clone(),
-                                cx,
-                            ));
-                            if is_claude_code {
-                                menu = menu.item(claude_code_outside_sandbox_menu_entry(cx));
-                            }
-                        }
-                    }
+                    menu = crate::ai_choices::add_ai_choice_rows(
+                        menu.context(focus_handle.clone()),
+                        sections,
+                        workspace.clone(),
+                        focus_handle.clone(),
+                        crate::ai_choices::run_at_once(),
+                        cx,
+                    );
                     menu.separator()
                         .when(supports_terminal, |menu| {
                             menu.item(

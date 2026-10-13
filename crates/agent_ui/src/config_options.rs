@@ -24,10 +24,11 @@ use util::ResultExt as _;
 use zed_actions::agent::ToggleModelSelector;
 
 use crate::model_selector::{
-    AgentLaunchEntry, AgentLaunchSource, GroupCollapseState, PickerGroup, PickerGroupKey,
+    AgentLaunchSource, GroupCollapseState, PickerAiChoices, PickerGroup, PickerGroupKey,
     PickerItem, PickerRow, RowAnchor, anchor_row_index, build_picker_rows,
     filter_agent_launch_entries, group_row_index, grouped_search_text, initial_row_index,
-    refresh_rows_after_fold, render_agent_launch_row, render_group_header, row_anchor,
+    open_agent_launch_entry, refresh_rows_after_fold, render_agent_launch_row, render_group_header,
+    row_anchor,
 };
 
 type OptionCollapseState = Rc<RefCell<GroupCollapseState<acp::SessionConfigValueId>>>;
@@ -89,7 +90,7 @@ pub struct ConfigOptionsView {
     agent_server: Rc<dyn AgentServer>,
     fs: Arc<dyn Fs>,
     config_option_ids: Vec<acp::SessionConfigId>,
-    /// The エージェント section's rows, for the model picker only.
+    /// The other AIs (ADR-F94), for the model picker only.
     agent_launchers: Option<AgentLaunchSource>,
     /// Folded groups per option. Kept here because every config update
     /// rebuilds the selectors, and a fold must not spring open with it.
@@ -305,7 +306,7 @@ impl ConfigOptionsView {
         cx: &mut Context<Self>,
     ) -> Vec<Entity<ConfigOptionSelector>> {
         let options = self.config_options.config_options();
-        // The エージェント section goes to the picker the model keybindings open
+        // The other AIs go to the picker the model keybindings open
         // (`handles_category_keybindings`), not to every model-ish option.
         let model_config_id = options
             .iter()
@@ -787,7 +788,7 @@ struct ConfigOptionPickerDelegate {
     /// The last search's results. Folding a group rebuilds the rows from these
     /// on the spot, because `confirm` cannot call `Picker::refresh`.
     filtered_options: Vec<ConfigOptionValue>,
-    filtered_agents: Vec<AgentLaunchEntry>,
+    filtered_agents: Option<PickerAiChoices>,
     agent_launchers: Option<AgentLaunchSource>,
     collapse: OptionCollapseState,
     /// Keeps the selection where it was when the list is updated for a fold
@@ -823,8 +824,7 @@ impl ConfigOptionPickerDelegate {
         collapse.borrow_mut().set_query("");
         let filtered_agents = agent_launchers
             .as_ref()
-            .map(|agent_launchers| agent_launchers(cx))
-            .unwrap_or_default();
+            .and_then(|agent_launchers| (agent_launchers.choices)(cx));
 
         let agent_server_for_subscription = agent_server.clone();
         let config_id_for_subscription = config_id.clone();
@@ -959,8 +959,7 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
         let agents = self
             .agent_launchers
             .as_ref()
-            .map(|agent_launchers| agent_launchers(cx))
-            .unwrap_or_default();
+            .and_then(|agent_launchers| (agent_launchers.choices)(cx));
         let executor = cx.background_executor().clone();
 
         cx.spawn_in(window, async move |this, cx| {
@@ -1023,7 +1022,7 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
                 self.toggle_group(key, expanded, window, cx);
             }
             Some(PickerRow::Agent(entry)) => {
-                window.dispatch_action(entry.action.to_action(), cx);
+                open_agent_launch_entry(self.agent_launchers.as_ref(), entry, window, cx);
                 cx.emit(DismissEvent);
             }
             Some(PickerRow::Label(_)) | None => {}
@@ -1234,7 +1233,7 @@ fn options_to_picker_entries(
     options: &[ConfigOptionValue],
     favorites: &HashSet<acp::SessionConfigValueId>,
     current_value: Option<&acp::SessionConfigValueId>,
-    agents: Vec<AgentLaunchEntry>,
+    agents: Option<PickerAiChoices>,
     collapse: &GroupCollapseState<acp::SessionConfigValueId>,
 ) -> Vec<ConfigOptionPickerEntry> {
     let mut groups: Vec<PickerGroup<ConfigOptionValue>> = Vec::new();
@@ -1340,8 +1339,9 @@ fn count_config_options(option: &acp::SessionConfigOption) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent_panel::ExternalAgentMenuItem;
-    use crate::model_selector::agent_launch_entries;
+    use crate::ai_choices::{
+        AiChoiceInputs, AiChoiceTarget, ExternalAgentInput, ThreadRunner, build_ai_choice_sections,
+    };
     use acp_thread::AgentConnection;
     use fs::FakeFs;
     use gpui::{TestAppContext, VisualTestContext};
@@ -1636,7 +1636,7 @@ mod tests {
                     ..
                 } => format!("{} {name} ({count})", if *expanded { "▼" } else { "▶" }),
                 PickerRow::Item { item, .. } => item.value.0.to_string(),
-                PickerRow::Agent(entry) => format!("@ {}", entry.label),
+                PickerRow::Agent(entry) => format!("@ {}", entry.choice.label),
             })
             .collect()
     }
@@ -1776,7 +1776,7 @@ mod tests {
                 &short,
                 &favorites,
                 None,
-                Vec::new(),
+                None,
                 &GroupCollapseState::default(),
             )),
             vec!["# Favorites", "m0", "# All Options", "m0", "m1", "m2", "m3"]
@@ -1790,7 +1790,7 @@ mod tests {
                 &long,
                 &favorites,
                 None,
-                Vec::new(),
+                None,
                 &GroupCollapseState::default(),
             )),
             vec!["# Favorites", "m0", "▶ All Options (12)"]
@@ -1817,13 +1817,8 @@ mod tests {
         );
 
         let found = fuzzy_search_options(options, "x", cx.executor()).await;
-        let rows = options_to_picker_entries(
-            &found,
-            &HashSet::default(),
-            None,
-            Vec::new(),
-            &searching("x"),
-        );
+        let rows =
+            options_to_picker_entries(&found, &HashSet::default(), None, None, &searching("x"));
         assert_eq!(
             config_entry_labels(&rows),
             vec![
@@ -1928,17 +1923,9 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn the_acp_model_picker_takes_a_query_and_ends_with_the_agent_section(
-        cx: &mut TestAppContext,
-    ) {
+    async fn the_acp_model_picker_takes_a_query_and_lists_the_other_ais(cx: &mut TestAppContext) {
         init_picker_test(cx);
-        let launched = Rc::new(RefCell::new(Vec::<AgentId>::new()));
-        cx.update(|cx| {
-            let launched = launched.clone();
-            cx.on_action(move |action: &crate::NewExternalAgentThread, _| {
-                launched.borrow_mut().push(action.agent.clone());
-            });
-        });
+        let launched = Rc::new(RefCell::new(Vec::<AiChoiceTarget>::new()));
         let config_options = Rc::new(TestSessionConfigOptions::new(vec![
             acp::SessionConfigOption::select(
                 "mode",
@@ -1962,17 +1949,37 @@ mod tests {
             )
             .category(acp::SessionConfigOptionCategory::Model),
         ]));
-        let agent_launchers: AgentLaunchSource = Rc::new(|_| {
-            agent_launch_entries(
-                &AgentId::new("test-agent"),
-                true,
-                vec![ExternalAgentMenuItem {
-                    id: AgentId::new("codex-acp"),
-                    display_name: "Codex".into(),
-                    icon_path: None,
-                }],
-            )
+        let external_agent = |id: &str, name: &str, from_registry: bool| ExternalAgentInput {
+            id: AgentId::new(id.to_string()),
+            display_name: name.to_string().into(),
+            icon_path: None,
+            from_registry,
+            outside_by_choice: false,
+            subscription_sign_in_allowed: true,
+        };
+        let sections = build_ai_choice_sections(&AiChoiceInputs {
+            native_providers: Vec::new(),
+            native_default_provider: None,
+            external_agents: vec![
+                external_agent("test-agent", "Test Agent", false),
+                external_agent("codex-acp", "Codex", true),
+            ],
+            claude_code: None,
+            installable_agents: Vec::new(),
+            selected_agent: crate::Agent::NativeAgent,
         });
+        let agent_launchers = AgentLaunchSource {
+            choices: Rc::new(move |_| {
+                Some(PickerAiChoices {
+                    runner: ThreadRunner::ExternalAgent(AgentId::new("test-agent")),
+                    sections: sections.clone(),
+                })
+            }),
+            open: Rc::new({
+                let launched = launched.clone();
+                move |target, _, _| launched.borrow_mut().push(target.clone())
+            }),
+        };
         let fs: Arc<dyn Fs> = FakeFs::new(cx.executor());
         let (view, cx) = cx.add_window_view({
             let config_options = config_options.clone();
@@ -1995,12 +2002,22 @@ mod tests {
         let mode = option_picker(&view, "mode", cx);
         assert_eq!(
             picker_labels(&model, cx),
-            vec!["default", "opus", "haiku", "▶ Agents (3)"]
+            vec![
+                "# OpenAI",
+                "@ Codex",
+                "# Local Models",
+                "@ Local Model (Ollama, LM Studio, …)",
+                "# Other",
+                "default",
+                "opus",
+                "haiku",
+            ],
+            "the agent's own models stand in its row, under Other since it is no registry agent"
         );
         assert_eq!(
             picker_labels(&mode, cx),
             vec!["ask", "code"],
-            "only the model picker carries the agents"
+            "only the model picker carries the other AIs"
         );
 
         model.update_in(cx, |picker, window, cx| {
@@ -2020,10 +2037,7 @@ mod tests {
             "",
             "other short lists keep their plain menu"
         );
-        assert_eq!(
-            picker_labels(&model, cx),
-            vec!["▼ Agents (1)", "@ New Thread with Codex"]
-        );
+        assert_eq!(picker_labels(&model, cx), vec!["# OpenAI", "@ Codex"]);
 
         let dismissed = Rc::new(Cell::new(false));
         cx.update({
@@ -2040,7 +2054,12 @@ mod tests {
             picker.delegate.confirm(false, window, cx);
         });
         cx.run_until_parked();
-        assert_eq!(launched.borrow().as_slice(), &[AgentId::new("codex-acp")]);
+        assert_eq!(
+            launched.borrow().as_slice(),
+            &[AiChoiceTarget::ExternalAgentThread {
+                agent_id: AgentId::new("codex-acp")
+            }]
+        );
         assert!(dismissed.get());
         assert!(
             config_options.set_values.borrow().is_empty(),

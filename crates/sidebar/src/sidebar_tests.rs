@@ -1994,6 +1994,70 @@ async fn test_keyboard_navigation_on_empty_list(cx: &mut TestAppContext) {
     assert_eq!(sidebar.read_with(cx, |s, _| s.selection), Some(0));
 }
 
+/// ADR-F94: an AI picked from a project's menu in the sidebar opens in that
+/// project, and only once it is the one the window shows, since Claude
+/// Code's launch is an action of the workspace the window last drew.
+#[gpui::test]
+async fn test_ai_choice_from_a_project_menu_opens_in_that_project(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree("/project-a", serde_json::json!({ "src": {} }))
+        .await;
+    fs.insert_tree("/project-b", serde_json::json!({ "src": {} }))
+        .await;
+    cx.update(|cx| <dyn fs::Fs>::set_global(fs.clone(), cx));
+    let project_a = project::Project::test(fs.clone(), ["/project-a".as_ref()], cx).await;
+    let project_b = project::Project::test(fs.clone(), ["/project-b".as_ref()], cx).await;
+    let (multi_workspace, cx) =
+        cx.add_window_view(|window, cx| MultiWorkspace::test_new(project_a, window, cx));
+    let (sidebar, _panel) = setup_sidebar_with_agent_panel(&multi_workspace, cx);
+    let workspace_a = multi_workspace.read_with(cx, |multi_workspace, _cx| {
+        multi_workspace.workspace().clone()
+    });
+    let workspace_b = multi_workspace.update_in(cx, |multi_workspace, window, cx| {
+        multi_workspace.test_add_workspace(project_b, window, cx)
+    });
+    add_agent_panel(&workspace_b, cx);
+    cx.run_until_parked();
+
+    let opened_in = Rc::new(std::cell::RefCell::new(Vec::<Entity<Workspace>>::new()));
+    let open = |opened_in: &Rc<std::cell::RefCell<Vec<Entity<Workspace>>>>| -> Box<dyn FnOnce(&mut Window, &mut App)> {
+        let opened_in = opened_in.clone();
+        let multi_workspace = multi_workspace.clone();
+        Box::new(move |_, cx| {
+            opened_in
+                .borrow_mut()
+                .push(multi_workspace.read(cx).workspace().clone());
+        })
+    };
+
+    sidebar.update_in(cx, |sidebar, window, cx| {
+        sidebar.open_ai_choice_in_workspace(&workspace_a, open(&opened_in), window, cx);
+    });
+    cx.run_until_parked();
+    assert!(
+        opened_in.borrow().is_empty(),
+        "nothing opens before the project brought forward is drawn"
+    );
+    for _ in 0..2 {
+        cx.update(|window, cx| window.simulate_next_frame(cx));
+        cx.run_until_parked();
+    }
+    assert_eq!(
+        opened_in.borrow().as_slice(),
+        std::slice::from_ref(&workspace_a)
+    );
+
+    sidebar.update_in(cx, |sidebar, window, cx| {
+        sidebar.open_ai_choice_in_workspace(&workspace_a, open(&opened_in), window, cx);
+    });
+    assert_eq!(
+        opened_in.borrow().len(),
+        2,
+        "the project already in front opens at once"
+    );
+}
+
 #[gpui::test]
 async fn test_new_entry_noops_without_open_project(cx: &mut TestAppContext) {
     init_test(cx);
