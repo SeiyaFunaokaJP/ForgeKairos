@@ -1,5 +1,3 @@
-> [!IMPORTANT]
-> Remove this line to confirm you've reviewed this PR before submitting.
 # ForgeKairos
 
 English | [日本語](README.ja.md)
