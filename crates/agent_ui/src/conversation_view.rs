@@ -3820,13 +3820,17 @@ impl ConversationView {
         cx.notify();
         self.api_key_save_task = Some(cx.spawn_in(window, async move |this, cx| {
             let result = removed.await;
-            this.update(cx, |this, cx| {
+            this.update_in(cx, |this, window, cx| {
                 this.api_key_save_task = None;
                 match result {
                     Ok(()) => {
                         this.api_key_editing = false;
                         this.api_key_error = None;
                         this.api_key_stored = Some(false);
+                        // The running agent was started with the key in its
+                        // environment and would go on using it, so the
+                        // subscription sign-in would still be billed to it.
+                        this.retry_connection(window, cx);
                     }
                     Err(error) => {
                         this.api_key_error = Some(
@@ -3892,6 +3896,10 @@ impl ConversationView {
                                 editor.set_text("", window, cx);
                             });
                         }
+                        // The agent reads the key from its environment, which
+                        // is only composed when it starts: the one asking for
+                        // authentication would go on asking.
+                        this.retry_connection(window, cx);
                     }
                     Err(error) => {
                         let mut reason = i18n::t!(
@@ -10494,6 +10502,37 @@ pub(crate) mod tests {
         }
     }
 
+    /// [`ClaudeAcpAgentServer`] that counts how many times the agent was
+    /// started.
+    struct CountingClaudeAcpAgentServer {
+        connection: AuthGatedAgentConnection,
+        connects: Arc<AtomicUsize>,
+    }
+
+    impl AgentServer for CountingClaudeAcpAgentServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::AiClaude
+        }
+
+        fn agent_id(&self) -> AgentId {
+            AgentId::new(agent_servers::CLAUDE_AGENT_ID)
+        }
+
+        fn connect(
+            &self,
+            _delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            _cx: &mut App,
+        ) -> Task<gpui::Result<Rc<dyn AgentConnection>>> {
+            self.connects.fetch_add(1, Ordering::SeqCst);
+            Task::ready(Ok(Rc::new(self.connection.clone())))
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
     const CLAUDE_ACP_API_KEY_METHOD: &str = "anthropic-api-key";
     /// `debug_bounds` takes a `&'static str`, so the two selectors this test
     /// looks for are spelled out and tied to [`auth_method_selector`] below.
@@ -11738,6 +11777,65 @@ pub(crate) mod tests {
         assert!(
             cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_some(),
             "back to waiting for authentication (the input field)"
+        );
+    }
+
+    /// ADR-F88: the agent gets the stored key from its environment, which is
+    /// composed only when it starts. Saving or removing the key on the card
+    /// starts it again; otherwise the agent that asked for authentication
+    /// would go on asking with the key already saved.
+    #[gpui::test]
+    async fn saving_or_removing_an_api_key_starts_the_agent_again(cx: &mut TestAppContext) {
+        init_test(cx);
+        let connects = Arc::new(AtomicUsize::new(0));
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) = setup_conversation_view(
+            CountingClaudeAcpAgentServer {
+                connection,
+                connects: connects.clone(),
+            },
+            cx,
+        )
+        .await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.run_until_parked();
+
+        let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
+        let started = connects.load(Ordering::SeqCst);
+        assert!(started > 0, "the agent was started for the card");
+
+        let editor = conversation_view.read_with(cx, |view, _cx| {
+            view.api_key_editor.clone().expect("has an input field")
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text("sk-ant-api03-restart", window, cx);
+        });
+        conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
+        cx.run_until_parked();
+        assert_eq!(saved_api_key(cx).as_deref(), Some("sk-ant-api03-restart"));
+        let after_save = connects.load(Ordering::SeqCst);
+        assert!(
+            after_save > started,
+            "saving the key starts the agent again ({started} -> {after_save})"
+        );
+        conversation_view.read_with(cx, |view, _cx| {
+            assert_eq!(view.api_key_stored, Some(true), "the card still knows the key");
+        });
+
+        conversation_view.update_in(cx, |view, window, cx| view.remove_api_key(window, cx));
+        cx.run_until_parked();
+        assert_eq!(saved_api_key(cx), None);
+        let after_remove = connects.load(Ordering::SeqCst);
+        assert!(
+            after_remove > after_save,
+            "removing the key starts the agent again ({after_save} -> {after_remove})"
         );
     }
 
