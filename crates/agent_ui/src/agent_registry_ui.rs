@@ -20,9 +20,8 @@ use project::{AgentId, AgentRegistryStore, RegistryAgent};
 use settings::{Settings, SettingsStore, update_settings_file};
 use theme_settings::ThemeSettings;
 use ui::{
-    Banner, ButtonStyle, CommonAnimationExt, ToggleButtonGroup,
-    ToggleButtonGroupSize, ToggleButtonGroupStyle, ToggleButtonSimple, Tooltip, WithScrollbar,
-    prelude::*,
+    Banner, ButtonStyle, CommonAnimationExt, ToggleButtonGroup, ToggleButtonGroupSize,
+    ToggleButtonGroupStyle, ToggleButtonSimple, Tooltip, WithScrollbar, prelude::*,
 };
 use util::ResultExt as _;
 use workspace::{
@@ -80,6 +79,18 @@ pub(crate) fn install_requirement(agent: &RegistryAgent) -> InstallRequirement {
 /// the effect the "Install" button always had before F2-5 added a consent
 /// step in front of it for agents that need one.
 fn install_registry_agent(agent_id: &str, window: &mut Window, cx: &mut App) {
+    add_registry_agent_to_settings(agent_id, cx);
+    window.dispatch_action(
+        Box::new(zed_actions::agent::SelectAgent {
+            agent: agent_id.to_string(),
+        }),
+        cx,
+    );
+}
+
+/// The install itself: the agent server store downloads a registry agent
+/// once `settings.json` names it.
+pub(crate) fn add_registry_agent_to_settings(agent_id: &str, cx: &mut App) {
     let fs = <dyn Fs>::global(cx);
     let agent_id_owned = agent_id.to_string();
     update_settings_file(fs, cx, move |settings, _| {
@@ -95,12 +106,6 @@ fn install_registry_agent(agent_id: &str, window: &mut Window, cx: &mut App) {
             }
         });
     });
-    window.dispatch_action(
-        Box::new(zed_actions::agent::SelectAgent {
-            agent: agent_id.to_string(),
-        }),
-        cx,
-    );
 }
 
 /// The subset of `hosts` the running egress policy does not already allow.

@@ -195,6 +195,12 @@ msgctxt "action documentation"
 msgid "agent::NewThread"
 msgstr "新しい会話スレッドを作成します。既存のスレッドをもとに作成することもできます。"
 
+#. Starts a new thread of the built-in agent on a model of the given
+#. language model provider.
+msgctxt "action documentation"
+msgid "agent::NewThreadWithLanguageModelProvider"
+msgstr "指定した LLM プロバイダーのモデルで、内蔵エージェントの新しいスレッドを始めます。"
+
 #. Opens the active thread as a markdown file.
 msgctxt "action documentation"
 msgid "agent::OpenActiveThreadAsMarkdown"
@@ -419,6 +425,13 @@ msgstr "現在の生成を中断してメッセージを即座に送信します
 msgctxt "action documentation"
 msgid "agent::SendNextQueuedMessage"
 msgstr "キューに入っている次のメッセージをすぐに送信します。"
+
+#. Opens a small window over the workspace that sets up a language model
+#. provider in place (its consent, key or sign-in), and then starts a
+#. thread on it.
+msgctxt "action documentation"
+msgid "agent::SetUpLanguageModelProvider"
+msgstr "ワークスペースの上に小さなウィンドウを開き、LLM プロバイダーをその場で使えるようにして (同意、キー、サインイン)、そのプロバイダーでスレッドを始めます。"
 
 #. Toggles the agent panel.
 msgctxt "action documentation"

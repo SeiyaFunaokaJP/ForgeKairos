@@ -9,6 +9,7 @@ mod git_accounts_page;
 mod llm_providers_page;
 mod mcp_servers_page;
 mod network_allowlist;
+mod provider_setup_modal;
 mod sandbox_settings;
 mod skill_creator;
 mod skills_setup;
@@ -29,7 +30,7 @@ pub(crate) use feature_flags::render_feature_flags_page;
 pub(crate) use git_accounts_page::{GitAccountForm, render_git_accounts_page};
 pub(crate) use llm_providers_page::{
     ClaudeCliState, LlmProviderForm, init_compatible_provider_removal,
-    render_add_llm_provider_popover, render_llm_providers_page,
+    render_add_llm_provider_popover, render_llm_providers_page, start_claude_cli_probe,
 };
 pub(crate) use mcp_servers_page::{
     LaunchApprovalsPageState, McpPageState, McpServerForm, init_launch_approval_prompts,
@@ -39,6 +40,7 @@ pub(crate) use mcp_servers_page::{
 pub(crate) use network_allowlist::{
     NetworkAllowlistState, load_network_allowlist, render_network_allowlist_page,
 };
+pub(crate) use provider_setup_modal::open_provider_setup_modal;
 pub(crate) use sandbox_settings::render_sandbox_settings_page;
 pub use skill_creator::SkillCreatorOpenMode;
 pub(crate) use skill_creator::{

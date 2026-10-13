@@ -233,7 +233,7 @@ fn apply_acknowledgement(settings: &mut settings::SettingsContent, key: &str, ac
 }
 
 /// Records or withdraws consent in the user's `settings.json`.
-fn set_acknowledged(key: SharedString, acknowledged: bool, cx: &mut App) {
+pub(crate) fn set_acknowledged(key: SharedString, acknowledged: bool, cx: &mut App) {
     let fs = <dyn fs::Fs>::global(cx);
     settings::update_settings_file(fs, cx, move |settings, _| {
         apply_acknowledgement(settings, &key, acknowledged);
@@ -618,11 +618,11 @@ pub(crate) fn edit_prediction_target(
     }
 }
 
-fn warning_headline(name: &SharedString) -> SharedString {
+pub(crate) fn warning_headline(name: &SharedString) -> SharedString {
     i18n::t!("{name} is an external AI service").into()
 }
 
-fn warning_body(name: &SharedString) -> SharedString {
+pub(crate) fn warning_body(name: &SharedString) -> SharedString {
     i18n::t!(
         "When enabled, the code you enter and the content of your conversations are sent to {name}'s servers. Depending on the provider's policies, they may be stored and used to train models. If you use this for work, be sure to check your organization's policies."
     )

@@ -252,6 +252,21 @@ pub(crate) struct ClaudeCliState {
     _probe: Option<Task<()>>,
 }
 
+impl ClaudeCliState {
+    pub(crate) fn is_probed(&self) -> bool {
+        self.outcome.is_some()
+    }
+
+    /// `None` while the lookup has not finished.
+    pub(crate) fn is_installed(&self) -> Option<bool> {
+        match self.outcome.as_ref()? {
+            ClaudeCliOutcome::Checking => None,
+            ClaudeCliOutcome::Missing => Some(false),
+            ClaudeCliOutcome::Installed { .. } => Some(true),
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum ClaudeCliOutcome {
     Checking,
@@ -263,7 +278,7 @@ enum ClaudeCliOutcome {
 ///
 /// Deferred rather than spawned straight from the render, so the "already
 /// started" flag is set before the next frame can ask again.
-fn start_claude_cli_probe(window: &mut Window, cx: &mut Context<SettingsWindow>) {
+pub(crate) fn start_claude_cli_probe(window: &mut Window, cx: &mut Context<SettingsWindow>) {
     cx.defer_in(window, |settings_window, _window, cx| {
         if settings_window.claude_cli.outcome.is_some() {
             return;

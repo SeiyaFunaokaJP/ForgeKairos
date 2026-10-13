@@ -4,6 +4,7 @@ mod agent_diff;
 mod agent_model_selector;
 mod agent_panel;
 mod agent_registry_ui;
+mod ai_choice_install;
 mod ai_choices;
 mod buffer_codegen;
 mod completion_provider;
@@ -663,6 +664,7 @@ pub fn init(
         init_language_model_settings(cx);
     }
     agent_panel::init(cx);
+    ai_choices::init(cx);
     context_server_configuration::init(language_registry, fs.clone(), cx);
     thread_metadata_store::init(cx);
     terminal_thread_metadata_store::init(cx);

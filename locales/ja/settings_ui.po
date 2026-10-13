@@ -377,6 +377,9 @@ msgstr "変更は次に起動する子プロセスから反映されます (再�
 msgid "Checking PATH on this PC…"
 msgstr "この PC の PATH を確認しています…"
 
+msgid "Checking…"
+msgstr "確認しています…"
+
 msgid "Choose File"
 msgstr "ファイルを選択"
 
@@ -490,6 +493,9 @@ msgstr "リンクをコピー"
 
 msgid "Copy Share Link"
 msgstr "共有リンクをコピー"
+
+msgid "Could not connect: {error}"
+msgstr "接続できませんでした: {error}"
 
 msgid "Could not determine the range to rewrite"
 msgstr "書き換える範囲を特定できませんでした"
@@ -686,6 +692,9 @@ msgstr "有効な GitHub の URL を入力してください。"
 msgid "Enter a value for the {label} \"{key}\"."
 msgstr "{label}「{key}」の値を入力してください。"
 
+msgid "Enter the API key."
+msgstr "API キーを入力してください。"
+
 msgid "Enter to Confirm"
 msgstr "Enter で確定"
 
@@ -727,6 +736,9 @@ msgstr "外部エージェント"
 
 msgid "External formatter \"{name}\""
 msgstr "外部フォーマッター「{name}」"
+
+msgid "Failed to add the hosts to the allowlist: {error}"
+msgstr "許可リストへの追加に失敗しました: {error}"
 
 msgid "Failed to load your settings. Some values may be incorrect and changes may be lost."
 msgstr "設定を読み込めませんでした。一部の値が正しくない可能性があり、変更が失われることがあります。"
@@ -787,6 +799,9 @@ msgstr "ファイルの編集操作"
 
 msgid "Files whose contents are part of this approval: {files}. A change to their contents asks for confirmation again, but the command line alone doesn't show what they do, so review their contents too before allowing."
 msgstr "中身を承認に含めるファイル: {files}。中身が変わるともう一度確認を求めますが、コマンドラインからは何をするかわからないため、中身も確認してから許可してください。"
+
+msgid "Finish the steps below to start a thread with {name}."
+msgstr "下の手順を済ませると、{name} でスレッドを始めます。"
 
 msgid "Fix in settings.json"
 msgstr "settings.json で修正"
@@ -1086,6 +1101,9 @@ msgstr "MCP サーバーの設定が見つかりませんでした。`command` (
 msgid "No MCP servers added yet. Click \"Add Server\" to get started."
 msgstr "MCP サーバーはまだ追加されていません。「サーバーを追加」から始めてください。"
 
+msgid "No Models"
+msgstr "モデルなし"
+
 msgid "No Results"
 msgstr "該当なし"
 
@@ -1152,6 +1170,9 @@ msgstr "統制外"
 msgid "Not Controlled (Own Proxy)"
 msgstr "統制外 (独自プロキシ)"
 
+msgid "Not Installed"
+msgstr "未インストール"
+
 msgid "Not Set Up"
 msgstr "未設定"
 
@@ -1187,6 +1208,9 @@ msgstr "{label}の名前が空の行があります。名前を入力するか�
 
 msgid "Open"
 msgstr "開く"
+
+msgid "Open Detailed Settings"
+msgstr "詳しい設定を開く"
 
 msgid "Open in Form"
 msgstr "フォームで開く"
@@ -1482,6 +1506,9 @@ msgstr "制限モード"
 msgid "Result:"
 msgstr "結果:"
 
+msgid "Retry"
+msgstr "再試行"
+
 msgid "Revoke Approval"
 msgstr "承認を取り消す"
 
@@ -1524,6 +1551,9 @@ msgstr "プロバイダーを保存"
 msgid "Save Skill"
 msgstr "スキルを保存"
 
+msgid "Save and Start"
+msgstr "保存して始める"
+
 msgid "Saved threads that used it stay in the history; to continue one, choose another model."
 msgstr "このプロバイダーを使った保存済みのスレッドは履歴に残ります。続けるときは別のモデルを選んでください。"
 
@@ -1554,9 +1584,6 @@ msgstr "設定を検索…"
 msgid "Search theme…"
 msgstr "テーマを検索…"
 
-msgid "See Details"
-msgstr "詳細を見る"
-
 msgid "Select"
 msgstr "選択"
 
@@ -1580,6 +1607,9 @@ msgstr "{display_name} のサーバー設定"
 
 msgid "Servers can't be added all at once while one has a name that is already taken. Open each server marked \"A server with this name already exists\" in the form and rename it before adding it."
 msgstr "同名のサーバーがあるため、まとめては追加できません。「同名のサーバーがあります」と出ているサーバーをフォームで開き、名前を変えてから追加してください。"
+
+msgid "Set Up {name}"
+msgstr "{name} を使えるようにする"
 
 msgid "Setting the values of form fields in the built-in browser"
 msgstr "内蔵ブラウザーのフォーム項目の値の設定"
@@ -1607,6 +1637,9 @@ msgstr "スキルの内容"
 
 msgid "Start Testing"
 msgstr "テストを開始"
+
+msgid "Start {name} on this computer. If it has no model yet, download one first (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "このコンピューターで {name} を起動してください。モデルがまだない場合は先にダウンロードしてから (Ollama なら、たとえば ollama pull qwen3:8b)、「再試行」を押してください。"
 
 msgid "Starting with these details is not allowed."
 msgstr "この内容での起動は許可していません。"
@@ -1665,6 +1698,9 @@ msgstr "テスト中…"
 msgid "The API URL changed, so enter the API key for the new URL. The saved key is not sent to a different URL."
 msgstr "API URL が変わったので、新しい URL 用の API キーを入力してください。保存済みのキーを別の URL へ送ることはしません。"
 
+msgid "The API key could not be saved: {error}"
+msgstr "API キーを保存できませんでした: {error}"
+
 msgid "The API key sent as Authorization: Bearer {{key}}."
 msgstr "API キーは Authorization: Bearer {{key}} として送信されます。"
 
@@ -1706,6 +1742,9 @@ msgstr "接続先のファイル {path} の中身はここから確かめられ�
 
 msgid "The endpoint depends on the AWS region (for example, bedrock-runtime.us-east-1.amazonaws.com). Register the host for the region you actually use in the allowlist."
 msgstr "接続先は AWS のリージョンによって変わります (例: bedrock-runtime.us-east-1.amazonaws.com)。実際に使用するリージョンのホストを許可リストに登録してください。"
+
+msgid "The key is kept in this computer's credential store, not in a settings file."
+msgstr "キーは設定ファイルではなく、このコンピューターの資格情報ストアに保存されます。"
 
 msgid "The maximum number of tokens the model can output."
 msgstr "モデルが出力できるトークン数の上限です。"
@@ -2048,6 +2087,18 @@ msgstr "{name} (編集予測)"
 
 msgid "{name} is an external AI service"
 msgstr "{name} は外部の AI サービスです"
+
+msgid "{name} is not available here. Its settings may have been removed."
+msgstr "{name} はここでは使えません。設定が削除された可能性があります。"
+
+msgid "{name} is ready. Opening a new thread…"
+msgstr "{name} は使用可能です。新しいスレッドを開いています…"
+
+msgid "{name} is running but has no model. Download one (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "{name} は起動していますが、モデルがありません。モデルをダウンロードしてから (Ollama なら、たとえば ollama pull qwen3:8b)、「再試行」を押してください。"
+
+msgid "{name} is signed in, but no model could be listed. The list is fetched from {name}, so its hosts have to be in the allowlist; also check that your account or plan includes models. Then press Retry."
+msgstr "{name} にはサインイン済みですが、モデルを一覧にできませんでした。一覧は {name} から取得するため、そのホストが許可リストに入っている必要があります。アカウントやプランにモデルが含まれているかも確認してから、「再試行」を押してください。"
 
 msgid "{name} must be a number"
 msgstr "{name}には数値を指定してください"

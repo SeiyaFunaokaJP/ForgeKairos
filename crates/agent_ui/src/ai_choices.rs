@@ -12,9 +12,9 @@ use std::sync::Arc;
 
 use agent_settings::AgentSettings;
 use agent_settings::ai_vendor::{
-    AiVendor, ProviderSignIn, is_language_model_provider_offered_before_setup,
-    sign_in_of_language_model_provider, vendor_of_external_agent,
-    vendor_of_language_model_provider,
+    ANTHROPIC_AGENT_ID, AiVendor, GOOGLE_AGENT_ID, OPENAI_AGENT_ID, ProviderSignIn,
+    is_language_model_provider_offered_before_setup, sign_in_of_language_model_provider,
+    vendor_of_external_agent, vendor_of_language_model_provider,
 };
 use db::kvp::KeyValueStore;
 use fs::Fs;
@@ -66,12 +66,22 @@ pub(crate) enum AiChoiceTarget {
         agent_id: AgentId,
     },
     LaunchClaudeCode,
-    /// The provider still needs its key or sign-in: open its settings.
-    SetUpProvider,
+    /// The provider still needs its consent, key or sign-in: set it up in
+    /// place. `None` stands for "a local model", whichever local server it is.
+    SetUpProvider {
+        provider_id: Option<SharedString>,
+    },
     /// The provider is signed in but offers no model yet (a local server with
-    /// nothing downloaded, say): open its settings rather than start a thread
+    /// nothing downloaded, say): say why in place rather than start a thread
     /// that would silently keep the previous provider's model.
-    SetUpModels,
+    SetUpModels {
+        provider_id: SharedString,
+    },
+    /// A vendor's own agent from the ACP registry that is not added yet:
+    /// install it, then start a thread with it.
+    InstallExternalAgent {
+        agent_id: AgentId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -96,7 +106,9 @@ impl AiChoice {
     pub(crate) fn needs_setup(&self) -> bool {
         matches!(
             self.target,
-            AiChoiceTarget::SetUpProvider | AiChoiceTarget::SetUpModels
+            AiChoiceTarget::SetUpProvider { .. }
+                | AiChoiceTarget::SetUpModels { .. }
+                | AiChoiceTarget::InstallExternalAgent { .. }
         )
     }
 }
@@ -127,6 +139,14 @@ pub(crate) struct ExternalAgentInput {
     pub(crate) subscription_sign_in_allowed: bool,
 }
 
+/// A vendor's agent in the ACP registry that is not added yet.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct InstallableAgentInput {
+    pub(crate) id: AgentId,
+    pub(crate) display_name: SharedString,
+    pub(crate) icon_path: Option<SharedString>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct AiChoiceInputs {
     pub(crate) native_providers: Vec<NativeProviderInput>,
@@ -134,6 +154,8 @@ pub(crate) struct AiChoiceInputs {
     pub(crate) native_default_provider: Option<SharedString>,
     /// Empty for a collaborator's guest, who can only use the built-in agent.
     pub(crate) external_agents: Vec<ExternalAgentInput>,
+    /// Empty for a collaborator's guest, like `external_agents`.
+    pub(crate) installable_agents: Vec<InstallableAgentInput>,
     /// `None` where this project cannot run a terminal.
     pub(crate) claude_code: Option<AiPlacement>,
     pub(crate) selected_agent: Agent,
@@ -206,6 +228,30 @@ pub(crate) fn build_ai_choice_sections(inputs: &AiChoiceInputs) -> Vec<AiChoiceS
         );
     }
 
+    for agent in &inputs.installable_agents {
+        let vendor = vendor_of_external_agent(agent.id.as_ref(), true);
+        push(
+            vendor,
+            AiChoice {
+                label: agent.display_name.clone(),
+                icon: match &agent.icon_path {
+                    Some(path) => AiChoiceIcon::Svg(path.clone()),
+                    None => AiChoiceIcon::Icon(IconName::Sparkle),
+                },
+                sign_in: match vendor {
+                    AiVendor::Local | AiVendor::Other => AiSignIn::AgentsOwn,
+                    _ => AiSignIn::SubscriptionOrApiKey,
+                },
+                runner: AiRunner::ExternalAgent,
+                placement: None,
+                target: AiChoiceTarget::InstallExternalAgent {
+                    agent_id: agent.id.clone(),
+                },
+                is_current: false,
+            },
+        );
+    }
+
     let mut local_offered = false;
     for provider in &inputs.native_providers {
         let vendor = vendor_of_language_model_provider(provider.id.as_ref());
@@ -216,9 +262,13 @@ pub(crate) fn build_ai_choice_sections(inputs: &AiChoiceInputs) -> Vec<AiChoiceS
         }
         local_offered |= vendor == AiVendor::Local;
         let target = if !provider.authenticated {
-            AiChoiceTarget::SetUpProvider
+            AiChoiceTarget::SetUpProvider {
+                provider_id: Some(provider.id.clone()),
+            }
         } else if !provider.has_models {
-            AiChoiceTarget::SetUpModels
+            AiChoiceTarget::SetUpModels {
+                provider_id: provider.id.clone(),
+            }
         } else {
             AiChoiceTarget::NativeThread {
                 provider_id: provider.id.clone(),
@@ -254,7 +304,7 @@ pub(crate) fn build_ai_choice_sections(inputs: &AiChoiceInputs) -> Vec<AiChoiceS
                 sign_in: AiSignIn::Local,
                 runner: AiRunner::BuiltInAgent,
                 placement: None,
-                target: AiChoiceTarget::SetUpProvider,
+                target: AiChoiceTarget::SetUpProvider { provider_id: None },
                 is_current: false,
             },
         );
@@ -295,6 +345,11 @@ pub(crate) fn gather_ai_choice_inputs(
         .map(|configured| configured.provider.id().0);
 
     let project_ref = project.read(cx);
+    let installable_agents = if project_ref.is_via_collab() {
+        Vec::new()
+    } else {
+        installable_vendor_agents(project_ref.agent_server_store().read(cx), cx)
+    };
     let external_agents = if project_ref.is_via_collab() {
         Vec::new()
     } else {
@@ -325,10 +380,48 @@ pub(crate) fn gather_ai_choice_inputs(
         native_providers,
         native_default_provider,
         external_agents,
+        installable_agents,
         claude_code: supports_terminal
             .then(|| crate::sandboxed_claude_code::claude_code_placement(project_ref, cx)),
         selected_agent,
     }
+}
+
+/// The vendors' own agents that the ACP registry offers and that are not
+/// added yet. One the user added under the same id from elsewhere counts as
+/// added: installing over it would change what that id runs.
+fn installable_vendor_agents(
+    store: &project::AgentServerStore,
+    cx: &App,
+) -> Vec<InstallableAgentInput> {
+    let Some(registry) = project::AgentRegistryStore::try_global(cx) else {
+        return Vec::new();
+    };
+    let registry = registry.read(cx);
+    let added = store.external_agents().cloned().collect::<Vec<_>>();
+    installable_agents_among(
+        [ANTHROPIC_AGENT_ID, OPENAI_AGENT_ID, GOOGLE_AGENT_ID]
+            .into_iter()
+            .filter_map(|id| {
+                let agent = registry.agent(&AgentId::new(id))?;
+                Some(InstallableAgentInput {
+                    id: AgentId::new(id),
+                    display_name: agent.name().clone(),
+                    icon_path: agent.icon_path().cloned(),
+                })
+            }),
+        &added,
+    )
+}
+
+pub(crate) fn installable_agents_among(
+    offered: impl IntoIterator<Item = InstallableAgentInput>,
+    added: &[AgentId],
+) -> Vec<InstallableAgentInput> {
+    offered
+        .into_iter()
+        .filter(|agent| !added.contains(&agent.id))
+        .collect()
 }
 
 pub(crate) fn vendor_label(vendor: AiVendor) -> SharedString {
@@ -346,7 +439,10 @@ pub(crate) fn choice_badges(choice: &AiChoice) -> Vec<SharedString> {
     let mut badges = Vec::with_capacity(3);
     if choice.needs_setup() {
         badges.push(match (&choice.target, choice.sign_in) {
-            (AiChoiceTarget::SetUpModels, _) | (_, AiSignIn::Local) => i18n::t!("Set Up…").into(),
+            (AiChoiceTarget::InstallExternalAgent { .. }, _) => i18n::t!("Install…").into(),
+            (AiChoiceTarget::SetUpModels { .. }, _) | (_, AiSignIn::Local) => {
+                i18n::t!("Set Up…").into()
+            }
             (_, AiSignIn::Subscription | AiSignIn::Account) => i18n::t!("Sign In…").into(),
             _ => i18n::t!("Add API Key…").into(),
         });
@@ -393,12 +489,17 @@ fn choice_explanation(choice: &AiChoice) -> SharedString {
             provider = choice.label
         )
         .into(),
-        AiChoiceTarget::SetUpProvider => i18n::t!(
-            "Not set up yet. Opens Settings > AI > LLM Providers, where you add the key or sign in."
+        AiChoiceTarget::SetUpProvider { .. } => i18n::t!(
+            "Not set up yet. Add the key or sign in right here, and a new thread opens once it works."
         )
         .into(),
-        AiChoiceTarget::SetUpModels => i18n::t!(
-            "No model is available from this provider yet. Opens Settings > AI > LLM Providers."
+        AiChoiceTarget::SetUpModels { .. } => i18n::t!(
+            "No model is available from this provider yet. Shows why and what to do."
+        )
+        .into(),
+        AiChoiceTarget::InstallExternalAgent { .. } => i18n::t!(
+            "Not installed yet. Installs {name} from the ACP registry, after asking about the hosts it needs, and then starts a thread with it.",
+            name = choice.label
         )
         .into(),
     }
@@ -489,8 +590,14 @@ pub(crate) fn open_ai_choice(
                 cx,
             );
         }
-        AiChoiceTarget::SetUpProvider | AiChoiceTarget::SetUpModels => {
-            open_llm_providers(window, cx);
+        AiChoiceTarget::SetUpProvider { provider_id } => {
+            set_up_provider(provider_id.clone(), window, cx);
+        }
+        AiChoiceTarget::SetUpModels { provider_id } => {
+            set_up_provider(Some(provider_id.clone()), window, cx);
+        }
+        AiChoiceTarget::InstallExternalAgent { agent_id } => {
+            crate::ai_choice_install::install_from_menu(agent_id.clone(), workspace, window, cx);
         }
         AiChoiceTarget::ExternalAgentThread { agent_id } => {
             with_panel(workspace, window, cx, |panel, window, cx| {
@@ -513,7 +620,7 @@ pub(crate) fn open_ai_choice(
             };
             let switch = switch_default_model_to_provider(provider_id, fs, cx);
             if matches!(switch, ModelSwitch::NoModels) {
-                open_llm_providers(window, cx);
+                set_up_provider(Some(provider_id.clone()), window, cx);
                 return;
             }
             with_panel(workspace, window, cx, move |panel, window, cx| {
@@ -546,14 +653,41 @@ pub(crate) fn open_ai_choice(
     }
 }
 
-fn open_llm_providers(window: &mut Window, cx: &mut App) {
+/// ADR-F94 step 4: the setup window over the workspace (in `settings_ui`),
+/// which comes back with `NewThreadWithLanguageModelProvider` once it works.
+fn set_up_provider(provider_id: Option<SharedString>, window: &mut Window, cx: &mut App) {
     window.dispatch_action(
-        Box::new(zed_actions::OpenSettingsAt {
-            path: "llm_providers".to_string(),
-            target: None,
+        Box::new(zed_actions::agent::SetUpLanguageModelProvider {
+            provider: provider_id.map(|id| id.to_string()),
         }),
         cx,
     );
+}
+
+pub(crate) fn init(cx: &mut App) {
+    cx.observe_new(|workspace: &mut Workspace, _, _| {
+        workspace.register_action(
+            |workspace,
+             action: &zed_actions::agent::NewThreadWithLanguageModelProvider,
+             window,
+             cx| {
+                if workspace.panel::<AgentPanel>(cx).is_none() {
+                    return;
+                }
+                workspace.focus_panel::<AgentPanel>(window, cx);
+                let target = AiChoiceTarget::NativeThread {
+                    provider_id: action.provider.clone().into(),
+                };
+                let workspace = cx.entity().downgrade();
+                // The panel is updated through the workspace, which this
+                // handler is still updating.
+                window.defer(cx, move |window, cx| {
+                    open_ai_choice(&target, &workspace, window, cx);
+                });
+            },
+        );
+    })
+    .detach();
 }
 
 fn with_panel(
@@ -751,6 +885,7 @@ mod tests {
                 agent("gemini", "Gemini CLI", true),
                 agent("opencode", "OpenCode", true),
             ],
+            installable_agents: Vec::new(),
             claude_code: Some(AiPlacement::Sandbox),
             selected_agent: Agent::NativeAgent,
         }
@@ -830,7 +965,13 @@ mod tests {
     fn a_provider_without_its_key_opens_its_settings() {
         let sections = build_ai_choice_sections(&everything());
         let openai = choice(&sections, "OpenAI");
-        assert_eq!(openai.target, AiChoiceTarget::SetUpProvider);
+        assert_eq!(
+            openai.target,
+            AiChoiceTarget::SetUpProvider {
+                provider_id: Some("openai".into())
+            },
+            "the setup window is told which provider to set up"
+        );
         assert!(openai.needs_setup());
         assert_eq!(choice_badges(openai), ["Add API Key…"]);
         assert!(!openai.is_current);
@@ -1110,7 +1251,12 @@ mod tests {
         }
         let sections = build_ai_choice_sections(&inputs);
         let ollama = choice(&sections, "Ollama");
-        assert_eq!(ollama.target, AiChoiceTarget::SetUpModels);
+        assert_eq!(
+            ollama.target,
+            AiChoiceTarget::SetUpModels {
+                provider_id: "ollama".into()
+            }
+        );
         assert_eq!(choice_badges(ollama), ["Set Up…"]);
         assert!(
             !ollama.is_current,
@@ -1148,7 +1294,75 @@ mod tests {
             .expect("a local section")
             .choices;
         assert_eq!(local.len(), 1);
-        assert_eq!(local[0].target, AiChoiceTarget::SetUpProvider);
+        assert_eq!(
+            local[0].target,
+            AiChoiceTarget::SetUpProvider { provider_id: None },
+            "the one local entry stands for whichever local server is set up"
+        );
         assert_eq!(choice_badges(&local[0]), ["Set Up…"]);
+    }
+
+    fn installable(id: &str, name: &str) -> InstallableAgentInput {
+        InstallableAgentInput {
+            id: AgentId::new(id.to_string()),
+            display_name: name.to_string().into(),
+            icon_path: None,
+        }
+    }
+
+    #[test]
+    fn a_vendor_agent_not_added_yet_is_offered_for_install_in_its_section() {
+        let mut inputs = everything();
+        inputs
+            .external_agents
+            .retain(|agent| agent.id.as_ref() != "codex-acp");
+        inputs.installable_agents = vec![installable("codex-acp", "Codex")];
+        let sections = build_ai_choice_sections(&inputs);
+
+        assert_eq!(
+            labels(&sections, AiVendor::OpenAi),
+            ["ChatGPT Subscription", "Codex", "OpenAI"],
+            "an install goes below what already works"
+        );
+        let codex = choice(&sections, "Codex");
+        assert_eq!(
+            codex.target,
+            AiChoiceTarget::InstallExternalAgent {
+                agent_id: AgentId::new("codex-acp")
+            }
+        );
+        assert!(codex.needs_setup());
+        assert!(!codex.is_current);
+        assert_eq!(codex.runner, AiRunner::ExternalAgent);
+        assert_eq!(choice_badges(codex), ["Install…"]);
+    }
+
+    #[test]
+    fn only_agents_not_added_are_offered_for_install() {
+        let offered = || {
+            vec![
+                installable("claude-acp", "Claude Agent"),
+                installable("codex-acp", "Codex"),
+                installable("gemini", "Gemini CLI"),
+            ]
+        };
+        let ids = |agents: Vec<InstallableAgentInput>| {
+            agents
+                .into_iter()
+                .map(|agent| agent.id.as_ref().to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ids(installable_agents_among(offered(), &[])),
+            ["claude-acp", "codex-acp", "gemini"]
+        );
+        assert_eq!(
+            ids(installable_agents_among(
+                offered(),
+                &[AgentId::new("claude-acp"), AgentId::new("gemini")]
+            )),
+            ["codex-acp"],
+            "an agent added under the same id, from anywhere, is not installed over"
+        );
     }
 }

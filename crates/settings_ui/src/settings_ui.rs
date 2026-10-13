@@ -499,6 +499,16 @@ pub fn init(cx: &mut App) {
                 let window_handle = window.window_handle().downcast::<MultiWorkspace>();
                 open_settings_editor(None, None, window_handle, cx);
             })
+            .register_action(
+                |workspace, action: &zed_actions::agent::SetUpLanguageModelProvider, window, cx| {
+                    pages::open_provider_setup_modal(
+                        workspace,
+                        action.provider.clone(),
+                        window,
+                        cx,
+                    );
+                },
+            )
             .register_action(|workspace, _: &OpenProjectSettings, window, cx| {
                 let window_handle = window.window_handle().downcast::<MultiWorkspace>();
                 let target_worktree_id = workspace

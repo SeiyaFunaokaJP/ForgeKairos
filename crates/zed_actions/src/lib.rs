@@ -720,6 +720,29 @@ pub mod agent {
         /// File paths with unresolved conflicts (for project-wide resolution).
         pub conflicted_file_paths: Vec<String>,
     }
+
+    /// Opens a small window over the workspace that sets up a language model
+    /// provider in place (its consent, key or sign-in), and then starts a
+    /// thread on it.
+    #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
+    #[action(namespace = agent)]
+    #[serde(deny_unknown_fields)]
+    pub struct SetUpLanguageModelProvider {
+        /// The provider's id (e.g. `anthropic`). Omitted for "a local model",
+        /// where the window offers the local providers.
+        #[serde(default)]
+        pub provider: Option<String>,
+    }
+
+    /// Starts a new thread of the built-in agent on a model of the given
+    /// language model provider.
+    #[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema, Action)]
+    #[action(namespace = agent)]
+    #[serde(deny_unknown_fields)]
+    pub struct NewThreadWithLanguageModelProvider {
+        /// The provider's id (e.g. `anthropic`).
+        pub provider: String,
+    }
 }
 
 pub mod assistant {

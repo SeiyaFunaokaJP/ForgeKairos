@@ -995,8 +995,20 @@ msgstr "インストール"
 msgid "Install New Servers…"
 msgstr "新しいサーバーをインストール…"
 
+msgid "Install {name}"
+msgstr "{name} をインストール"
+
 msgid "Installed"
 msgstr "インストール済み"
+
+msgid "Installing {name}…"
+msgstr "{name} をインストールしています…"
+
+msgid "Installs {name} from the ACP registry, then starts a thread with it. You sign in on the agent's own screen."
+msgstr "{name} を ACP レジストリからインストールし、そのままスレッドを始めます。サインインはエージェント自身の画面で行います。"
+
+msgid "Install…"
+msgstr "インストール…"
 
 msgid "Interrupt Generation"
 msgstr "生成を中断"
@@ -1190,8 +1202,8 @@ msgstr "インストール済みのエージェントはありません。"
 msgid "No matches"
 msgstr "一致なし"
 
-msgid "No model is available from this provider yet. Opens Settings > AI > LLM Providers."
-msgstr "このプロバイダーから使えるモデルがまだありません。「設定 > AI > LLM プロバイダー」を開きます。"
+msgid "No model is available from this provider yet. Shows why and what to do."
+msgstr "このプロバイダーから使えるモデルがまだありません。理由と対処をその場で示します。"
 
 msgid "No model is configured for summarizing thread titles."
 msgstr "スレッドタイトルの要約に使用するモデルが設定されていません。"
@@ -1241,8 +1253,11 @@ msgstr "役に立たない応答"
 msgid "Not Installed"
 msgstr "未インストール"
 
-msgid "Not set up yet. Opens Settings > AI > LLM Providers, where you add the key or sign in."
-msgstr "まだ設定されていません。「設定 > AI > LLM プロバイダー」を開き、キーを追加するかサインインします。"
+msgid "Not installed yet. Installs {name} from the ACP registry, after asking about the hosts it needs, and then starts a thread with it."
+msgstr "まだインストールされていません。必要なホストについて確認したうえで {name} を ACP レジストリからインストールし、そのままスレッドを始めます。"
+
+msgid "Not set up yet. Add the key or sign in right here, and a new thread opens once it works."
+msgstr "まだ設定されていません。この場でキーを追加するかサインインすると、使えるようになった時点で新しいスレッドが開きます。"
 
 msgid "Not supported on this platform"
 msgstr "このプラットフォームには対応していません"
@@ -1270,6 +1285,9 @@ msgstr "今回のみ"
 
 msgid "Open"
 msgstr "開く"
+
+msgid "Open ACP Registry"
+msgstr "ACP レジストリを開く"
 
 msgid "Open Again"
 msgstr "もう一度開く"
@@ -1861,6 +1879,9 @@ msgstr "エージェントはステージ・コミット・ブランチの切り
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"
+
+msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
+msgstr "エージェントを settings.json に追加しましたが、まだ読み込まれていません。後で + メニューから開いてください。"
 
 msgid "The agent was stopped because it wasn't in use. Sending a message reconnects it"
 msgstr "使われていないのでエージェントを止めています。送信すると再接続します"

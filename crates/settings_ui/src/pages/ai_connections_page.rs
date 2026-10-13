@@ -51,9 +51,13 @@ pub(crate) enum ConnectionRunner {
 pub(crate) enum ConnectionStatus {
     Ready,
     NotSetUp,
-    /// Whether it is installed is decided on its own page (the official CLI's
-    /// lookup runs there).
-    SeeDetails,
+    /// Signed in, but the provider lists no model: a thread would have nothing
+    /// to run on.
+    NoModels,
+    /// The official CLI is not on this computer's `PATH`.
+    NotInstalled,
+    /// The `PATH` lookup for the official CLI has not finished.
+    Checking,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,6 +81,7 @@ pub(crate) struct ProviderState {
     pub(crate) id: SharedString,
     pub(crate) name: SharedString,
     pub(crate) authenticated: bool,
+    pub(crate) has_models: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -88,10 +93,13 @@ pub(crate) struct AgentState {
 
 /// The rows of each vendor's section, in [`AiVendor::ALL`]'s order, leaving
 /// out vendors with nothing to show.
+/// `claude_cli_installed` is the LLM Providers page's `PATH` lookup, `None`
+/// while it runs.
 pub(crate) fn connection_sections(
     providers: &[ProviderState],
     agents: Option<&[AgentState]>,
     claude_subscription_sign_in_allowed: bool,
+    claude_cli_installed: Option<bool>,
 ) -> Vec<(AiVendor, Vec<ConnectionRow>)> {
     let mut sections = AiVendor::ALL
         .iter()
@@ -109,7 +117,11 @@ pub(crate) fn connection_sections(
             label: "Claude Code".into(),
             sign_in: ConnectionSignIn::SubscriptionOrApiKey,
             runner: ConnectionRunner::OfficialCli,
-            status: ConnectionStatus::SeeDetails,
+            status: match claude_cli_installed {
+                None => ConnectionStatus::Checking,
+                Some(false) => ConnectionStatus::NotInstalled,
+                Some(true) => ConnectionStatus::Ready,
+            },
             destination: ConnectionDestination::LlmProviders,
         },
     );
@@ -186,10 +198,12 @@ pub(crate) fn connection_sections(
                     ProviderSignIn::Local => ConnectionSignIn::Local,
                 },
                 runner: ConnectionRunner::BuiltInAgent,
-                status: if provider.authenticated {
-                    ConnectionStatus::Ready
-                } else {
+                status: if !provider.authenticated {
                     ConnectionStatus::NotSetUp
+                } else if !provider.has_models {
+                    ConnectionStatus::NoModels
+                } else {
+                    ConnectionStatus::Ready
                 },
                 destination: ConnectionDestination::LlmProviders,
             },
@@ -263,6 +277,7 @@ fn gather_sections(
             id: provider.id().0,
             name: provider.name().0,
             authenticated: provider.is_authenticated(cx),
+            has_models: !provider.provided_models(cx).is_empty(),
         })
         .collect::<Vec<_>>();
     let agents = settings_window.active_project(cx).map(|project| {
@@ -280,15 +295,20 @@ fn gather_sections(
         &providers,
         agents.as_deref(),
         super::external_agents_page::claude_subscription_sign_in_allowed(cx),
+        settings_window.claude_cli.is_installed(),
     )
 }
 
 pub(crate) fn render_ai_connections_page(
     settings_window: &SettingsWindow,
     scroll_handle: &ScrollHandle,
-    _window: &mut Window,
+    window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
+    // The same lookup as the LLM Providers page, shared through the window.
+    if !settings_window.claude_cli.is_probed() {
+        super::start_claude_cli_probe(window, cx);
+    }
     let agent_enabled = AgentSettings::get_global(cx).enabled(cx);
     let sections = gather_sections(settings_window, cx);
     let has_workspace = settings_window.original_window.is_some();
@@ -392,9 +412,21 @@ fn render_row(
             Color::Muted,
             i18n::t!("Not Set Up").into(),
         ),
-        ConnectionStatus::SeeDetails => {
-            (IconName::Info, Color::Muted, i18n::t!("See Details").into())
-        }
+        ConnectionStatus::NoModels => (
+            IconName::Warning,
+            Color::Warning,
+            i18n::t!("No Models").into(),
+        ),
+        ConnectionStatus::NotInstalled => (
+            IconName::Circle,
+            Color::Muted,
+            i18n::t!("Not Installed").into(),
+        ),
+        ConnectionStatus::Checking => (
+            IconName::ArrowCircle,
+            Color::Muted,
+            i18n::t!("Checking…").into(),
+        ),
     };
     let (button_label, button_tooltip): (SharedString, Option<SharedString>) = match row.destination
     {
@@ -499,6 +531,7 @@ mod tests {
             id: id.to_string().into(),
             name: name.to_string().into(),
             authenticated,
+            has_models: true,
         }
     }
 
@@ -539,7 +572,7 @@ mod tests {
             agent("claude-acp", "Claude Agent", true),
             agent("opencode", "OpenCode", true),
         ];
-        let sections = connection_sections(&providers, Some(&agents), true);
+        let sections = connection_sections(&providers, Some(&agents), true, Some(true));
 
         assert_eq!(
             sections
@@ -553,7 +586,7 @@ mod tests {
         assert_eq!(
             rows(&sections, AiVendor::Anthropic),
             [
-                ("Claude Code".to_string(), SeeDetails, LlmProviders),
+                ("Claude Code".to_string(), Ready, LlmProviders),
                 ("Claude Agent".to_string(), Ready, ExternalAgents),
                 ("Anthropic".to_string(), NotSetUp, LlmProviders),
             ]
@@ -588,7 +621,12 @@ mod tests {
 
     #[test]
     fn a_custom_agent_under_a_vendor_id_is_not_that_vendors() {
-        let sections = connection_sections(&[], Some(&[agent("claude-acp", "Mine", false)]), true);
+        let sections = connection_sections(
+            &[],
+            Some(&[agent("claude-acp", "Mine", false)]),
+            true,
+            Some(true),
+        );
         assert_eq!(
             rows(&sections, AiVendor::Anthropic)[1],
             (
@@ -609,13 +647,18 @@ mod tests {
 
     #[test]
     fn without_a_project_no_agent_is_claimed_or_offered() {
-        let sections = connection_sections(&[provider("anthropic", "Anthropic", true)], None, true);
+        let sections = connection_sections(
+            &[provider("anthropic", "Anthropic", true)],
+            None,
+            true,
+            None,
+        );
         assert_eq!(
             rows(&sections, AiVendor::Anthropic),
             [
                 (
                     "Claude Code".to_string(),
-                    ConnectionStatus::SeeDetails,
+                    ConnectionStatus::Checking,
                     ConnectionDestination::LlmProviders
                 ),
                 (
@@ -645,6 +688,7 @@ mod tests {
             ],
             Some(&[agent("claude-acp", "Claude Agent", true)]),
             false,
+            Some(false),
         );
         let find = |label: &str| {
             sections
@@ -674,6 +718,50 @@ mod tests {
             row_badges(&find("Claude Agent")),
             ["API Key", "ACP Agent"],
             "with Claude's subscription sign-in turned off, only the key is left"
+        );
+    }
+
+    #[test]
+    fn claude_code_shows_whether_the_cli_is_on_path() {
+        let status = |installed: Option<bool>| {
+            connection_sections(&[], None, true, installed)
+                .into_iter()
+                .flat_map(|(_, rows)| rows)
+                .find(|row| row.label.as_ref() == "Claude Code")
+                .map(|row| row.status)
+        };
+        assert_eq!(status(None), Some(ConnectionStatus::Checking));
+        assert_eq!(status(Some(false)), Some(ConnectionStatus::NotInstalled));
+        assert_eq!(status(Some(true)), Some(ConnectionStatus::Ready));
+    }
+
+    #[test]
+    fn a_signed_in_provider_without_a_model_is_not_ready() {
+        let mut ollama = provider("ollama", "Ollama", true);
+        ollama.has_models = false;
+        let mut openai = provider("openai", "OpenAI", true);
+        openai.has_models = false;
+        let sections = connection_sections(
+            &[ollama, openai, provider("anthropic", "Anthropic", true)],
+            None,
+            true,
+            Some(true),
+        );
+        assert_eq!(
+            rows(&sections, AiVendor::Local),
+            [(
+                "Ollama".to_string(),
+                ConnectionStatus::NoModels,
+                ConnectionDestination::LlmProviders
+            )]
+        );
+        assert_eq!(
+            rows(&sections, AiVendor::OpenAi)[0].1,
+            ConnectionStatus::NoModels
+        );
+        assert_eq!(
+            rows(&sections, AiVendor::Anthropic)[1].1,
+            ConnectionStatus::Ready
         );
     }
 }

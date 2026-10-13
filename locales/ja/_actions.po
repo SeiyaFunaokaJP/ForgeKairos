@@ -195,6 +195,11 @@ msgctxt "action"
 msgid "agent::NewThread"
 msgstr "エージェント: 新規スレッド"
 
+#. agent: new thread with language model provider
+msgctxt "action"
+msgid "agent::NewThreadWithLanguageModelProvider"
+msgstr "エージェント: LLM プロバイダーで新しいスレッド"
+
 #. agent: open active thread as markdown
 msgctxt "action"
 msgid "agent::OpenActiveThreadAsMarkdown"
@@ -414,6 +419,11 @@ msgstr "エージェント: 生成を中断してすぐに送信"
 msgctxt "action"
 msgid "agent::SendNextQueuedMessage"
 msgstr "エージェント: キューの次のメッセージをすぐに送信"
+
+#. agent: set up language model provider
+msgctxt "action"
+msgid "agent::SetUpLanguageModelProvider"
+msgstr "エージェント: LLM プロバイダーを使えるようにする"
 
 #. agent: toggle
 msgctxt "action"
