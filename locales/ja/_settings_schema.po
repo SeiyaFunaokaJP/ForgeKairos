@@ -3252,6 +3252,10 @@ msgid "The position of project panel\n\nDefault: right (Agentic layout), left (C
 msgstr "プロジェクトパネルの位置です\n\n既定値: right (Agentic レイアウト)、left (Classic レイアウト)"
 
 msgctxt "settings schema"
+msgid "The private key file (an absolute path, or one starting with `~`) that pushing, pulling\nand fetching reach SSH remotes with, offered alone (`IdentitiesOnly`). Local projects\nonly. Not used when `GIT_SSH_COMMAND`, `GIT_SSH` or `core.sshCommand` is set."
+msgstr "SSH のリモートへのプッシュ・プル・フェッチで、この鍵だけを使う (`IdentitiesOnly`) 秘密鍵のファイル (絶対パス、または `~` で始まるパス)。ローカルのプロジェクトのみ。`GIT_SSH_COMMAND`・`GIT_SSH`・`core.sshCommand` が設定されているときは使いません。"
+
+msgctxt "settings schema"
 msgid "The program to run."
 msgstr "実行するプログラムです。"
 
