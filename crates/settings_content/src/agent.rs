@@ -1185,6 +1185,13 @@ pub struct ProjectThreadDefaultsContent {
     /// them outside it, which needs `sandbox_permissions.allow_outside_sandbox`;
     /// external agents then start outside it without asking.
     pub sandbox: Option<bool>,
+    /// Whether the built-in agent's network access stays limited to the
+    /// allowed hosts. `false` lets its terminal commands and fetches reach any
+    /// host without asking, which needs
+    /// `sandbox_permissions.allow_unrestricted_network`; the editor's network
+    /// allowlist still applies, and fetches still refuse local and private
+    /// addresses. Not applied to projects on a remote host yet.
+    pub network: Option<bool>,
 }
 
 #[with_fallible_options]
@@ -1202,6 +1209,15 @@ pub struct SandboxPermissionsContent {
     /// file is read: neither a project's settings nor an agent can turn it on.
     /// Default: false
     pub allow_outside_sandbox: Option<bool>,
+
+    /// Whether a thread of the built-in agent may lift its network restriction
+    /// (the network button next to the chat input): its sandboxed terminal
+    /// commands and fetches then reach any host without asking. While this is
+    /// off, that button asks to turn it on first. The editor's network
+    /// allowlist still applies. Only the user settings file is read: neither a
+    /// project's settings nor an agent can turn it on.
+    /// Default: false
+    pub allow_unrestricted_network: Option<bool>,
 
     /// Whether sandboxed terminal commands may always reach any host over the
     /// network without prompting.

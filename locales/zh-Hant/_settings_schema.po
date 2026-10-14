@@ -3947,6 +3947,10 @@ msgid "Whether a terminal opened over SSH runs its shell inside a session the\nr
 msgstr "透過 SSH 開啟的終端機是否在遠端伺服器保持運作的工作階段中執行其 Shell，讓連線中斷時既不會停止執行中的命令，也不會遺失輸出：重新連線後會再次顯示所有內容並繼續。僅適用於非 Windows 的 SSH 主機。\n\n預設值：true"
 
 msgctxt "settings schema"
+msgid "Whether a thread of the built-in agent may lift its network restriction\n(the network button next to the chat input): its sandboxed terminal\ncommands and fetches then reach any host without asking. While this is\noff, that button asks to turn it on first. The editor's network\nallowlist still applies. Only the user settings file is read: neither a\nproject's settings nor an agent can turn it on.\nDefault: false"
+msgstr "內建代理程式的會話是否可以解除其網路限制（聊天輸入欄旁的網路按鈕）：解除後，其沙箱中的終端機命令和 fetch 不經確認即可連線到任何主機。此項關閉時，該按鈕會先詢問是否開啟此項。編輯器的網路允許清單仍然適用。僅從使用者設定檔讀取：專案設定和代理程式都無法開啟它。\n預設值：false"
+
+msgctxt "settings schema"
 msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
 msgstr "代理寫入過的工作樹是否停止執行其自身的程式碼（專案語言伺服器模式、格式器、專案的 prettier），直到使用者檢閱變更並繼續執行。只從使用者設定檔案讀取：專案與伺服器設定無法將其關閉。\n\n預設值：true"
 
@@ -4153,6 +4157,10 @@ msgstr "是否在 ForgeKairos 工作階段之間重複使用中斷點。\n\n預�
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
 msgstr "即使上次關閉了其停駐區，是否仍在啟動時開啟瀏覽器面板。\n\n預設值：false"
+
+msgctxt "settings schema"
+msgid "Whether the built-in agent's network access stays limited to the\nallowed hosts. `false` lets its terminal commands and fetches reach any\nhost without asking, which needs\n`sandbox_permissions.allow_unrestricted_network`; the editor's network\nallowlist still applies, and fetches still refuse local and private\naddresses. Not applied to projects on a remote host yet."
+msgstr "內建代理程式的網路存取是否僅限於允許的主機。`false` 會讓其終端機命令和 fetch 不經確認即可連線到任何主機，這需要 `sandbox_permissions.allow_unrestricted_network`；編輯器的網路允許清單仍然適用，fetch 仍會拒絕本機和私人位址。尚不適用於遠端主機上的專案。"
 
 msgctxt "settings schema"
 msgid "Whether the built-in browser goes through the egress allowlist proxy.\n\nThe browser is human-driven, so like the terminal it is outside egress\ncontrol by default.\n\nDefault: false"

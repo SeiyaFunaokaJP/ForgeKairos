@@ -203,6 +203,12 @@ msgstr "由于此项目不受信任，所有工具均已禁用"
 msgid "Allow"
 msgstr "允许"
 
+msgid "Allow Any Host"
+msgstr "允许任意主机"
+
+msgid "Allow Lifting the Network Restriction?"
+msgstr "允许解除网络限制？"
+
 msgid "Allow Running Outside the Sandbox?"
 msgstr "允许在沙盒外运行？"
 
@@ -1097,6 +1103,15 @@ msgstr "在此面板的标签页中启动官方 Claude Code CLI。在 CLI 的界
 msgid "Learn More"
 msgstr "了解详情"
 
+msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
+msgstr "要让此会话的终端命令和 fetch 访问任意主机，需要开启智能体沙盒设置中的 `allow_unrestricted_network`，但它目前处于关闭状态。是否开启？在设置文件中关闭之前它会一直保持开启。网络允许列表仍然适用。"
+
+msgid "Lifting the network restriction is not available for external agents yet."
+msgstr "外部智能体暂不支持解除网络限制。"
+
+msgid "Lifting the network restriction is not available for projects on a remote host yet."
+msgstr "远程主机上的项目暂不支持解除网络限制。"
+
 msgid "Link only"
 msgstr "仅链接"
 
@@ -1183,6 +1198,12 @@ msgstr "网络访问"
 
 msgid "Network access"
 msgstr "网络访问"
+
+msgid "Network: Restricted"
+msgstr "网络：受限"
+
+msgid "Network: Unrestricted"
+msgstr "网络：不受限"
 
 msgid "New Agent Thread"
 msgstr "新建智能体会话"
@@ -1601,6 +1622,9 @@ msgstr "恢复到检查点"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "将项目中的所有文件还原为对话中此时间点的内容。"
 
+msgid "Restrict the Network"
+msgstr "限制网络"
+
 msgid "Restricted Mode"
 msgstr "受限模式"
 
@@ -1949,6 +1973,12 @@ msgstr "目标"
 msgid "Terminal"
 msgstr "终端"
 
+msgid "Terminal commands and fetches may reach any host without asking, within the network allowlist; fetches still never reach local or private addresses. Click to restrict this thread again. Right-click to set the default for this project."
+msgstr "终端命令和 fetch 可在网络允许列表范围内无需确认地访问任意主机；fetch 仍不会访问本地或私有地址。点击可重新限制此会话。右键点击可设置此项目的默认值。"
+
+msgid "Terminal commands and fetches reach only the allowed hosts and ask for others. Click to let this thread reach any host; commands still ask first as before. Right-click to set the default for this project."
+msgstr "终端命令和 fetch 只访问允许的主机，其他主机需要确认。点击可让此会话访问任意主机；命令仍会像以前一样先请求确认。右键点击可设置此项目的默认值。"
+
 msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
 msgstr "终端命令在沙盒内运行。点击以在沙盒外运行此会话的命令；每条命令仍会先询问。右键点击以设置此项目的默认值。"
 
@@ -1967,6 +1997,9 @@ msgstr "找不到发送到远程主机的 Claude Code。请重试。"
 msgid "The JSON is hidden because the saved settings contain values that look like secrets."
 msgstr "由于保存的设置包含看似机密的值，已隐藏 JSON。"
 
+msgid "The Network Restriction Stays On"
+msgstr "网络限制保持开启"
+
 msgid "The Zed server on the remote host is not ready yet (internal error)."
 msgstr "远程主机上的 ForgeKairos 服务器尚未就绪（内部错误）。"
 
@@ -1981,6 +2014,9 @@ msgstr "智能体可以暂存、提交、切换分支等，但钩子已关闭且
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "智能体无法使用 `getDiagnostics`，因此看不到编辑器显示的错误和警告。{reason}"
+
+msgid "The agent is starting. Try again once it has started."
+msgstr "智能体正在启动。请在启动完成后重试。"
 
 msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
 msgstr "智能体在沙盒内运行。点击以在沙盒外以新会话重新启动它。右键点击以设置此项目的默认值。"
@@ -2054,6 +2090,12 @@ msgstr "远程主机的可用空间不足（需要 {required} MB，可用 {avail
 
 msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
 msgstr "远程主机上没有 `sha256sum`，因此无法确认 Claude Code 未被替换。请在远程主机上安装 coreutils 后重试。"
+
+msgid "The sandbox is off, so the network is not restricted either."
+msgstr "沙盒已关闭，因此网络也不受限制。"
+
+msgid "The sandbox is turned off for this thread."
+msgstr "此会话的沙盒已关闭。"
 
 msgid "The sandboxed Claude Code is not available because no folder is open."
 msgstr "由于未打开任何文件夹，沙盒版 Claude Code 不可用。"
@@ -2435,6 +2477,9 @@ msgstr "按原样使用你平时的设置和登录。"
 
 msgid "[Unsupported message content — this message cannot be edited or resent]"
 msgstr "[不受支持的消息内容——此消息无法编辑或重新发送]"
+
+msgid "`allow_unrestricted_network` did not take effect. A settings profile or the global settings file may keep it off."
+msgstr "`allow_unrestricted_network` 未生效。设置配置文件或全局设置文件可能使其保持关闭。"
 
 msgid "a URI"
 msgstr "URI"

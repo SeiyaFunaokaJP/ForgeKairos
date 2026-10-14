@@ -200,6 +200,12 @@ msgstr "このプロジェクトは未信頼のため、ツールをすべて無
 msgid "Allow"
 msgstr "許可"
 
+msgid "Allow Any Host"
+msgstr "すべてのホストを許可"
+
+msgid "Allow Lifting the Network Restriction?"
+msgstr "ネットワーク制限の解除を許可しますか？"
+
 msgid "Allow Running Outside the Sandbox?"
 msgstr "サンドボックスの外での実行を許可しますか？"
 
@@ -1094,6 +1100,15 @@ msgstr "公式の Claude Code CLI をこのパネルのタブで起動します�
 msgid "Learn More"
 msgstr "詳細"
 
+msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
+msgstr "このスレッドのターミナルのコマンドと fetch がすべてのホストに接続できるようにするには、エージェントのサンドボックス設定の `allow_unrestricted_network` が必要ですが、オフになっています。オンにしますか？ 設定ファイルでオフにするまでオンのままです。ネットワークの許可リストは引き続き適用されます。"
+
+msgid "Lifting the network restriction is not available for external agents yet."
+msgstr "外部エージェントでは、ネットワーク制限の解除はまだ使えません。"
+
+msgid "Lifting the network restriction is not available for projects on a remote host yet."
+msgstr "リモートホスト上のプロジェクトでは、ネットワーク制限の解除はまだ使えません。"
+
 msgid "Link only"
 msgstr "リンクのみ"
 
@@ -1180,6 +1195,12 @@ msgstr "ネットワークアクセス"
 
 msgid "Network access"
 msgstr "ネットワークアクセス"
+
+msgid "Network: Restricted"
+msgstr "ネットワーク: 制限あり"
+
+msgid "Network: Unrestricted"
+msgstr "ネットワーク: 制限なし"
 
 msgid "New Agent Thread"
 msgstr "新しいエージェントスレッド"
@@ -1598,6 +1619,9 @@ msgstr "チェックポイントを復元"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "プロジェクト内のすべてのファイルを、会話のこの時点の内容に復元します。"
 
+msgid "Restrict the Network"
+msgstr "ネットワークを制限する"
+
 msgid "Restricted Mode"
 msgstr "制限モード"
 
@@ -1946,6 +1970,12 @@ msgstr "解決先"
 msgid "Terminal"
 msgstr "ターミナル"
 
+msgid "Terminal commands and fetches may reach any host without asking, within the network allowlist; fetches still never reach local or private addresses. Click to restrict this thread again. Right-click to set the default for this project."
+msgstr "ターミナルのコマンドと fetch は、ネットワークの許可リストの範囲で、確認なしにすべてのホストに接続できます。fetch はローカルやプライベートのアドレスには引き続き接続しません。クリックでこのスレッドを再び制限します。右クリックでこのプロジェクトの既定を設定します。"
+
+msgid "Terminal commands and fetches reach only the allowed hosts and ask for others. Click to let this thread reach any host; commands still ask first as before. Right-click to set the default for this project."
+msgstr "ターミナルのコマンドと fetch は許可されたホストにだけ接続し、それ以外は確認します。クリックでこのスレッドがすべてのホストに接続できるようにします (コマンドの確認はこれまでどおりです)。右クリックでこのプロジェクトの既定を設定します。"
+
 msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
 msgstr "ターミナルのコマンドはサンドボックスの中で実行されます。クリックすると、このスレッドのコマンドをサンドボックスの外で実行します (1 件ずつ確認は続きます)。右クリックで、このプロジェクトの既定を設定します。"
 
@@ -1964,6 +1994,9 @@ msgstr "接続先へ送った Claude Code が見つかりません。もう一�
 msgid "The JSON is hidden because the saved settings contain values that look like secrets."
 msgstr "保存済みの設定に秘密情報らしい値が含まれるため、JSON を隠しています。"
 
+msgid "The Network Restriction Stays On"
+msgstr "ネットワーク制限はオンのままです"
+
 msgid "The Zed server on the remote host is not ready yet (internal error)."
 msgstr "接続先のホストの ForgeKairos サーバーがまだ用意されていません (内部エラー)。"
 
@@ -1978,6 +2011,9 @@ msgstr "エージェントはステージ・コミット・ブランチの切り
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"
+
+msgid "The agent is starting. Try again once it has started."
+msgstr "エージェントを起動しています。起動してからもう一度お試しください。"
 
 msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
 msgstr "エージェントはサンドボックスの中で動いています。クリックすると、サンドボックスの外で新しいセッションとして起動し直します。右クリックで、このプロジェクトの既定を設定します。"
@@ -2051,6 +2087,12 @@ msgstr "接続先のホストの空き容量が足りません (必要 {required
 
 msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
 msgstr "接続先のホストに `sha256sum` がないため、Claude Code が置き換えられていないことを確認できません。接続先に coreutils をインストールしてから再試行してください。"
+
+msgid "The sandbox is off, so the network is not restricted either."
+msgstr "サンドボックスがオフのため、ネットワークも制限されていません。"
+
+msgid "The sandbox is turned off for this thread."
+msgstr "このスレッドではサンドボックスがオフになっています。"
 
 msgid "The sandboxed Claude Code is not available because no folder is open."
 msgstr "フォルダーを開いていないため、サンドボックスの Claude Code は使えません。"
@@ -2432,6 +2474,9 @@ msgstr "設定とログインは普段のものをそのまま使います。"
 
 msgid "[Unsupported message content — this message cannot be edited or resent]"
 msgstr "[サポートされていないメッセージの内容 — このメッセージは編集も再送信もできません]"
+
+msgid "`allow_unrestricted_network` did not take effect. A settings profile or the global settings file may keep it off."
+msgstr "`allow_unrestricted_network` が有効になりませんでした。設定プロファイルやグローバル設定ファイルでオフに保たれている可能性があります。"
 
 msgid "a URI"
 msgstr "URI"

@@ -203,6 +203,12 @@ msgstr "Alle Tools sind deaktiviert, weil diesem Projekt nicht vertraut wird"
 msgid "Allow"
 msgstr "Zulassen"
 
+msgid "Allow Any Host"
+msgstr "Jeden Host zulassen"
+
+msgid "Allow Lifting the Network Restriction?"
+msgstr "Aufheben der Netzwerkbeschränkung zulassen?"
+
 msgid "Allow Running Outside the Sandbox?"
 msgstr "Ausführung außerhalb der Sandbox zulassen?"
 
@@ -1100,6 +1106,15 @@ msgstr "Startet die offizielle Claude Code CLI in einem Tab dieses Panels. Sie m
 msgid "Learn More"
 msgstr "Mehr erfahren"
 
+msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
+msgstr "Damit die Terminalbefehle und Abrufe (fetch) dieses Threads jeden Host erreichen können, wird `allow_unrestricted_network` in den Sandbox-Einstellungen des Agenten benötigt, das ausgeschaltet ist. Einschalten? Es bleibt eingeschaltet, bis du es in deiner Einstellungsdatei ausschaltest. Die Netzwerk-Zulassungsliste gilt weiterhin."
+
+msgid "Lifting the network restriction is not available for external agents yet."
+msgstr "Das Aufheben der Netzwerkbeschränkung ist für externe Agenten noch nicht verfügbar."
+
+msgid "Lifting the network restriction is not available for projects on a remote host yet."
+msgstr "Das Aufheben der Netzwerkbeschränkung ist für Projekte auf einem Remote-Host noch nicht verfügbar."
+
 msgid "Link only"
 msgstr "Nur Link"
 
@@ -1186,6 +1201,12 @@ msgstr "Netzwerkzugriff"
 
 msgid "Network access"
 msgstr "Netzwerkzugriff"
+
+msgid "Network: Restricted"
+msgstr "Netzwerk: Beschränkt"
+
+msgid "Network: Unrestricted"
+msgstr "Netzwerk: Unbeschränkt"
 
 msgid "New Agent Thread"
 msgstr "Neuer Agent-Thread"
@@ -1604,6 +1625,9 @@ msgstr "Prüfpunkt wiederherstellen"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "Stellt für alle Dateien im Projekt den Inhalt wieder her, den sie zu diesem Zeitpunkt in der Konversation hatten."
 
+msgid "Restrict the Network"
+msgstr "Netzwerk beschränken"
+
 msgid "Restricted Mode"
 msgstr "Eingeschränkter Modus"
 
@@ -1952,6 +1976,12 @@ msgstr "Ziel"
 msgid "Terminal"
 msgstr "Terminal"
 
+msgid "Terminal commands and fetches may reach any host without asking, within the network allowlist; fetches still never reach local or private addresses. Click to restrict this thread again. Right-click to set the default for this project."
+msgstr "Terminalbefehle und Abrufe (fetch) können innerhalb der Netzwerk-Zulassungsliste ohne Nachfrage jeden Host erreichen; Abrufe erreichen weiterhin nie lokale oder private Adressen. Klicken, um diesen Thread wieder zu beschränken. Rechtsklick, um den Standard für dieses Projekt festzulegen."
+
+msgid "Terminal commands and fetches reach only the allowed hosts and ask for others. Click to let this thread reach any host; commands still ask first as before. Right-click to set the default for this project."
+msgstr "Terminalbefehle und Abrufe (fetch) erreichen nur die zugelassenen Hosts und fragen bei anderen nach. Klicken, damit dieser Thread jeden Host erreichen kann; Befehle fragen weiterhin wie bisher zuerst nach. Rechtsklick, um den Standard für dieses Projekt festzulegen."
+
 msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
 msgstr "Terminalbefehle werden in der Sandbox ausgeführt. Klicken, um die Befehle dieses Threads außerhalb davon auszuführen; jeder fragt weiterhin zuerst nach. Rechtsklick, um den Standard für dieses Projekt festzulegen."
 
@@ -1970,6 +2000,9 @@ msgstr "Das an den Remote-Host gesendete Claude Code wurde nicht gefunden. Bitte
 msgid "The JSON is hidden because the saved settings contain values that look like secrets."
 msgstr "Das JSON ist ausgeblendet, weil die gespeicherten Einstellungen Werte enthalten, die wie Geheimnisse aussehen."
 
+msgid "The Network Restriction Stays On"
+msgstr "Die Netzwerkbeschränkung bleibt eingeschaltet"
+
 msgid "The Zed server on the remote host is not ready yet (internal error)."
 msgstr "Der ForgeKairos-Server auf dem Remote-Host ist noch nicht bereit (interner Fehler)."
 
@@ -1984,6 +2017,9 @@ msgstr "Der Agent kann stagen, committen, Branches wechseln usw., mit ausgeschal
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "Der Agent kann `getDiagnostics` nicht verwenden und sieht daher die Fehler und Warnungen nicht, die der Editor anzeigt. {reason}"
+
+msgid "The agent is starting. Try again once it has started."
+msgstr "Der Agent wird gestartet. Versuche es erneut, sobald er gestartet ist."
 
 msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
 msgstr "Der Agent läuft in der Sandbox. Klicken, um ihn außerhalb der Sandbox in einer neuen Sitzung neu zu starten. Rechtsklick, um den Standard für dieses Projekt festzulegen."
@@ -2058,6 +2094,12 @@ msgstr "Der Remote-Host hat nicht genügend freien Speicherplatz ({required} MB 
 
 msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
 msgstr "Auf dem Remote-Host gibt es kein `sha256sum`, daher kann nicht bestätigt werden, dass Claude Code nicht ersetzt wurde. Installieren Sie coreutils auf dem Remote-Host und versuchen Sie es erneut."
+
+msgid "The sandbox is off, so the network is not restricted either."
+msgstr "Die Sandbox ist ausgeschaltet, daher ist auch das Netzwerk nicht beschränkt."
+
+msgid "The sandbox is turned off for this thread."
+msgstr "Die Sandbox ist für diesen Thread ausgeschaltet."
 
 msgid "The sandboxed Claude Code is not available because no folder is open."
 msgstr "Claude Code in der Sandbox ist nicht verfügbar, weil kein Ordner geöffnet ist."
@@ -2439,6 +2481,9 @@ msgstr "Ihre üblichen Einstellungen und Ihre Anmeldung werden unverändert verw
 
 msgid "[Unsupported message content — this message cannot be edited or resent]"
 msgstr "[Nicht unterstützter Nachrichteninhalt – diese Nachricht kann nicht bearbeitet oder erneut gesendet werden]"
+
+msgid "`allow_unrestricted_network` did not take effect. A settings profile or the global settings file may keep it off."
+msgstr "`allow_unrestricted_network` wurde nicht wirksam. Ein Einstellungsprofil oder die globale Einstellungsdatei hält es möglicherweise ausgeschaltet."
 
 msgid "a URI"
 msgstr "eine URI"

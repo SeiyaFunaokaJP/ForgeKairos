@@ -3947,6 +3947,10 @@ msgid "Whether a terminal opened over SSH runs its shell inside a session the\nr
 msgstr "通过 SSH 打开的终端是否在远程服务器保持活动的会话中运行其 Shell，使连接断开时既不会停止正在运行的命令，也不会丢失输出：重新连接后会再次显示所有内容并继续。仅适用于非 Windows 的 SSH 主机。\n\n默认值：true"
 
 msgctxt "settings schema"
+msgid "Whether a thread of the built-in agent may lift its network restriction\n(the network button next to the chat input): its sandboxed terminal\ncommands and fetches then reach any host without asking. While this is\noff, that button asks to turn it on first. The editor's network\nallowlist still applies. Only the user settings file is read: neither a\nproject's settings nor an agent can turn it on.\nDefault: false"
+msgstr "内置智能体的会话是否可以解除其网络限制（聊天输入框旁的网络按钮）：解除后，其沙盒中的终端命令和 fetch 无需确认即可访问任意主机。此项关闭时，该按钮会先询问是否开启此项。编辑器的网络允许列表仍然适用。仅从用户设置文件读取：项目设置和智能体都无法开启它。\n默认值：false"
+
+msgctxt "settings schema"
 msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
 msgstr "智能体写入过的工作树是否停止运行其自身的代码（项目语言服务器模式、格式化程序、项目的 prettier），直到用户审阅更改并恢复它。仅从用户设置文件中读取：项目和服务器设置无法将其关闭。\n\n默认值：true"
 
@@ -4153,6 +4157,10 @@ msgstr "是否在 ForgeKairos 会话之间重用断点。\n\n默认值：true"
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
 msgstr "即使上次关闭了其停靠栏，是否也在启动时打开浏览器面板。\n\n默认值：false"
+
+msgctxt "settings schema"
+msgid "Whether the built-in agent's network access stays limited to the\nallowed hosts. `false` lets its terminal commands and fetches reach any\nhost without asking, which needs\n`sandbox_permissions.allow_unrestricted_network`; the editor's network\nallowlist still applies, and fetches still refuse local and private\naddresses. Not applied to projects on a remote host yet."
+msgstr "内置智能体的网络访问是否仅限于允许的主机。`false` 会让其终端命令和 fetch 无需确认即可访问任意主机，这需要 `sandbox_permissions.allow_unrestricted_network`；编辑器的网络允许列表仍然适用，fetch 仍会拒绝本地和私有地址。暂不适用于远程主机上的项目。"
 
 msgctxt "settings schema"
 msgid "Whether the built-in browser goes through the egress allowlist proxy.\n\nThe browser is human-driven, so like the terminal it is outside egress\ncontrol by default.\n\nDefault: false"

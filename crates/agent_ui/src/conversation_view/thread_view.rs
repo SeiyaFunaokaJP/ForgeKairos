@@ -4924,6 +4924,7 @@ impl ThreadView {
                                     .children(self.render_tool_permission_control(cx))
                                     .children(self.render_git_operations_toggle(cx))
                                     .children(self.render_sandbox_toggle(cx))
+                                    .children(self.render_network_toggle(cx))
                                     .children(self.profile_selector.clone())
                                     // 思考の制御はモデルセレクターの直左に置く。
                                     // 左クラスターに埋もれていて見つからないという
@@ -5467,7 +5468,16 @@ impl ThreadView {
         let tooltip = match status.settings_sandbox {
             // With the sandbox off in settings the per-thread grants are moot,
             // so don't show them.
-            ThreadSandbox::Unsandboxed => SandboxStatusTooltip::disabled_in_settings(),
+            ThreadSandbox::Unsandboxed => {
+                if self
+                    .as_native_thread(cx)
+                    .is_some_and(|thread| thread.read(cx).sandbox_choice() == Some(false))
+                {
+                    SandboxStatusTooltip::disabled_for_thread()
+                } else {
+                    SandboxStatusTooltip::disabled_in_settings()
+                }
+            }
             ThreadSandbox::Sandboxed(settings_policy) => {
                 let settings = augment_settings_sandbox_policy(&settings_policy, baseline);
                 let thread = SandboxPolicyDisplay::from_policy(&status.thread_policy);
@@ -6455,7 +6465,16 @@ impl ThreadView {
     fn render_sandbox_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let sandboxed = self.thread_sandboxed(cx)?;
         let native = self.as_native_thread(cx).is_some();
+        let starting = self.external_agent_starting(cx);
         let (tooltip_title, tooltip_meta) = match (sandboxed, native) {
+            (_, false) if starting => (
+                if sandboxed {
+                    i18n::t!("Sandbox: On")
+                } else {
+                    i18n::t!("Sandbox: Off")
+                },
+                i18n::t!("The agent is starting. Try again once it has started."),
+            ),
             (true, true) => (
                 i18n::t!("Sandbox: On"),
                 i18n::t!(
@@ -6502,6 +6521,7 @@ impl ThreadView {
         } else {
             Color::Warning
         })
+        .disabled(starting)
         .tooltip(move |_window, cx| Tooltip::with_meta(tooltip_title, None, tooltip_meta, cx))
         .on_click(cx.listener(move |this, _, window, cx| {
             this.toggle_thread_sandbox(sandboxed, window, cx);
@@ -6555,6 +6575,175 @@ impl ThreadView {
         )
     }
 
+    /// Whether this thread's external agent is (re)starting, so that its sandbox switch has no
+    /// connection to start again yet.
+    fn external_agent_starting(&self, cx: &App) -> bool {
+        self.as_native_thread(cx).is_none()
+            && self
+                .server_view
+                .upgrade()
+                .is_some_and(|server_view| server_view.read(cx).is_loading())
+    }
+
+    /// The thread's network switch (ADR-F96 stage 2), shown wherever its sandbox switch is. The
+    /// built-in agent's terminal commands and fetches keep to the allowed hosts, or reach any host
+    /// from the next one on. It is disabled, with the reason, for external agents and projects on
+    /// a remote host (not covered yet) and while the sandbox is off (nothing left to restrict). A
+    /// right click picks what new threads in this project start with.
+    fn render_network_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.thread_sandboxed(cx)?;
+        let project = self.thread.read(cx).project().clone();
+        let native_thread = self.as_native_thread(cx);
+        let (unrestricted, disabled_reason) = match &native_thread {
+            Some(thread) => {
+                let thread = thread.read(cx);
+                if thread.sandbox_turned_off(cx) {
+                    (
+                        true,
+                        Some(i18n::t!(
+                            "The sandbox is off, so the network is not restricted either."
+                        )),
+                    )
+                } else if !project.read(cx).is_local() {
+                    (
+                        thread.network_restriction_turned_off(cx),
+                        Some(i18n::t!(
+                            "Lifting the network restriction is not available for projects on a \
+                             remote host yet."
+                        )),
+                    )
+                } else {
+                    (thread.network_restriction_turned_off(cx), None)
+                }
+            }
+            None => (
+                false,
+                Some(i18n::t!(
+                    "Lifting the network restriction is not available for external agents yet."
+                )),
+            ),
+        };
+        let tooltip_title = if unrestricted {
+            i18n::t!("Network: Unrestricted")
+        } else {
+            i18n::t!("Network: Restricted")
+        };
+        let tooltip_meta = match disabled_reason {
+            Some(reason) => reason,
+            None if unrestricted => i18n::t!(
+                "Terminal commands and fetches may reach any host without asking, within the \
+                 network allowlist; fetches still never reach local or private addresses. Click to \
+                 restrict this thread again. Right-click to set the default for this project."
+            ),
+            None => i18n::t!(
+                "Terminal commands and fetches reach only the allowed hosts and ask for others. \
+                 Click to let this thread reach any host; commands still ask first as before. \
+                 Right-click to set the default for this project."
+            ),
+        };
+        let enabled = disabled_reason.is_none();
+        let button = IconButton::new("thread-network", IconName::Public)
+            .icon_size(IconSize::Small)
+            .icon_color(if unrestricted {
+                Color::Warning
+            } else {
+                Color::Muted
+            })
+            .disabled(!enabled)
+            .tooltip(move |_window, cx| Tooltip::with_meta(tooltip_title, None, tooltip_meta, cx))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.toggle_thread_network(unrestricted, window, cx);
+            }));
+        if native_thread.is_none() || !project.read(cx).is_local() {
+            return Some(button.into_any_element());
+        }
+        Some(
+            right_click_menu("thread-network-default")
+                .trigger(move |_, _, _| button)
+                .menu(move |window, cx| {
+                    let project = project.clone();
+                    ContextMenu::build(window, cx, move |menu, _, cx| {
+                        let current =
+                            project::agent_sandbox::project_default_network(project.read(cx), cx);
+                        let entry =
+                            |menu: ContextMenu, label: &'static str, value: Option<bool>| {
+                                let project = project.clone();
+                                menu.toggleable_entry(
+                                    label,
+                                    current == value,
+                                    IconPosition::Start,
+                                    None,
+                                    move |window, cx| {
+                                        if value != Some(false) {
+                                            set_project_default_network(&project, value, cx);
+                                            return;
+                                        }
+                                        let fs = project.read(cx).fs().clone();
+                                        let allowed = crate::sandboxed_claude_code::allow_unrestricted_network_first(
+                                            fs, window, cx,
+                                        );
+                                        let project = project.clone();
+                                        cx.spawn(async move |cx| {
+                                            if allowed.await {
+                                                cx.update(|cx| {
+                                                    set_project_default_network(&project, value, cx)
+                                                });
+                                            }
+                                        })
+                                        .detach();
+                                    },
+                                )
+                            };
+                        let menu = menu.header(i18n::t!("New Threads in This Project"));
+                        let menu = entry(menu, i18n::t!("Follow the Settings"), None);
+                        let menu = entry(menu, i18n::t!("Restrict the Network"), Some(true));
+                        entry(menu, i18n::t!("Allow Any Host"), Some(false))
+                    })
+                })
+                .into_any_element(),
+        )
+    }
+
+    /// Keeps or lifts the network restriction for this thread (ADR-F96 stage 2). Lifting it first
+    /// makes sure the user allows that at all (`allow_unrestricted_network`).
+    fn toggle_thread_network(
+        &mut self,
+        unrestricted: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(thread) = self.as_native_thread(cx) else {
+            return;
+        };
+        // The settings' own "any host" already lets a choice to lift the restriction count, so
+        // there is nothing to ask about.
+        if unrestricted
+            || AgentSettings::get_global(cx)
+                .sandbox_permissions
+                .allow_all_hosts
+        {
+            thread.update(cx, |thread, cx| {
+                thread.set_network_choice(Some(unrestricted), cx)
+            });
+            cx.notify();
+            return;
+        }
+        let fs = self.thread.read(cx).project().read(cx).fs().clone();
+        let allowed =
+            crate::sandboxed_claude_code::allow_unrestricted_network_first(fs, window, cx);
+        cx.spawn(async move |this, cx| {
+            if !allowed.await {
+                return;
+            }
+            this.update(cx, |_this, cx| {
+                thread.update(cx, |thread, cx| thread.set_network_choice(Some(false), cx));
+                cx.notify();
+            })
+            .log_err();
+        })
+        .detach();
+    }
+
     /// Turns the sandbox on or off for this thread (ADR-F96). Turning it off first makes sure
     /// running outside the sandbox is allowed at all (ADR-F92).
     fn toggle_thread_sandbox(
@@ -6587,6 +6776,11 @@ impl ThreadView {
         let Some(server_view) = self.server_view.upgrade() else {
             return;
         };
+        // While the agent is starting there is no connection to start again,
+        // so asking (and writing the setting) would come to nothing.
+        if server_view.read(cx).is_loading() {
+            return;
+        }
         if !sandboxed {
             server_view.update(cx, |server_view, cx| {
                 if server_view.can_restart_in_sandbox(cx) {
@@ -6616,6 +6810,21 @@ impl ThreadView {
 /// Writes what new threads in `project` start with, in the user's settings file, under each of
 /// its folders (ADR-F96); `None` removes it, so that the settings decide.
 fn set_project_default_sandbox(project: &Entity<Project>, sandbox: Option<bool>, cx: &mut App) {
+    set_project_default(project, sandbox, |defaults| &mut defaults.sandbox, cx);
+}
+
+/// Writes whether new threads in `project` keep the network restriction (ADR-F96 stage 2), the
+/// same way as [`set_project_default_sandbox`].
+fn set_project_default_network(project: &Entity<Project>, network: Option<bool>, cx: &mut App) {
+    set_project_default(project, network, |defaults| &mut defaults.network, cx);
+}
+
+fn set_project_default(
+    project: &Entity<Project>,
+    value: Option<bool>,
+    field: fn(&mut settings::ProjectThreadDefaultsContent) -> &mut Option<bool>,
+    cx: &mut App,
+) {
     let keys = project::agent_sandbox::project_thread_defaults_keys(project.read(cx), cx);
     if keys.is_empty() {
         return;
@@ -6628,11 +6837,11 @@ fn set_project_default_sandbox(project: &Entity<Project>, sandbox: Option<bool>,
             .project_thread_defaults
             .get_or_insert_default();
         for key in keys {
-            match sandbox {
-                Some(sandbox) => defaults.entry(key).or_default().sandbox = Some(sandbox),
+            match value {
+                Some(value) => *field(defaults.entry(key).or_default()) = Some(value),
                 None => {
                     if let Some(entry) = defaults.get_mut(&key) {
-                        entry.sandbox = None;
+                        *field(entry) = None;
                         if *entry == settings::ProjectThreadDefaultsContent::default() {
                             defaults.remove(&key);
                         }

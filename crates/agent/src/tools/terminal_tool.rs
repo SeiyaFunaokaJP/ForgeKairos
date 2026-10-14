@@ -560,6 +560,11 @@ async fn run_terminal_tool(
                 // 決定 2: the command is now known to run inside the sandbox,
                 // which is what lets the rules tolerate a shell substitution.
                 .in_sandbox();
+                let context = if event_stream.network_restriction_turned_off_by_thread(cx) {
+                    context.with_network_unrestricted_for_thread()
+                } else {
+                    context
+                };
                 event_stream.authorize(SharedString::new(input.command.clone()), context, cx)
             } else {
                 // ADR-F92: the one reader every gate shares, which refuses
@@ -598,11 +603,9 @@ async fn run_terminal_tool(
     let want_fs_write_all = sandboxing && sandbox_input.allow_fs_write_all == Some(true);
     let want_all_hosts = sandboxing && sandbox_input.allow_all_hosts == Some(true);
 
-    let persistent = cx.update(|cx| {
-        agent_settings::AgentSettings::get_global(cx)
-            .sandbox_permissions
-            .clone()
-    });
+    // ADR-F96 stage 2: with the thread's network restriction lifted, these
+    // read as "any host", so that no host needs asking for.
+    let persistent = cx.update(|cx| event_stream.sandbox_permissions(cx));
 
     // Standing permissions the user already approved — in settings or "for this
     // thread" — that every command in the thread inherits and that the model

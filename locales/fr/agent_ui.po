@@ -203,6 +203,12 @@ msgstr "Tous les outils sont désactivés, car ce projet n'est pas approuvé"
 msgid "Allow"
 msgstr "Autoriser"
 
+msgid "Allow Any Host"
+msgstr "Autoriser n'importe quel hôte"
+
+msgid "Allow Lifting the Network Restriction?"
+msgstr "Autoriser la levée de la restriction réseau ?"
+
 msgid "Allow Running Outside the Sandbox?"
 msgstr "Autoriser l'exécution hors du bac à sable ?"
 
@@ -1100,6 +1106,15 @@ msgstr "Lance la CLI officielle de Claude Code dans un onglet de ce panneau. Vou
 msgid "Learn More"
 msgstr "En savoir plus"
 
+msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
+msgstr "Pour que les commandes de terminal et les récupérations (fetch) de cette conversation atteignent n'importe quel hôte, il faut `allow_unrestricted_network` dans les paramètres du bac à sable de l'agent, qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez dans votre fichier de paramètres. La liste d'autorisation réseau s'applique toujours."
+
+msgid "Lifting the network restriction is not available for external agents yet."
+msgstr "La levée de la restriction réseau n'est pas encore disponible pour les agents externes."
+
+msgid "Lifting the network restriction is not available for projects on a remote host yet."
+msgstr "La levée de la restriction réseau n'est pas encore disponible pour les projets sur un hôte distant."
+
 msgid "Link only"
 msgstr "Lien uniquement"
 
@@ -1186,6 +1201,12 @@ msgstr "Accès réseau"
 
 msgid "Network access"
 msgstr "Accès réseau"
+
+msgid "Network: Restricted"
+msgstr "Réseau : restreint"
+
+msgid "Network: Unrestricted"
+msgstr "Réseau : non restreint"
 
 msgid "New Agent Thread"
 msgstr "Nouvelle conversation avec l'agent"
@@ -1604,6 +1625,9 @@ msgstr "Restaurer le point de contrôle"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "Restaure tous les fichiers du projet à l'état qu'ils avaient à ce point de la conversation."
 
+msgid "Restrict the Network"
+msgstr "Restreindre le réseau"
+
 msgid "Restricted Mode"
 msgstr "Mode restreint"
 
@@ -1952,6 +1976,12 @@ msgstr "Cible"
 msgid "Terminal"
 msgstr "Terminal"
 
+msgid "Terminal commands and fetches may reach any host without asking, within the network allowlist; fetches still never reach local or private addresses. Click to restrict this thread again. Right-click to set the default for this project."
+msgstr "Les commandes de terminal et les récupérations (fetch) peuvent atteindre n'importe quel hôte sans demander, dans les limites de la liste d'autorisation réseau ; les récupérations n'atteignent toujours jamais les adresses locales ou privées. Cliquez pour restreindre de nouveau cette conversation. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "Terminal commands and fetches reach only the allowed hosts and ask for others. Click to let this thread reach any host; commands still ask first as before. Right-click to set the default for this project."
+msgstr "Les commandes de terminal et les récupérations (fetch) n'atteignent que les hôtes autorisés et demandent pour les autres. Cliquez pour permettre à cette conversation d'atteindre n'importe quel hôte ; les commandes demandent toujours d'abord, comme avant. Clic droit pour définir la valeur par défaut de ce projet."
+
 msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
 msgstr "Les commandes du terminal s'exécutent dans le bac à sable. Cliquez pour exécuter les commandes de cette conversation hors de celui-ci ; chacune demande toujours une confirmation. Clic droit pour définir la valeur par défaut de ce projet."
 
@@ -1970,6 +2000,9 @@ msgstr "Le Claude Code envoyé à l'hôte distant est introuvable. Réessayez."
 msgid "The JSON is hidden because the saved settings contain values that look like secrets."
 msgstr "Le JSON est masqué, car les paramètres enregistrés contiennent des valeurs qui ressemblent à des secrets."
 
+msgid "The Network Restriction Stays On"
+msgstr "La restriction réseau reste activée"
+
 msgid "The Zed server on the remote host is not ready yet (internal error)."
 msgstr "Le serveur ForgeKairos de l'hôte distant n'est pas encore prêt (erreur interne)."
 
@@ -1984,6 +2017,9 @@ msgstr "L'agent peut indexer, valider, changer de branche, etc., avec les hooks 
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "L'agent ne peut pas utiliser `getDiagnostics` : il ne voit donc pas les erreurs et avertissements affichés par l'éditeur. {reason}"
+
+msgid "The agent is starting. Try again once it has started."
+msgstr "L'agent est en cours de démarrage. Réessayez une fois qu'il a démarré."
 
 msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
 msgstr "L'agent s'exécute dans le bac à sable. Cliquez pour le redémarrer hors du bac à sable, dans une nouvelle session. Clic droit pour définir la valeur par défaut de ce projet."
@@ -2058,6 +2094,12 @@ msgstr "L'hôte distant ne dispose pas de suffisamment d'espace libre ({required
 
 msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
 msgstr "L'hôte distant ne dispose pas de `sha256sum` : il est donc impossible de confirmer que Claude Code n'a pas été remplacé. Installez coreutils sur l'hôte distant et réessayez."
+
+msgid "The sandbox is off, so the network is not restricted either."
+msgstr "Le bac à sable est désactivé, donc le réseau n'est pas restreint non plus."
+
+msgid "The sandbox is turned off for this thread."
+msgstr "Le bac à sable est désactivé pour cette conversation."
 
 msgid "The sandboxed Claude Code is not available because no folder is open."
 msgstr "Le Claude Code en bac à sable n'est pas disponible, car aucun dossier n'est ouvert."
@@ -2439,6 +2481,9 @@ msgstr "Vos paramètres et votre connexion habituels sont utilisés tels quels."
 
 msgid "[Unsupported message content — this message cannot be edited or resent]"
 msgstr "[Contenu de message non pris en charge — ce message ne peut être ni modifié ni renvoyé]"
+
+msgid "`allow_unrestricted_network` did not take effect. A settings profile or the global settings file may keep it off."
+msgstr "`allow_unrestricted_network` n'a pas pris effet. Un profil de paramètres ou le fichier de paramètres global le maintient peut-être désactivé."
 
 msgid "a URI"
 msgstr "un URI"

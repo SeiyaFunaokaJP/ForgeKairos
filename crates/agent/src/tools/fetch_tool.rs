@@ -274,7 +274,10 @@ impl AgentTool for FetchTool {
             // dropped too, including hosts that can't be granted individually
             // (loopback and IP literals). No grant the model asks for lifts
             // them (ADR-F46); the user turning the sandbox off for this thread
-            // (ADR-F96) does.
+            // (ADR-F96) does. Lifting only this thread's network restriction
+            // (ADR-F96 stage 2) is narrower: the grant then covers every host,
+            // but loopback, IP literals and hosts resolving into private space
+            // are still refused below.
             //
             // Crucially, this authorization is applied to every redirect hop as
             // well as the initial URL, so a granted host can't 30x-redirect the

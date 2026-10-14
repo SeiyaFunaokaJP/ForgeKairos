@@ -405,6 +405,9 @@ msgstr "取得頁面的快照"
 msgid "Terminal command"
 msgstr "終端機命令"
 
+msgid "The network restriction is turned off for this thread"
+msgstr "此會話的網路限制已關閉"
+
 msgid "The review was stopped because the settings changed"
 msgstr "由於設定已變更，檢閱已停止"
 

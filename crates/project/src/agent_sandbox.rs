@@ -326,6 +326,28 @@ pub fn outside_sandbox_allowed(cx: &App) -> bool {
             .unwrap_or(false)
 }
 
+/// ADR-F96 stage 2: whether a thread of the built-in agent may lift its
+/// network restriction at all
+/// (`agent.sandbox_permissions.allow_unrestricted_network`, off by default).
+/// Read like [`outside_sandbox_allowed`]: from the user's own settings file,
+/// and only while the merged settings agree, so that neither a project nor a
+/// settings profile can turn it on behind the user's file.
+pub fn unrestricted_network_allowed(cx: &App) -> bool {
+    fn read(content: &settings::SettingsContent) -> Option<bool> {
+        content
+            .agent
+            .as_ref()?
+            .sandbox_permissions
+            .as_ref()?
+            .allow_unrestricted_network
+    }
+    crate::worktree_code_execution::from_user_settings(cx, read).unwrap_or(false)
+        && cx
+            .try_global::<settings::SettingsStore>()
+            .and_then(|store| read(store.merged_settings()))
+            .unwrap_or(false)
+}
+
 /// ADR-F96: the keys `project`'s folders are kept under in
 /// `agent.project_thread_defaults`: a local folder's absolute path, or for a
 /// project on a remote host the host's connection, `#`, then the path there
@@ -360,17 +382,42 @@ pub fn project_thread_defaults_keys(project: &Project, cx: &App) -> Vec<String> 
 /// This is what the user chose, not what runs: running outside the sandbox
 /// also needs [`outside_sandbox_allowed`].
 pub fn project_default_sandbox(project: &Project, cx: &App) -> Option<bool> {
+    project_default(project, cx, |defaults| defaults.sandbox)
+}
+
+/// ADR-F96 stage 2: whether a new thread of the built-in agent in `project`
+/// keeps its network restriction, as the user's own settings file has it for
+/// the project's folders (`agent.project_thread_defaults.<folder>.network`),
+/// with the same rule for several folders as [`project_default_sandbox`].
+/// `None` for a project on a remote host, where the thread's choice does not
+/// apply yet.
+///
+/// This is what the user chose, not what runs: lifting the restriction also
+/// needs [`unrestricted_network_allowed`].
+pub fn project_default_network(project: &Project, cx: &App) -> Option<bool> {
+    if !project.is_local() {
+        return None;
+    }
+    project_default(project, cx, |defaults| defaults.network)
+}
+
+fn project_default(
+    project: &Project,
+    cx: &App,
+    read: impl Fn(&settings::ProjectThreadDefaultsContent) -> Option<bool>,
+) -> Option<bool> {
     let choices = project_thread_defaults_keys(project, cx)
         .into_iter()
         .map(|key| {
             crate::worktree_code_execution::from_user_settings(cx, |content| {
-                content
-                    .agent
-                    .as_ref()?
-                    .project_thread_defaults
-                    .as_ref()?
-                    .get(&key)?
-                    .sandbox
+                read(
+                    content
+                        .agent
+                        .as_ref()?
+                        .project_thread_defaults
+                        .as_ref()?
+                        .get(&key)?,
+                )
             })
         })
         .collect::<Vec<_>>();

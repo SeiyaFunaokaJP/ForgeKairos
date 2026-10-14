@@ -409,6 +409,9 @@ msgstr "Snapshot der Seite erstellen"
 msgid "Terminal command"
 msgstr "Terminalbefehl"
 
+msgid "The network restriction is turned off for this thread"
+msgstr "Die Netzwerkbeschränkung ist für diesen Thread ausgeschaltet"
+
 msgid "The review was stopped because the settings changed"
 msgstr "Die Prüfung wurde abgebrochen, weil sich die Einstellungen geändert haben"
 

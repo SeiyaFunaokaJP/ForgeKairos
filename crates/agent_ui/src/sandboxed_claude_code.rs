@@ -571,6 +571,83 @@ pub(crate) fn allow_outside_sandbox_first(
     })
 }
 
+/// ADR-F96 stage 2: before the chat input's network button lifts a thread's
+/// network restriction, asks to turn on
+/// `agent.sandbox_permissions.allow_unrestricted_network` where it is off,
+/// writes it to the user's settings file, and resolves once the settings have
+/// it, the same way as [`allow_outside_sandbox_first`]. False where the user
+/// declined, or the settings never came to allow it.
+pub(crate) fn allow_unrestricted_network_first(
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
+    if project::agent_sandbox::unrestricted_network_allowed(cx) {
+        return Task::ready(true);
+    }
+    let answer = window.prompt(
+        PromptLevel::Warning,
+        i18n::t!("Allow Lifting the Network Restriction?"),
+        Some(i18n::t!(
+            "Letting this thread's terminal commands and fetches reach any host needs \
+             `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it \
+             on? It stays on until you turn it off in your settings file. The network allowlist \
+             still applies."
+        )),
+        &[
+            PromptButton::ok(i18n::t!("Turn On and Continue")),
+            PromptButton::cancel(i18n::t!("Cancel")),
+        ],
+        cx,
+    );
+    window.spawn(cx, async move |cx| {
+        if !answer.await.is_ok_and(|index| index == 0) {
+            return false;
+        }
+        cx.update(|_, cx| {
+            settings::update_settings_file(fs, cx, |settings, _| {
+                settings
+                    .agent
+                    .get_or_insert_default()
+                    .sandbox_permissions
+                    .get_or_insert_default()
+                    .allow_unrestricted_network = Some(true);
+            });
+        })
+        .log_err();
+        for _ in 0..50 {
+            if cx
+                .update(|_, cx| project::agent_sandbox::unrestricted_network_allowed(cx))
+                .unwrap_or(false)
+            {
+                return true;
+            }
+            cx.background_executor()
+                .timer(Duration::from_millis(100))
+                .await;
+        }
+        cx.update(|window, cx| {
+            let closed = window.prompt(
+                PromptLevel::Info,
+                i18n::t!("The Network Restriction Stays On"),
+                Some(i18n::t!(
+                    "`allow_unrestricted_network` did not take effect. A settings profile or the \
+                     global settings file may keep it off."
+                )),
+                &[PromptButton::ok(i18n::t!("Close"))],
+                cx,
+            );
+            window
+                .spawn(cx, async move |_| {
+                    closed.await.ok();
+                })
+                .detach();
+        })
+        .log_err();
+        false
+    })
+}
+
 fn ask_to_start_outside_sandbox(
     program: &str,
     on_remote_host: bool,

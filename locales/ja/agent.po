@@ -402,6 +402,9 @@ msgstr "ページのスナップショットを取得"
 msgid "Terminal command"
 msgstr "ターミナルコマンド"
 
+msgid "The network restriction is turned off for this thread"
+msgstr "このスレッドではネットワーク制限がオフになっています"
+
 msgid "The review was stopped because the settings changed"
 msgstr "設定が変わったため判定を中止しました"
 

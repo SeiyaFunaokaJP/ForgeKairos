@@ -183,6 +183,48 @@ pub(crate) fn sandbox_turned_off(thread_choice: Option<bool>, cx: &App) -> bool 
     }
 }
 
+/// ADR-F96 stage 2: whether a thread's network restriction is lifted, so that
+/// its sandboxed terminal commands and its fetches reach any host without
+/// asking for each one: by its own choice (`thread_choice`, `Some(true)` to
+/// keep the restriction, starting as the project's default), else by the
+/// `allow_all_hosts` setting.
+///
+/// A choice to lift it counts only while the user allows that at all
+/// (`allow_unrestricted_network`) and only for a local project: a remote
+/// host's sandbox is not covered yet, so there the settings decide.
+pub(crate) fn network_restriction_turned_off(
+    thread_choice: Option<bool>,
+    project: &Project,
+    cx: &App,
+) -> bool {
+    let all_hosts_in_settings = AgentSettings::get_global(cx)
+        .sandbox_permissions
+        .allow_all_hosts;
+    match thread_choice {
+        Some(restricted) if project.is_local() => {
+            !restricted
+                && (project::agent_sandbox::unrestricted_network_allowed(cx)
+                    || all_hosts_in_settings)
+        }
+        _ => all_hosts_in_settings,
+    }
+}
+
+/// The sandbox permissions a thread's commands and fetches run under: the
+/// persistent ones, with "any host" as [`network_restriction_turned_off`]
+/// says. Lifting the restriction is the sandbox's own unrestricted network
+/// ([`SandboxNetPolicy::Unrestricted`]), not a wildcard host, which host
+/// patterns refuse; the editor's network allowlist still caps it.
+pub(crate) fn thread_sandbox_permissions(
+    persistent: &SandboxPermissions,
+    network_turned_off: bool,
+) -> SandboxPermissions {
+    SandboxPermissions {
+        allow_all_hosts: network_turned_off,
+        ..persistent.clone()
+    }
+}
+
 /// Whether agent-run terminal commands should be wrapped in an OS-level
 /// sandbox for this process. See module docs for the policy.
 pub(crate) fn sandboxing_enabled(cx: &App) -> bool {

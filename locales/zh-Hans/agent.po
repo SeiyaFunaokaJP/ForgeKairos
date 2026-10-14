@@ -405,6 +405,9 @@ msgstr "获取页面的快照"
 msgid "Terminal command"
 msgstr "终端命令"
 
+msgid "The network restriction is turned off for this thread"
+msgstr "此会话的网络限制已关闭"
+
 msgid "The review was stopped because the settings changed"
 msgstr "由于设置已更改，审查已停止"
 

@@ -3947,6 +3947,10 @@ msgid "Whether a terminal opened over SSH runs its shell inside a session the\nr
 msgstr "Legt fest, ob ein über SSH geöffnetes Terminal seine Shell in einer Sitzung ausführt, die der Remote-Server am Leben hält, sodass eine abgebrochene Verbindung weder laufende Befehle stoppt noch die Ausgabe verliert: Beim erneuten Verbinden wird alles wieder angezeigt und es geht weiter. Nur für SSH-Hosts, die nicht unter Windows laufen.\n\nStandard: true"
 
 msgctxt "settings schema"
+msgid "Whether a thread of the built-in agent may lift its network restriction\n(the network button next to the chat input): its sandboxed terminal\ncommands and fetches then reach any host without asking. While this is\noff, that button asks to turn it on first. The editor's network\nallowlist still applies. Only the user settings file is read: neither a\nproject's settings nor an agent can turn it on.\nDefault: false"
+msgstr "Ob ein Thread des integrierten Agenten seine Netzwerkbeschränkung aufheben darf (die Netzwerk-Schaltfläche neben der Chat-Eingabe): Seine Terminalbefehle in der Sandbox und seine Abrufe (fetch) erreichen dann ohne Nachfrage jeden Host. Solange dies ausgeschaltet ist, fragt die Schaltfläche zuerst, ob es eingeschaltet werden soll. Die Netzwerk-Zulassungsliste des Editors gilt weiterhin. Wird nur aus der Benutzereinstellungsdatei gelesen: Weder die Einstellungen eines Projekts noch ein Agent können es einschalten.\nStandard: false"
+
+msgctxt "settings schema"
 msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
 msgstr "Legt fest, ob ein Worktree, in den ein Agent geschrieben hat, die Ausführung seines eigenen Codes (Projektmodi von Sprachservern, Formatierer, das Prettier des Projekts) anhält, bis der Benutzer die Änderungen prüft und ihn fortsetzt. Wird nur aus der Benutzereinstellungsdatei gelesen: Projekt- und Servereinstellungen können dies nicht deaktivieren.\n\nStandard: true"
 
@@ -4153,6 +4157,10 @@ msgstr "Legt fest, ob Haltepunkte über ForgeKairos-Sitzungen hinweg wiederverwe
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
 msgstr "Legt fest, ob das Browser-Panel beim Start geöffnet wird, auch wenn sein Dock zuletzt geschlossen war.\n\nStandard: false"
+
+msgctxt "settings schema"
+msgid "Whether the built-in agent's network access stays limited to the\nallowed hosts. `false` lets its terminal commands and fetches reach any\nhost without asking, which needs\n`sandbox_permissions.allow_unrestricted_network`; the editor's network\nallowlist still applies, and fetches still refuse local and private\naddresses. Not applied to projects on a remote host yet."
+msgstr "Ob der Netzwerkzugriff des integrierten Agenten auf die zugelassenen Hosts beschränkt bleibt. `false` lässt seine Terminalbefehle und Abrufe (fetch) ohne Nachfrage jeden Host erreichen, was `sandbox_permissions.allow_unrestricted_network` erfordert; die Netzwerk-Zulassungsliste des Editors gilt weiterhin, und Abrufe lehnen lokale und private Adressen weiterhin ab. Gilt noch nicht für Projekte auf einem Remote-Host."
 
 msgctxt "settings schema"
 msgid "Whether the built-in browser goes through the egress allowlist proxy.\n\nThe browser is human-driven, so like the terminal it is outside egress\ncontrol by default.\n\nDefault: false"

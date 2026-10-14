@@ -1496,9 +1496,12 @@
     // `{ "/home/me/project": { "sandbox": false } }`. `"sandbox": false` runs
     // the agent's terminal commands outside the sandbox (and starts external
     // agents outside it), which needs
-    // `sandbox_permissions.allow_outside_sandbox`. Right-click the sandbox
-    // button next to the chat input to set it. Only the user settings file is
-    // read.
+    // `sandbox_permissions.allow_outside_sandbox`. `"network": false` lets the
+    // built-in agent's terminal commands and fetches reach any host without
+    // asking (local projects only; the network allowlist still applies), which
+    // needs `sandbox_permissions.allow_unrestricted_network`. Right-click the
+    // sandbox or network button next to the chat input to set them. Only the
+    // user settings file is read.
     "project_thread_defaults": {},
     // Limits on how much of each chat attachment is sent to the agent. Anything
     // over them is sent as an outline or a reference the agent can follow up on.

@@ -3947,6 +3947,10 @@ msgid "Whether a terminal opened over SSH runs its shell inside a session the\nr
 msgstr "Indique si un terminal ouvert via SSH exécute son shell dans une session que le serveur distant maintient active, afin qu'une connexion perdue n'arrête pas les commandes en cours ni ne perde la sortie : la reconnexion réaffiche tout et reprend. Uniquement pour les hôtes SSH qui ne sont pas sous Windows.\n\nValeur par défaut : true"
 
 msgctxt "settings schema"
+msgid "Whether a thread of the built-in agent may lift its network restriction\n(the network button next to the chat input): its sandboxed terminal\ncommands and fetches then reach any host without asking. While this is\noff, that button asks to turn it on first. The editor's network\nallowlist still applies. Only the user settings file is read: neither a\nproject's settings nor an agent can turn it on.\nDefault: false"
+msgstr "Indique si une conversation de l'agent intégré peut lever sa restriction réseau (le bouton réseau à côté de la saisie du chat) : ses commandes de terminal dans le bac à sable et ses récupérations (fetch) atteignent alors n'importe quel hôte sans demander. Tant que ce paramètre est désactivé, ce bouton demande d'abord de l'activer. La liste d'autorisation réseau de l'éditeur s'applique toujours. Seul le fichier de paramètres de l'utilisateur est lu : ni les paramètres d'un projet ni un agent ne peuvent l'activer.\nPar défaut : false"
+
+msgctxt "settings schema"
 msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
 msgstr "Indique si une arborescence de travail dans laquelle un agent a écrit cesse d'exécuter son propre code (modes de serveur de langage du projet, formateurs, prettier du projet) jusqu'à ce que l'utilisateur examine les modifications et la relance. Lu uniquement dans le fichier de paramètres utilisateur : les paramètres du projet et du serveur ne peuvent pas le désactiver.\n\nValeur par défaut : true"
 
@@ -4153,6 +4157,10 @@ msgstr "Indique si les points d'arrêt doivent être réutilisés d'une session 
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
 msgstr "Indique si le panneau Navigateur doit s'ouvrir au démarrage, même si son dock était fermé la dernière fois.\n\nValeur par défaut : false"
+
+msgctxt "settings schema"
+msgid "Whether the built-in agent's network access stays limited to the\nallowed hosts. `false` lets its terminal commands and fetches reach any\nhost without asking, which needs\n`sandbox_permissions.allow_unrestricted_network`; the editor's network\nallowlist still applies, and fetches still refuse local and private\naddresses. Not applied to projects on a remote host yet."
+msgstr "Indique si l'accès réseau de l'agent intégré reste limité aux hôtes autorisés. `false` permet à ses commandes de terminal et à ses récupérations (fetch) d'atteindre n'importe quel hôte sans demander, ce qui nécessite `sandbox_permissions.allow_unrestricted_network` ; la liste d'autorisation réseau de l'éditeur s'applique toujours, et les récupérations refusent toujours les adresses locales et privées. Ne s'applique pas encore aux projets sur un hôte distant."
 
 msgctxt "settings schema"
 msgid "Whether the built-in browser goes through the egress allowlist proxy.\n\nThe browser is human-driven, so like the terminal it is outside egress\ncontrol by default.\n\nDefault: false"
