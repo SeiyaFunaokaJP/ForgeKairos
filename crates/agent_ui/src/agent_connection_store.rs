@@ -90,10 +90,10 @@ pub struct ActiveAcpConnection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct OutsideSandboxConnectionId(u64);
 
-/// ADR-F96 stage 3: which view a connection whose sandbox lets the agent reach
-/// any host the editor-wide allowlist permits belongs to. Like a start outside
-/// the sandbox, the user asks for it in one thread, so it is never handed to
-/// another view or a new thread.
+/// ADR-F96 stage 3: a connection whose sandbox lets the agent reach any host
+/// the editor-wide allowlist permits. The user asks for it thread by thread, so
+/// it is handed only to the views whose thread asked for it (or whose
+/// project's default did), never to the others.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct UnrestrictedNetworkConnectionId(u64);
 
@@ -170,8 +170,9 @@ pub struct AgentConnectionStore {
     next_outside_sandbox_id: u64,
     /// ADR-F49 decision 19 (8c): see [`ConnectionSlot::InSandbox`].
     in_sandbox: HashMap<Agent, Entity<AgentConnectionEntry>>,
-    /// ADR-F96 stage 3: connections without the agent's own hosts, by the view
-    /// that asked for each of them.
+    /// ADR-F96 stage 3: connections without the agent's own hosts. The views
+    /// that asked for one share the agent's latest
+    /// ([`Self::connect_with_unrestricted_network`]).
     unrestricted_network:
         HashMap<UnrestrictedNetworkConnectionId, (Agent, Entity<AgentConnectionEntry>)>,
     /// The same as `superseded_outside_sandbox`, for `unrestricted_network`.
@@ -193,6 +194,10 @@ pub struct AgentConnectionStore {
     leases: HashMap<ConnectionSlot, Rc<()>>,
     /// Since when nothing has used each connection, on this session's clock.
     unused_since: HashMap<ConnectionSlot, Instant>,
+    /// ADR-F96: connections past a limit that the last view left while they
+    /// were still starting, to close once they have started if no view has
+    /// come onto them by then.
+    left_while_starting: HashSet<ConnectionSlot>,
     idle_watch: Task<()>,
     idle_watch_running: bool,
     _subscriptions: Vec<Subscription>,
@@ -220,6 +225,7 @@ impl AgentConnectionStore {
             holders: HashMap::default(),
             leases: HashMap::default(),
             unused_since: HashMap::default(),
+            left_while_starting: HashSet::default(),
             idle_watch: Task::ready(()),
             idle_watch_running: false,
             _subscriptions: subscriptions,
@@ -463,14 +469,31 @@ impl AgentConnectionStore {
     /// ADR-F96 stage 3: connects the agent again in its sandbox without its
     /// own hosts, so that it reaches any host the editor-wide allowlist
     /// permits. In the sandbox whatever the user's settings say — a start
-    /// outside it has no network restriction of its own to lift — and, like
-    /// [`Self::connect_outside_sandbox`], the asking view's alone.
+    /// outside it has no network restriction of its own to lift.
+    ///
+    /// Only threads that asked for it are handed it, but they share it, as the
+    /// threads that keep the agent's own hosts share theirs: every such
+    /// connection of an agent in this project starts the same way, so one per
+    /// thread would only multiply the agent's processes. One a newer version
+    /// superseded, or a reload, is not handed out again.
     pub fn connect_with_unrestricted_network(
         &mut self,
         key: Agent,
         server: Rc<dyn AgentServer>,
         cx: &mut Context<Self>,
     ) -> UnrestrictedNetworkConnectionId {
+        let running = self
+            .unrestricted_network
+            .iter()
+            .find(|(id, (agent, _))| {
+                *agent == key && !self.superseded_unrestricted_network.contains(*id)
+            })
+            .map(|(id, _)| *id);
+        if let Some(id) = running {
+            self.unused_since
+                .remove(&ConnectionSlot::UnrestrictedNetwork { id, agent: key });
+            return id;
+        }
         let id = UnrestrictedNetworkConnectionId(self.next_outside_sandbox_id);
         self.next_outside_sandbox_id += 1;
         self.insert_connection(
@@ -527,6 +550,7 @@ impl AgentConnectionStore {
     }
 
     fn remove_slot_entry(&mut self, slot: &ConnectionSlot) {
+        self.left_while_starting.remove(slot);
         match slot {
             ConnectionSlot::Shared(key) => {
                 self.entries.remove(key);
@@ -582,6 +606,9 @@ impl AgentConnectionStore {
                                 }
                             })
                             .ok();
+                        if this.left_while_starting.remove(&slot) {
+                            this.close_connection_of_one_thread_nobody_holds(&slot, cx);
+                        }
                         cx.notify();
                     })
                     .ok();
@@ -725,8 +752,72 @@ impl AgentConnectionStore {
         };
         self.unused_since.remove(&slot);
         self.holders.retain(|_, (_, view)| view.upgrade().is_some());
-        self.holders.insert(view.entity_id(), (slot, view));
+        let left = self
+            .holders
+            .insert(view.entity_id(), (slot.clone(), view))
+            .map(|(left, _)| left)
+            .filter(|left| *left != slot);
+        if let Some(left) = left {
+            self.close_connection_of_one_thread_nobody_holds(&left, cx);
+        }
         self.watch_idle_connections(cx);
+    }
+
+    /// ADR-F96: a connection without the agent's own hosts (stage 3), or one
+    /// outside the sandbox, is a way past a limit the user asked to lift for
+    /// particular threads, so once the last view on it has moved off — its
+    /// thread was restricted again or went back into the sandbox, or the
+    /// setting that allows it was turned off — it is closed then rather than
+    /// at the idle disconnect. One still starting is looked at again once it
+    /// has started; one with processes of an answer still running in its
+    /// sandbox is left to the idle disconnect, which waits for those.
+    fn close_connection_of_one_thread_nobody_holds(
+        &mut self,
+        slot: &ConnectionSlot,
+        cx: &mut Context<Self>,
+    ) {
+        if !matches!(
+            slot,
+            ConnectionSlot::UnrestrictedNetwork { .. } | ConnectionSlot::OutsideSandbox { .. }
+        ) || self
+            .holders
+            .values()
+            .any(|(held, view)| held == slot && view.upgrade().is_some())
+        {
+            return;
+        }
+        let Some(entry) = self.slot_entry(slot).cloned() else {
+            return;
+        };
+        let AgentConnectionEntry::Connected(state) = entry.read(cx) else {
+            self.left_while_starting.insert(slot.clone());
+            return;
+        };
+        if let Some(monitor) = state.connection.sandbox_process_monitor()
+            && let Some(reason) = monitor.read(cx).reason_to_hold_an_unused_connection()
+        {
+            log::info!(
+                "keeping the connection to {} no thread is on until the idle disconnect: {reason}",
+                slot.agent().id()
+            );
+            return;
+        }
+        log::info!(
+            "closing the connection to {} that let threads past a limit: no thread is on it",
+            slot.agent().id()
+        );
+        self.remove_slot_entry(slot);
+        self.unused_since.remove(slot);
+        cx.notify();
+    }
+
+    /// ADR-F96: the view `view_id` is gone, so the connection it was on loses
+    /// its hand, and one past a limit closes if no other view is on it
+    /// ([`Self::close_connection_of_one_thread_nobody_holds`]).
+    pub fn release_connection_holder(&mut self, view_id: EntityId, cx: &mut Context<Self>) {
+        if let Some((left, _)) = self.holders.remove(&view_id) {
+            self.close_connection_of_one_thread_nobody_holds(&left, cx);
+        }
     }
 
     /// ADR-F49 (new decision): a hand on this agent's connection that is not a
@@ -943,6 +1034,8 @@ impl AgentConnectionStore {
             .retain(|id| unrestricted_network.contains_key(id));
         self.unused_since
             .retain(|slot, _| still_there(slot.agent()));
+        self.left_while_starting
+            .retain(|slot| still_there(slot.agent()));
         cx.notify();
     }
 

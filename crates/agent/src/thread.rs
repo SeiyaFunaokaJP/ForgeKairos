@@ -2427,6 +2427,16 @@ impl Thread {
         cx.notify();
     }
 
+    /// ADR-F96: drops a choice to lift the network restriction once
+    /// `allow_unrestricted_network` has been turned off. The choice already
+    /// stopped counting then; dropping it keeps turning the setting on again
+    /// from lifting this thread without anyone asking for it.
+    pub fn drop_network_lift(&mut self, cx: &mut Context<Self>) {
+        if self.network_choice == Some(false) {
+            self.set_network_choice(None, cx);
+        }
+    }
+
     /// Whether this thread's network restriction is lifted, by its own choice
     /// or the settings (ADR-F96 stage 2).
     pub fn network_restriction_turned_off(&self, cx: &App) -> bool {
@@ -6401,9 +6411,11 @@ impl ToolCallEventStream {
             .and_then(|thread| thread.upgrade())
             .is_some_and(|thread| {
                 let thread = thread.read(cx);
-                thread.network_choice() == Some(false)
-                    && thread.network_choice_applies(cx)
-                    && thread.network_restriction_turned_off(cx)
+                crate::sandboxing::network_restriction_turned_off_by_thread_choice(
+                    thread.network_choice(),
+                    thread.project().read(cx),
+                    cx,
+                )
             })
     }
 

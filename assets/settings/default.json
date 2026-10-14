@@ -1498,8 +1498,11 @@
     // agents outside it), which needs
     // `sandbox_permissions.allow_outside_sandbox`. `"network": false` lets the
     // built-in agent's terminal commands and fetches reach any host without
-    // asking (local projects only; the network allowlist still applies), which
-    // needs `sandbox_permissions.allow_unrestricted_network`. Right-click the
+    // asking, and starts external agents without their own list of hosts (on
+    // a remote host, only where the host has a sandbox; the network allowlist
+    // still applies), which needs
+    // `sandbox_permissions.allow_unrestricted_network` (for the built-in
+    // agent, `allow_all_hosts` is enough). Right-click the
     // sandbox or network button next to the chat input to set them. Only the
     // user settings file is read.
     "project_thread_defaults": {},

@@ -136,7 +136,7 @@ struct ClientContext {
     /// are written for, which is where it runs.
     commands_os: AgentCommandsOs,
     /// ADR-F97: where the sessions of an agent's subagents go.
-    subagents: subagents::SubagentRouting,
+    subagents: Rc<subagents::SubagentRouting>,
 }
 
 fn dispatch_queue_closed_error() -> acp::Error {
@@ -942,6 +942,7 @@ impl AcpConnection {
                         &command,
                         remote_binary,
                         root_dir.clone(),
+                        lift_agent_hosts,
                         cx,
                     )?;
                     (
@@ -1053,7 +1054,7 @@ impl AcpConnection {
             request_elicitations: request_elicitations.clone(),
             paths: paths.clone(),
             commands_os,
-            subagents: subagents::SubagentRouting::for_agent(&agent_id),
+            subagents: Rc::new(subagents::SubagentRouting::for_agent(&agent_id)),
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -3446,6 +3447,25 @@ fn remote_agent_network(
     }
 }
 
+/// ADR-F96 stage 3 on a remote host: what the host's helper lets a start of
+/// the agent reach, and what the connection reports about it. Lifting the
+/// agent's own hosts leaves the editor-wide allowlist in their place, as on
+/// this machine; that allowlist is also the ceiling the helper's proxy nests
+/// this inside, sent with the same start, so nothing here ever reaches the
+/// helper without one — and with no allowlist published the agent reaches
+/// nothing, lifted or not.
+fn remote_agent_start_network(
+    hosts: &AgentSandboxHosts,
+    lift_agent_hosts: bool,
+    editor_allowlist: Option<&[String]>,
+) -> (
+    acp_thread::SandboxNetworkAccess,
+    acp_thread::AgentSandboxNetwork,
+) {
+    let (hosts, network) = hosts_for_start(hosts.clone(), lift_agent_hosts);
+    (remote_agent_network(&hosts, editor_allowlist), network)
+}
+
 /// ADR-F49 第 2a 段: the helper invocation that starts the agent in the
 /// remote host's sandbox, as the host resolved it. The helper takes the
 /// agent's whole environment through `--setenv`; its own process gets none.
@@ -3520,6 +3540,7 @@ fn remote_sandboxed_agent_command(
     command: &AgentServerCommand,
     remote_binary: Arc<RelPath>,
     root_dir: Option<PathBuf>,
+    lift_agent_hosts: bool,
     cx: &mut AsyncApp,
 ) -> Result<(std::process::Command, AgentSandboxSession, String)> {
     let sandbox_command = command
@@ -3530,10 +3551,11 @@ fn remote_sandboxed_agent_command(
         return Err(sandbox_unavailable(i18n::tr(OLD_REMOTE_SERVER_REASON)));
     };
     ensure_hosts_allowed(hosts, cx)?;
-    let (worktree_roots, git_dirs, network, network_ceiling, remote_client) =
+    let (worktree_roots, git_dirs, (network, sandbox_network), network_ceiling, remote_client) =
         project.read_with(cx, |project, cx| {
             let editor_allowlist = editor_allowlist_entries(cx);
-            let network = remote_agent_network(hosts, editor_allowlist.as_deref());
+            let network =
+                remote_agent_start_network(hosts, lift_agent_hosts, editor_allowlist.as_deref());
             (
                 acp_thread::sandbox_worktree_writable_paths(project, cx),
                 acp_thread::sandbox_git_dirs(project, cx),
@@ -3583,7 +3605,7 @@ fn remote_sandboxed_agent_command(
                 readable_paths: plan.readable_paths,
                 network_ceiling,
             },
-            network: hosts_for_start(hosts.clone(), false).1,
+            network: sandbox_network,
         },
         session_id,
     ))
@@ -4840,7 +4862,7 @@ pub mod test_support {
             request_elicitations: request_elicitations.clone(),
             paths: None,
             commands_os: AgentCommandsOs::Projects,
-            subagents: subagents::SubagentRouting::default(),
+            subagents: Rc::new(subagents::SubagentRouting::default()),
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -5538,6 +5560,254 @@ mod tests {
             [PathBuf::from("/home/u/project"), PathBuf::from(CONFIG_DIR)]
         );
         assert_eq!(plan.readable_paths, [readable]);
+    }
+
+    /// ADR-F96 stages 3 and 4: the network button of an external agent on a
+    /// remote host, as the host's helper is told it.
+    mod remote_agent_network_lift {
+        use super::*;
+
+        struct HelperNetwork {
+            net: Vec<String>,
+            allowed_hosts: Vec<String>,
+            ceiling: bool,
+            ceiling_hosts: Vec<String>,
+            reported: acp_thread::AgentSandboxNetwork,
+        }
+
+        fn helper_network(
+            hosts: AgentSandboxHosts,
+            lift: bool,
+            editor_allowlist: Option<&[String]>,
+        ) -> HelperNetwork {
+            let sandbox = placed_sandbox(&[], &[], hosts);
+            let AgentSandboxState::Resolved { hosts, .. } = &sandbox.state else {
+                panic!("the sandbox was placed");
+            };
+            let (network, reported) = remote_agent_start_network(hosts, lift, editor_allowlist);
+            let plan = plan_remote_agent(
+                &remote_helper(),
+                &sandbox,
+                vec![PathBuf::from("/home/u/project")],
+                Vec::new(),
+                network,
+                editor_allowlist,
+                None,
+                None,
+                "agent".to_string(),
+                Vec::new(),
+            )
+            .expect("planned");
+            let [_, payload] = plan.args.as_slice() else {
+                panic!("the argv travels as one argument: {:?}", plan.args);
+            };
+            decoded_helper_network(payload, reported)
+        }
+
+        fn decoded_helper_network(
+            payload: &str,
+            reported: acp_thread::AgentSandboxNetwork,
+        ) -> HelperNetwork {
+            let argv = sandbox::decode_remote_sandbox_helper_argv(payload)
+                .expect("the packed argv decodes");
+            let separator = argv
+                .iter()
+                .position(|arg| arg == "--")
+                .expect("the policy ends with `--`");
+            let policy = &argv[..separator];
+            let values_of = |flag: &str| {
+                policy
+                    .windows(2)
+                    .filter_map(|window| match window {
+                        [name, value] if name == flag => Some(value.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            HelperNetwork {
+                net: values_of("--net"),
+                allowed_hosts: values_of("--allow-host"),
+                ceiling: policy.iter().any(|arg| arg == "--network-ceiling"),
+                ceiling_hosts: values_of("--ceiling-host"),
+                reported,
+            }
+        }
+
+        fn allowlist() -> Vec<String> {
+            ["api.anthropic.com", "*.github.com", "pypi.org"]
+                .map(String::from)
+                .to_vec()
+        }
+
+        fn agent_hosts() -> AgentSandboxHosts {
+            AgentSandboxHosts::Listed(vec!["api.anthropic.com".to_string()])
+        }
+
+        /// Lifted, the agent may reach what the editor-wide allowlist permits,
+        /// and that allowlist goes with it as the ceiling: never `--net any`,
+        /// never a start without the ceiling.
+        #[test]
+        fn lifting_leaves_the_allowlist_as_both_the_hosts_and_the_ceiling() {
+            let allowlist = allowlist();
+            let lifted = helper_network(agent_hosts(), true, Some(&allowlist));
+            assert_eq!(lifted.net, ["hosts"]);
+            assert_eq!(lifted.allowed_hosts, allowlist);
+            assert!(lifted.ceiling, "the ceiling goes with the lifted start");
+            assert_eq!(lifted.ceiling_hosts, allowlist);
+            assert_eq!(
+                lifted.reported,
+                acp_thread::AgentSandboxNetwork::AgentHostsLifted
+            );
+
+            let kept = helper_network(agent_hosts(), false, Some(&allowlist));
+            assert_eq!(kept.net, ["hosts"]);
+            assert_eq!(kept.allowed_hosts, ["api.anthropic.com"]);
+            assert!(kept.ceiling);
+            assert_eq!(kept.ceiling_hosts, allowlist);
+            assert_eq!(kept.reported, acp_thread::AgentSandboxNetwork::AgentHosts);
+        }
+
+        /// With no allowlist published there is no ceiling to send, so the
+        /// lifted start reaches nothing rather than everything.
+        #[test]
+        fn lifting_without_an_allowlist_reaches_nothing() {
+            let lifted = helper_network(agent_hosts(), true, None);
+            assert_eq!(lifted.net, ["blocked"]);
+            assert!(lifted.allowed_hosts.is_empty());
+            assert!(!lifted.ceiling);
+        }
+
+        /// An agent with no hosts of its own has nothing to lift: the button
+        /// stays disabled for it, whatever the start asked for.
+        #[test]
+        fn an_agent_without_its_own_hosts_reports_the_allowlist_alone() {
+            let allowlist = allowlist();
+            for lift in [false, true] {
+                let network =
+                    helper_network(AgentSandboxHosts::EditorAllowlist, lift, Some(&allowlist));
+                assert_eq!(network.allowed_hosts, allowlist);
+                assert_eq!(network.ceiling_hosts, allowlist);
+                assert_eq!(
+                    network.reported,
+                    acp_thread::AgentSandboxNetwork::EditorAllowlist
+                );
+            }
+        }
+
+        /// An allowlist that names no host the helper can take — empty, or a
+        /// bare `*` that is no host pattern — leaves a lifted agent nothing to
+        /// reach, never `--net any`.
+        #[test]
+        fn lifting_under_an_allowlist_of_no_hosts_reaches_nothing() {
+            for allowlist in [Vec::new(), vec!["*".to_string()]] {
+                let lifted = helper_network(agent_hosts(), true, Some(&allowlist));
+                assert_eq!(lifted.net, ["blocked"], "{allowlist:?}");
+                assert!(lifted.allowed_hosts.is_empty(), "{allowlist:?}");
+            }
+        }
+
+        async fn remote_project(
+            cx: &mut gpui::TestAppContext,
+            server_cx: &mut gpui::TestAppContext,
+        ) -> (Entity<Project>, Entity<()>) {
+            cx.update(|cx| {
+                let settings_store = SettingsStore::test(cx);
+                cx.set_global(settings_store);
+                release_channel::init(semver::Version::new(0, 0, 0), cx);
+                let (policy, errors) = http_client::EgressPolicy::from_host_strings(&allowlist());
+                assert!(errors.is_empty(), "{errors:?}");
+                cx.set_global(egress_policy::EgressAllowlistGlobal(
+                    http_client::EgressPolicyHandle::new(policy),
+                ));
+            });
+            server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+            let (options, server_session, connect_guard) =
+                remote::RemoteClient::fake_server_with_server_binary(
+                    remote_helper(),
+                    cx,
+                    server_cx,
+                );
+            // Connecting pings the server, which a headless project would answer.
+            let ping_responder = server_cx.update(|cx| cx.new(|_| ()));
+            server_session.add_request_handler(
+                ping_responder.downgrade(),
+                |_, _: rpc::TypedEnvelope<rpc::proto::Ping>, _| async { Ok(rpc::proto::Ack {}) },
+            );
+            drop(connect_guard);
+            let remote_client = remote::RemoteClient::connect_mock(options, cx).await;
+            let project = cx.update(|cx| {
+                let client = client::Client::new(
+                    Arc::new(clock::FakeSystemClock::new()),
+                    http_client::FakeHttpClient::with_404_response(),
+                    cx,
+                );
+                let user_store = cx.new(|cx| client::UserStore::new(client.clone(), cx));
+                Project::remote(
+                    remote_client,
+                    client,
+                    node_runtime::NodeRuntime::unavailable(),
+                    user_store,
+                    Arc::new(language::LanguageRegistry::test(
+                        cx.background_executor().clone(),
+                    )),
+                    fs::FakeFs::new(cx.background_executor().clone()),
+                    false,
+                    cx,
+                )
+            });
+            cx.run_until_parked();
+            (project, ping_responder)
+        }
+
+        /// The lift a remote start is asked for reaches the host helper's argv
+        /// and what the connection reports, with the allowlist as the ceiling
+        /// either way.
+        #[gpui::test]
+        async fn a_remote_start_takes_the_lift_it_is_asked_for(
+            cx: &mut gpui::TestAppContext,
+            server_cx: &mut gpui::TestAppContext,
+        ) {
+            let (project, _ping_responder) = remote_project(cx, server_cx).await;
+            let command = AgentServerCommand {
+                path: PathBuf::from("agent"),
+                args: Vec::new(),
+                env: None,
+                sandbox: Some(placed_sandbox(&[], &[], agent_hosts())),
+            };
+            for (lift, allowed_hosts, reported) in [
+                (
+                    false,
+                    vec!["api.anthropic.com".to_string()],
+                    acp_thread::AgentSandboxNetwork::AgentHosts,
+                ),
+                (
+                    true,
+                    allowlist(),
+                    acp_thread::AgentSandboxNetwork::AgentHostsLifted,
+                ),
+            ] {
+                let (child, session, _) = remote_sandboxed_agent_command(
+                    &project,
+                    &command,
+                    remote_helper(),
+                    None,
+                    lift,
+                    &mut cx.to_async(),
+                )
+                .expect("the helper invocation builds");
+                assert_eq!(session.network, reported, "lift: {lift}");
+                let payload = child
+                    .get_args()
+                    .last()
+                    .and_then(|payload| payload.to_str())
+                    .expect("the packed argv is the last argument");
+                let network = decoded_helper_network(payload, reported);
+                assert_eq!(network.net, ["hosts"], "lift: {lift}");
+                assert_eq!(network.allowed_hosts, allowed_hosts, "lift: {lift}");
+                assert!(network.ceiling, "lift: {lift}");
+                assert_eq!(network.ceiling_hosts, allowlist(), "lift: {lift}");
+            }
+        }
     }
 
     #[test]
@@ -7634,7 +7904,7 @@ exit 7
             request_elicitations: request_elicitations.clone(),
             paths: None,
             commands_os: AgentCommandsOs::Projects,
-            subagents: subagents::SubagentRouting::default(),
+            subagents: Rc::new(subagents::SubagentRouting::default()),
         };
         // `TestAppContext::spawn` hands out an `AsyncApp` by value, whereas the
         // production path uses `Context::spawn` which hands out `&mut AsyncApp`.
@@ -9413,6 +9683,7 @@ exit 7
         connection: Rc<AcpConnection>,
         agent: ConnectionTo<Client>,
         new_sessions: Arc<Mutex<Vec<acp::NewSessionRequest>>>,
+        subagents: Rc<subagents::SubagentRouting>,
         #[cfg(target_os = "windows")]
         prompts: Arc<Mutex<Vec<acp::PromptRequest>>>,
         #[cfg(target_os = "windows")]
@@ -9440,6 +9711,7 @@ exit 7
         subagent_routing: subagents::SubagentRouting,
         cx: &mut gpui::TestAppContext,
     ) -> BoundaryHarness {
+        let subagent_routing = Rc::new(subagent_routing);
         let (client_transport, agent_transport) = agent_client_protocol::Channel::duplex();
         let new_sessions: Arc<Mutex<Vec<acp::NewSessionRequest>>> = Arc::default();
         let prompts: Arc<Mutex<Vec<acp::PromptRequest>>> = Arc::default();
@@ -9541,7 +9813,7 @@ exit 7
             request_elicitations: request_elicitations.clone(),
             paths: paths.clone(),
             commands_os: AgentCommandsOs::Projects,
-            subagents: subagent_routing,
+            subagents: subagent_routing.clone(),
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -9575,6 +9847,7 @@ exit 7
             connection: Rc::new(connection),
             agent,
             new_sessions,
+            subagents: subagent_routing,
             #[cfg(target_os = "windows")]
             prompts,
             #[cfg(target_os = "windows")]
@@ -10986,21 +11259,21 @@ done
 
         let not_told = subagents::SubagentRouting::for_agent(&AgentId::new("codex-acp"));
         assert!(
-            !not_told.hold(&session(0), update(&session(0))),
+            !not_told.hold(&session(0), update(&session(0)), |_| None),
             "an agent that was not told about subagents has no unannounced children"
         );
         assert_eq!(not_told.held_count(&session(0)), 0);
 
         let routing = subagents::SubagentRouting::for_agent(&AgentId::new(crate::CLAUDE_AGENT_ID));
         for _ in 0..subagents::MAX_HELD_UPDATES_PER_SESSION + 5 {
-            assert!(routing.hold(&session(0), update(&session(0))));
+            assert!(routing.hold(&session(0), update(&session(0)), |_| None));
         }
         assert_eq!(
             routing.held_count(&session(0)),
             subagents::MAX_HELD_UPDATES_PER_SESSION
         );
         for index in 1..=subagents::MAX_HELD_SESSIONS {
-            routing.hold(&session(index), update(&session(index)));
+            routing.hold(&session(index), update(&session(index)), |_| None);
         }
         assert_eq!(
             routing.held_count(&session(0)),
@@ -11454,21 +11727,27 @@ done
         let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
         let child_session_id = acp::SessionId::new("child-session");
 
-        let bash =
-            |session_id: &acp::SessionId, id: &str, status: &str, input: serde_json::Value| {
-                raw_session_update(
-                    session_id,
-                    serde_json::json!({
-                        "sessionUpdate": "tool_call",
-                        "toolCallId": id,
-                        "title": "Terminal",
-                        "kind": "execute",
-                        "status": status,
-                        "rawInput": input,
-                        "_meta": { "claudeCode": { "toolName": "Bash" } },
-                    }),
-                )
-            };
+        let tool_call = |tool_name: &str,
+                         session_id: &acp::SessionId,
+                         id: &str,
+                         status: &str,
+                         input: serde_json::Value| {
+            raw_session_update(
+                session_id,
+                serde_json::json!({
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": id,
+                    "title": "Terminal",
+                    "kind": "execute",
+                    "status": status,
+                    "rawInput": input,
+                    "_meta": { "claudeCode": { "toolName": tool_name } },
+                }),
+            )
+        };
+        let bash = |session_id: &acp::SessionId, id: &str, status: &str, input| {
+            tool_call("Bash", session_id, id, status, input)
+        };
         send_raw(
             &harness,
             bash(
@@ -11498,6 +11777,36 @@ done
                 "fg-1",
                 "completed",
                 serde_json::json!({ "command": "ls", "description": "List files" }),
+            ),
+        );
+        // Claude Code on Windows has a PowerShell tool next to Bash, with the
+        // same `run_in_background`; no other tool's is a shell command.
+        send_raw(
+            &harness,
+            tool_call(
+                "PowerShell",
+                &parent_session_id,
+                "bg-powershell",
+                "completed",
+                serde_json::json!({
+                    "command": "Get-Content app.log -Wait",
+                    "description": "Follow the log",
+                    "run_in_background": true,
+                }),
+            ),
+        );
+        send_raw(
+            &harness,
+            tool_call(
+                "Agent",
+                &parent_session_id,
+                "bg-agent",
+                "completed",
+                serde_json::json!({
+                    "description": "Look around",
+                    "prompt": "Look around",
+                    "run_in_background": true,
+                }),
             ),
         );
         announce_subagent(
@@ -11532,9 +11841,14 @@ done
                 .collect::<Vec<_>>(),
             [
                 (
-                    parent_session_id,
+                    parent_session_id.clone(),
                     "bg-1".to_string(),
                     "Start the dev server".to_string()
+                ),
+                (
+                    parent_session_id,
+                    "bg-powershell".to_string(),
+                    "Follow the log".to_string()
                 ),
                 (
                     child_session_id,
@@ -11543,6 +11857,532 @@ done
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn a_session_that_had_a_thread_is_not_held() {
+        let update = |session_id: &acp::SessionId| {
+            subagents::HeldUpdate::Session(acp::SessionNotification::new(
+                session_id.clone(),
+                acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new("x".into())),
+            ))
+        };
+        let routing = subagents::SubagentRouting::for_agent(&AgentId::new(crate::CLAUDE_AGENT_ID));
+        let closed = acp::SessionId::new("closed");
+        routing.note_live(&closed);
+        assert!(
+            !routing.hold(&closed, update(&closed), |_| None),
+            "a late update of a closed session is not held"
+        );
+        assert_eq!(routing.held_count(&closed), 0);
+
+        // Only so many are remembered: the oldest is forgotten first.
+        for index in 0..subagents::MAX_SEEN_SESSIONS - 1 {
+            routing.note_live(&acp::SessionId::new(format!("later-{index}")));
+        }
+        assert!(
+            !routing.hold(&closed, update(&closed), |_| None),
+            "as many as the limit are remembered"
+        );
+        routing.note_live(&acp::SessionId::new(format!(
+            "later-{}",
+            subagents::MAX_SEEN_SESSIONS - 1
+        )));
+        assert!(routing.hold(&closed, update(&closed), |_| None));
+        let newest = acp::SessionId::new(format!("later-{}", subagents::MAX_SEEN_SESSIONS - 1));
+        assert!(!routing.hold(&newest, update(&newest), |_| None));
+    }
+
+    #[test]
+    fn a_child_of_a_reloaded_parent_is_held() {
+        let update = |session_id: &acp::SessionId| {
+            subagents::HeldUpdate::Session(acp::SessionNotification::new(
+                session_id.clone(),
+                acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new("x".into())),
+            ))
+        };
+        let parent = acp::SessionId::new("parent");
+        let child = acp::SessionId::new("child");
+        let grandchild = acp::SessionId::new("grandchild");
+        let (parent_thread, child_thread, reloaded_parent_thread) = (
+            gpui::EntityId::from(1),
+            gpui::EntityId::from(2),
+            gpui::EntityId::from(3),
+        );
+        let routing = || {
+            let routing =
+                subagents::SubagentRouting::for_agent(&AgentId::new(crate::CLAUDE_AGENT_ID));
+            routing.note_live(&parent);
+            routing.note_child(&child, &parent, parent_thread);
+            routing.note_child(&grandchild, &child, child_thread);
+            routing
+        };
+        let holds = |routing: &subagents::SubagentRouting,
+                     session_id: &acp::SessionId,
+                     live: &[(&acp::SessionId, gpui::EntityId)]| {
+            routing.hold(session_id, update(session_id), |id| {
+                live.iter()
+                    .find(|(live_id, _)| *live_id == id)
+                    .map(|(_, thread)| *thread)
+            })
+        };
+
+        for live in [&[][..], &[(&parent, parent_thread)][..]] {
+            let routing = routing();
+            assert!(
+                !holds(&routing, &child, live),
+                "a closed child is not held, its parent closed or not: {live:?}"
+            );
+            assert!(!holds(&routing, &grandchild, live));
+        }
+
+        let routing = routing();
+        assert!(
+            holds(&routing, &child, &[(&parent, reloaded_parent_thread)]),
+            "a child of a reloaded parent is to be announced to it"
+        );
+        assert!(
+            holds(&routing, &grandchild, &[(&parent, reloaded_parent_thread)]),
+            "so is a grandchild"
+        );
+        assert!(
+            holds(
+                &routing,
+                &grandchild,
+                &[(&parent, reloaded_parent_thread), (&child, child_thread)]
+            ),
+            "the previous thread of the child may still be around"
+        );
+
+        routing.note_child(&child, &parent, reloaded_parent_thread);
+        assert!(
+            !holds(&routing, &child, &[(&parent, reloaded_parent_thread)]),
+            "once the reloaded parent made its thread, the child is closed again"
+        );
+    }
+
+    fn child_prompts(child: &Entity<AcpThread>, cx: &mut gpui::TestAppContext) -> Vec<String> {
+        child.read_with(cx, |child, cx| {
+            child
+                .entries()
+                .iter()
+                .filter_map(|entry| entry.user_message())
+                .map(|message| message.content.to_markdown(cx))
+                .collect()
+        })
+    }
+
+    fn times_shown(child: &Entity<AcpThread>, text: &str, cx: &mut gpui::TestAppContext) -> usize {
+        child.read_with(cx, |child, cx| child.to_markdown(cx).matches(text).count())
+    }
+
+    /// The parent's Agent call, as the adapter reports it.
+    fn agent_call(tool_call_id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": tool_call_id,
+            "title": "Find the entry point",
+            "kind": "think",
+            "status": "completed",
+            "rawInput": { "description": "Find the entry point", "prompt": "Look around" },
+            "_meta": { "claudeCode": { "toolName": "Agent" } },
+        })
+    }
+
+    /// What the adapter sends of one child, in the order of a loaded
+    /// session's replay (`RfdSubagentReplay`): the parent's launch, the
+    /// child's announcement, its prompt, its own updates, and its end.
+    fn send_child_history(
+        harness: &BoundaryHarness,
+        parent_session_id: &acp::SessionId,
+        child_session_id: &acp::SessionId,
+    ) {
+        send_raw(
+            harness,
+            raw_session_update(parent_session_id, agent_call("toolu_1")),
+        );
+        announce_subagent(
+            harness,
+            parent_session_id,
+            child_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        send_raw(
+            harness,
+            raw_session_update(
+                child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "session_message",
+                    "messageId": "toolu_1",
+                    "senderSessionId": parent_session_id,
+                    "recipientSessionId": child_session_id,
+                    "content": [{ "type": "text", "text": "Look around" }],
+                }),
+            ),
+        );
+        send_raw(
+            harness,
+            raw_session_update(
+                child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": { "type": "text", "text": "Found it" },
+                }),
+            ),
+        );
+        send_raw(
+            harness,
+            raw_session_update(
+                parent_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "subagent_update",
+                    "sessionId": child_session_id,
+                    "state": { "state": "idle", "stopReason": "end_turn" },
+                }),
+            ),
+        );
+    }
+
+    /// ADR-F97: a reloaded session is a new thread, and the adapter sends it
+    /// its children's history again under the children's old sessions. Each
+    /// child gets a new thread that shows its history once, whether the
+    /// previous thread of the child is still around (`old_child_outlives`)
+    /// or is gone with its session not yet let go of.
+    async fn assert_a_reloaded_session_shows_its_child_once(
+        old_child_outlives: bool,
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, None, cx).await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+
+        send_child_history(&harness, &parent_session_id, &child_session_id);
+        cx.run_until_parked();
+        let (_, _, old_child) = external_child(&parent, &child_session_id, cx);
+        assert_eq!(times_shown(&old_child, "Found it", cx), 1);
+
+        drop(parent);
+        let old_child_handle = old_child.downgrade();
+        let kept_old_child = if old_child_outlives {
+            Some(old_child)
+        } else {
+            drop(old_child);
+            None
+        };
+        release_dropped_entities(cx);
+        assert!(
+            harness
+                .connection
+                .sessions
+                .borrow()
+                .get(&parent_session_id)
+                .is_none(),
+            "the parent's session was let go of"
+        );
+        if !old_child_outlives {
+            // The child's thread went away, but its session was not let go
+            // of yet when the reload began.
+            harness.connection.sessions.borrow_mut().insert(
+                child_session_id.clone(),
+                AcpSession {
+                    thread: old_child_handle,
+                    suppress_abort_err: false,
+                    session_modes: None,
+                    config_options: None,
+                    _release_subscription: Subscription::new(|| {}),
+                },
+            );
+        }
+
+        let reloaded = boundary_thread(&harness, &project, cx).await;
+        assert_eq!(
+            reloaded.read_with(cx, |thread, _| thread.session_id().clone()),
+            parent_session_id
+        );
+        send_child_history(&harness, &parent_session_id, &child_session_id);
+        cx.run_until_parked();
+
+        let (status, linked_call, new_child) = external_child(&reloaded, &child_session_id, cx);
+        assert_eq!(status, acp_thread::ExternalSubagentStatus::Idle);
+        assert_eq!(linked_call, Some(acp::ToolCallId::new("toolu_1")));
+        assert_eq!(
+            child_prompts(&new_child, cx),
+            ["Look around"],
+            "the reloaded child shows its prompt"
+        );
+        assert_eq!(
+            times_shown(&new_child, "Found it", cx),
+            1,
+            "the reloaded child shows its history once"
+        );
+        assert_eq!(
+            harness
+                .connection
+                .sessions
+                .borrow()
+                .get(&child_session_id)
+                .map(|session| session.thread.entity_id()),
+            Some(new_child.entity_id()),
+            "the child's session goes to the reloaded child"
+        );
+        if let Some(old_child) = kept_old_child {
+            assert_ne!(old_child.entity_id(), new_child.entity_id());
+            assert_eq!(
+                times_shown(&old_child, "Found it", cx),
+                1,
+                "the previous thread of the child is not sent the history again"
+            );
+        }
+    }
+
+    #[gpui::test]
+    async fn a_reloaded_session_shows_its_child_once_beside_the_old_child(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        assert_a_reloaded_session_shows_its_child_once(true, cx).await;
+    }
+
+    #[gpui::test]
+    async fn a_reloaded_session_shows_its_child_once_after_the_old_child(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        assert_a_reloaded_session_shows_its_child_once(false, cx).await;
+    }
+
+    /// ADR-F97: a child's prompt can come before the parent's call that
+    /// launched it; the call's card shows the child once the call comes. A
+    /// message another session sent the child links no call of the parent's.
+    #[gpui::test]
+    async fn a_card_shows_a_child_whose_prompt_came_before_the_call(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, None, cx).await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+        let other_child_session_id = acp::SessionId::new("other-child-session");
+
+        for (session_id, message_id, sender) in [
+            (&child_session_id, "toolu_1", parent_session_id.clone()),
+            (
+                &other_child_session_id,
+                "toolu_2",
+                acp::SessionId::new("a-sibling"),
+            ),
+        ] {
+            announce_subagent(
+                &harness,
+                &parent_session_id,
+                session_id,
+                serde_json::json!({ "state": "running" }),
+            );
+            send_raw(
+                &harness,
+                raw_session_update(
+                    session_id,
+                    serde_json::json!({
+                        "sessionUpdate": "session_message",
+                        "messageId": message_id,
+                        "senderSessionId": sender,
+                        "recipientSessionId": session_id,
+                        "content": [{ "type": "text", "text": "Look around" }],
+                    }),
+                ),
+            );
+        }
+        cx.run_until_parked();
+        assert!(
+            parent.read_with(cx, |parent, _| parent
+                .tool_call(&acp::ToolCallId::new("toolu_1"))
+                .is_none()),
+            "the call has not come yet"
+        );
+
+        for tool_call_id in ["toolu_1", "toolu_2"] {
+            send_raw(
+                &harness,
+                raw_session_update(&parent_session_id, agent_call(tool_call_id)),
+            );
+        }
+        cx.run_until_parked();
+
+        let card_child = |tool_call_id: &str, cx: &mut gpui::TestAppContext| {
+            parent.read_with(cx, |parent, _| {
+                let (_, call) = parent
+                    .tool_call(&acp::ToolCallId::new(tool_call_id))
+                    .expect("the parent's Agent call");
+                call.subagent_session_info
+                    .as_ref()
+                    .map(|info| info.session_id.clone())
+            })
+        };
+        assert_eq!(
+            card_child("toolu_1", cx),
+            Some(child_session_id.clone()),
+            "the card shows the child once its call comes"
+        );
+        assert_eq!(
+            external_child(&parent, &child_session_id, cx).1,
+            Some(acp::ToolCallId::new("toolu_1"))
+        );
+        assert_eq!(
+            card_child("toolu_2", cx),
+            None,
+            "a message from another session links no call of the parent's"
+        );
+        assert_eq!(external_child(&parent, &other_child_session_id, cx).1, None);
+    }
+
+    /// ADR-F97: what comes for a session after its thread went away is late,
+    /// not early: it is dropped, not held for an announcement that will not
+    /// come. A session that never had a thread is still held.
+    #[gpui::test]
+    async fn late_updates_of_closed_sessions_are_not_held(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, None, cx).await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+
+        // A child that was only announced, and was sent nothing yet.
+        let quiet_child_session_id = acp::SessionId::new("quiet-child-session");
+        send_child_history(&harness, &parent_session_id, &child_session_id);
+        announce_subagent(
+            &harness,
+            &parent_session_id,
+            &quiet_child_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        cx.run_until_parked();
+        drop(parent);
+        release_dropped_entities(cx);
+        assert!(
+            harness
+                .connection
+                .sessions
+                .borrow()
+                .get(&child_session_id)
+                .is_none(),
+            "the child's session went away with its parent"
+        );
+
+        let unannounced_session_id = acp::SessionId::new("unannounced");
+        for session_id in [
+            &child_session_id,
+            &quiet_child_session_id,
+            &unannounced_session_id,
+        ] {
+            send_raw(
+                &harness,
+                raw_session_update(
+                    session_id,
+                    serde_json::json!({
+                        "sessionUpdate": "agent_message_chunk",
+                        "content": { "type": "text", "text": "Still going" },
+                    }),
+                ),
+            );
+        }
+        send_raw(
+            &harness,
+            raw_session_update(
+                &child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "session_message",
+                    "messageId": "toolu_9",
+                    "recipientSessionId": child_session_id,
+                    "content": [{ "type": "text", "text": "One more thing" }],
+                }),
+            ),
+        );
+        announce_subagent(
+            &harness,
+            &parent_session_id,
+            &acp::SessionId::new("late-child"),
+            serde_json::json!({ "state": "running" }),
+        );
+        cx.run_until_parked();
+
+        assert_eq!(harness.subagents.held_count(&child_session_id), 0);
+        assert_eq!(harness.subagents.held_count(&quiet_child_session_id), 0);
+        assert_eq!(harness.subagents.held_count(&parent_session_id), 0);
+        assert_eq!(
+            harness.subagents.held_count(&unannounced_session_id),
+            1,
+            "a session that never had a thread may still be announced"
+        );
+    }
+    /// ADR-F97: a reloaded session is sent its children's history again. What
+    /// comes of a child before it is announced anew is held for it, though
+    /// the child had a thread under the previous thread of the session.
+    #[gpui::test]
+    async fn a_reloaded_childs_early_update_is_held(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, None, cx).await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+        send_child_history(&harness, &parent_session_id, &child_session_id);
+        cx.run_until_parked();
+        drop(parent);
+        release_dropped_entities(cx);
+
+        let reloaded = boundary_thread(&harness, &project, cx).await;
+        send_raw(
+            &harness,
+            raw_session_update(
+                &child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": { "type": "text", "text": "Came early" },
+                }),
+            ),
+        );
+        cx.run_until_parked();
+        assert_eq!(harness.subagents.held_count(&child_session_id), 1);
+        send_child_history(&harness, &parent_session_id, &child_session_id);
+        cx.run_until_parked();
+
+        let (_, _, new_child) = external_child(&reloaded, &child_session_id, cx);
+        assert_eq!(times_shown(&new_child, "Came early", cx), 1);
+        assert_eq!(harness.subagents.held_count(&child_session_id), 0);
+    }
+
+    /// ADR-F97: a session that never had children is remembered too, so its
+    /// late updates are not held once it is closed.
+    #[gpui::test]
+    async fn a_closed_session_without_children_is_not_held(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, None, cx).await;
+        let thread = boundary_thread(&harness, &project, cx).await;
+        let session_id = thread.read_with(cx, |thread, _| thread.session_id().clone());
+        let chunk = |text: &str| {
+            raw_session_update(
+                &session_id,
+                serde_json::json!({
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": { "type": "text", "text": text },
+                }),
+            )
+        };
+        send_raw(&harness, chunk("Hello"));
+        cx.run_until_parked();
+        drop(thread);
+        release_dropped_entities(cx);
+        assert!(
+            harness
+                .connection
+                .sessions
+                .borrow()
+                .get(&session_id)
+                .is_none(),
+            "the session was let go of"
+        );
+
+        send_raw(&harness, chunk("Too late"));
+        cx.run_until_parked();
+        assert_eq!(harness.subagents.held_count(&session_id), 0);
     }
 }
 

@@ -54,6 +54,26 @@ pub(super) fn model_and_effort_label(model: Option<&str>, effort: Option<&str>) 
     .into()
 }
 
+/// The one line that sums the list up while it is closed: "Subagents: 12 ·
+/// 3 working · Background Tasks: 2", leaving out what there is none of.
+pub(super) fn background_work_summary_text(
+    subagent_count: usize,
+    working_count: usize,
+    task_count: usize,
+) -> SharedString {
+    let mut parts = Vec::new();
+    if subagent_count > 0 {
+        parts.push(i18n::t!("Subagents: {}", subagent_count));
+        if working_count > 0 {
+            parts.push(i18n::t!("{} working", working_count));
+        }
+    }
+    if task_count > 0 {
+        parts.push(i18n::t!("Background Tasks: {}", task_count));
+    }
+    parts.join(" · ").into()
+}
+
 impl ThreadView {
     /// ADR-F97: keeps the elapsed times moving while a child works, and stops
     /// when none does.
@@ -148,6 +168,9 @@ impl ThreadView {
             .iter()
             .filter(|row| row.status.is_working())
             .count();
+        let summary = background_work_summary_text(subagents.len(), working, tasks.len());
+        // One label on one line, cut with an ellipsis where the panel ends: a
+        // label per count would each wrap, or each be cut, in a narrow panel.
         h_flex()
             .id("background_work_summary")
             .debug_selector(|| "background_work_summary".into())
@@ -157,38 +180,35 @@ impl ThreadView {
             .when(expanded, |this| {
                 this.border_b_1().border_color(cx.theme().colors().border)
             })
-            .child(Disclosure::new("background_work_disclosure", expanded))
             .child(
-                h_flex()
+                div()
+                    .flex_none()
+                    .child(Disclosure::new("background_work_disclosure", expanded)),
+            )
+            .child(
+                div()
+                    .id("background_work_summary_text")
+                    .debug_selector(|| "background_work_summary_text".into())
                     .flex_1()
                     .min_w_0()
-                    .gap_2()
-                    .when(!subagents.is_empty(), |this| {
-                        this.child(
-                            Label::new(i18n::t!("Subagents: {}", subagents.len()))
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        )
-                        .when(working > 0, |this| {
-                            this.child(
-                                Label::new(i18n::t!("{} working", working))
-                                    .size(LabelSize::Small)
-                                    .color(Color::Accent),
-                            )
-                        })
-                    })
-                    .when(!tasks.is_empty(), |this| {
-                        this.child(
-                            Label::new(i18n::t!("Background Tasks: {}", tasks.len()))
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        )
-                    }),
+                    .overflow_hidden()
+                    .child(
+                        Label::new(summary.clone())
+                            .size(LabelSize::Small)
+                            .color(if working > 0 {
+                                Color::Accent
+                            } else {
+                                Color::Muted
+                            })
+                            .truncate(),
+                    )
+                    .tooltip(Tooltip::text(summary)),
             )
             .when(!subagents.is_empty(), |this| {
                 this.child(
                     div()
                         .id("background_work_stop_hint")
+                        .flex_none()
                         .child(
                             Icon::new(IconName::Info)
                                 .size(IconSize::XSmall)
@@ -390,5 +410,26 @@ impl ThreadView {
             .children(subagent_rows)
             .children(task_header)
             .children(task_rows)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::background_work_summary_text;
+
+    #[test]
+    fn the_summary_names_only_what_there_is() {
+        assert_eq!(
+            background_work_summary_text(12, 3, 2).as_ref(),
+            "Subagents: 12 · 3 working · Background Tasks: 2"
+        );
+        assert_eq!(
+            background_work_summary_text(2, 0, 0).as_ref(),
+            "Subagents: 2"
+        );
+        assert_eq!(
+            background_work_summary_text(0, 0, 1).as_ref(),
+            "Background Tasks: 1"
+        );
     }
 }

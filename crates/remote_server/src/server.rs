@@ -2281,11 +2281,21 @@ mod tests {
         })
     }
 
+    /// For connectors whose daemons all answer: the stand-ins share smol's
+    /// executor with every test running beside them, so a timeout here would
+    /// only measure how busy the machine is, and a stand-in taken for hung
+    /// gets replaced a second time.
+    const ANSWERING_DAEMON_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+    /// For a connector that has to give up on a hung daemon, which it waits
+    /// this long for, and then on its answering replacement as well.
+    const HUNG_DAEMON_REPLY_TIMEOUT: Duration = Duration::from_secs(2);
+
     /// A connector whose "spawning a daemon" starts an answering stand-in, and
     /// that counts how often it had to.
     fn test_connector(
         paths: DaemonPaths,
         spawned: Rc<RefCell<Vec<smol::Task<()>>>>,
+        reply_timeout: Duration,
     ) -> DaemonConnector {
         DaemonConnector {
             paths,
@@ -2296,7 +2306,7 @@ mod tests {
                 ));
                 Ok(())
             }),
-            reply_timeout: Duration::from_millis(300),
+            reply_timeout,
             start_timeout: Duration::from_secs(5),
             lock_timeout: Duration::from_secs(5),
         }
@@ -2306,7 +2316,11 @@ mod tests {
     fn a_reconnect_with_no_daemon_reports_the_server_gone() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");
         let spawned = Rc::new(RefCell::new(Vec::new()));
-        let connector = test_connector(test_paths(&temp_dir), spawned.clone());
+        let connector = test_connector(
+            test_paths(&temp_dir),
+            spawned.clone(),
+            ANSWERING_DAEMON_REPLY_TIMEOUT,
+        );
 
         let Err(error) = smol::block_on(connector.connect(&hello(true))) else {
             panic!("there is no daemon to reconnect to");
@@ -2323,7 +2337,11 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("create temp dir");
         let paths = test_paths(&temp_dir);
         let _daemon = start_answering_daemon(&paths.socket, DaemonHelloOutcome::SessionNotFound);
-        let connector = test_connector(paths, Rc::new(RefCell::new(Vec::new())));
+        let connector = test_connector(
+            paths,
+            Rc::new(RefCell::new(Vec::new())),
+            ANSWERING_DAEMON_REPLY_TIMEOUT,
+        );
 
         let Err(error) = smol::block_on(connector.connect(&hello(true))) else {
             panic!("the daemon has no such session");
@@ -2335,7 +2353,11 @@ mod tests {
     fn a_fresh_connection_starts_the_daemon_when_none_runs() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");
         let spawned = Rc::new(RefCell::new(Vec::new()));
-        let connector = test_connector(test_paths(&temp_dir), spawned.clone());
+        let connector = test_connector(
+            test_paths(&temp_dir),
+            spawned.clone(),
+            ANSWERING_DAEMON_REPLY_TIMEOUT,
+        );
 
         smol::block_on(connector.connect(&hello(false)))
             .expect("the proxy should start a daemon and be accepted by it");
@@ -2352,7 +2374,7 @@ mod tests {
         std::fs::write(&paths.pid_file, std::process::id().to_string())
             .expect("write the pid file");
         let spawned = Rc::new(RefCell::new(Vec::new()));
-        let connector = test_connector(paths, spawned.clone());
+        let connector = test_connector(paths, spawned.clone(), HUNG_DAEMON_REPLY_TIMEOUT);
 
         smol::block_on(connector.connect(&hello(false)))
             .expect("the proxy should replace the hung daemon and be accepted");
@@ -2367,7 +2389,11 @@ mod tests {
         std::fs::write(&paths.pid_file, std::process::id().to_string())
             .expect("write the pid file");
         let spawned = Rc::new(RefCell::new(Vec::new()));
-        let connector = test_connector(paths.clone(), spawned.clone());
+        let connector = test_connector(
+            paths.clone(),
+            spawned.clone(),
+            ANSWERING_DAEMON_REPLY_TIMEOUT,
+        );
 
         let found_hung = DaemonIdentity {
             pid: Some(u32::MAX - 1),

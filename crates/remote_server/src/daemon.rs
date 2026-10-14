@@ -467,11 +467,15 @@ impl SessionRegistry {
         }
 
         let shutdown = project.update(cx, |project, cx| project.shutdown(cx));
-        cx.spawn(async move |_, _| {
+        cx.spawn(async move |_, cx| {
             shutdown.await;
             // Held until the language servers have stopped, so that dropping
             // the store that talks to them does not cut their exit short.
-            drop(project);
+            // Dropped inside an update: GPUI releases an entity whose last
+            // handle is gone only when an update ends, and outside one the
+            // project's worktrees, watches and stores would linger until some
+            // unrelated update happened to come along.
+            cx.update(|_| drop(project));
         })
         .detach();
         log::info!(
@@ -1403,18 +1407,15 @@ mod tests {
         read_until_closed(&mut connection).await;
         cx.run_until_parked();
 
-        assert!(
-            project.upgrade().is_none(),
-            "the project should be released"
-        );
-        assert!(
-            worktree.upgrade().is_none(),
-            "the worktree — and its file watches — should be released"
-        );
-        assert!(worktree_store.upgrade().is_none());
-        assert!(buffer_store.upgrade().is_none());
-        assert!(lsp_store.upgrade().is_none());
-        assert!(dap_store.upgrade().is_none());
+        // `assert_released` rather than `upgrade().is_none()`: an entity whose
+        // last handle is gone no longer upgrades, yet keeps everything it
+        // holds until an update ends and GPUI releases it.
+        project.assert_released();
+        worktree.assert_released();
+        worktree_store.assert_released();
+        buffer_store.assert_released();
+        lsp_store.assert_released();
+        dap_store.assert_released();
         assert_eq!(
             daemon
                 .host

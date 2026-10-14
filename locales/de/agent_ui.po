@@ -11,6 +11,9 @@ msgstr ""
 msgid " (Outside Sandbox)"
 msgstr " (außerhalb der Sandbox)"
 
+msgid "\"Allow Lifting the Network Restriction for a Thread\" was turned off, so an agent that had lifted its network restriction started again with only its own hosts. The answer it was giving was stopped; send your message again to go on."
+msgstr "„Aufheben der Netzwerkbeschränkung pro Thread zulassen“ wurde ausgeschaltet, daher wurde ein Agent, der seine Netzwerkbeschränkung aufgehoben hatte, nur mit seinen eigenen Hosts neu gestartet. Seine laufende Antwort wurde abgebrochen; senden Sie Ihre Nachricht erneut, um fortzufahren."
+
 msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
 msgstr "„Ausführung außerhalb der Sandbox zulassen“ ist unter Einstellungen > KI > Sandbox ausgeschaltet, daher wird nichts außerhalb der Sandbox gestartet, und die Einstellungen, die einen Agenten oder Claude Code immer außerhalb der Sandbox starten, werden ignoriert. Um dies zuzulassen, schalten Sie diese Einstellung ein."
 
@@ -1112,14 +1115,11 @@ msgstr "Mehr erfahren"
 msgid "Let the Agent Reach Any Host?"
 msgstr "Dem Agenten jeden Host erlauben?"
 
-msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
-msgstr "Damit der Agent dieses Threads und die Befehle, die er ausführt, jeden Host innerhalb der Netzwerk-Zulassungsliste erreichen können, wird `allow_unrestricted_network` in den Sandbox-Einstellungen des Agenten benötigt, das ausgeschaltet ist. Einschalten? Es bleibt eingeschaltet, bis du es in deiner Einstellungsdatei ausschaltest."
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "Damit der Agent dieses Threads und die Befehle, die er ausführt, jeden Host innerhalb der Netzwerk-Zulassungsliste erreichen können, wird „Aufheben der Netzwerkbeschränkung pro Thread zulassen“ (Einstellungen > KI > Sandbox) benötigt, das ausgeschaltet ist. Einschalten? Es bleibt eingeschaltet, bis du es dort ausschaltest."
 
-msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
-msgstr "Damit die Terminalbefehle und Abrufe (fetch) dieses Threads jeden Host erreichen können, wird `allow_unrestricted_network` in den Sandbox-Einstellungen des Agenten benötigt, das ausgeschaltet ist. Einschalten? Es bleibt eingeschaltet, bis du es in deiner Einstellungsdatei ausschaltest. Die Netzwerk-Zulassungsliste gilt weiterhin."
-
-msgid "Lifting the network restriction is not available for projects on a remote host yet."
-msgstr "Das Aufheben der Netzwerkbeschränkung ist für Projekte auf einem Remote-Host noch nicht verfügbar."
+msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
+msgstr "Damit die Terminalbefehle und Abrufe (fetch) dieses Threads jeden Host erreichen können, wird „Aufheben der Netzwerkbeschränkung pro Thread zulassen“ (Einstellungen > KI > Sandbox) benötigt, das ausgeschaltet ist. Einschalten? Es bleibt eingeschaltet, bis du es dort ausschaltest. Die Netzwerk-Zulassungsliste gilt weiterhin."
 
 msgid "Lifting the network restriction is not available for this agent."
 msgstr "Das Aufheben der Netzwerkbeschränkung ist für diesen Agenten nicht verfügbar."
@@ -2224,6 +2224,12 @@ msgstr "Dieser Agent hat keine eigenen Hosts: Nur die Netzwerk-Zulassungsliste b
 msgid "This agent is installed via npx (npm)"
 msgstr "Dieser Agent wird über npx (npm) installiert"
 
+msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "Dadurch wird auch „Aufheben der Netzwerkbeschränkung pro Thread zulassen“ (Einstellungen > KI > Sandbox) eingeschaltet, das ausgeschaltet ist. Es bleibt eingeschaltet, bis Sie es dort ausschalten."
+
+msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "Dadurch wird auch „Ausführung außerhalb der Sandbox zulassen“ (Einstellungen > KI > Sandbox) eingeschaltet, das ausgeschaltet ist. Es bleibt eingeschaltet, bis Sie es dort ausschalten."
+
 msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
 msgstr "Dies gilt nur für diesen Start. Um immer außerhalb der Sandbox zu starten, schalten Sie es auf der Seite „KI“ in den Einstellungen um."
 
@@ -2358,6 +2364,12 @@ msgstr "Versuchen, den Agenten neu zu starten"
 
 msgid "Turn On and Continue"
 msgstr "Einschalten und fortfahren"
+
+msgid "Turn On and Start Again"
+msgstr "Einschalten und neu starten"
+
+msgid "Turn On and Start Outside"
+msgstr "Einschalten und außerhalb starten"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "Zum Ausschalten der Sandbox wird „Ausführung außerhalb der Sandbox zulassen“ (Einstellungen > KI > Sandbox) benötigt, das ausgeschaltet ist. Einschalten? Es bleibt eingeschaltet, bis Sie es dort ausschalten."

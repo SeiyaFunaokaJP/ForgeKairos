@@ -1,7 +1,9 @@
-use gpui::{Action, App, Context, Entity, FontWeight, Render, Subscription, WeakEntity, Window};
-use settings::SettingsStore;
-use ui::{ButtonLike, Tooltip, text_for_keystrokes};
-use vim_mode_setting::HelixModeSetting;
+use gpui::{
+    Action, AnyElement, App, Context, Entity, FontWeight, Render, Subscription, WeakEntity, Window,
+};
+use settings::{EditingModeContent, SettingsStore};
+use ui::{ButtonLike, ContextMenu, PopoverMenu, Tooltip, text_for_keystrokes};
+use vim_mode_setting::{HelixModeSetting, current_editing_mode, write_editing_mode};
 use workspace::{HideStatusItem, StatusItemView, item::ItemHandle, ui::prelude::*};
 
 use crate::{ToggleHelixMode, ToggleVimMode, Vim, VimEvent, VimGlobals};
@@ -9,8 +11,10 @@ use crate::{ToggleHelixMode, ToggleVimMode, Vim, VimEvent, VimGlobals};
 const DISABLE_TITLE: &str = i18n::msg!("Disable Vim Mode");
 const DISABLE_META: &str =
     i18n::msg!("When disabled, you can type as soon as you open a file, just like in VSCode.");
-const ENABLE_TITLE: &str = i18n::msg!("Enable Vim Mode");
-const ENABLE_META: &str = i18n::msg!("When enabled, you edit with Vim key bindings.");
+const VIM_SHORTCUT_META: &str =
+    i18n::msg!("Choose Normal, Vim, Helix or Emacs. The shortcut turns Vim mode on or off.");
+const HELIX_SHORTCUT_META: &str =
+    i18n::msg!("Choose Normal, Vim, Helix or Emacs. The shortcut turns Helix mode on or off.");
 
 /// The ModeIndicator displays the current mode in the status bar.
 pub struct ModeIndicator {
@@ -87,31 +91,83 @@ impl ModeIndicator {
         }
     }
 
-    /// The compact button shown whenever there is no mode to display: modal
-    /// editing is off, or it is on but no editor has been focused yet. Either
-    /// way the status bar keeps an obvious, mouse-only way back to plain
-    /// VSCode-style editing.
-    fn render_toggle_button(enabled: bool, cx: &App) -> Button {
-        let action = Self::toggle_action(cx);
-        let tooltip_action = action.boxed_clone();
-        let (label, title, meta) = if enabled {
-            (i18n::t!("Vim: On"), DISABLE_TITLE, DISABLE_META)
-        } else {
-            (i18n::t!("Vim: Off"), ENABLE_TITLE, ENABLE_META)
-        };
-        let (title, meta) = (i18n::tr(title), i18n::tr(meta));
+    fn editing_mode_label(mode: EditingModeContent) -> SharedString {
+        match mode {
+            EditingModeContent::Normal => i18n::t!("Normal").into(),
+            EditingModeContent::Vim => "Vim".into(),
+            EditingModeContent::Helix => "Helix".into(),
+            EditingModeContent::Emacs => "Emacs".into(),
+        }
+    }
 
-        Button::new("vim-mode-toggle", label)
-            .label_size(LabelSize::Small)
-            .color(if enabled {
-                Color::Default
-            } else {
-                Color::Muted
+    fn editing_mode_menu(menu: ContextMenu, cx: &App) -> ContextMenu {
+        let current_mode = current_editing_mode(cx);
+        [
+            EditingModeContent::Normal,
+            EditingModeContent::Vim,
+            EditingModeContent::Helix,
+            EditingModeContent::Emacs,
+        ]
+        .into_iter()
+        .fold(menu, |menu, mode| {
+            let shortcut: Option<Box<dyn Action>> = match mode {
+                EditingModeContent::Vim => Some(ToggleVimMode.boxed_clone()),
+                EditingModeContent::Helix => Some(ToggleHelixMode.boxed_clone()),
+                EditingModeContent::Normal | EditingModeContent::Emacs => None,
+            };
+            menu.toggleable_entry(
+                Self::editing_mode_label(mode),
+                mode == current_mode,
+                IconPosition::Start,
+                shortcut,
+                move |_, cx| {
+                    write_editing_mode(mode, cx);
+                },
+            )
+        })
+    }
+
+    /// The editing mode switch, shown at all times next to the modal editing
+    /// mode (if any), so the status bar always has an obvious, mouse-only way
+    /// to change how keys edit text, including back to plain VSCode-style
+    /// editing.
+    fn render_editing_mode_menu(cx: &App) -> AnyElement {
+        let current_mode = current_editing_mode(cx);
+        let label = Self::editing_mode_label(current_mode);
+        let tooltip_action = Self::toggle_action(cx);
+        let tooltip_meta = i18n::tr(if HelixModeSetting::is_enabled(cx) {
+            HELIX_SHORTCUT_META
+        } else {
+            VIM_SHORTCUT_META
+        });
+
+        PopoverMenu::new("editing-mode-menu")
+            .anchor(gpui::Anchor::BottomRight)
+            .menu(|window, cx| {
+                Some(ContextMenu::build(window, cx, |menu, _, cx| {
+                    Self::editing_mode_menu(menu, cx)
+                }))
             })
-            .tab_index(0isize)
-            .aria_label(title)
-            .tooltip(move |_window, cx| Tooltip::with_meta(title, Some(&*tooltip_action), meta, cx))
-            .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
+            .trigger_with_tooltip(
+                Button::new("editing-mode-button", label.clone())
+                    .label_size(LabelSize::Small)
+                    .color(if current_mode == EditingModeContent::Normal {
+                        Color::Muted
+                    } else {
+                        Color::Default
+                    })
+                    .tab_index(0isize)
+                    .aria_label(i18n::t!("Editing Mode: {mode}", mode = label)),
+                move |_window, cx| {
+                    Tooltip::with_meta(
+                        i18n::t!("Editing Mode"),
+                        Some(&*tooltip_action),
+                        tooltip_meta,
+                        cx,
+                    )
+                },
+            )
+            .into_any_element()
     }
 
     fn current_operators_description(&self, vim: Entity<Vim>, cx: &mut Context<Self>) -> String {
@@ -141,15 +197,22 @@ impl ModeIndicator {
 
 impl Render for ModeIndicator {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !Vim::enabled(cx) {
-            return Self::render_toggle_button(false, cx).into_any_element();
-        }
-
-        let vim = self.vim();
-        let Some(vim) = vim else {
-            return Self::render_toggle_button(true, cx).into_any_element();
+        let mode_display = if Vim::enabled(cx) {
+            self.vim().map(|vim| self.render_mode_display(vim, cx))
+        } else {
+            None
         };
 
+        h_flex().gap_0p5().children(mode_display).child(
+            div()
+                .debug_selector(|| "editing-mode-menu".into())
+                .child(Self::render_editing_mode_menu(cx)),
+        )
+    }
+}
+
+impl ModeIndicator {
+    fn render_mode_display(&self, vim: Entity<Vim>, cx: &mut Context<Self>) -> AnyElement {
         let vim_readable = vim.read(cx);
         let status_label = vim_readable.status_label.clone();
         let temp_mode = vim_readable.temp_mode;
@@ -267,5 +330,209 @@ impl StatusItemView for ModeIndicator {
         // This item doubles as the only GUI switch for Vim mode, so hiding it
         // would strand users who turned Vim on by accident with no way back.
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use gpui::{BorrowAppContext, TestAppContext, VisualTestContext};
+    use project::{FakeFs, Fs};
+    use settings::{BaseKeymap, EditingModeContent, Settings, SettingsContent, SettingsStore};
+    use ui::ContextMenu;
+    use vim_mode_setting::{HelixModeSetting, VimModeSetting, current_editing_mode};
+
+    use super::ModeIndicator;
+
+    async fn init_with_user_settings(
+        user_settings: &str,
+        cx: &mut TestAppContext,
+    ) -> (Arc<FakeFs>, VisualTestContext) {
+        let fs = FakeFs::new(cx.executor());
+        let settings_dir = paths::settings_file()
+            .parent()
+            .expect("the settings file is in a directory");
+        fs.create_dir(settings_dir)
+            .await
+            .expect("the fake settings directory is created");
+        fs.insert_file(paths::settings_file(), user_settings.as_bytes().to_vec())
+            .await;
+        cx.update(|cx| {
+            let store = SettingsStore::test(cx);
+            cx.set_global(store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            <dyn Fs>::set_global(fs.clone(), cx);
+            cx.update_global(|store: &mut SettingsStore, cx| {
+                store.set_user_settings(user_settings, cx).result()
+            })
+        })
+        .expect("the test's user settings parse");
+        let window = cx.add_empty_window().clone();
+        (fs, window)
+    }
+
+    /// Opens the status bar's menu, checks which mode it marks as current,
+    /// picks `mode` from it and loads what was written as the user settings.
+    async fn choose_from_menu(
+        mode: EditingModeContent,
+        fs: &FakeFs,
+        cx: &mut VisualTestContext,
+    ) -> (SettingsContent, EditingModeContent) {
+        let modes = [
+            EditingModeContent::Normal,
+            EditingModeContent::Vim,
+            EditingModeContent::Helix,
+            EditingModeContent::Emacs,
+        ];
+        let menu = cx.update(|window, cx| {
+            ContextMenu::build(window, cx, |menu, _, cx| {
+                ModeIndicator::editing_mode_menu(menu, cx)
+            })
+        });
+        let marked_mode = menu.update_in(cx, |menu, window, cx| {
+            menu.select_toggled_or_first(window, cx);
+            menu.selected_index()
+                .and_then(|index| modes.get(index).copied())
+        });
+        let marked_mode = marked_mode.expect("the menu marks a mode");
+        assert_eq!(
+            Some(marked_mode),
+            cx.update(|_, cx| Some(current_editing_mode(cx))),
+            "the menu marks the current mode"
+        );
+
+        let target_index = modes
+            .iter()
+            .position(|candidate| *candidate == mode)
+            .expect("every mode is in the menu");
+        menu.update_in(cx, |menu, window, cx| {
+            menu.select_first(&menu::SelectFirst, window, cx);
+            for _ in 0..target_index {
+                menu.select_next(&menu::SelectNext, window, cx);
+            }
+            menu.confirm(&menu::Confirm, window, cx);
+        });
+        cx.run_until_parked();
+
+        let written = fs
+            .load(paths::settings_file())
+            .await
+            .expect("the settings file was written");
+        cx.update(|_, cx| {
+            cx.update_global(|store: &mut SettingsStore, cx| {
+                store.set_user_settings(&written, cx).result()
+            })
+        })
+        .expect("the written settings parse");
+        let content: SettingsContent =
+            settings::parse_json_with_comments(&written).expect("the written settings parse");
+        (content, marked_mode)
+    }
+
+    fn resolved(cx: &mut VisualTestContext) -> (bool, bool, BaseKeymap) {
+        cx.update(|_, cx| {
+            (
+                VimModeSetting::is_enabled(cx),
+                HelixModeSetting::is_enabled(cx),
+                *BaseKeymap::get_global(cx),
+            )
+        })
+    }
+
+    #[gpui::test]
+    async fn leaving_emacs_from_the_status_bar_gives_the_base_keymap_back(cx: &mut TestAppContext) {
+        let (fs, mut cx) =
+            init_with_user_settings("{\n  \"base_keymap\": \"Emacs\"\n}\n", cx).await;
+
+        let (content, marked) = choose_from_menu(EditingModeContent::Normal, &fs, &mut cx).await;
+        assert_eq!(marked, EditingModeContent::Emacs);
+        assert_eq!(content.base_keymap, None);
+        assert_eq!(content.vim_mode, None);
+        assert_eq!(content.helix_mode, None);
+        let (vim_mode, helix_mode, base_keymap) = resolved(&mut cx);
+        assert!(!vim_mode && !helix_mode);
+        assert_ne!(base_keymap, BaseKeymap::Emacs);
+        cx.update(|_, cx| assert_eq!(current_editing_mode(cx), EditingModeContent::Normal));
+    }
+
+    #[gpui::test]
+    async fn moving_from_helix_to_vim_switches_helix_off(cx: &mut TestAppContext) {
+        let (fs, mut cx) = init_with_user_settings(
+            "{\n  \"helix_mode\": true,\n  \"base_keymap\": \"JetBrains\"\n}\n",
+            cx,
+        )
+        .await;
+
+        let (content, marked) = choose_from_menu(EditingModeContent::Vim, &fs, &mut cx).await;
+        assert_eq!(marked, EditingModeContent::Helix);
+        assert_eq!(content.vim_mode, Some(true));
+        assert_eq!(content.helix_mode, Some(false));
+        assert_eq!(
+            content.base_keymap,
+            Some(settings::BaseKeymapContent::JetBrains),
+            "a base keymap other than Emacs stays"
+        );
+        assert_eq!(resolved(&mut cx), (true, false, BaseKeymap::JetBrains));
+    }
+
+    #[gpui::test]
+    async fn moving_from_vim_to_emacs_switches_vim_off(cx: &mut TestAppContext) {
+        let (fs, mut cx) = init_with_user_settings("{\n  \"vim_mode\": true\n}\n", cx).await;
+
+        let (content, marked) = choose_from_menu(EditingModeContent::Emacs, &fs, &mut cx).await;
+        assert_eq!(marked, EditingModeContent::Vim);
+        assert_eq!(content.vim_mode, Some(false));
+        assert_eq!(content.helix_mode, None);
+        assert_eq!(
+            content.base_keymap,
+            Some(settings::BaseKeymapContent::Emacs)
+        );
+        assert_eq!(resolved(&mut cx), (false, false, BaseKeymap::Emacs));
+
+        let (content, marked) = choose_from_menu(EditingModeContent::Helix, &fs, &mut cx).await;
+        assert_eq!(marked, EditingModeContent::Emacs);
+        assert_eq!(content.vim_mode, Some(false));
+        assert_eq!(content.helix_mode, Some(true));
+        assert_eq!(content.base_keymap, None);
+        cx.update(|_, cx| assert_eq!(current_editing_mode(cx), EditingModeContent::Helix));
+    }
+
+    // The quick action bar switches Vim on for the session only, while the
+    // file says nothing. Choosing Normal must still end it.
+    #[gpui::test]
+    async fn choosing_normal_ends_a_session_only_vim_mode(cx: &mut TestAppContext) {
+        let (fs, mut cx) = init_with_user_settings("{}\n", cx).await;
+        cx.update(|_, cx| VimModeSetting::override_global(VimModeSetting(true), cx));
+
+        let (content, marked) = choose_from_menu(EditingModeContent::Normal, &fs, &mut cx).await;
+        assert_eq!(marked, EditingModeContent::Vim);
+        assert_eq!(content.vim_mode, Some(false));
+        assert!(!resolved(&mut cx).0);
+    }
+
+    // The switch is the only mouse way out of Vim, so it has to stay next to
+    // the mode display instead of replacing it.
+    #[gpui::test]
+    async fn the_switch_shows_with_and_without_vim(cx: &mut TestAppContext) {
+        let mut cx = crate::test::VimTestContext::new(cx, false).await;
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("editing-mode-menu").is_some());
+
+        cx.enable_vim();
+        cx.run_until_parked();
+        let shows_vim_mode = cx.workspace(|workspace, _, cx| {
+            workspace
+                .status_bar()
+                .read(cx)
+                .item_of_type::<ModeIndicator>()
+                .is_some_and(|indicator| indicator.read(cx).vim().is_some())
+        });
+        assert!(shows_vim_mode, "the mode display is up next to the switch");
+        assert!(cx.debug_bounds("editing-mode-menu").is_some());
+
+        cx.disable_vim();
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("editing-mode-menu").is_some());
     }
 }

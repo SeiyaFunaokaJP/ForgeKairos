@@ -3947,8 +3947,8 @@ msgid "Whether a terminal opened over SSH runs its shell inside a session the\nr
 msgstr "SSH로 연 터미널이 원격 서버가 유지하는 세션 안에서 셸을 실행할지 여부입니다. 이 경우 연결이 끊겨도 실행 중인 명령이 중지되거나 출력이 손실되지 않으며, 다시 연결하면 모든 내용을 다시 표시하고 이어서 사용할 수 있습니다. Windows가 아닌 SSH 호스트에만 해당됩니다.\n\n기본값: true"
 
 msgctxt "settings schema"
-msgid "Whether a thread of the built-in agent may lift its network restriction\n(the network button next to the chat input): its sandboxed terminal\ncommands and fetches then reach any host without asking. While this is\noff, that button asks to turn it on first. The editor's network\nallowlist still applies. Only the user settings file is read: neither a\nproject's settings nor an agent can turn it on.\nDefault: false"
-msgstr "기본 제공 에이전트의 스레드가 네트워크 제한을 해제할 수 있는지 여부(채팅 입력란 옆의 네트워크 버튼). 해제하면 샌드박스 안의 터미널 명령과 fetch가 확인 없이 모든 호스트에 접속합니다. 이 설정이 꺼져 있으면 그 버튼이 먼저 이 설정을 켤지 묻습니다. 편집기의 네트워크 허용 목록은 계속 적용됩니다. 사용자 설정 파일에서만 읽습니다. 프로젝트 설정이나 에이전트는 이를 켤 수 없습니다.\n기본값: false"
+msgid "Whether a thread may lift its network restriction (the network button\nnext to the chat input). The built-in agent's sandboxed terminal commands\nand fetches then reach any host without asking; an external agent starts\nagain without its own list of hosts. While this is off, the button asks\nto turn it on first, except for the built-in agent while `allow_all_hosts`\nis on, which already lets its threads reach any host. Turning it off\nrestricts the threads that lifted it again at once (an external agent\nstarts again). The editor's network allowlist still applies. On a remote\nhost, a thread can lift it only where the host has a sandbox. Only the\nuser settings file is read: neither a project's settings nor an agent can\nturn it on.\nDefault: false"
+msgstr "스레드가 네트워크 제한을 해제할 수 있는지 여부(채팅 입력란 옆의 네트워크 버튼). 기본 제공 에이전트는 샌드박스 안의 터미널 명령과 fetch가 확인 없이 모든 호스트에 접속하고, 외부 에이전트는 자체 호스트 목록 없이 다시 시작합니다. 이 설정이 꺼져 있으면 그 버튼이 먼저 이 설정을 켤지 묻습니다. 단, 기본 제공 에이전트는 `allow_all_hosts`가 켜져 있는 동안에는 묻지 않습니다(그 설정으로 스레드가 이미 모든 호스트에 접속할 수 있습니다). 이 설정을 끄면 제한을 해제한 스레드가 즉시 다시 제한됩니다(외부 에이전트는 다시 시작합니다). 편집기의 네트워크 허용 목록은 계속 적용됩니다. 원격 호스트에서는 그 호스트에 샌드박스가 있을 때만 스레드가 제한을 해제할 수 있습니다. 사용자 설정 파일에서만 읽습니다. 프로젝트 설정이나 에이전트는 이를 켤 수 없습니다.\n기본값: false"
 
 msgctxt "settings schema"
 msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
@@ -4147,6 +4147,10 @@ msgid "Whether the agent panel should use flexible (proportional) sizing when do
 msgstr "에이전트 패널을 왼쪽 또는 오른쪽에 도킹했을 때 유연한(비례) 크기 조정을 사용할지 여부입니다.\n\n활성화하면 `default_width`가 패널 너비를 제어하지 않으며, 패널을 초기화하면 기본 비율로 복원됩니다.\n\n기본값: true"
 
 msgctxt "settings schema"
+msgid "Whether the agent's network access stays limited to the allowed hosts.\n`false` lets the built-in agent's terminal commands and fetches reach any\nhost without asking, and starts an external agent without its own list of\nhosts; either needs `sandbox_permissions.allow_unrestricted_network`\n(for the built-in agent, `allow_all_hosts` is enough), and turning that\noff restricts such threads again at once. The editor's network allowlist\nstill applies, and fetches still refuse local and private addresses. On\na remote host, applied only where the host has a sandbox."
+msgstr "에이전트의 네트워크 액세스를 허용된 호스트로 제한할지 여부. `false`로 하면 기본 제공 에이전트의 터미널 명령과 fetch가 확인 없이 모든 호스트에 접속하고, 외부 에이전트는 자체 호스트 목록 없이 시작합니다. 둘 다 `sandbox_permissions.allow_unrestricted_network`가 필요하며(기본 제공 에이전트는 `allow_all_hosts`로도 충분합니다), 그 설정을 끄면 그런 스레드는 즉시 다시 제한됩니다. 편집기의 네트워크 허용 목록은 계속 적용되고, fetch는 여전히 로컬 및 사설 주소를 거부합니다. 원격 호스트의 프로젝트에서는 그 호스트에 샌드박스가 있을 때만 적용됩니다."
+
+msgctxt "settings schema"
 msgid "Whether the agent's terminal commands run in the sandbox. `false` runs\nthem outside it, which needs `sandbox_permissions.allow_outside_sandbox`;\nexternal agents then start outside it without asking."
 msgstr "에이전트의 터미널 명령을 샌드박스 안에서 실행할지 여부입니다. `false`이면 샌드박스 외부에서 실행하며, `sandbox_permissions.allow_outside_sandbox`가 필요합니다. 이때 외부 에이전트는 확인 없이 샌드박스 외부에서 시작됩니다."
 
@@ -4157,10 +4161,6 @@ msgstr "중단점을 ForgeKairos 세션 간에 재사용할지 여부입니다.\
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
 msgstr "지난번에 도크를 닫았더라도 시작 시 브라우저 패널을 열지 여부입니다.\n\n기본값: false"
-
-msgctxt "settings schema"
-msgid "Whether the built-in agent's network access stays limited to the\nallowed hosts. `false` lets its terminal commands and fetches reach any\nhost without asking, which needs\n`sandbox_permissions.allow_unrestricted_network`; the editor's network\nallowlist still applies, and fetches still refuse local and private\naddresses. Not applied to projects on a remote host yet."
-msgstr "기본 제공 에이전트의 네트워크 액세스를 허용된 호스트로 제한할지 여부. `false`로 하면 터미널 명령과 fetch가 확인 없이 모든 호스트에 접속하며, `sandbox_permissions.allow_unrestricted_network`가 필요합니다. 편집기의 네트워크 허용 목록은 계속 적용되고, fetch는 여전히 로컬 및 사설 주소를 거부합니다. 원격 호스트의 프로젝트에는 아직 적용되지 않습니다."
 
 msgctxt "settings schema"
 msgid "Whether the built-in browser goes through the egress allowlist proxy.\n\nThe browser is human-driven, so like the terminal it is outside egress\ncontrol by default.\n\nDefault: false"

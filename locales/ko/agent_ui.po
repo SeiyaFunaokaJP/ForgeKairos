@@ -11,6 +11,9 @@ msgstr ""
 msgid " (Outside Sandbox)"
 msgstr " (샌드박스 외부)"
 
+msgid "\"Allow Lifting the Network Restriction for a Thread\" was turned off, so an agent that had lifted its network restriction started again with only its own hosts. The answer it was giving was stopped; send your message again to go on."
+msgstr "\"스레드별 네트워크 제한 해제 허용\"이 꺼져서, 네트워크 제한을 해제했던 에이전트가 자체 호스트만으로 다시 시작했습니다. 진행 중이던 응답은 중단되었습니다. 계속하려면 메시지를 다시 보내세요."
+
 msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
 msgstr "설정 > AI > 샌드박스에서 \"샌드박스 외부에서 실행 허용\"이 꺼져 있으므로 샌드박스 외부에서는 아무것도 시작되지 않으며, 에이전트나 Claude Code를 항상 샌드박스 외부에서 시작하는 설정도 무시됩니다. 허용하려면 해당 설정을 켜세요."
 
@@ -1109,14 +1112,11 @@ msgstr "자세히 알아보기"
 msgid "Let the Agent Reach Any Host?"
 msgstr "에이전트가 모든 호스트에 접속하도록 허용할까요?"
 
-msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
-msgstr "이 스레드의 에이전트와 에이전트가 실행하는 명령이 네트워크 허용 목록 범위의 모든 호스트에 접속하게 하려면 에이전트 샌드박스 설정의 `allow_unrestricted_network`가 필요하지만 꺼져 있습니다. 켤까요? 설정 파일에서 끌 때까지 켜진 상태로 유지됩니다."
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "이 스레드의 에이전트와 에이전트가 실행하는 명령이 네트워크 허용 목록 범위의 모든 호스트에 접속하게 하려면 \"스레드별 네트워크 제한 해제 허용\"(설정 > AI > 샌드박스)이 필요하지만 꺼져 있습니다. 켤까요? 설정에서 끌 때까지 켜진 상태로 유지됩니다."
 
-msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
-msgstr "이 스레드의 터미널 명령과 fetch가 모든 호스트에 접속하게 하려면 에이전트 샌드박스 설정의 `allow_unrestricted_network`가 필요하지만 꺼져 있습니다. 켤까요? 설정 파일에서 끌 때까지 켜진 상태로 유지됩니다. 네트워크 허용 목록은 계속 적용됩니다."
-
-msgid "Lifting the network restriction is not available for projects on a remote host yet."
-msgstr "원격 호스트의 프로젝트에서는 아직 네트워크 제한을 해제할 수 없습니다."
+msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
+msgstr "이 스레드의 터미널 명령과 fetch가 모든 호스트에 접속하게 하려면 \"스레드별 네트워크 제한 해제 허용\"(설정 > AI > 샌드박스)이 필요하지만 꺼져 있습니다. 켤까요? 설정에서 끌 때까지 켜진 상태로 유지됩니다. 네트워크 허용 목록은 계속 적용됩니다."
 
 msgid "Lifting the network restriction is not available for this agent."
 msgstr "이 에이전트에서는 네트워크 제한을 해제할 수 없습니다."
@@ -2220,6 +2220,12 @@ msgstr "이 에이전트에는 자체 호스트 목록이 없어 네트워크 �
 msgid "This agent is installed via npx (npm)"
 msgstr "이 에이전트는 npx(npm)를 통해 설치됩니다"
 
+msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "이렇게 하면 \"스레드별 네트워크 제한 해제 허용\"(설정 > AI > 샌드박스)도 켜집니다. 지금은 꺼져 있습니다. 설정에서 끌 때까지 켜진 상태로 유지됩니다."
+
+msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "이렇게 하면 \"샌드박스 외부에서 실행 허용\"(설정 > AI > 샌드박스)도 켜집니다. 지금은 꺼져 있습니다. 설정에서 끌 때까지 켜진 상태로 유지됩니다."
+
 msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
 msgstr "이번 시작에만 적용됩니다. 항상 샌드박스 외부에서 시작하려면 설정의 AI 페이지에서 전환하세요."
 
@@ -2354,6 +2360,12 @@ msgstr "에이전트 다시 시작 시도"
 
 msgid "Turn On and Continue"
 msgstr "켜고 계속"
+
+msgid "Turn On and Start Again"
+msgstr "켜고 다시 시작"
+
+msgid "Turn On and Start Outside"
+msgstr "켜고 샌드박스 밖에서 시작"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "샌드박스를 끄려면 \"샌드박스 외부에서 실행 허용\"(설정 > AI > 샌드박스)이 필요하지만 꺼져 있습니다. 켤까요? 설정에서 끌 때까지 켜진 상태로 유지됩니다."

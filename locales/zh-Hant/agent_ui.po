@@ -11,6 +11,9 @@ msgstr ""
 msgid " (Outside Sandbox)"
 msgstr "（沙箱外）"
 
+msgid "\"Allow Lifting the Network Restriction for a Thread\" was turned off, so an agent that had lifted its network restriction started again with only its own hosts. The answer it was giving was stopped; send your message again to go on."
+msgstr "「允許為單一會話解除網路限制」已關閉，因此一個曾解除網路限制的代理程式已僅使用其自身主機重新啟動。它正在提供的回答已停止；請再次傳送訊息以繼續。"
+
 msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
 msgstr "「設定 > AI > 沙箱」中的「允許在沙箱外執行」已關閉，因此不會在沙箱外啟動任何項目，且一律在沙箱外啟動代理或 Claude Code 的設定也會被忽略。若要允許，請開啟該設定。"
 
@@ -1109,14 +1112,11 @@ msgstr "深入了解"
 msgid "Let the Agent Reach Any Host?"
 msgstr "允許代理連線到任何主機？"
 
-msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
-msgstr "若要讓此會話的代理程式及其執行的命令連線到網路允許清單範圍內的任何主機，需要開啟代理程式沙箱設定中的 `allow_unrestricted_network`，但目前為關閉。要開啟嗎？在設定檔中關閉之前會一直保持開啟。"
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "若要讓此會話的代理程式及其執行的命令連線到網路允許清單範圍內的任何主機，需要開啟「允許為單一會話解除網路限制」（設定 > AI > 沙箱），但目前為關閉。要開啟嗎？在設定中關閉之前會一直保持開啟。"
 
-msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
-msgstr "若要讓此會話的終端機命令和 fetch 連線到任何主機，需要開啟代理程式沙箱設定中的 `allow_unrestricted_network`，但目前為關閉。要開啟嗎？在設定檔中關閉之前會一直保持開啟。網路允許清單仍然適用。"
-
-msgid "Lifting the network restriction is not available for projects on a remote host yet."
-msgstr "遠端主機上的專案尚不支援解除網路限制。"
+msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
+msgstr "若要讓此會話的終端機命令和 fetch 連線到任何主機，需要開啟「允許為單一會話解除網路限制」（設定 > AI > 沙箱），但目前為關閉。要開啟嗎？在設定中關閉之前會一直保持開啟。網路允許清單仍然適用。"
 
 msgid "Lifting the network restriction is not available for this agent."
 msgstr "此代理不支援解除網路限制。"
@@ -2220,6 +2220,12 @@ msgstr "此代理沒有自己的主機清單：只受網路允許清單限制，
 msgid "This agent is installed via npx (npm)"
 msgstr "此代理是透過 npx（npm）安裝的"
 
+msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "這也會開啟「允許為單一會話解除網路限制」（設定 > AI > 沙箱），它目前已關閉。在設定中關閉之前，它會一直保持開啟。"
+
+msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "這也會開啟「允許在沙箱外執行」（設定 > AI > 沙箱），它目前已關閉。在設定中關閉之前，它會一直保持開啟。"
+
 msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
 msgstr "此設定僅適用於這次啟動。若要一律在沙箱外啟動，請在設定的「AI」頁面中切換。"
 
@@ -2354,6 +2360,12 @@ msgstr "嘗試重新啟動代理"
 
 msgid "Turn On and Continue"
 msgstr "開啟並繼續"
+
+msgid "Turn On and Start Again"
+msgstr "開啟並重新啟動"
+
+msgid "Turn On and Start Outside"
+msgstr "開啟並在沙箱外啟動"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "關閉沙箱需要開啟「允許在沙箱外執行」（設定 > AI > 沙箱），但它目前已關閉。要開啟嗎？在設定中關閉之前，它會一直保持開啟。"

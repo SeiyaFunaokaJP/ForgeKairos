@@ -467,6 +467,53 @@ pub(crate) fn confirm_starting_outside_sandbox(
     }
 }
 
+/// ADR-F96: [`confirm_starting_outside_sandbox`] for the chat input's sandbox
+/// button. Where running outside the sandbox is not allowed, the same question
+/// also asks to turn that on (ADR-F92), and the answer is yes only once the
+/// settings have it: one click, one dialog, rather than one dialog for the
+/// setting and another for the start.
+pub(crate) fn confirm_starting_outside_sandbox_allowing_it(
+    program: &str,
+    on_remote_host: bool,
+    start: OutsideSandboxStart,
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
+    if project::agent_sandbox::outside_sandbox_allowed(cx) {
+        let answer = ask_to_start_outside_sandbox(program, on_remote_host, None, start, window, cx);
+        return window.spawn(cx, async move |_| answer.await);
+    }
+    let message = outside_sandbox_message(program);
+    let detail = format!(
+        "{}\n{}",
+        outside_sandbox_detail(program, on_remote_host, None, start),
+        i18n::t!(
+            "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), \
+             which is off. It stays on until you turn it off there."
+        )
+    );
+    let answer = window.prompt(
+        PromptLevel::Warning,
+        &message,
+        Some(&detail),
+        &[
+            PromptButton::ok(i18n::t!("Turn On and Start Outside")),
+            PromptButton::cancel(i18n::tr(CANCEL_LABEL)),
+        ],
+        cx,
+    );
+    window.spawn(cx, async move |cx| {
+        if !answer.await.is_ok_and(|index| index == 0) {
+            return false;
+        }
+        let Ok(turned_on) = cx.update(|window, cx| turn_on_outside_sandbox(fs, window, cx)) else {
+            return false;
+        };
+        turned_on.await
+    })
+}
+
 /// ADR-F92: the title of the notice that a start outside the sandbox was
 /// refused, and of the cards that say so.
 pub(crate) const OUTSIDE_SANDBOX_NOT_ALLOWED_TITLE: &str =
@@ -542,17 +589,28 @@ pub(crate) fn allow_outside_sandbox_first(
         if !answer.await.is_ok_and(|index| index == 0) {
             return false;
         }
-        cx.update(|_, cx| {
-            settings::update_settings_file(fs, cx, |settings, _| {
-                settings
-                    .agent
-                    .get_or_insert_default()
-                    .sandbox_permissions
-                    .get_or_insert_default()
-                    .allow_outside_sandbox = Some(true);
-            });
-        })
-        .log_err();
+        let Ok(turned_on) = cx.update(|window, cx| turn_on_outside_sandbox(fs, window, cx)) else {
+            return false;
+        };
+        turned_on.await
+    })
+}
+
+/// ADR-F96: writes "Allow Running Outside the Sandbox" (ADR-F92) to the user's
+/// settings file, after the user agreed to that, and resolves once the
+/// settings have it. False where they never came to allow it (a settings
+/// profile or the global settings file can keep it off), which the refusal
+/// then says.
+fn turn_on_outside_sandbox(fs: Arc<dyn Fs>, window: &mut Window, cx: &mut App) -> Task<bool> {
+    settings::update_settings_file(fs, cx, |settings, _| {
+        settings
+            .agent
+            .get_or_insert_default()
+            .sandbox_permissions
+            .get_or_insert_default()
+            .allow_outside_sandbox = Some(true);
+    });
+    window.spawn(cx, async move |cx| {
         // The settings store takes the file in when its watcher sees the write.
         for _ in 0..50 {
             if cx
@@ -585,9 +643,9 @@ pub(crate) fn allow_unrestricted_network_first(
     ask_to_allow_unrestricted_network(
         i18n::t!(
             "Letting this thread's terminal commands and fetches reach any host needs \
-             `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it \
-             on? It stays on until you turn it off in your settings file. The network allowlist \
-             still applies."
+             \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), \
+             which is off. Turn it on? It stays on until you turn it off there. The network \
+             allowlist still applies."
         ),
         fs,
         window,
@@ -606,9 +664,9 @@ pub(crate) fn allow_unrestricted_network_first_for_external_agent(
     ask_to_allow_unrestricted_network(
         i18n::t!(
             "Letting this thread's agent and the commands it runs reach any host within the \
-             network allowlist needs `allow_unrestricted_network` in the agent's sandbox \
-             settings, which is off. Turn it on? It stays on until you turn it off in your \
-             settings file."
+             network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" \
+             (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it \
+             off there."
         ),
         fs,
         window,
@@ -639,17 +697,32 @@ fn ask_to_allow_unrestricted_network(
         if !answer.await.is_ok_and(|index| index == 0) {
             return false;
         }
-        cx.update(|_, cx| {
-            settings::update_settings_file(fs, cx, |settings, _| {
-                settings
-                    .agent
-                    .get_or_insert_default()
-                    .sandbox_permissions
-                    .get_or_insert_default()
-                    .allow_unrestricted_network = Some(true);
-            });
-        })
-        .log_err();
+        let Ok(turned_on) = cx.update(|window, cx| turn_on_unrestricted_network(fs, window, cx))
+        else {
+            return false;
+        };
+        turned_on.await
+    })
+}
+
+/// ADR-F96 stage 2: writes `allow_unrestricted_network` to the user's settings
+/// file, after the user agreed to that, and resolves once the settings have it,
+/// as [`turn_on_outside_sandbox`] does. False where they never came to allow
+/// it, which a notice then says.
+pub(crate) fn turn_on_unrestricted_network(
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
+    settings::update_settings_file(fs, cx, |settings, _| {
+        settings
+            .agent
+            .get_or_insert_default()
+            .sandbox_permissions
+            .get_or_insert_default()
+            .allow_unrestricted_network = Some(true);
+    });
+    window.spawn(cx, async move |cx| {
         for _ in 0..50 {
             if cx
                 .update(|_, cx| project::agent_sandbox::unrestricted_network_allowed(cx))

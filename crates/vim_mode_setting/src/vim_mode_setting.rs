@@ -4,6 +4,9 @@
 //! disable Vim/Helix modes without having to depend on the `vim` crate in its
 //! entirety.
 
+mod editing_mode;
+
+pub use editing_mode::{current_editing_mode, write_editing_mode};
 use gpui::App;
 use settings::{RegisterSetting, Settings, SettingsContent};
 

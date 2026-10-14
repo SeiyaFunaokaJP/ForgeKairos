@@ -21,7 +21,6 @@ use ui::{
     ToggleButtonGroup, ToggleButtonGroupSize, ToggleButtonSimple, ToggleButtonWithIcon, Tooltip,
     prelude::*,
 };
-use vim_mode_setting::{HelixModeSetting, VimModeSetting};
 
 use crate::{
     ImportCursorSettings, ImportVsCodeSettings, SettingsImportState,
@@ -417,11 +416,7 @@ fn render_base_keymap_section(tab_index: &mut isize, cx: &mut App) -> impl IntoE
 }
 
 fn render_editing_mode_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
-    let current_mode = EditingModeContent::from_resolved(
-        VimModeSetting::is_enabled(cx),
-        HelixModeSetting::is_enabled(cx),
-        *BaseKeymap::get_global(cx) == BaseKeymap::Emacs,
-    );
+    let current_mode = vim_mode_setting::current_editing_mode(cx);
     let modes = [
         EditingModeContent::Normal,
         EditingModeContent::Vim,
@@ -473,34 +468,9 @@ fn render_editing_mode_section(tab_index: &mut isize, cx: &mut App) -> impl Into
 }
 
 fn write_editing_mode(mode: EditingModeContent, cx: &mut App) {
-    let resolved_vim_mode = VimModeSetting::is_enabled(cx);
-    let resolved_helix_mode = HelixModeSetting::is_enabled(cx);
-    let previous_mode = EditingModeContent::from_resolved(
-        resolved_vim_mode,
-        resolved_helix_mode,
-        *BaseKeymap::get_global(cx) == BaseKeymap::Emacs,
-    );
-    // With both on, the choice shown is Helix, but choosing it again still has
-    // to switch Vim off.
-    if mode == previous_mode && !(resolved_vim_mode && resolved_helix_mode) {
+    let Some(previous_mode) = vim_mode_setting::write_editing_mode(mode, cx) else {
         return;
-    }
-
-    // The quick action bar's switches override these for the session only. A
-    // settings file that already says what the choice writes is not reloaded,
-    // so the override would outlive the choice unless it is replaced here.
-    VimModeSetting::override_global(VimModeSetting(mode == EditingModeContent::Vim), cx);
-    HelixModeSetting::override_global(HelixModeSetting(mode == EditingModeContent::Helix), cx);
-
-    let fs = <dyn Fs>::global(cx);
-    update_settings_file(fs, cx, move |setting, _| {
-        EditingModeContent::write_over_resolved(
-            setting,
-            mode,
-            resolved_vim_mode,
-            resolved_helix_mode,
-        );
-    });
+    };
 
     telemetry::event!(
         "Welcome Editing Mode Changed",
@@ -835,6 +805,7 @@ mod tests {
     use super::*;
     use fs::FakeFs;
     use gpui::TestAppContext;
+    use vim_mode_setting::{HelixModeSetting, VimModeSetting};
 
     async fn init_with_user_settings(user_settings: &str, cx: &mut TestAppContext) -> Arc<FakeFs> {
         let fs = FakeFs::new(cx.executor());

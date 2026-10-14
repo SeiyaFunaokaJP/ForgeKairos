@@ -11,12 +11,13 @@
 //! `SessionNotification` it always was.
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
 
 use acp_thread::{AcpThread, ExternalSubagentReport, ExternalSubagentStatus};
 use agent_client_protocol::{JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, UntypedMessage};
 use collections::HashMap;
-use gpui::{AsyncApp, Entity};
+use gpui::{AsyncApp, Entity, EntityId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use util::ResultExt as _;
@@ -35,6 +36,9 @@ const SUBAGENTS_CAPABILITY_KEY: &str = "subagents";
 /// only keep a misbehaving agent from growing them without end.
 pub(super) const MAX_HELD_SESSIONS: usize = 16;
 pub(super) const MAX_HELD_UPDATES_PER_SESSION: usize = 256;
+/// The sessions remembered as having had a thread here. Only a closed one's
+/// late updates are told apart by it, so the oldest can be forgotten.
+pub(super) const MAX_SEEN_SESSIONS: usize = 1024;
 
 /// Whether this agent is told that the client shows subagents. Only Claude for
 /// now: what other agents do with the declaration is not known.
@@ -269,13 +273,85 @@ pub(super) struct SubagentRouting {
     /// closed ones.
     declared: bool,
     held: RefCell<Vec<(acp::SessionId, Vec<HeldUpdate>)>>,
+    /// Sessions that had a thread here. One of them without a thread now was
+    /// closed, or its thread went away with its parent's, so what still comes
+    /// for it is late, not early: it is dropped rather than held. Unless its
+    /// parent (or an ancestor's) was reloaded since: the reloaded thread is
+    /// sent the child's history again, and the child is announced to it anew.
+    seen: RefCell<SeenSessions>,
+}
+
+#[derive(Default)]
+struct SeenSessions {
+    /// A child's parent as it was when the child's thread was made.
+    parents: HashMap<acp::SessionId, Option<SeenParent>>,
+    oldest_first: VecDeque<acp::SessionId>,
+}
+
+struct SeenParent {
+    session_id: acp::SessionId,
+    thread_id: EntityId,
+}
+
+impl SeenSessions {
+    fn remember(&mut self, session_id: &acp::SessionId, parent: Option<SeenParent>) {
+        match self.parents.get_mut(session_id) {
+            Some(recorded) => {
+                if parent.is_some() {
+                    *recorded = parent;
+                }
+                return;
+            }
+            None => {
+                self.parents.insert(session_id.clone(), parent);
+            }
+        }
+        self.oldest_first.push_back(session_id.clone());
+        if self.oldest_first.len() > MAX_SEEN_SESSIONS
+            && let Some(oldest) = self.oldest_first.pop_front()
+        {
+            self.parents.remove(&oldest);
+        }
+    }
+
+    /// Whether what comes for `session_id`, which has no thread now, is a
+    /// late update of a closed session rather than an early one of a child
+    /// that is to be announced to a reloaded parent.
+    fn is_late(
+        &self,
+        session_id: &acp::SessionId,
+        live_thread_id: impl Fn(&acp::SessionId) -> Option<EntityId>,
+    ) -> bool {
+        let Some(mut parent) = self.parents.get(session_id) else {
+            return false;
+        };
+        // The ancestors form no cycle as the agent reports them, but the walk
+        // is bounded all the same.
+        for _ in 0..self.parents.len() {
+            let Some(SeenParent {
+                session_id,
+                thread_id,
+            }) = parent
+            else {
+                return true;
+            };
+            if live_thread_id(session_id).is_some_and(|live| live != *thread_id) {
+                return false;
+            }
+            let Some(grandparent) = self.parents.get(session_id) else {
+                return true;
+            };
+            parent = grandparent;
+        }
+        true
+    }
 }
 
 impl SubagentRouting {
     pub(super) fn for_agent(agent_id: &AgentId) -> Self {
         Self {
             declared: declares_subagents(agent_id),
-            held: RefCell::default(),
+            ..Self::default()
         }
     }
 
@@ -283,12 +359,48 @@ impl SubagentRouting {
     pub(super) fn holding() -> Self {
         Self {
             declared: true,
-            held: RefCell::default(),
+            ..Self::default()
         }
     }
 
-    pub(super) fn hold(&self, session_id: &acp::SessionId, update: HeldUpdate) -> bool {
+    /// Remembers that `session_id` has a thread here.
+    pub(super) fn note_live(&self, session_id: &acp::SessionId) {
+        self.seen.borrow_mut().remember(session_id, None);
+    }
+
+    /// Remembers that `session_id` has a thread here, made by the thread
+    /// `parent_thread_id` of the session `parent_session_id`.
+    pub(super) fn note_child(
+        &self,
+        session_id: &acp::SessionId,
+        parent_session_id: &acp::SessionId,
+        parent_thread_id: EntityId,
+    ) {
+        self.seen.borrow_mut().remember(
+            session_id,
+            Some(SeenParent {
+                session_id: parent_session_id.clone(),
+                thread_id: parent_thread_id,
+            }),
+        );
+    }
+
+    /// Holds an update of a session without a thread, for the child it may
+    /// be announced as next. Returns `false` for one that is not held: from
+    /// an agent that has no children, or for a session that already had its
+    /// thread and lost it. `live_thread_id` names the thread a session has
+    /// now, if any.
+    pub(super) fn hold(
+        &self,
+        session_id: &acp::SessionId,
+        update: HeldUpdate,
+        live_thread_id: impl Fn(&acp::SessionId) -> Option<EntityId>,
+    ) -> bool {
         if !self.declared {
+            return false;
+        }
+        if self.seen.borrow().is_late(session_id, live_thread_id) {
+            log::debug!("acp: did not hold a late update of the closed session {session_id}");
             return false;
         }
         let mut held = self.held.borrow_mut();
@@ -345,6 +457,10 @@ fn live_thread(ctx: &ClientContext, session_id: &acp::SessionId) -> Option<Entit
         .and_then(|session| session.thread.upgrade())
 }
 
+fn live_thread_id(ctx: &ClientContext, session_id: &acp::SessionId) -> Option<EntityId> {
+    live_thread(ctx, session_id).map(|thread| thread.entity_id())
+}
+
 pub(super) fn handle_incoming_session_update(
     notification: IncomingSessionUpdate,
     cx: &mut AsyncApp,
@@ -378,28 +494,31 @@ fn route_session_notification(
     cx: &mut AsyncApp,
     ctx: &ClientContext,
 ) {
-    if !session_is_known(ctx, &notification.session_id) {
-        let session_id = notification.session_id.clone();
-        if ctx
-            .subagents
-            .hold(&session_id, HeldUpdate::Session(notification.clone()))
-        {
-            log::debug!("acp: held an update of session {session_id} until it is announced");
-            return;
-        }
-    }
     let session_id = notification.session_id.clone();
+    if !session_is_known(ctx, &session_id)
+        && ctx.subagents.hold(
+            &session_id,
+            HeldUpdate::Session(notification.clone()),
+            |id| live_thread_id(ctx, id),
+        )
+    {
+        log::debug!("acp: held an update of session {session_id} until it is announced");
+        return;
+    }
     let tool_call_id = match &notification.update {
         acp::SessionUpdate::ToolCall(tool_call) => Some(tool_call.tool_call_id.clone()),
         acp::SessionUpdate::ToolCallUpdate(update) => Some(update.tool_call_id.clone()),
         _ => None,
     };
     handle_session_notification(notification, cx, ctx);
-    if let Some(tool_call_id) = tool_call_id
-        && let Some(thread) = live_thread(ctx, &session_id)
-    {
+    let Some(thread) = live_thread(ctx, &session_id) else {
+        return;
+    };
+    ctx.subagents.note_live(&session_id);
+    // A child's first message can come before the call that launched it.
+    if let Some(tool_call_id) = tool_call_id {
         thread.update(cx, |thread, cx| {
-            thread.restore_external_subagent_link(&tool_call_id, cx);
+            thread.show_external_subagent_on_card(&tool_call_id, cx);
         });
     }
 }
@@ -414,29 +533,31 @@ fn handle_subagent_update(
         if !ctx.subagents.hold(
             &parent_session_id,
             HeldUpdate::Subagent(parent_session_id.clone(), update),
+            |id| live_thread_id(ctx, id),
         ) {
-            log::warn!("acp: a subagent of the unknown session {parent_session_id} was reported");
+            log::warn!(
+                "acp: dropped a subagent of the session {parent_session_id}, which has no thread"
+            );
         }
         return;
     };
+    ctx.subagents.note_live(&parent_session_id);
     let report = update.into_report();
     let child_session_id = report.session_id.clone();
-    let existing_thread = live_thread(ctx, &child_session_id).filter(|thread| {
-        parent.read_with(cx, |parent, _| {
-            parent.external_subagent(&child_session_id).is_none()
-        }) && thread.read_with(cx, |thread, _| {
-            thread.parent_session_id() == Some(&parent_session_id)
-        })
-    });
     let new_child = parent.update(cx, |parent, cx| {
-        parent.apply_external_subagent_report(report, existing_thread, cx)
+        parent.apply_external_subagent_report(report, cx)
     });
     let Some(child) = new_child else {
         return;
     };
-    if !session_is_known(ctx, &child_session_id) {
-        register_child_session(ctx, child_session_id.clone(), &child, cx);
-    }
+    register_child_session(
+        ctx,
+        &parent_session_id,
+        parent.entity_id(),
+        child_session_id.clone(),
+        &child,
+        cx,
+    );
     for held in ctx.subagents.take(&child_session_id) {
         match held {
             HeldUpdate::Session(notification) => route_session_notification(notification, cx, ctx),
@@ -453,12 +574,31 @@ fn handle_subagent_update(
 /// The child's session goes to its thread like any other session of the
 /// connection, and goes away with the thread. It is not closed on the agent:
 /// the client was given no say over a child.
+///
+/// A reloaded parent makes a new thread for a child it had before, and the
+/// child's session moves to it from the thread the parent's previous thread
+/// made, which may not have gone away yet (or has, without its session being
+/// let go of yet). A session open as a thread of its own stays where it is.
 fn register_child_session(
     ctx: &ClientContext,
+    parent_session_id: &acp::SessionId,
+    parent_thread_id: EntityId,
     session_id: acp::SessionId,
     thread: &Entity<AcpThread>,
     cx: &mut AsyncApp,
 ) {
+    let current_thread = live_thread(ctx, &session_id);
+    if let Some(current_thread) = current_thread
+        && current_thread.entity_id() != thread.entity_id()
+        && current_thread.read_with(cx, |current_thread, _| {
+            current_thread.parent_session_id() != Some(parent_session_id)
+        })
+    {
+        log::warn!(
+            "acp: the subagent session {session_id} is open as another thread, which keeps its updates"
+        );
+        return;
+    }
     let sessions: Weak<RefCell<HashMap<acp::SessionId, AcpSession>>> = Rc::downgrade(&ctx.sessions);
     let release_subscription = cx.update(|cx| {
         cx.observe_release(thread, {
@@ -477,8 +617,8 @@ fn register_child_session(
             }
         })
     });
-    ctx.sessions.borrow_mut().insert(
-        session_id,
+    let replaced = ctx.sessions.borrow_mut().insert(
+        session_id.clone(),
         AcpSession {
             thread: thread.downgrade(),
             suppress_abort_err: false,
@@ -487,6 +627,11 @@ fn register_child_session(
             _release_subscription: release_subscription,
         },
     );
+    if replaced.is_some() {
+        log::debug!("acp: the subagent session {session_id} moved to its reloaded parent's thread");
+    }
+    ctx.subagents
+        .note_child(&session_id, parent_session_id, parent_thread_id);
 }
 
 fn handle_session_message(
@@ -499,8 +644,9 @@ fn handle_session_message(
         if !ctx.subagents.hold(
             &session_id,
             HeldUpdate::Message(session_id.clone(), message),
+            |id| live_thread_id(ctx, id),
         ) {
-            log::warn!("acp: a message to the unknown session {session_id} was dropped");
+            log::warn!("acp: dropped a message to the session {session_id}, which has no thread");
         }
         return;
     };
@@ -509,6 +655,7 @@ fn handle_session_message(
         message.content = paths.message_content_to_host(message.content);
     }
     let message_id = message.message_id.clone();
+    let sender_session_id = message.sender_session_id.clone();
     let shown = child.update(cx, |child, cx| {
         child.receive_external_subagent_message(message_id.clone(), message.content, cx)
     });
@@ -520,6 +667,14 @@ fn handle_session_message(
     else {
         return;
     };
+    // Only the parent's own call launched the child; a message another
+    // session sent it (SendMessage) is no launch of the parent's.
+    if sender_session_id
+        .as_ref()
+        .is_some_and(|sender| sender != &parent_session_id)
+    {
+        return;
+    }
     if let Some(parent) = live_thread(ctx, &parent_session_id) {
         parent.update(cx, |parent, cx| {
             parent.link_external_subagent_tool_call(
