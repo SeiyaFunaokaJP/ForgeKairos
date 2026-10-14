@@ -47,6 +47,9 @@ msgstr "1 regra global"
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "Um host com curinga ({pattern}) não pode ser adicionado à lista de permissões a partir de um consentimento."
 
+msgid "A subagent cannot be stopped on its own. To stop the subagents, stop the main agent."
+msgstr "Um subagente não pode ser interrompido sozinho. Para interromper os subagentes, interrompa o agente principal."
+
 msgid "ACP Agent"
 msgstr "Agente ACP"
 
@@ -271,6 +274,12 @@ msgstr "Aguardando confirmação"
 
 msgid "Awaiting Confirmation ({pending_count})"
 msgstr "Aguardando confirmação ({pending_count})"
+
+msgid "Background Tasks"
+msgstr "Tarefas em segundo plano"
+
+msgid "Background Tasks: {}"
+msgstr "Tarefas em segundo plano: {}"
 
 msgid "Bad Result"
 msgstr "Resultado ruim"
@@ -781,6 +790,9 @@ msgstr[1] "Editando {count} arquivos…"
 msgid "Edits"
 msgstr "Edições"
 
+msgid "Effort: {}"
+msgstr "Profundidade de raciocínio: {}"
+
 msgid "Enable Fast Mode"
 msgstr "Habilitar modo rápido"
 
@@ -1160,6 +1172,9 @@ msgstr "Entrada de registro ausente."
 msgid "Model {} was not found"
 msgstr "Modelo {} não encontrado"
 
+msgid "Model: {}"
+msgstr "Modelo: {}"
+
 msgid "Move Back to Panel"
 msgstr "Mover de volta para o painel"
 
@@ -1366,6 +1381,9 @@ msgstr "Abrir configurações do sandbox"
 
 msgid "Open Skill"
 msgstr "Abrir habilidade"
+
+msgid "Open Subagent"
+msgstr "Abrir subagente"
 
 msgid "Open Tabs"
 msgstr "Abas abertas"
@@ -1844,6 +1862,9 @@ msgstr "Iniciar `{program}` fora do sandbox?"
 msgid "Start the Agent Again in the Sandbox?"
 msgstr "Reiniciar o agente dentro do sandbox?"
 
+msgid "Started (status unknown)"
+msgstr "Iniciada (status desconhecido)"
+
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "Iniciado fora do sandbox, este agente é executado com as permissões do próprio ForgeKairos e também pode executar os hooks e os servidores MCP do projeto. Você será consultado para cada conversa antes de ela iniciar."
 
@@ -1888,6 +1909,9 @@ msgstr "Saída do subagente"
 
 msgid "Subagents Awaiting Permission:"
 msgstr "Subagentes aguardando permissão:"
+
+msgid "Subagents: {}"
+msgstr "Subagentes: {}"
 
 msgid "Submit"
 msgstr "Enviar"
@@ -2635,6 +2659,9 @@ msgstr "{} recusou-se a responder a esta solicitação"
 msgid "{} tokens"
 msgstr "{} tokens"
 
+msgid "{} working"
+msgstr "{} em execução"
+
 msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— {count} arquivo alterado"
@@ -2725,6 +2752,10 @@ msgctxt "model list section"
 msgid "Favorite"
 msgstr "Favoritos"
 
+msgctxt "model or effort"
+msgid "Default"
+msgstr "Padrão"
+
 msgctxt "permission pattern menu"
 msgid "Always for `{}` commands"
 msgstr "Sempre para comandos `{}`"
@@ -2732,6 +2763,30 @@ msgstr "Sempre para comandos `{}`"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "Origem"
+
+msgctxt "subagent status"
+msgid "Awaiting Permission"
+msgstr "Aguardando permissão"
+
+msgctxt "subagent status"
+msgid "Cancelled"
+msgstr "Cancelado"
+
+msgctxt "subagent status"
+msgid "Failed"
+msgstr "Falhou"
+
+msgctxt "subagent status"
+msgid "Idle"
+msgstr "Ocioso"
+
+msgctxt "subagent status"
+msgid "Running"
+msgstr "Em execução"
+
+msgctxt "subagent status"
+msgid "Unknown"
+msgstr "Desconhecido"
 
 msgctxt "subagent title"
 msgid "Subagent Failed"

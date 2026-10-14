@@ -1928,7 +1928,7 @@ impl ConversationView {
             cx.observe(&action_log, |_, _, cx| cx.notify()),
         ];
 
-        let subagent_sessions = thread
+        let mut subagent_sessions = thread
             .read(cx)
             .entries()
             .iter()
@@ -1940,6 +1940,13 @@ impl ConversationView {
                 _ => None,
             })
             .collect::<Vec<_>>();
+        // ADR-F97: an external agent's children were announced while the
+        // thread loaded, before it had a view to hear of them.
+        for child in thread.read(cx).external_subagents() {
+            if !subagent_sessions.contains(&child.session_id) {
+                subagent_sessions.push(child.session_id.clone());
+            }
+        }
 
         if !subagent_sessions.is_empty() {
             let parent_session_id = thread.read(cx).session_id().clone();
@@ -3158,9 +3165,28 @@ impl ConversationView {
         let Some(connected) = self.as_connected() else {
             return;
         };
-        if connected.threads.contains_key(&subagent_id)
-            || !connected.connection.supports_load_session()
-        {
+        if connected.threads.contains_key(&subagent_id) {
+            return;
+        }
+        // ADR-F97: an external agent's child is not loaded: its thread is the
+        // one the parent made when the agent announced it.
+        let external_subagent_thread =
+            connected
+                .threads
+                .get(&parent_session_id)
+                .and_then(|parent| {
+                    parent
+                        .read(cx)
+                        .thread
+                        .read(cx)
+                        .external_subagent_thread(&subagent_id)
+                        .cloned()
+                });
+        if let Some(subagent_thread) = external_subagent_thread {
+            self.show_external_subagent_thread(subagent_thread, window, cx);
+            return;
+        }
+        if !connected.connection.supports_load_session() {
             return;
         }
         let Some(parent_thread) = connected.threads.get(&parent_session_id) else {
@@ -3211,6 +3237,29 @@ impl ConversationView {
             })
         })
         .detach();
+    }
+
+    fn show_external_subagent_thread(
+        &mut self,
+        subagent_thread: Entity<AcpThread>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(conversation) = self
+            .as_connected()
+            .map(|connected| connected.conversation.clone())
+        else {
+            return;
+        };
+        let subagent_session_id = subagent_thread.read(cx).session_id().clone();
+        conversation.update(cx, |conversation, cx| {
+            conversation.register_thread(subagent_thread.clone(), cx);
+        });
+        let view =
+            self.new_thread_view(subagent_thread, conversation, false, None, None, window, cx);
+        if let Some(connected) = self.as_connected_mut() {
+            connected.threads.insert(subagent_session_id, view);
+        }
     }
 
     #[allow(clippy::too_many_arguments, reason = "one sign-in's whole description")]
@@ -9400,6 +9449,85 @@ pub(crate) mod tests {
         });
         connection.end_turn(session_id, acp_v1::StopReason::EndTurn);
         cx.run_until_parked();
+    }
+
+    /// ADR-F97: a subagent an external agent announces gets a view of its
+    /// own without loading a session, and a row in the list above the message
+    /// editor that opens it; a background shell command gets a row too.
+    #[gpui::test]
+    async fn test_external_subagent_is_listed_and_opens_its_thread(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(StubAgentConnection::new()), cx).await;
+        add_to_workspace_with_size(conversation_view.clone(), true, cx);
+        let thread_view = active_thread(&conversation_view, cx);
+        let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
+        let child_session_id = acp_v1::SessionId::new("external-child");
+        assert!(cx.debug_bounds("background_work_summary").is_none());
+
+        thread.update(cx, |thread, cx| {
+            let mut meta = acp_v1::Meta::new();
+            meta.insert(
+                "claudeCode".into(),
+                serde_json::json!({ "toolName": "Bash" }),
+            );
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::ToolCall(
+                        acp_v1::ToolCall::new("bg-1", "Terminal")
+                            .status(acp_v1::ToolCallStatus::Completed)
+                            .raw_input(serde_json::json!({
+                                "command": "npm run dev",
+                                "run_in_background": true,
+                            }))
+                            .meta(meta),
+                    ),
+                    cx,
+                )
+                .expect("the tool call is accepted");
+            let child = thread.apply_external_subagent_report(
+                acp_thread::ExternalSubagentReport {
+                    session_id: child_session_id.clone(),
+                    title: Some("Explore".to_string()),
+                    description: Some("Find the entry point".to_string()),
+                    status: acp_thread::ExternalSubagentStatus::Running,
+                    error: None,
+                },
+                None,
+                cx,
+            );
+            assert!(child.is_some(), "the first report makes the child's thread");
+        });
+        cx.run_until_parked();
+
+        conversation_view.read_with(cx, |view, cx| {
+            let child_view = view
+                .thread_view(&child_session_id)
+                .expect("the child has a view without a session load");
+            assert_eq!(
+                child_view.read(cx).thread.read(cx).parent_session_id(),
+                Some(thread.read(cx).session_id())
+            );
+        });
+
+        let summary = cx
+            .debug_bounds("background_work_summary")
+            .expect("the list of subagents and background tasks is shown");
+        assert!(cx.debug_bounds("background-work-subagent-0").is_none());
+        cx.simulate_click(summary.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds("background-work-task-0").is_some(),
+            "the background shell command is listed"
+        );
+        let row = cx
+            .debug_bounds("background-work-subagent-0")
+            .expect("the subagent is listed once the list is open");
+        cx.simulate_click(row.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        active_thread(&conversation_view, cx).read_with(cx, |view, cx| {
+            assert_eq!(view.thread.read(cx).session_id(), &child_session_id);
+        });
     }
 
     #[gpui::test]

@@ -60,6 +60,9 @@ use super::elicitation::{
 };
 use super::*;
 
+/// ADR-F97: an external agent's subagents and background shell commands.
+mod background_work;
+
 const DATA_RETENTION_LEARN_MORE_URL: &str = "https://support.claude.com/en/articles/15425996-data-retention-practices-for-mythos-class-models";
 
 #[derive(Default)]
@@ -668,6 +671,9 @@ pub struct ThreadView {
     dismissed_skill_loading_issues: HashSet<SkillLoadingIssue>,
     pub(crate) thread_search_bar: Option<Entity<super::thread_search_bar::ThreadSearchBar>>,
     pub(crate) thread_search_visible: bool,
+    /// ADR-F97: whether the list of subagents and background tasks is open.
+    background_work_expanded: bool,
+    _background_work_clock: Option<Task<()>>,
 }
 impl Focusable for ThreadView {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -875,6 +881,7 @@ impl ThreadView {
         let parent_session_id = thread.read(cx).parent_session_id().cloned();
 
         subscriptions.push(cx.observe(&thread, |_, _, cx| cx.notify()));
+        subscriptions.push(cx.observe(&thread, |this, _, cx| this.sync_background_work_clock(cx)));
 
         let has_slash_completions = session_capabilities.read().has_slash_completions();
         let placeholder = placeholder_text(agent_display_name.as_ref(), has_slash_completions);
@@ -1169,6 +1176,8 @@ impl ThreadView {
             dismissed_skill_loading_issues: HashSet::default(),
             thread_search_bar: None,
             thread_search_visible: false,
+            background_work_expanded: false,
+            _background_work_clock: None,
         };
 
         this.sync_reported_activity(cx);
@@ -3595,8 +3604,14 @@ impl ThreadView {
             .render_main_agent_awaiting_permission(window, cx)
             .or_else(|| self.render_subagents_awaiting_permission(cx));
         let has_awaiting_permission = awaiting_permission.is_some();
+        let background_work = self.render_background_work(cx);
 
-        if changed_buffers.is_empty() && !has_plan && queue_is_empty && !has_awaiting_permission {
+        if changed_buffers.is_empty()
+            && !has_plan
+            && queue_is_empty
+            && !has_awaiting_permission
+            && background_work.is_none()
+        {
             return None;
         }
 
@@ -3638,6 +3653,15 @@ impl ThreadView {
                             gpui::BoxShadow::new(px(1.), px(-1.), gpui::black().opacity(0.12))
                                 .blur_radius(px(2.)),
                         ])
+                    })
+                    .when_some(background_work, |this, element| {
+                        this.child(element).when(
+                            has_awaiting_permission
+                                || has_plan
+                                || !changed_buffers.is_empty()
+                                || !queue_is_empty,
+                            |this| this.child(Divider::horizontal().color(DividerColor::Border)),
+                        )
                     })
                     .when_some(awaiting_permission, |this, element| this.child(element))
                     .when(
@@ -4691,8 +4715,21 @@ impl ThreadView {
 
         let server_view = self.server_view.clone();
         let thread = self.thread.clone();
-        let is_done = thread.read(cx).status() == ThreadStatus::Idle;
-        let is_canceled_or_failed = self.is_subagent_canceled_or_failed(cx);
+        // ADR-F97: an external agent's child runs no turn of this side's; its
+        // parent says how it is doing, and it cannot be stopped from here.
+        let external_status = self.external_subagent_status(cx);
+        let is_done = match external_status {
+            Some(status) => !status.is_working(),
+            None => thread.read(cx).status() == ThreadStatus::Idle,
+        };
+        let is_canceled_or_failed = match external_status {
+            Some(status) => matches!(
+                status,
+                acp_thread::ExternalSubagentStatus::Failed
+                    | acp_thread::ExternalSubagentStatus::Cancelled
+            ),
+            None => self.is_subagent_canceled_or_failed(cx),
+        };
 
         let max_content_width = AgentSettings::get_global(cx).max_content_width;
 
@@ -4735,7 +4772,7 @@ impl ThreadView {
                         .child(
                             h_flex()
                                 .gap_0p5()
-                                .when(!is_done, |this| {
+                                .when(!is_done && external_status.is_none(), |this| {
                                     this.child(
                                         IconButton::new("stop_subagent", IconName::Stop)
                                             .icon_size(IconSize::Small)
@@ -11771,19 +11808,27 @@ impl ThreadView {
         let files_changed = changed_buffers.len();
         let diff_stats = DiffStats::all_files(changed_buffers, cx);
 
+        // ADR-F97: an external agent's child, which outlives its call when
+        // it was launched in the background.
+        let external_subagent = subagent_session_id
+            .as_ref()
+            .and_then(|session_id| self.thread.read(cx).external_subagent(session_id))
+            .map(|child| child.status);
+
         let is_running = matches!(
             tool_call.status(),
             ToolCallStatus::Pending
                 | ToolCallStatus::InProgress
                 | ToolCallStatus::WaitingForConfirmation
-        );
+        ) || external_subagent.is_some_and(|status| status.is_working());
 
         let is_failed = matches!(
             tool_call.status(),
             ToolCallStatus::Failed | ToolCallStatus::Rejected
-        );
+        ) || external_subagent == Some(acp_thread::ExternalSubagentStatus::Failed);
 
         let is_cancelled = matches!(tool_call.status(), ToolCallStatus::Canceled)
+            || external_subagent == Some(acp_thread::ExternalSubagentStatus::Cancelled)
             || tool_call.content().iter().any(|c| match c {
                 ToolCallContent::ContentBlock { block, .. } => {
                     block.text_content(cx) == Some("User canceled")
@@ -11797,6 +11842,15 @@ impl ThreadView {
                 let thread = thread.read(cx);
                 let model = thread.model()?;
                 Some(model.name().0)
+            })
+            .or_else(|| {
+                let status = external_subagent?;
+                let (model, effort) = acp_thread::requested_model_and_effort(tool_call);
+                Some(SharedString::from(format!(
+                    "{} · {}",
+                    background_work::subagent_status_label(status),
+                    background_work::model_and_effort_label(model.as_deref(), effort.as_deref())
+                )))
             });
         let thread_title = thread
             .as_ref()
@@ -11995,9 +12049,14 @@ impl ThreadView {
                                     }))
                             }),
                     )
-                    .when(is_running && subagent_session_id.is_some(), |buttons| {
-                        buttons.child(
-                            IconButton::new(format!("stop-subagent-{}", entry_ix), IconName::Stop)
+                    .when(
+                        is_running && subagent_session_id.is_some() && external_subagent.is_none(),
+                        |buttons| {
+                            buttons.child(
+                                IconButton::new(
+                                    format!("stop-subagent-{}", entry_ix),
+                                    IconName::Stop,
+                                )
                                 .icon_size(IconSize::Small)
                                 .icon_color(Color::Error)
                                 .tooltip(Tooltip::text(i18n::t!("Stop Subagent")))
@@ -12016,8 +12075,9 @@ impl ThreadView {
                                         ))
                                     },
                                 ),
-                        )
-                    }),
+                            )
+                        },
+                    ),
             )
             .when_some(thread_view, |this, thread_view| {
                 let thread = &thread_view.read(cx).thread;

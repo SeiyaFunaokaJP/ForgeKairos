@@ -44,6 +44,9 @@ msgstr "グローバルルール 1 件"
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "ワイルドカードを含むホスト ({pattern}) は、同意からは許可リストに追加できません。"
 
+msgid "A subagent cannot be stopped on its own. To stop the subagents, stop the main agent."
+msgstr "サブエージェントは個別には停止できません。停止するには、メインエージェントを停止してください。"
+
 msgid "ACP Agent"
 msgstr "ACP エージェント"
 
@@ -268,6 +271,12 @@ msgstr "確認待ち"
 
 msgid "Awaiting Confirmation ({pending_count})"
 msgstr "確認待ち ({pending_count})"
+
+msgid "Background Tasks"
+msgstr "バックグラウンドのタスク"
+
+msgid "Background Tasks: {}"
+msgstr "バックグラウンドのタスク: {}"
 
 msgid "Bad Result"
 msgstr "悪い結果"
@@ -777,6 +786,9 @@ msgstr[0] "{count} 件のファイルを編集中…"
 msgid "Edits"
 msgstr "編集"
 
+msgid "Effort: {}"
+msgstr "思考の深さ: {}"
+
 msgid "Enable Fast Mode"
 msgstr "ファストモードを有効化"
 
@@ -1154,6 +1166,9 @@ msgstr "レジストリの項目が見つかりません。"
 msgid "Model {} was not found"
 msgstr "モデル {} が見つかりません"
 
+msgid "Model: {}"
+msgstr "モデル: {}"
+
 msgid "Move Back to Panel"
 msgstr "パネルに戻す"
 
@@ -1360,6 +1375,9 @@ msgstr "サンドボックスの設定を開く"
 
 msgid "Open Skill"
 msgstr "スキルを開く"
+
+msgid "Open Subagent"
+msgstr "サブエージェントを開く"
 
 msgid "Open Tabs"
 msgstr "開いているタブ"
@@ -1838,6 +1856,9 @@ msgstr "`{program}` をサンドボックスの外で起動しますか？"
 msgid "Start the Agent Again in the Sandbox?"
 msgstr "エージェントをサンドボックスの中で起動し直しますか？"
 
+msgid "Started (status unknown)"
+msgstr "起動済み (状態は不明)"
+
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "サンドボックスの外で起動すると、このエージェントは ForgeKairos 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前にスレッドごとに確認します。"
 
@@ -1882,6 +1903,9 @@ msgstr "サブエージェントの出力"
 
 msgid "Subagents Awaiting Permission:"
 msgstr "権限を待機中のサブエージェント:"
+
+msgid "Subagents: {}"
+msgstr "サブエージェント: {}"
 
 msgid "Submit"
 msgstr "送信"
@@ -2622,6 +2646,9 @@ msgstr "{} がこのリクエストへの応答を拒否しました"
 msgid "{} tokens"
 msgstr "{} トークン"
 
+msgid "{} working"
+msgstr "{} 件が実行中"
+
 msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— {count} 件のファイルを変更"
@@ -2710,6 +2737,10 @@ msgctxt "model list section"
 msgid "Favorite"
 msgstr "お気に入り"
 
+msgctxt "model or effort"
+msgid "Default"
+msgstr "既定"
+
 msgctxt "permission pattern menu"
 msgid "Always for `{}` commands"
 msgstr "`{}` コマンドで常に許可"
@@ -2717,6 +2748,30 @@ msgstr "`{}` コマンドで常に許可"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "要求元"
+
+msgctxt "subagent status"
+msgid "Awaiting Permission"
+msgstr "許可待ち"
+
+msgctxt "subagent status"
+msgid "Cancelled"
+msgstr "キャンセル済み"
+
+msgctxt "subagent status"
+msgid "Failed"
+msgstr "失敗"
+
+msgctxt "subagent status"
+msgid "Idle"
+msgstr "待機"
+
+msgctxt "subagent status"
+msgid "Running"
+msgstr "実行中"
+
+msgctxt "subagent status"
+msgid "Unknown"
+msgstr "不明"
 
 msgctxt "subagent title"
 msgid "Subagent Failed"

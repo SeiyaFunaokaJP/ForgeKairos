@@ -47,6 +47,9 @@ msgstr "1 條全域規則"
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "含有萬用字元的主機（{pattern}）無法透過同意加入允許清單。"
 
+msgid "A subagent cannot be stopped on its own. To stop the subagents, stop the main agent."
+msgstr "子代理無法單獨停止。若要停止子代理，請停止主代理。"
+
 msgid "ACP Agent"
 msgstr "ACP 代理"
 
@@ -271,6 +274,12 @@ msgstr "等待確認"
 
 msgid "Awaiting Confirmation ({pending_count})"
 msgstr "等待確認（{pending_count}）"
+
+msgid "Background Tasks"
+msgstr "背景任務"
+
+msgid "Background Tasks: {}"
+msgstr "背景任務：{}"
 
 msgid "Bad Result"
 msgstr "不良結果"
@@ -780,6 +789,9 @@ msgstr[0] "正在編輯 {count} 個檔案…"
 msgid "Edits"
 msgstr "編輯"
 
+msgid "Effort: {}"
+msgstr "思考深度：{}"
+
 msgid "Enable Fast Mode"
 msgstr "啟用快速模式"
 
@@ -1157,6 +1169,9 @@ msgstr "缺少登錄庫項目。"
 msgid "Model {} was not found"
 msgstr "找不到模型 {}"
 
+msgid "Model: {}"
+msgstr "模型：{}"
+
 msgid "Move Back to Panel"
 msgstr "移回面板"
 
@@ -1363,6 +1378,9 @@ msgstr "開啟沙箱設定"
 
 msgid "Open Skill"
 msgstr "開啟技能"
+
+msgid "Open Subagent"
+msgstr "開啟子代理"
 
 msgid "Open Tabs"
 msgstr "開啟的分頁"
@@ -1841,6 +1859,9 @@ msgstr "要在沙箱外啟動 `{program}` 嗎？"
 msgid "Start the Agent Again in the Sandbox?"
 msgstr "在沙箱內重新啟動代理？"
 
+msgid "Started (status unknown)"
+msgstr "已啟動（狀態不明）"
+
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "在沙箱外啟動時，此代理會以 ForgeKairos 本身的權限執行，也能執行專案的 Hook 與 MCP 伺服器。每個會話在啟動前都會詢問您。"
 
@@ -1885,6 +1906,9 @@ msgstr "子代理輸出"
 
 msgid "Subagents Awaiting Permission:"
 msgstr "等待授權的子代理："
+
+msgid "Subagents: {}"
+msgstr "子代理：{}"
 
 msgid "Submit"
 msgstr "送出"
@@ -2625,6 +2649,9 @@ msgstr "{} 拒絕回應此要求"
 msgid "{} tokens"
 msgstr "{} 個 Token"
 
+msgid "{} working"
+msgstr "{} 個執行中"
+
 msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— 已變更 {count} 個檔案"
@@ -2713,6 +2740,10 @@ msgctxt "model list section"
 msgid "Favorite"
 msgstr "最愛"
 
+msgctxt "model or effort"
+msgid "Default"
+msgstr "預設"
+
 msgctxt "permission pattern menu"
 msgid "Always for `{}` commands"
 msgstr "一律允許 `{}` 命令"
@@ -2720,6 +2751,30 @@ msgstr "一律允許 `{}` 命令"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "來源"
+
+msgctxt "subagent status"
+msgid "Awaiting Permission"
+msgstr "等待授權"
+
+msgctxt "subagent status"
+msgid "Cancelled"
+msgstr "已取消"
+
+msgctxt "subagent status"
+msgid "Failed"
+msgstr "失敗"
+
+msgctxt "subagent status"
+msgid "Idle"
+msgstr "閒置"
+
+msgctxt "subagent status"
+msgid "Running"
+msgstr "執行中"
+
+msgctxt "subagent status"
+msgid "Unknown"
+msgstr "不明"
 
 msgctxt "subagent title"
 msgid "Subagent Failed"
