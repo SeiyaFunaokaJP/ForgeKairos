@@ -230,6 +230,9 @@ msgstr "Ainda há uma chave de API escrita em texto simples no settings.json, em
 msgid "An Error Happened"
 msgstr "Ocorreu um erro"
 
+msgid "Answer the tool call waiting for confirmation before switching."
+msgstr "Responda à chamada de ferramenta que aguarda confirmação antes de alternar."
+
 msgid "Anthropic will retain inference logs."
 msgstr "A Anthropic reterá logs de inferência."
 
@@ -1106,14 +1109,23 @@ msgstr "Inicia a CLI oficial do Claude Code em uma aba deste painel. O login é 
 msgid "Learn More"
 msgstr "Saiba mais"
 
+msgid "Let the Agent Reach Any Host?"
+msgstr "Permitir que o agente alcance qualquer host?"
+
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
+msgstr "Para que o agente desta conversa e os comandos que ele executa alcancem qualquer host dentro da lista de permissões de rede, é necessário `allow_unrestricted_network` nas configurações do sandbox do agente, que está desativado. Ativar? Ele continua ativado até você desativá-lo no seu arquivo de configurações."
+
 msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
 msgstr "Para que os comandos de terminal e as buscas (fetch) desta conversa alcancem qualquer host, é necessário `allow_unrestricted_network` nas configurações do sandbox do agente, que está desativado. Ativar? Ele continua ativado até você desativá-lo no seu arquivo de configurações. A lista de permissões de rede continua valendo."
 
-msgid "Lifting the network restriction is not available for external agents yet."
-msgstr "Remover a restrição de rede ainda não está disponível para agentes externos."
-
 msgid "Lifting the network restriction is not available for projects on a remote host yet."
 msgstr "Remover a restrição de rede ainda não está disponível para projetos em um host remoto."
+
+msgid "Lifting the network restriction is not available for this agent."
+msgstr "Remover a restrição de rede não está disponível para este agente."
+
+msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
+msgstr "Remover a restrição de rede requer um sandbox no host remoto, e esta conexão não tem."
 
 msgid "Link only"
 msgstr "Somente link"
@@ -1625,6 +1637,9 @@ msgstr "Restaurar ponto de verificação"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "Restaura todos os arquivos do projeto para o conteúdo que tinham neste ponto da conversa."
 
+msgid "Restrict the Agent's Network Again?"
+msgstr "Restringir a rede do agente de novo?"
+
 msgid "Restrict the Network"
 msgstr "Restringir a rede"
 
@@ -1862,6 +1877,12 @@ msgstr "Iniciar (somente esta conversa)"
 msgid "Start (This Time Only)"
 msgstr "Iniciar (somente desta vez)"
 
+msgid "Start Again Restricted"
+msgstr "Reiniciar com restrição"
+
+msgid "Start Again Without Host Limits"
+msgstr "Reiniciar sem limite de hosts"
+
 msgid "Start Again in the Sandbox"
 msgstr "Reiniciar dentro do sandbox"
 
@@ -2009,6 +2030,12 @@ msgstr "O servidor do ForgeKairos no host remoto ainda não está pronto (erro i
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "O servidor do ForgeKairos no host remoto ainda não está pronto. Aguarde a conexão terminar e tente novamente."
 
+msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
+msgstr "O agente e os comandos que ele executa podem alcançar qualquer host dentro da lista de permissões de rede. Clique para reiniciar o agente só com os próprios hosts. Clique com o botão direito para definir o padrão deste projeto."
+
+msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "O agente e os comandos que ele executa alcançam só os hosts próprios do agente. Clique para reiniciar o agente para que ele possa alcançar qualquer host dentro da lista de permissões de rede. Clique com o botão direito para definir o padrão deste projeto."
+
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "O agente pode ler o repositório, mas não alterá-lo. Clique para ativar as operações do Git nesta conversa."
 
@@ -2026,6 +2053,12 @@ msgstr "O agente é executado dentro do sandbox. Clique para reiniciá-lo fora d
 
 msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
 msgstr "O agente é executado fora do sandbox e pode usar as próprias ferramentas sem perguntar. Clique para reiniciá-lo dentro do sandbox, em uma nova sessão. Clique com o botão direito para definir o padrão deste projeto."
+
+msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "O agente para e reinicia dentro do sandbox, só para esta conversa. Então o agente e os comandos que ele executa podem alcançar qualquer host que a lista de permissões de rede permita, não só os hosts próprios do agente. A conversa é recarregada se o agente oferecer suporte a isso e, caso contrário, continua em uma nova sessão."
+
+msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "O agente para e reinicia dentro do sandbox, alcançando só os próprios hosts. A conversa é recarregada se o agente oferecer suporte a isso e, caso contrário, continua em uma nova sessão."
 
 msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
 msgstr "O agente para e reinicia dentro do sandbox. A conversa continua em uma nova sessão: a atual é mantida fora do sandbox, onde o agente no sandbox não consegue lê-la."
@@ -2184,6 +2217,9 @@ msgstr "Este agente não suporta espaços de trabalho com múltiplas raízes no 
 
 msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
 msgstr "Este agente não oferece login com assinatura. Para usá-lo com uma assinatura, inicie o Claude Code oficial e faça login nele."
+
+msgid "This agent has no hosts of its own: only the network allowlist limits it, so there is nothing to lift."
+msgstr "Este agente não tem hosts próprios: só a lista de permissões de rede o limita, então não há nada a remover."
 
 msgid "This agent is installed via npx (npm)"
 msgstr "Este agente é instalado via npx (npm)"

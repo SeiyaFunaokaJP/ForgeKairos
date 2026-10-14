@@ -230,6 +230,9 @@ msgstr "settings.json 中的 `agent_servers` → `{}` → `env` → `{variable}`
 msgid "An Error Happened"
 msgstr "發生錯誤"
 
+msgid "Answer the tool call waiting for confirmation before switching."
+msgstr "請先回應等待確認的工具呼叫，再進行切換。"
+
 msgid "Anthropic will retain inference logs."
 msgstr "Anthropic 將保留推論記錄。"
 
@@ -1103,14 +1106,23 @@ msgstr "在此面板的分頁中啟動官方 Claude Code CLI。請在 CLI 的畫
 msgid "Learn More"
 msgstr "深入了解"
 
+msgid "Let the Agent Reach Any Host?"
+msgstr "允許代理連線到任何主機？"
+
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
+msgstr "若要讓此會話的代理程式及其執行的命令連線到網路允許清單範圍內的任何主機，需要開啟代理程式沙箱設定中的 `allow_unrestricted_network`，但目前為關閉。要開啟嗎？在設定檔中關閉之前會一直保持開啟。"
+
 msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
 msgstr "若要讓此會話的終端機命令和 fetch 連線到任何主機，需要開啟代理程式沙箱設定中的 `allow_unrestricted_network`，但目前為關閉。要開啟嗎？在設定檔中關閉之前會一直保持開啟。網路允許清單仍然適用。"
 
-msgid "Lifting the network restriction is not available for external agents yet."
-msgstr "外部代理程式尚不支援解除網路限制。"
-
 msgid "Lifting the network restriction is not available for projects on a remote host yet."
 msgstr "遠端主機上的專案尚不支援解除網路限制。"
+
+msgid "Lifting the network restriction is not available for this agent."
+msgstr "此代理不支援解除網路限制。"
+
+msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
+msgstr "解除網路限制需要遠端主機上的沙箱，而此連線沒有。"
 
 msgid "Link only"
 msgstr "僅連結"
@@ -1622,6 +1634,9 @@ msgstr "還原檢查點"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "將專案中的所有檔案還原至對話中此時間點的內容。"
 
+msgid "Restrict the Agent's Network Again?"
+msgstr "再次限制代理的網路？"
+
 msgid "Restrict the Network"
 msgstr "限制網路"
 
@@ -1859,6 +1874,12 @@ msgstr "啟動（僅限此會話）"
 msgid "Start (This Time Only)"
 msgstr "啟動（僅此次）"
 
+msgid "Start Again Restricted"
+msgstr "受限重新啟動"
+
+msgid "Start Again Without Host Limits"
+msgstr "不限主機重新啟動"
+
 msgid "Start Again in the Sandbox"
 msgstr "在沙箱內重新啟動"
 
@@ -2006,6 +2027,12 @@ msgstr "遠端主機上的 ForgeKairos 伺服器尚未就緒（內部錯誤）�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "遠端主機上的 ForgeKairos 伺服器尚未就緒。請等待連線完成後再試一次。"
 
+msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
+msgstr "代理及其執行的命令可在網路允許清單的範圍內連線到任何主機。按一下可重新啟動代理，使其只能連線到自己的主機。按右鍵可設定此專案的預設值。"
+
+msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "代理及其執行的命令只能連線到代理自己的主機。按一下可重新啟動代理，使其可在網路允許清單的範圍內連線到任何主機。按右鍵可設定此專案的預設值。"
+
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "代理可以讀取儲存庫，但無法變更。按一下以為此會話開啟 Git 操作。"
 
@@ -2023,6 +2050,12 @@ msgstr "代理在沙箱內執行。按一下以在沙箱外以新的工作階段
 
 msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
 msgstr "代理在沙箱外執行，可能會不經詢問就使用自己的工具。按一下以在沙箱內以新的工作階段重新啟動。按右鍵以設定此專案的預設值。"
+
+msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "代理會停止，然後僅為此會話在沙箱內重新啟動。之後，代理及其執行的命令不只能連線到代理自己的主機，還能連線到網路允許清單所允許的任何主機。如果代理支援，對話會被讀回；否則會在新的工作階段中繼續。"
+
+msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "代理會停止，然後在沙箱內重新啟動，只能連線到它自己的主機。如果代理支援，對話會被讀回；否則會在新的工作階段中繼續。"
 
 msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
 msgstr "代理會停止，然後在沙箱內重新啟動。對話會在新的工作階段中繼續：目前的工作階段保留在沙箱外，沙箱內的代理無法讀取。"
@@ -2180,6 +2213,9 @@ msgstr "此代理目前不支援多根目錄工作區"
 
 msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
 msgstr "此代理不提供訂閱登入。若要透過訂閱使用，請啟動官方 Claude Code 並在其中登入。"
+
+msgid "This agent has no hosts of its own: only the network allowlist limits it, so there is nothing to lift."
+msgstr "此代理沒有自己的主機清單：只受網路允許清單限制，因此沒有可解除的限制。"
 
 msgid "This agent is installed via npx (npm)"
 msgstr "此代理是透過 npx（npm）安裝的"

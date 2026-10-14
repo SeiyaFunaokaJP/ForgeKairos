@@ -2133,7 +2133,7 @@ impl Thread {
     ) -> (agent_settings::SandboxPermissions, sandbox::SandboxPolicy) {
         let mut persistent = AgentSettings::get_global(cx).sandbox_permissions.clone();
         let mut thread_policy = self.sandbox_grants.borrow().to_policy();
-        if self.network_choice.is_some() && self.project.read(cx).is_local() {
+        if self.network_choice.is_some() && self.network_choice_applies(cx) {
             persistent.allow_all_hosts = false;
             if self.network_restriction_turned_off(cx) {
                 thread_policy.network = sandbox::SandboxNetPolicy::Unrestricted;
@@ -2404,6 +2404,12 @@ impl Thread {
 
     pub fn network_choice(&self) -> Option<bool> {
         self.network_choice
+    }
+
+    /// Whether this thread's own network choice counts in its project, rather
+    /// than the settings alone (ADR-F96 stage 4).
+    pub fn network_choice_applies(&self, cx: &App) -> bool {
+        project::agent_sandbox::thread_network_choice_applies(self.project.read(cx), cx)
     }
 
     /// Keeps or lifts the network restriction for this thread's terminal
@@ -4866,6 +4872,7 @@ impl Thread {
                 .map(|(_key, map)| map.clone()),
             code_display: ide_query::code_display(cx).is_some(),
             git_operations_enabled: self.git_operations_enabled,
+            network_unrestricted: self.network_restriction_turned_off(cx),
         }
         .render(&self.templates)
         .context("failed to build system prompt")
@@ -6395,7 +6402,7 @@ impl ToolCallEventStream {
             .is_some_and(|thread| {
                 let thread = thread.read(cx);
                 thread.network_choice() == Some(false)
-                    && thread.project.read(cx).is_local()
+                    && thread.network_choice_applies(cx)
                     && thread.network_restriction_turned_off(cx)
             })
     }
@@ -10908,6 +10915,87 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// ADR-F96 stage 2: the system prompt is built for every request, so lifting a thread's
+    /// network restriction tells the model from the next turn on, and keeping it again takes
+    /// that back. A choice the settings do not allow changes nothing in the prompt either.
+    #[gpui::test]
+    async fn test_system_prompt_follows_the_thread_network_choice(cx: &mut TestAppContext) {
+        use feature_flags::FeatureFlagAppExt as _;
+        use gpui::UpdateGlobal as _;
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            cx.update_flags(true, vec!["sandboxing".to_string()]);
+        });
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree("/root", json!({})).await;
+        let project = Project::test(fs, ["/root".as_ref()], cx).await;
+        let thread = cx.update(|cx| {
+            cx.new(|cx| {
+                Thread::new(
+                    project.clone(),
+                    cx.new(|_cx| prompt_store::ProjectContext::default()),
+                    cx.new(|cx| {
+                        ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                    }),
+                    Templates::new(),
+                    None,
+                    cx,
+                )
+            })
+        });
+        let system_prompt = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let messages = thread
+                    .read(cx)
+                    .build_request_messages(vec!["terminal".into()], cx);
+                let system = messages.first().expect("a system message");
+                assert_eq!(system.role, Role::System);
+                system.string_contents()
+            })
+        };
+        let says_lifted = |cx: &mut TestAppContext| {
+            let prompt = system_prompt(cx);
+            assert!(prompt.contains("## Terminal sandbox"));
+            let lifted = prompt.contains("the network restriction is lifted for this thread");
+            assert_eq!(
+                prompt.contains("outbound network access is blocked"),
+                !lifted
+            );
+            lifted
+        };
+        let choose = |choice: Option<bool>, cx: &mut TestAppContext| {
+            cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(choice, cx)));
+        };
+
+        assert!(!says_lifted(cx));
+        choose(Some(false), cx);
+        assert!(
+            !says_lifted(cx),
+            "lifting the restriction is not allowed in the settings"
+        );
+
+        cx.update(|cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": true } } }"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("valid user settings");
+            });
+        });
+        assert!(says_lifted(cx));
+        choose(Some(true), cx);
+        assert!(
+            !says_lifted(cx),
+            "keeping the restriction again takes it back"
+        );
     }
 
     /// ADR-F96: the chat input's sandbox switch turns the sandbox off for its thread only while

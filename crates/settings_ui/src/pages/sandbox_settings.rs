@@ -29,6 +29,19 @@ const ALLOW_OUTSIDE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
     "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
 );
 
+/// ADR-F96 stage 2: the standing permission behind the chat input's network
+/// button. Saying that the editor-wide allowlist still applies keeps it from
+/// reading as a way past that allowlist, as for "Allow All Domains" below.
+const ALLOW_UNRESTRICTED_NETWORK_DESCRIPTION: &str = i18n::msg!(
+    "When on, a thread of the built-in agent can lift its network restriction with the network button next to the message input: its sandboxed terminal commands and fetches then reach any host without asking. Commands still reach only the hosts within the editor-wide network allowlist, and fetches still never reach local or private addresses. When off (the default), that button asks to turn this on first. Each command still asks for confirmation as before."
+);
+
+/// ADR-F96: the per-folder defaults are a map keyed by folder path, which this
+/// page does not edit row by row; the agent panel's buttons write them.
+const PROJECT_THREAD_DEFAULTS_DESCRIPTION: &str = i18n::msg!(
+    "What new agent threads start with in each project folder: whether terminal commands run in the sandbox and whether the network is restricted. Set it by right-clicking the sandbox or network button next to the agent panel's message input, or edit agent.project_thread_defaults in settings.json."
+);
+
 const ENABLE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
     "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
 );
@@ -120,6 +133,19 @@ pub(crate) fn render_sandbox_settings_page(
             .disabled(!outside_allowed)
             .tab_index(0),
         )
+        .child(
+            SwitchField::new(
+                "sandbox-allow-unrestricted-network",
+                Some(i18n::t!("Allow Lifting the Network Restriction for a Thread")),
+                Some(i18n::tr(ALLOW_UNRESTRICTED_NETWORK_DESCRIPTION).into()),
+                project::agent_sandbox::unrestricted_network_allowed(cx),
+                move |state, _window, cx| {
+                    set_allow_unrestricted_network(*state == ToggleState::Selected, cx);
+                },
+            )
+            .tab_index(0),
+        )
+        .child(render_project_thread_defaults(cx))
         .child(Divider::horizontal())
         .child(
             SwitchField::new(
@@ -263,6 +289,38 @@ pub(crate) fn render_sandbox_settings_page(
                     .tab_index(0),
                 ),
         )
+        )
+        .into_any_element()
+}
+
+fn render_project_thread_defaults(cx: &mut Context<SettingsWindow>) -> AnyElement {
+    h_flex()
+        .w_full()
+        .gap_4()
+        .justify_between()
+        .child(
+            v_flex()
+                .min_w_0()
+                .flex_1()
+                .gap_0p5()
+                .child(Label::new(i18n::t!("Project Defaults for New Threads")))
+                .child(
+                    Label::new(i18n::tr(PROJECT_THREAD_DEFAULTS_DESCRIPTION))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                ),
+        )
+        .child(
+            Button::new(
+                "sandbox-project-thread-defaults-in-settings-file",
+                i18n::t!("Edit in settings.json"),
+            )
+            .style(ButtonStyle::Outlined)
+            .size(ButtonSize::Medium)
+            .tab_index(0_isize)
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_current_settings_file(window, cx);
+            })),
         )
         .into_any_element()
 }
@@ -544,6 +602,14 @@ fn set_allow_outside_sandbox(value: bool, cx: &mut App) {
     });
 }
 
+/// ADR-F96 stage 2: written to the user settings file, the only one it is read
+/// from.
+fn set_allow_unrestricted_network(value: bool, cx: &mut App) {
+    update_sandbox_permissions(cx, move |permissions| {
+        permissions.allow_unrestricted_network = Some(value);
+    });
+}
+
 fn set_sandbox_enabled(value: bool, cx: &mut App) {
     // The UI presents an "enabled" switch, but the stored setting is the
     // inverse (`allow_unsandboxed`).
@@ -686,4 +752,67 @@ fn remove_write_path(path: PathBuf, cx: &mut App) {
                 .retain(|entry| !names_the_same_grant(&entry.requested, &path));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use fs::Fs as _;
+    use gpui::TestAppContext;
+
+    use super::*;
+
+    /// ADR-F96 stage 2: the page's switch writes `allow_unrestricted_network` to the user's own
+    /// settings file, the one it is read from, so the switch then reads as what it wrote; the
+    /// neighbouring "any host" permission is left as it was.
+    #[gpui::test]
+    async fn test_unrestricted_network_switch_writes_the_user_settings_file(
+        cx: &mut TestAppContext,
+    ) {
+        let fs = fs::FakeFs::new(cx.executor());
+        cx.update(|cx| {
+            let store = SettingsStore::test(cx);
+            cx.set_global(store);
+            <dyn fs::Fs>::set_global(fs.clone(), cx);
+        });
+        fs.create_dir(
+            paths::settings_file()
+                .parent()
+                .expect("settings file has a parent directory"),
+        )
+        .await
+        .expect("settings directory can be created");
+        fs.save(
+            paths::settings_file(),
+            &r#"{ "agent": { "sandbox_permissions": { "allow_all_hosts": false } } }"#.into(),
+            language::LineEnding::Unix,
+        )
+        .await
+        .expect("settings file can be written");
+
+        for value in [true, false, true] {
+            cx.update(|cx| set_allow_unrestricted_network(value, cx));
+            cx.run_until_parked();
+            let text = fs
+                .load(paths::settings_file())
+                .await
+                .expect("the settings file");
+            let written: serde_json::Value =
+                serde_json::from_str(&text).expect("the settings file is JSON");
+            let permissions = &written["agent"]["sandbox_permissions"];
+            assert_eq!(
+                permissions["allow_unrestricted_network"],
+                serde_json::Value::Bool(value),
+                "{text}"
+            );
+            assert_eq!(
+                permissions["allow_all_hosts"],
+                serde_json::Value::Bool(false),
+                "{text}"
+            );
+            assert_eq!(
+                cx.update(|cx| project::agent_sandbox::unrestricted_network_allowed(cx)),
+                value
+            );
+        }
+    }
 }

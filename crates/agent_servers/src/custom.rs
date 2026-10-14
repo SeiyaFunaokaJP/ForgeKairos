@@ -745,6 +745,7 @@ impl AgentServer for CustomAgentServer {
             )));
         }
         let run_outside_sandbox = delegate.starts_outside_sandbox(agent_id.as_ref(), cx);
+        let lift_agent_hosts = delegate.lifts_agent_hosts(cx);
         // ADR-F49 第 2b 段: on Windows the sandbox is the WSL distro of the
         // project's folders, so the command is resolved for it.
         let launch_target = if run_outside_sandbox {
@@ -796,6 +797,7 @@ impl AgentServer for CustomAgentServer {
                 default_mode,
                 default_config_options,
                 run_outside_sandbox,
+                lift_agent_hosts,
                 cx,
             )
             .await?;
@@ -1392,6 +1394,60 @@ mod tests {
             Ok(_) => panic!("the agent must not start"),
             Err(error) => assert_eq!(error.to_string(), i18n::tr(OUTSIDE_SANDBOX_NOT_ALLOWED)),
         }
+    }
+
+    /// ADR-F96 stage 3: a start asked to lift the agent's own hosts lifts them
+    /// only while the user's settings allow it — a start asked for before the
+    /// setting was turned off does not outlive it, and a project's settings
+    /// cannot turn it on.
+    #[gpui::test]
+    async fn test_a_start_lifts_the_agents_hosts_only_while_that_is_allowed(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let project = project::Project::example([temp_dir.path()], &mut cx.to_async()).await;
+        let store = project.read_with(cx, |project, _| project.agent_server_store().clone());
+        let set_user_settings = |allowed: bool, cx: &mut App| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(
+                        &format!(
+                            r#"{{ "agent": {{ "sandbox_permissions": {{ "allow_unrestricted_network": {allowed} }} }} }}"#
+                        ),
+                        cx,
+                    )
+                    .result()
+                    .expect("valid user settings");
+            });
+        };
+        cx.update(|cx| {
+            let lifting = AgentServerDelegate::new(store.clone(), None, None).lift_agent_hosts();
+            let not_lifting = AgentServerDelegate::new(store, None, None);
+
+            set_user_settings(true, cx);
+            assert!(lifting.lifts_agent_hosts(cx));
+            assert!(!not_lifting.lifts_agent_hosts(cx));
+
+            set_user_settings(false, cx);
+            assert!(!lifting.lifts_agent_hosts(cx));
+
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_local_settings(
+                        settings::WorktreeId::from_usize(1),
+                        settings::LocalSettingsPath::InWorktree(
+                            util::rel_path::RelPath::empty().into(),
+                        ),
+                        settings::LocalSettingsKind::Settings,
+                        Some(r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": true } } }"#),
+                        cx,
+                    )
+                    .ok();
+            });
+            assert!(!lifting.lifts_agent_hosts(cx));
+        });
     }
 
     #[gpui::test]

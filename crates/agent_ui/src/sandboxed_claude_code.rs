@@ -582,18 +582,53 @@ pub(crate) fn allow_unrestricted_network_first(
     window: &mut Window,
     cx: &mut App,
 ) -> Task<bool> {
+    ask_to_allow_unrestricted_network(
+        i18n::t!(
+            "Letting this thread's terminal commands and fetches reach any host needs \
+             `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it \
+             on? It stays on until you turn it off in your settings file. The network allowlist \
+             still applies."
+        ),
+        fs,
+        window,
+        cx,
+    )
+}
+
+/// ADR-F96 stage 3: [`allow_unrestricted_network_first`] for an external
+/// agent, whose whole process starts again rather than its commands and
+/// fetches being let out.
+pub(crate) fn allow_unrestricted_network_first_for_external_agent(
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
+    ask_to_allow_unrestricted_network(
+        i18n::t!(
+            "Letting this thread's agent and the commands it runs reach any host within the \
+             network allowlist needs `allow_unrestricted_network` in the agent's sandbox \
+             settings, which is off. Turn it on? It stays on until you turn it off in your \
+             settings file."
+        ),
+        fs,
+        window,
+        cx,
+    )
+}
+
+fn ask_to_allow_unrestricted_network(
+    detail: &'static str,
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
     if project::agent_sandbox::unrestricted_network_allowed(cx) {
         return Task::ready(true);
     }
     let answer = window.prompt(
         PromptLevel::Warning,
         i18n::t!("Allow Lifting the Network Restriction?"),
-        Some(i18n::t!(
-            "Letting this thread's terminal commands and fetches reach any host needs \
-             `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it \
-             on? It stays on until you turn it off in your settings file. The network allowlist \
-             still applies."
-        )),
+        Some(detail),
         &[
             PromptButton::ok(i18n::t!("Turn On and Continue")),
             PromptButton::cancel(i18n::t!("Cancel")),

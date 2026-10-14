@@ -290,6 +290,9 @@ msgstr "Autoriser tous les domaines"
 msgid "Allow All File System Writes"
 msgstr "Autoriser toutes les écritures sur le système de fichiers"
 
+msgid "Allow Lifting the Network Restriction for a Thread"
+msgstr "Autoriser la levée de la restriction réseau pour une conversation"
+
 msgid "Allow Running Outside the Sandbox"
 msgstr "Autoriser l'exécution hors du bac à sable"
 
@@ -1387,6 +1390,9 @@ msgstr "Appui sur des touches dans les pages du navigateur intégré"
 msgid "Project"
 msgstr "Projet"
 
+msgid "Project Defaults for New Threads"
+msgstr "Valeurs par défaut du projet pour les nouvelles conversations"
+
 msgid "Project-wide symbol renames by the language server"
 msgstr "Renommages de symboles à l'échelle du projet par le serveur de langage"
 
@@ -1969,6 +1975,9 @@ msgstr "Avertit lorsqu'une demande d'approbation porte sur un domaine ou un chem
 msgid "Web search queries"
 msgstr "Requêtes de recherche web"
 
+msgid "What new agent threads start with in each project folder: whether terminal commands run in the sandbox and whether the network is restricted. Set it by right-clicking the sandbox or network button next to the agent panel's message input, or edit agent.project_thread_defaults in settings.json."
+msgstr "Ce avec quoi les nouvelles conversations de l'agent démarrent dans chaque dossier de projet : si les commandes de terminal s'exécutent dans le bac à sable et si le réseau est restreint. Définissez-le d'un clic droit sur le bouton du bac à sable ou du réseau à côté du champ de message du panneau de l'agent, ou modifiez agent.project_thread_defaults dans settings.json."
+
 msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
 msgstr "Si cette option est activée, chaque processus enfant des agents ACP, des serveurs MCP et de npm qui installe les agents IA reçoit un proxy de bouclage : son trafic sortant est donc lui aussi vérifié par rapport à la liste d'autorisation ci-dessus. Activé par défaut. Si cette option est désactivée, le trafic sortant de ces processus enfants échappe au contrôle de la liste d'autorisation (le trafic d'IA de l'IDE lui-même reste contrôlé)."
 
@@ -1980,6 +1989,9 @@ msgstr "Lorsqu'il s'exécute sur l'hôte SSH, la commande y est résolue (un ser
 
 msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
 msgstr "Lorsque cette option est désactivée (par défaut), rien de ce que les fonctionnalités de l'agent démarrent ou exécutent nouvellement ne sort du bac à sable : les commandes de terminal qui ne peuvent pas s'exécuter dans le bac à sable, le démarrage d'un agent externe ou de Claude Code hors du bac à sable et la reprise d'une conversation démarrée hors de celui-ci sont tous refusés sans demande, et les paramètres qui les démarrent toujours hors du bac à sable sont ignorés. Une connexion déjà en cours hors du bac à sable continue de fonctionner. Les serveurs MCP (serveurs de contexte) ne sont pas concernés par ce paramètre. Lorsque cette option est activée, chacun de ces éléments demande d'abord ou suit son propre paramètre."
+
+msgid "When on, a thread of the built-in agent can lift its network restriction with the network button next to the message input: its sandboxed terminal commands and fetches then reach any host without asking. Commands still reach only the hosts within the editor-wide network allowlist, and fetches still never reach local or private addresses. When off (the default), that button asks to turn this on first. Each command still asks for confirmation as before."
+msgstr "Lorsque cette option est activée, une conversation de l'agent intégré peut lever sa restriction réseau avec le bouton réseau à côté du champ de message : ses commandes de terminal dans le bac à sable et ses récupérations (fetch) peuvent alors joindre n'importe quel hôte sans demande. Les commandes ne peuvent toujours joindre que les hôtes figurant dans la liste d'autorisation réseau de l'éditeur, et les récupérations ne joignent jamais les adresses locales ou privées. Lorsqu'elle est désactivée (par défaut), ce bouton demande d'abord de l'activer. Chaque commande demande toujours une confirmation, comme avant."
 
 msgid "When the server runs on the SSH host, type the path on the host directly."
 msgstr "Lorsque le serveur s'exécute sur l'hôte SSH, saisissez directement le chemin sur l'hôte."

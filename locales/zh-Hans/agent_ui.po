@@ -230,6 +230,9 @@ msgstr "settings.json 中的 `agent_servers` → `{}` → `env` → `{variable}`
 msgid "An Error Happened"
 msgstr "发生了错误"
 
+msgid "Answer the tool call waiting for confirmation before switching."
+msgstr "请先回应等待确认的工具调用，再进行切换。"
+
 msgid "Anthropic will retain inference logs."
 msgstr "Anthropic 将保留推理日志。"
 
@@ -1103,14 +1106,23 @@ msgstr "在此面板的标签页中启动官方 Claude Code CLI。在 CLI 的界
 msgid "Learn More"
 msgstr "了解详情"
 
+msgid "Let the Agent Reach Any Host?"
+msgstr "允许智能体访问任意主机？"
+
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
+msgstr "要让此会话的智能体及其运行的命令访问网络允许列表范围内的任意主机，需要开启智能体沙盒设置中的 `allow_unrestricted_network`，但它目前处于关闭状态。是否开启？在设置文件中关闭之前它会一直保持开启。"
+
 msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
 msgstr "要让此会话的终端命令和 fetch 访问任意主机，需要开启智能体沙盒设置中的 `allow_unrestricted_network`，但它目前处于关闭状态。是否开启？在设置文件中关闭之前它会一直保持开启。网络允许列表仍然适用。"
 
-msgid "Lifting the network restriction is not available for external agents yet."
-msgstr "外部智能体暂不支持解除网络限制。"
-
 msgid "Lifting the network restriction is not available for projects on a remote host yet."
 msgstr "远程主机上的项目暂不支持解除网络限制。"
+
+msgid "Lifting the network restriction is not available for this agent."
+msgstr "此智能体不支持解除网络限制。"
+
+msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
+msgstr "解除网络限制需要远程主机上的沙盒，而此连接没有。"
 
 msgid "Link only"
 msgstr "仅链接"
@@ -1622,6 +1634,9 @@ msgstr "恢复到检查点"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "将项目中的所有文件还原为对话中此时间点的内容。"
 
+msgid "Restrict the Agent's Network Again?"
+msgstr "重新限制智能体的网络？"
+
 msgid "Restrict the Network"
 msgstr "限制网络"
 
@@ -1859,6 +1874,12 @@ msgstr "启动（仅此会话）"
 msgid "Start (This Time Only)"
 msgstr "启动（仅此一次）"
 
+msgid "Start Again Restricted"
+msgstr "受限重新启动"
+
+msgid "Start Again Without Host Limits"
+msgstr "不限主机重新启动"
+
 msgid "Start Again in the Sandbox"
 msgstr "在沙盒内重新启动"
 
@@ -2006,6 +2027,12 @@ msgstr "远程主机上的 ForgeKairos 服务器尚未就绪（内部错误）�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "远程主机上的 ForgeKairos 服务器尚未就绪。请等待连接完成后重试。"
 
+msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
+msgstr "智能体及其运行的命令可在网络允许列表范围内访问任意主机。点击可重新启动智能体，使其只能访问自己的主机。右键点击可设置此项目的默认值。"
+
+msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "智能体及其运行的命令只能访问智能体自己的主机。点击可重新启动智能体，使其可在网络允许列表范围内访问任意主机。右键点击可设置此项目的默认值。"
+
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "智能体可以读取仓库，但不能更改它。点击以为此会话开启 Git 操作。"
 
@@ -2023,6 +2050,12 @@ msgstr "智能体在沙盒内运行。点击以在沙盒外以新会话重新启
 
 msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
 msgstr "智能体在沙盒外运行，可能会不经询问就使用自己的工具。点击以在沙盒内以新会话重新启动它。右键点击以设置此项目的默认值。"
+
+msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "智能体会停止，然后仅为此会话在沙盒内重新启动。之后，智能体及其运行的命令不仅能访问智能体自己的主机，还能访问网络允许列表所允许的任意主机。如果智能体支持，对话会被读回；否则将在新会话中继续。"
+
+msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "智能体会停止，然后在沙盒内重新启动，只能访问它自己的主机。如果智能体支持，对话会被读回；否则将在新会话中继续。"
 
 msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
 msgstr "智能体会停止，然后在沙盒内重新启动。对话将在新会话中继续：当前会话保留在沙盒外，沙盒内的智能体无法读取它。"
@@ -2180,6 +2213,9 @@ msgstr "此智能体目前不支持多根工作区"
 
 msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
 msgstr "此智能体不提供订阅登录。要通过订阅使用，请启动官方 Claude Code 并在其中登录。"
+
+msgid "This agent has no hosts of its own: only the network allowlist limits it, so there is nothing to lift."
+msgstr "此智能体没有自己的主机列表：只受网络允许列表限制，因此没有可解除的限制。"
 
 msgid "This agent is installed via npx (npm)"
 msgstr "此智能体通过 npx（npm）安装"

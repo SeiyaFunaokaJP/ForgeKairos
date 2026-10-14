@@ -287,6 +287,9 @@ msgstr "允许所有域名"
 msgid "Allow All File System Writes"
 msgstr "允许所有文件系统写入"
 
+msgid "Allow Lifting the Network Restriction for a Thread"
+msgstr "允许为单个会话解除网络限制"
+
 msgid "Allow Running Outside the Sandbox"
 msgstr "允许在沙盒外运行"
 
@@ -1383,6 +1386,9 @@ msgstr "在内置浏览器的页面中按键"
 msgid "Project"
 msgstr "项目"
 
+msgid "Project Defaults for New Threads"
+msgstr "新会话的项目默认值"
+
 msgid "Project-wide symbol renames by the language server"
 msgstr "语言服务器执行的项目范围符号重命名"
 
@@ -1965,6 +1971,9 @@ msgstr "当批准提示中请求的域名或写入路径包含潜在易混淆的
 msgid "Web search queries"
 msgstr "网页搜索查询"
 
+msgid "What new agent threads start with in each project folder: whether terminal commands run in the sandbox and whether the network is restricted. Set it by right-clicking the sandbox or network button next to the agent panel's message input, or edit agent.project_thread_defaults in settings.json."
+msgstr "新的智能体会话在每个项目文件夹中的初始设置：终端命令是否在沙盒中运行，以及是否限制网络。可以右键点击智能体面板输入框旁的沙盒或网络按钮来设置，也可以在 settings.json 中编辑 agent.project_thread_defaults。"
+
 msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
 msgstr "启用后，ACP 智能体、MCP 服务器以及安装 AI 智能体的 npm 的每个子进程都会获得一个环回代理，因此其外部通信也会根据上方的允许列表进行检查。默认启用。禁用后，这些子进程的外部通信不受允许列表管控（来自 IDE 本身的 AI 通信仍受管控）。"
 
@@ -1976,6 +1985,9 @@ msgstr "在 SSH 主机上运行时，命令在该主机上解析（由扩展提�
 
 msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
 msgstr "关闭（默认）时，智能体功能新启动或运行的任何内容都不会在沙盒外运行：无法在沙盒中运行的终端命令、在沙盒外启动外部智能体或 Claude Code，以及恢复在沙盒外开始的会话，都会被直接拒绝而不询问，并且始终在沙盒外启动它们的设置也会被忽略。已在沙盒外运行的连接将继续运行。MCP 服务器（上下文服务器）不受此设置影响。打开时，上述各项会先询问，或遵循各自的设置。"
+
+msgid "When on, a thread of the built-in agent can lift its network restriction with the network button next to the message input: its sandboxed terminal commands and fetches then reach any host without asking. Commands still reach only the hosts within the editor-wide network allowlist, and fetches still never reach local or private addresses. When off (the default), that button asks to turn this on first. Each command still asks for confirmation as before."
+msgstr "开启后，内置智能体的会话可以通过输入框旁的网络按钮解除网络限制：该会话在沙盒中的终端命令和 fetch 随后无需确认即可访问任意主机。命令仍然只能访问编辑器范围的网络允许列表内的主机，fetch 仍然不会访问本地或私有地址。关闭时（默认），该按钮会先询问是否开启此设置。每条命令仍会像以前一样请求确认。"
 
 msgid "When the server runs on the SSH host, type the path on the host directly."
 msgstr "服务器在 SSH 主机上运行时，请直接输入主机上的路径。"

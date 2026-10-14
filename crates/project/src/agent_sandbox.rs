@@ -389,16 +389,29 @@ pub fn project_default_sandbox(project: &Project, cx: &App) -> Option<bool> {
 /// keeps its network restriction, as the user's own settings file has it for
 /// the project's folders (`agent.project_thread_defaults.<folder>.network`),
 /// with the same rule for several folders as [`project_default_sandbox`].
-/// `None` for a project on a remote host, where the thread's choice does not
-/// apply yet.
+/// `None` where the thread's choice does not count
+/// ([`thread_network_choice_applies`]).
 ///
 /// This is what the user chose, not what runs: lifting the restriction also
 /// needs [`unrestricted_network_allowed`].
 pub fn project_default_network(project: &Project, cx: &App) -> Option<bool> {
-    if !project.is_local() {
+    if !thread_network_choice_applies(project, cx) {
         return None;
     }
     project_default(project, cx, |defaults| defaults.network)
+}
+
+/// ADR-F96 stage 4: whether a thread's own choice about its network
+/// restriction counts in `project`, rather than the settings alone. A local
+/// project's commands are confined by this machine's sandbox. A remote host's
+/// are confined by its own sandbox helper (ADR-F18), which nests "any host"
+/// inside the editor-wide allowlist the client sends with every command
+/// (ADR-F17); a helper too old to know that allowlist refuses the command
+/// rather than running it without one, and a server of another wire revision
+/// is replaced before the connection is used. A remote host without a helper,
+/// or a collaborator's project, leaves it to the settings.
+pub fn thread_network_choice_applies(project: &Project, cx: &App) -> bool {
+    project.is_local() || project.remote_supports_agent_sandbox(cx)
 }
 
 fn project_default(

@@ -34,6 +34,7 @@ pub struct AgentServerDelegate {
     loading_status: Option<watch::Sender<Option<String>>>,
     run_outside_sandbox: bool,
     keep_in_sandbox: bool,
+    lift_agent_hosts: bool,
 }
 
 impl AgentServerDelegate {
@@ -48,6 +49,7 @@ impl AgentServerDelegate {
             loading_status: loading_status_tx,
             run_outside_sandbox: false,
             keep_in_sandbox: false,
+            lift_agent_hosts: false,
         }
     }
 
@@ -78,6 +80,21 @@ impl AgentServerDelegate {
 
     pub fn runs_outside_sandbox(&self) -> bool {
         self.run_outside_sandbox
+    }
+
+    /// ADR-F96 stage 3: this start's sandbox lets the agent reach any host the
+    /// editor-wide allowlist permits, rather than only its own hosts. The
+    /// allowlist still caps it, and without one published nothing is lifted.
+    pub fn lift_agent_hosts(mut self) -> Self {
+        self.lift_agent_hosts = true;
+        self
+    }
+
+    /// Whether this start lifts the agent's own hosts: asked for, and still
+    /// allowed by the user's settings (`allow_unrestricted_network`), which a
+    /// start asked for earlier does not outlive.
+    pub fn lifts_agent_hosts(&self, cx: &App) -> bool {
+        self.lift_agent_hosts && project::agent_sandbox::unrestricted_network_allowed(cx)
     }
 
     /// What reports a newer version of the agent, for a test to report one

@@ -85,6 +85,19 @@ impl From<&str> for AgentModelId {
     }
 }
 
+/// ADR-F96 stage 3: what limits the network of an external agent's sandbox.
+/// The editor-wide allowlist (ADR-F03 / F38) caps every one of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentSandboxNetwork {
+    /// The agent's own hosts, under the editor-wide allowlist.
+    AgentHosts,
+    /// The agent has no hosts of its own, so the editor-wide allowlist alone.
+    EditorAllowlist,
+    /// The agent's own hosts were lifted for this connection, which leaves the
+    /// editor-wide allowlist alone.
+    AgentHostsLifted,
+}
+
 pub fn build_terminal_auth_task(
     id: String,
     label: String,
@@ -164,6 +177,13 @@ pub trait AgentConnection {
     /// for as long as this agent runs, whichever slot of the store holds it.
     fn runs_outside_sandbox(&self) -> bool {
         false
+    }
+
+    /// ADR-F96 stage 3: what limits the network of this agent's sandbox, for
+    /// the chat input's network button. `None`: the agent runs without a
+    /// sandbox on this machine, or one this cannot tell about.
+    fn sandbox_network(&self) -> Option<AgentSandboxNetwork> {
+        None
     }
 
     fn new_session(
@@ -867,6 +887,7 @@ mod test_support {
         sandbox_write_scope: Option<Vec<std::path::PathBuf>>,
         sandbox_ide_unavailable: Option<SharedString>,
         runs_outside_sandbox: bool,
+        sandbox_network: Option<AgentSandboxNetwork>,
     }
 
     struct Session {
@@ -898,7 +919,14 @@ mod test_support {
                 sandbox_write_scope: None,
                 sandbox_ide_unavailable: None,
                 runs_outside_sandbox: false,
+                sandbox_network: None,
             }
+        }
+
+        /// Makes the stub an agent whose sandbox's network is limited by `network`.
+        pub fn with_sandbox_network(mut self, network: AgentSandboxNetwork) -> Self {
+            self.sandbox_network = Some(network);
+            self
         }
 
         /// Makes the stub an agent started outside its sandbox.
@@ -1079,6 +1107,10 @@ mod test_support {
 
         fn runs_outside_sandbox(&self) -> bool {
             self.runs_outside_sandbox
+        }
+
+        fn sandbox_network(&self) -> Option<AgentSandboxNetwork> {
+            self.sandbox_network
         }
 
         fn telemetry_id(&self) -> SharedString {

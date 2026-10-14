@@ -230,6 +230,9 @@ msgstr "settings.json의 `agent_servers` → `{}` → `env` → `{variable}`에 
 msgid "An Error Happened"
 msgstr "오류가 발생했습니다"
 
+msgid "Answer the tool call waiting for confirmation before switching."
+msgstr "확인을 기다리는 도구 호출에 먼저 응답한 뒤 전환하세요."
+
 msgid "Anthropic will retain inference logs."
 msgstr "Anthropic은 추론 로그를 보존합니다."
 
@@ -1103,14 +1106,23 @@ msgstr "이 패널의 탭에서 공식 Claude Code CLI를 시작합니다. 로�
 msgid "Learn More"
 msgstr "자세히 알아보기"
 
+msgid "Let the Agent Reach Any Host?"
+msgstr "에이전트가 모든 호스트에 접속하도록 허용할까요?"
+
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
+msgstr "이 스레드의 에이전트와 에이전트가 실행하는 명령이 네트워크 허용 목록 범위의 모든 호스트에 접속하게 하려면 에이전트 샌드박스 설정의 `allow_unrestricted_network`가 필요하지만 꺼져 있습니다. 켤까요? 설정 파일에서 끌 때까지 켜진 상태로 유지됩니다."
+
 msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
 msgstr "이 스레드의 터미널 명령과 fetch가 모든 호스트에 접속하게 하려면 에이전트 샌드박스 설정의 `allow_unrestricted_network`가 필요하지만 꺼져 있습니다. 켤까요? 설정 파일에서 끌 때까지 켜진 상태로 유지됩니다. 네트워크 허용 목록은 계속 적용됩니다."
 
-msgid "Lifting the network restriction is not available for external agents yet."
-msgstr "외부 에이전트에서는 아직 네트워크 제한을 해제할 수 없습니다."
-
 msgid "Lifting the network restriction is not available for projects on a remote host yet."
 msgstr "원격 호스트의 프로젝트에서는 아직 네트워크 제한을 해제할 수 없습니다."
+
+msgid "Lifting the network restriction is not available for this agent."
+msgstr "이 에이전트에서는 네트워크 제한을 해제할 수 없습니다."
+
+msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
+msgstr "네트워크 제한을 해제하려면 원격 호스트에 샌드박스가 필요하지만 이 연결에는 없습니다."
 
 msgid "Link only"
 msgstr "링크만"
@@ -1622,6 +1634,9 @@ msgstr "체크포인트 복원"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "프로젝트의 모든 파일을 대화의 이 시점에 있던 상태로 복원합니다."
 
+msgid "Restrict the Agent's Network Again?"
+msgstr "에이전트의 네트워크를 다시 제한할까요?"
+
 msgid "Restrict the Network"
 msgstr "네트워크 제한하기"
 
@@ -1859,6 +1874,12 @@ msgstr "시작 (이 스레드만)"
 msgid "Start (This Time Only)"
 msgstr "시작 (이번만)"
 
+msgid "Start Again Restricted"
+msgstr "제한된 상태로 다시 시작"
+
+msgid "Start Again Without Host Limits"
+msgstr "호스트 제한 없이 다시 시작"
+
 msgid "Start Again in the Sandbox"
 msgstr "샌드박스 안에서 다시 시작"
 
@@ -2006,6 +2027,12 @@ msgstr "원격 호스트의 ForgeKairos 서버가 아직 준비되지 않았습�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "원격 호스트의 ForgeKairos 서버가 아직 준비되지 않았습니다. 연결이 완료될 때까지 기다린 후 다시 시도하세요."
 
+msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
+msgstr "에이전트와 에이전트가 실행하는 명령이 네트워크 허용 목록 범위에서 모든 호스트에 접속할 수 있습니다. 클릭하면 자체 호스트에만 접속하도록 에이전트를 다시 시작합니다. 오른쪽 클릭으로 이 프로젝트의 기본값을 설정합니다."
+
+msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "에이전트와 에이전트가 실행하는 명령은 에이전트 자체의 호스트에만 접속합니다. 클릭하면 네트워크 허용 목록 범위에서 모든 호스트에 접속할 수 있도록 에이전트를 다시 시작합니다. 오른쪽 클릭으로 이 프로젝트의 기본값을 설정합니다."
+
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "에이전트가 저장소를 읽을 수는 있지만 변경할 수는 없습니다. 클릭하면 이 스레드에서 Git 작업을 켭니다."
 
@@ -2023,6 +2050,12 @@ msgstr "에이전트가 샌드박스 안에서 실행 중입니다. 클릭하면
 
 msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
 msgstr "에이전트가 샌드박스 외부에서 실행 중이며, 확인 없이 자체 도구를 사용할 수 있습니다. 클릭하면 샌드박스 안에서 새 세션으로 다시 시작합니다. 마우스 오른쪽 버튼을 클릭하면 이 프로젝트의 기본값을 설정합니다."
+
+msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "에이전트가 멈춘 뒤 이 스레드에서만 샌드박스 안에서 다시 시작됩니다. 그러면 에이전트와 에이전트가 실행하는 명령은 에이전트 자체의 호스트뿐 아니라 네트워크 허용 목록이 허용하는 모든 호스트에 접속할 수 있습니다. 에이전트가 지원하면 대화를 다시 읽어 오고, 지원하지 않으면 새 세션에서 이어집니다."
+
+msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "에이전트가 멈춘 뒤 샌드박스 안에서 자체 호스트에만 접속하도록 다시 시작됩니다. 에이전트가 지원하면 대화를 다시 읽어 오고, 지원하지 않으면 새 세션에서 이어집니다."
 
 msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
 msgstr "에이전트가 멈춘 뒤 샌드박스 안에서 다시 시작됩니다. 대화는 새 세션에서 이어집니다. 현재 세션은 샌드박스 외부에 남으며, 샌드박스 안의 에이전트는 이를 읽을 수 없습니다."
@@ -2180,6 +2213,9 @@ msgstr "이 에이전트는 현재 다중 루트 작업 영역을 지원하지 �
 
 msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
 msgstr "이 에이전트는 구독 로그인을 제공하지 않습니다. 구독으로 사용하려면 공식 Claude Code를 시작하고 거기에서 로그인하세요."
+
+msgid "This agent has no hosts of its own: only the network allowlist limits it, so there is nothing to lift."
+msgstr "이 에이전트에는 자체 호스트 목록이 없어 네트워크 허용 목록으로만 제한됩니다. 해제할 제한이 없습니다."
 
 msgid "This agent is installed via npx (npm)"
 msgstr "이 에이전트는 npx(npm)를 통해 설치됩니다"

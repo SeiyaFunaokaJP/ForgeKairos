@@ -649,6 +649,7 @@ pub async fn connect(
     default_mode: Option<acp::SessionModeId>,
     default_config_options: HashMap<String, AgentConfigOptionValue>,
     run_outside_sandbox: bool,
+    lift_agent_hosts: bool,
     cx: &mut AsyncApp,
 ) -> Result<Rc<dyn AgentConnection>> {
     let conn = AcpConnection::stdio(
@@ -659,6 +660,7 @@ pub async fn connect(
         default_mode,
         default_config_options,
         run_outside_sandbox,
+        lift_agent_hosts,
         cx,
     )
     .await?;
@@ -818,6 +820,7 @@ impl AcpConnection {
         default_mode: Option<acp::SessionModeId>,
         default_config_options: HashMap<String, AgentConfigOptionValue>,
         run_outside_sandbox: bool,
+        lift_agent_hosts: bool,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
         let root_dir = project.read_with(cx, |project, cx| {
@@ -893,6 +896,7 @@ impl AcpConnection {
                         &project,
                         &command,
                         root_dir.clone(),
+                        lift_agent_hosts,
                         cx,
                     )
                     .await?;
@@ -919,6 +923,7 @@ impl AcpConnection {
                         distro.clone(),
                         root_dir.clone(),
                         paths.as_ref(),
+                        lift_agent_hosts,
                         cx,
                     )
                     .await?;
@@ -2326,6 +2331,8 @@ struct AgentSandboxSession {
     env: HashMap<String, String>,
     cwd: Option<PathBuf>,
     route: AgentSandboxRoute,
+    /// ADR-F96 stage 3: what limits its network, for the thread's button.
+    network: acp_thread::AgentSandboxNetwork,
 }
 
 enum AgentSandboxRoute {
@@ -2643,6 +2650,31 @@ fn editor_allowlist_entries(cx: &App) -> Option<Vec<String>> {
     )
 }
 
+/// ADR-F96 stage 3: the hosts a start's sandbox is given. Lifting the agent's
+/// own hosts leaves it as an agent that has none, which
+/// [`local_agent_sandbox_policy`] caps by the editor-wide allowlist alone —
+/// and, in a process that publishes no allowlist, by no host at all. The
+/// agent's hosts are still checked against the allowlist before this
+/// ([`ensure_hosts_allowed`]): it needs to reach them either way.
+fn hosts_for_start(
+    hosts: AgentSandboxHosts,
+    lift_agent_hosts: bool,
+) -> (AgentSandboxHosts, acp_thread::AgentSandboxNetwork) {
+    match hosts {
+        AgentSandboxHosts::EditorAllowlist => (
+            AgentSandboxHosts::EditorAllowlist,
+            acp_thread::AgentSandboxNetwork::EditorAllowlist,
+        ),
+        AgentSandboxHosts::Listed(_) if lift_agent_hosts => (
+            AgentSandboxHosts::EditorAllowlist,
+            acp_thread::AgentSandboxNetwork::AgentHostsLifted,
+        ),
+        hosts @ AgentSandboxHosts::Listed(_) => {
+            (hosts, acp_thread::AgentSandboxNetwork::AgentHosts)
+        }
+    }
+}
+
 fn ensure_hosts_allowed(hosts: &AgentSandboxHosts, cx: &mut AsyncApp) -> Result<()> {
     let missing = cx.update(|cx| hosts_missing_from_editor_allowlist(hosts, cx));
     if missing.is_empty() {
@@ -2772,6 +2804,7 @@ async fn local_sandboxed_agent_command(
     project: &Entity<Project>,
     command: &AgentServerCommand,
     root_dir: Option<PathBuf>,
+    lift_agent_hosts: bool,
     cx: &mut AsyncApp,
 ) -> Result<(std::process::Command, AgentSandboxSession, sandbox::Sandbox)> {
     let (fs, key_roots, worktree_roots, git_dirs) = project.read_with(cx, |project, cx| {
@@ -2808,6 +2841,7 @@ async fn local_sandboxed_agent_command(
         )));
     };
     ensure_hosts_allowed(&hosts, cx)?;
+    let (hosts, network) = hosts_for_start(hosts, lift_agent_hosts);
 
     let mut write_scope = worktree_roots;
     write_scope.push(config_dir);
@@ -2863,6 +2897,7 @@ async fn local_sandboxed_agent_command(
             env,
             cwd: root_dir,
             route: AgentSandboxRoute::Local { policy },
+            network,
         },
         sandbox,
     ))
@@ -2956,6 +2991,7 @@ async fn wsl_sandboxed_agent_command(
     distro: Option<String>,
     root_dir: Option<PathBuf>,
     paths: Option<&Arc<AcpPathTranslator>>,
+    lift_agent_hosts: bool,
     cx: &mut AsyncApp,
 ) -> Result<WslAgentLaunch> {
     let sandbox_command = command
@@ -3021,6 +3057,7 @@ async fn wsl_sandboxed_agent_command(
         distro_name.as_deref(),
     );
     ensure_hosts_allowed(&hosts, cx)?;
+    let (hosts, network) = hosts_for_start(hosts, lift_agent_hosts);
     let policy = local_agent_sandbox_policy(
         &sandbox_write_paths,
         &git_dirs,
@@ -3106,6 +3143,7 @@ async fn wsl_sandboxed_agent_command(
                 distro,
                 editor_allowlist,
             },
+            network,
         },
         sandbox,
         session_id,
@@ -3302,6 +3340,7 @@ async fn wsl_sandboxed_agent_command(
     _distro: Option<String>,
     _root_dir: Option<PathBuf>,
     _paths: Option<&Arc<AcpPathTranslator>>,
+    _lift_agent_hosts: bool,
     _cx: &mut AsyncApp,
 ) -> Result<WslAgentLaunch> {
     Err(sandbox_unavailable(i18n::tr(WSL_WITHOUT_RUNTIME_REASON)))
@@ -3544,6 +3583,7 @@ fn remote_sandboxed_agent_command(
                 readable_paths: plan.readable_paths,
                 network_ceiling,
             },
+            network: hosts_for_start(hosts.clone(), false).1,
         },
         session_id,
     ))
@@ -4113,6 +4153,10 @@ impl AgentConnection for AcpConnection {
 
     fn runs_outside_sandbox(&self) -> bool {
         self.runs_outside_sandbox
+    }
+
+    fn sandbox_network(&self) -> Option<acp_thread::AgentSandboxNetwork> {
+        self.sandbox_session.as_ref().map(|session| session.network)
     }
 
     fn sandbox_write_scope(&self) -> Option<Vec<PathBuf>> {
@@ -5621,6 +5665,65 @@ mod tests {
         assert_eq!(with_ceiling(false, listed), with_ceiling(true, listed));
     }
 
+    /// ADR-F96 stage 3: a thread that lifts its external agent's network
+    /// restriction drops the agent's own hosts and leaves the editor-wide
+    /// allowlist as the only cap — never the raw network: with no allowlist
+    /// published the agent reaches nothing. Without the lift, and for an
+    /// agent with no hosts of its own, nothing changes.
+    #[test]
+    fn lifting_an_agents_hosts_leaves_only_the_editor_allowlist() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let agent_hosts = || AgentSandboxHosts::Listed(vec!["chatgpt.com".to_string()]);
+        let network_of = |hosts: AgentSandboxHosts, lift: bool| {
+            let (hosts, network) = hosts_for_start(hosts, lift);
+            let policy =
+                local_agent_sandbox_policy(&[worktree.path().to_path_buf()], &[], &[], &hosts)
+                    .expect("a policy");
+            (policy.network, network)
+        };
+
+        assert_eq!(
+            with_ceiling(true, || network_of(agent_hosts(), true)),
+            (
+                sandbox::SandboxNetPolicy::Unrestricted,
+                acp_thread::AgentSandboxNetwork::AgentHostsLifted
+            ),
+            "under the ceiling, the ceiling alone decides"
+        );
+        assert_eq!(
+            with_ceiling(false, || network_of(agent_hosts(), true)),
+            (
+                sandbox::SandboxNetPolicy::Restricted {
+                    allowed_domains: Vec::new()
+                },
+                acp_thread::AgentSandboxNetwork::AgentHostsLifted
+            ),
+            "with no ceiling there is nothing to lift to"
+        );
+        assert_eq!(
+            with_ceiling(true, || network_of(agent_hosts(), false)),
+            (
+                sandbox::SandboxNetPolicy::Restricted {
+                    allowed_domains: vec!["chatgpt.com".to_string()]
+                },
+                acp_thread::AgentSandboxNetwork::AgentHosts
+            ),
+        );
+        for lift in [false, true] {
+            assert_eq!(
+                with_ceiling(true, || network_of(
+                    AgentSandboxHosts::EditorAllowlist,
+                    lift
+                )),
+                (
+                    sandbox::SandboxNetPolicy::Unrestricted,
+                    acp_thread::AgentSandboxNetwork::EditorAllowlist
+                ),
+                "an agent with no hosts of its own has nothing to lift"
+            );
+        }
+    }
+
     #[test]
     fn a_sandboxed_agent_gets_its_own_environment_and_little_of_this_process() {
         let upstream =
@@ -7126,6 +7229,7 @@ mod tests {
             None,
             HashMap::default(),
             true,
+            false,
             &mut async_cx,
         )
         .fuse();
@@ -7260,6 +7364,7 @@ exit 7
                     None,
                     HashMap::default(),
                     true,
+                    false,
                     &mut cx.to_async(),
                 )
                 .await
@@ -10078,6 +10183,7 @@ done
             None,
             HashMap::default(),
             false,
+            false,
             &mut cx.to_async(),
         )
         .await
@@ -10256,6 +10362,7 @@ done
                     None,
                     HashMap::default(),
                     false,
+                    false,
                     &mut cx.to_async(),
                 )
                 .await
@@ -10421,6 +10528,7 @@ done
             None,
             HashMap::default(),
             false,
+            false,
             &mut cx.to_async(),
         )
         .await
@@ -10566,6 +10674,7 @@ done
             None,
             Some(project_dir.clone()),
             None,
+            false,
             &mut cx.to_async(),
         )
         .await

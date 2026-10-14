@@ -54,6 +54,7 @@ use std::{
     },
 };
 use util::paths::{PathStyle, RemotePathBuf};
+use util::rel_path::RelPath;
 
 /// Unique identifier for a mock connection.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -66,6 +67,7 @@ pub struct MockRemoteConnection {
     options: MockConnectionOptions,
     server_channel: Arc<ChannelClient>,
     server_cx: SendableCx,
+    server_binary: Option<Arc<RelPath>>,
 }
 
 /// Wrapper to pass `AsyncApp` across thread boundaries in tests.
@@ -142,11 +144,22 @@ impl MockConnection {
         client_cx: &mut TestAppContext,
         server_cx: &mut TestAppContext,
     ) -> (MockConnectionOptions, AnyProtoClient, ConnectGuard) {
+        Self::new_with_server_binary(None, client_cx, server_cx)
+    }
+
+    /// [`Self::new`] for a host that reports `server_binary` as its installed
+    /// remote server, as a connection that provisioned one does (ADR-F18: the
+    /// binary is also the host's sandbox helper).
+    pub(crate) fn new_with_server_binary(
+        server_binary: Option<Arc<RelPath>>,
+        client_cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) -> (MockConnectionOptions, AnyProtoClient, ConnectGuard) {
         static NEXT_ID: AtomicU64 = AtomicU64::new(0);
         let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
         let opts = MockConnectionOptions { id };
         let (server_client, connect_guard) =
-            Self::new_with_opts(opts.clone(), client_cx, server_cx);
+            Self::register(opts.clone(), server_binary, client_cx, server_cx);
         (opts, server_client, connect_guard)
     }
 
@@ -160,6 +173,15 @@ impl MockConnection {
         client_cx: &mut TestAppContext,
         server_cx: &mut TestAppContext,
     ) -> (AnyProtoClient, ConnectGuard) {
+        Self::register(opts, None, client_cx, server_cx)
+    }
+
+    fn register(
+        opts: MockConnectionOptions,
+        server_binary: Option<Arc<RelPath>>,
+        client_cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) -> (AnyProtoClient, ConnectGuard) {
         let (outgoing_tx, _) = mpsc::unbounded::<Envelope>();
         let (_, incoming_rx) = mpsc::unbounded::<Envelope>();
         let server_client = server_cx
@@ -170,6 +192,7 @@ impl MockConnection {
             options: opts.clone(),
             server_channel: server_client.clone(),
             server_cx: SendableCx::new(server_cx),
+            server_binary,
         });
 
         let (tx, rx) = oneshot::channel();
@@ -302,6 +325,10 @@ impl RemoteConnection for MockRemoteConnection {
 
     fn remote_os_version(&self) -> Option<String> {
         None
+    }
+
+    fn remote_server_binary_path(&self) -> Option<Arc<RelPath>> {
+        self.server_binary.clone()
     }
 
     fn shell(&self) -> String {

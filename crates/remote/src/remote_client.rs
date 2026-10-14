@@ -1446,6 +1446,20 @@ impl RemoteClient {
         (opts.into(), server_client, connect_guard)
     }
 
+    /// [`Self::fake_server`] for a host whose installed remote server (and so
+    /// its sandbox helper, ADR-F18) is `server_binary`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn fake_server_with_server_binary(
+        server_binary: Arc<RelPath>,
+        client_cx: &mut gpui::TestAppContext,
+        server_cx: &mut gpui::TestAppContext,
+    ) -> (RemoteConnectionOptions, AnyProtoClient, ConnectGuard) {
+        use crate::transport::mock::MockConnection;
+        let (opts, server_client, connect_guard) =
+            MockConnection::new_with_server_binary(Some(server_binary), client_cx, server_cx);
+        (opts.into(), server_client, connect_guard)
+    }
+
     /// Registers a new mock server for existing connection options.
     ///
     /// Use this to simulate reconnection: after forcing a disconnect, register

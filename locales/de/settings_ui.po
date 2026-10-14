@@ -290,6 +290,9 @@ msgstr "Alle Domains zulassen"
 msgid "Allow All File System Writes"
 msgstr "Alle Dateisystemschreibvorgänge zulassen"
 
+msgid "Allow Lifting the Network Restriction for a Thread"
+msgstr "Aufheben der Netzwerkbeschränkung pro Thread zulassen"
+
 msgid "Allow Running Outside the Sandbox"
 msgstr "Ausführung außerhalb der Sandbox zulassen"
 
@@ -1387,6 +1390,9 @@ msgstr "Drücken von Tasten auf Seiten im integrierten Browser"
 msgid "Project"
 msgstr "Projekt"
 
+msgid "Project Defaults for New Threads"
+msgstr "Projektstandards für neue Threads"
+
 msgid "Project-wide symbol renames by the language server"
 msgstr "Projektweite Symbolumbenennungen durch den Sprachserver"
 
@@ -1969,6 +1975,9 @@ msgstr "Warnt, wenn eine Bestätigungsabfrage eine Domain oder einen Schreibpfad
 msgid "Web search queries"
 msgstr "Websuchanfragen"
 
+msgid "What new agent threads start with in each project folder: whether terminal commands run in the sandbox and whether the network is restricted. Set it by right-clicking the sandbox or network button next to the agent panel's message input, or edit agent.project_thread_defaults in settings.json."
+msgstr "Womit neue Agent-Threads in jedem Projektordner beginnen: ob Terminalbefehle in der Sandbox laufen und ob das Netzwerk beschränkt ist. Lege es per Rechtsklick auf die Sandbox- oder Netzwerk-Schaltfläche neben der Nachrichteneingabe des Agent-Panels fest oder bearbeite agent.project_thread_defaults in settings.json."
+
 msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
 msgstr "Wenn aktiviert, erhält jeder untergeordnete Prozess für ACP-Agenten, MCP-Server und das npm, das KI-Agenten installiert, einen Loopback-Proxy, sodass auch sein ausgehender Datenverkehr mit der obigen Zulassungsliste abgeglichen wird. Standardmäßig aktiviert. Wenn deaktiviert, unterliegt der ausgehende Datenverkehr dieser untergeordneten Prozesse nicht der Kontrolle durch die Zulassungsliste (KI-Datenverkehr der IDE selbst bleibt kontrolliert)."
 
@@ -1980,6 +1989,9 @@ msgstr "Bei Ausführung auf dem SSH-Host wird der Befehl dort ermittelt (ein von
 
 msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
 msgstr "Wenn deaktiviert (Standard), wird nichts, was die Agent-Funktionen neu starten oder ausführen, außerhalb der Sandbox ausgeführt: Terminalbefehle, die nicht in der Sandbox laufen können, das Starten eines externen Agenten oder von Claude Code außerhalb der Sandbox und das Fortsetzen eines dort gestarteten Threads werden ohne Nachfrage abgelehnt, und die Einstellungen, die sie immer außerhalb starten, werden ignoriert. Eine bereits außerhalb der Sandbox laufende Verbindung läuft weiter. MCP-Server (Kontextserver) sind von dieser Einstellung nicht betroffen. Wenn aktiviert, fragt jeder dieser Fälle zuerst nach oder folgt seiner eigenen Einstellung."
+
+msgid "When on, a thread of the built-in agent can lift its network restriction with the network button next to the message input: its sandboxed terminal commands and fetches then reach any host without asking. Commands still reach only the hosts within the editor-wide network allowlist, and fetches still never reach local or private addresses. When off (the default), that button asks to turn this on first. Each command still asks for confirmation as before."
+msgstr "Wenn aktiviert, kann ein Thread des integrierten Agenten seine Netzwerkbeschränkung mit der Netzwerk-Schaltfläche neben der Nachrichteneingabe aufheben: Seine Terminalbefehle in der Sandbox und seine Abrufe (fetch) erreichen dann ohne Nachfrage jeden Host. Befehle erreichen weiterhin nur Hosts innerhalb der editorweiten Netzwerk-Zulassungsliste, und Abrufe erreichen nie lokale oder private Adressen. Wenn deaktiviert (Standard), fragt diese Schaltfläche zuerst, ob diese Einstellung aktiviert werden soll. Jeder Befehl fragt weiterhin wie bisher nach Bestätigung."
 
 msgid "When the server runs on the SSH host, type the path on the host directly."
 msgstr "Wenn der Server auf dem SSH-Host läuft, geben Sie den Pfad auf dem Host direkt ein."

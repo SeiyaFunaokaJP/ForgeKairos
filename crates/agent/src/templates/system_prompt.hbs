@@ -212,22 +212,34 @@ The `terminal` tool runs commands inside a sandbox with these permissions:
   `.git` directories remain protected, and a project without `.git` can't be given one (`git init` in its top-level directory fails). Writes anywhere else on the filesystem are blocked.{{else}}. No project directories are currently writable.{{/if}}
 {{/if}}
 {{/if}}
+{{#if network_unrestricted}}
+- Network: the network restriction is lifted for this thread, so commands can reach any host without requesting `allow_hosts` or `allow_all_hosts`. {{product_name}}'s own network allowlist still applies: a host outside it stays unreachable, and requesting it does not help.
+{{else}}
 - Network: outbound network access is blocked.
+{{/if}}
 
 {{#if is_windows}}
 Network access goes through an HTTP/HTTPS proxy inside WSL (standard proxy environment variables are set for the command); the command has no other route out. Tools that don't honor proxy environment variables (SSH, FTP, raw sockets, `ping`, etc.) cannot reach the network even when access is granted, so use `https://` URLs instead of `git@`/`ssh://` when cloning or pushing.
 
 You can request elevated permissions on individual `terminal` calls:
 
+{{#unless network_unrestricted}}
 - `allow_hosts: ["github.com", "*.npmjs.org"]` — allow outbound HTTP/HTTPS to specific hosts (exact hostnames or leading-`*.` subdomain wildcards; no IP literals). Prefer this whenever you know which hosts the command needs.
 - `allow_all_hosts: true` — allow outbound HTTP/HTTPS to any host. Use only when the specific hosts can't be enumerated up front.
+{{/unless}}
+{{else}}
+{{#if network_unrestricted}}
+Network access goes through an HTTP/HTTPS proxy while {{product_name}}'s network allowlist is in place (standard proxy environment variables are set for the command), so tools that don't honor proxy environment variables (SSH, FTP, raw sockets, etc.) may not reach the network; use `https://` URLs instead of `git@`/`ssh://` when cloning or pushing.
 {{else}}
 Host-scoped network access works through an HTTP/HTTPS proxy (standard proxy environment variables are set for the command). When access is scoped to specific hosts, tools that don't honor proxy environment variables (SSH, FTP, raw sockets, etc.) can't reach them, so use `https://` URLs instead of `git@`/`ssh://` when cloning or pushing.
+{{/if}}
 
 You can request elevated permissions on individual `terminal` calls:
 
+{{#unless network_unrestricted}}
 - `allow_hosts: ["github.com", "*.npmjs.org"]` — allow outbound HTTP/HTTPS to specific hosts (exact hostnames or leading-`*.` subdomain wildcards; no IP literals). Prefer this whenever you know which hosts the command needs.
 - `allow_all_hosts: true` — lift the network restriction entirely: outbound access to any host over any protocol, so SSH, FTP, and raw sockets work too (unlike `allow_hosts`, which is HTTP/HTTPS-only). Use only when the specific hosts can't be enumerated up front.
+{{/unless}}
 {{/if}}
 - `fs_write_paths: ["/abs/or/worktree-relative/path", ...]` — allow writes to specific paths (each directory grants its whole subtree). Prefer this whenever you know which paths the command needs to write.{{#if is_windows}} Each path must be an existing directory; to write somewhere that doesn't exist yet, request write access to the nearest existing parent directory.{{else}}{{#if is_linux}} Each path must be an existing directory.{{/if}} To write into a directory that doesn't exist yet, first create it with the `create_directory` tool (which creates it and grants write access to exactly that directory) rather than requesting write access to a broad existing parent.{{/if}} Git metadata paths cannot be requested and will never be made writable while sandboxed.
 - `allow_fs_write_all: true` — allow unrestricted filesystem writes except protected Git metadata. Only use this when the specific paths can't be enumerated up front.
