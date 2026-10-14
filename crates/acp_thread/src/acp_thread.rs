@@ -2,6 +2,8 @@ mod agent_write_guard;
 mod connection;
 pub mod content;
 mod diff;
+/// ADR-F97: an external agent's subagents and background shell commands.
+mod external_subagents;
 mod mention;
 /// ADR-F49 decision 18 (C): what an external agent's answer left running in
 /// its sandbox, and how long that keeps it a writer.
@@ -16,6 +18,7 @@ use anyhow::{Context as _, Result, anyhow};
 use collections::HashSet;
 pub use connection::*;
 pub use diff::*;
+pub use external_subagents::*;
 use feature_flags::{AcpBetaFeatureFlag, FeatureFlagAppExt as _};
 #[cfg(any(test, feature = "test-support"))]
 use futures::future::BoxFuture;
@@ -3554,6 +3557,8 @@ pub struct AcpThread {
     /// reveal text gradually without changing the authoritative message.
     streaming_text_buffer: Option<StreamingTextBuffer>,
     idle_sleep_prevention: IdleSleepPrevention,
+    /// ADR-F97: the children an external agent announced on this session.
+    external_subagents: ExternalSubagents,
     #[cfg(test)]
     fail_next_checkpoint: bool,
 }
@@ -3927,6 +3932,7 @@ impl AcpThread {
             streaming_text_buffer: None,
             sandbox_processes,
             idle_sleep_prevention: IdleSleepPrevention::Inactive,
+            external_subagents: ExternalSubagents::default(),
             #[cfg(test)]
             fail_next_checkpoint: false,
         }

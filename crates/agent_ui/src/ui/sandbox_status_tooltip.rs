@@ -143,6 +143,8 @@ pub enum SandboxStatusTooltip {
         thread: Option<SandboxSection>,
     },
     DisabledInSettings,
+    /// ADR-F96: the chat input's sandbox button turned it off for this thread.
+    DisabledForThread,
 }
 
 impl SandboxStatusTooltip {
@@ -153,6 +155,10 @@ impl SandboxStatusTooltip {
     pub fn disabled_in_settings() -> Self {
         Self::DisabledInSettings
     }
+
+    pub fn disabled_for_thread() -> Self {
+        Self::DisabledForThread
+    }
 }
 
 impl RenderOnce for SandboxStatusTooltip {
@@ -161,6 +167,13 @@ impl RenderOnce for SandboxStatusTooltip {
             SandboxStatusTooltip::DisabledInSettings => v_flex()
                 .child(
                     Label::new(i18n::t!("You have sandboxing disabled in settings."))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+                .into_any_element(),
+            SandboxStatusTooltip::DisabledForThread => v_flex()
+                .child(
+                    Label::new(i18n::t!("The sandbox is turned off for this thread."))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )

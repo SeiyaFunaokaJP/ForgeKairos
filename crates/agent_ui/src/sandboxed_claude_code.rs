@@ -17,11 +17,14 @@
 
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
+use fs::Fs;
 use gpui::{
     App, AppContext as _, AsyncWindowContext, Context, Entity, PromptButton, PromptLevel,
-    SharedString, WeakEntity, Window,
+    SharedString, Task, WeakEntity, Window,
 };
 use project::Project;
 use task::{Shell, SpawnInTerminal};
@@ -506,6 +509,178 @@ pub(crate) fn open_sandbox_settings(window: &mut Window, cx: &mut App) {
         }),
         cx,
     );
+}
+
+/// ADR-F96: before the chat input's sandbox button turns the sandbox off,
+/// asks to turn on "Allow Running Outside the Sandbox" (ADR-F92) where it is
+/// off, writes it to the user's settings file, and resolves once the settings
+/// have it. False where the user declined, or the settings never came to
+/// allow it (a settings profile or the global settings file can keep it off),
+/// which the refusal then says.
+pub(crate) fn allow_outside_sandbox_first(
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
+    if project::agent_sandbox::outside_sandbox_allowed(cx) {
+        return Task::ready(true);
+    }
+    let answer = window.prompt(
+        PromptLevel::Warning,
+        i18n::t!("Allow Running Outside the Sandbox?"),
+        Some(i18n::t!(
+            "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > \
+             Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+        )),
+        &[
+            PromptButton::ok(i18n::t!("Turn On and Continue")),
+            PromptButton::cancel(i18n::t!("Cancel")),
+        ],
+        cx,
+    );
+    window.spawn(cx, async move |cx| {
+        if !answer.await.is_ok_and(|index| index == 0) {
+            return false;
+        }
+        cx.update(|_, cx| {
+            settings::update_settings_file(fs, cx, |settings, _| {
+                settings
+                    .agent
+                    .get_or_insert_default()
+                    .sandbox_permissions
+                    .get_or_insert_default()
+                    .allow_outside_sandbox = Some(true);
+            });
+        })
+        .log_err();
+        // The settings store takes the file in when its watcher sees the write.
+        for _ in 0..50 {
+            if cx
+                .update(|_, cx| project::agent_sandbox::outside_sandbox_allowed(cx))
+                .unwrap_or(false)
+            {
+                return true;
+            }
+            cx.background_executor()
+                .timer(Duration::from_millis(100))
+                .await;
+        }
+        cx.update(|window, cx| show_outside_sandbox_refusal(window, cx))
+            .log_err();
+        false
+    })
+}
+
+/// ADR-F96 stage 2: before the chat input's network button lifts a thread's
+/// network restriction, asks to turn on
+/// `agent.sandbox_permissions.allow_unrestricted_network` where it is off,
+/// writes it to the user's settings file, and resolves once the settings have
+/// it, the same way as [`allow_outside_sandbox_first`]. False where the user
+/// declined, or the settings never came to allow it.
+pub(crate) fn allow_unrestricted_network_first(
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
+    ask_to_allow_unrestricted_network(
+        i18n::t!(
+            "Letting this thread's terminal commands and fetches reach any host needs \
+             `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it \
+             on? It stays on until you turn it off in your settings file. The network allowlist \
+             still applies."
+        ),
+        fs,
+        window,
+        cx,
+    )
+}
+
+/// ADR-F96 stage 3: [`allow_unrestricted_network_first`] for an external
+/// agent, whose whole process starts again rather than its commands and
+/// fetches being let out.
+pub(crate) fn allow_unrestricted_network_first_for_external_agent(
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
+    ask_to_allow_unrestricted_network(
+        i18n::t!(
+            "Letting this thread's agent and the commands it runs reach any host within the \
+             network allowlist needs `allow_unrestricted_network` in the agent's sandbox \
+             settings, which is off. Turn it on? It stays on until you turn it off in your \
+             settings file."
+        ),
+        fs,
+        window,
+        cx,
+    )
+}
+
+fn ask_to_allow_unrestricted_network(
+    detail: &'static str,
+    fs: Arc<dyn Fs>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Task<bool> {
+    if project::agent_sandbox::unrestricted_network_allowed(cx) {
+        return Task::ready(true);
+    }
+    let answer = window.prompt(
+        PromptLevel::Warning,
+        i18n::t!("Allow Lifting the Network Restriction?"),
+        Some(detail),
+        &[
+            PromptButton::ok(i18n::t!("Turn On and Continue")),
+            PromptButton::cancel(i18n::t!("Cancel")),
+        ],
+        cx,
+    );
+    window.spawn(cx, async move |cx| {
+        if !answer.await.is_ok_and(|index| index == 0) {
+            return false;
+        }
+        cx.update(|_, cx| {
+            settings::update_settings_file(fs, cx, |settings, _| {
+                settings
+                    .agent
+                    .get_or_insert_default()
+                    .sandbox_permissions
+                    .get_or_insert_default()
+                    .allow_unrestricted_network = Some(true);
+            });
+        })
+        .log_err();
+        for _ in 0..50 {
+            if cx
+                .update(|_, cx| project::agent_sandbox::unrestricted_network_allowed(cx))
+                .unwrap_or(false)
+            {
+                return true;
+            }
+            cx.background_executor()
+                .timer(Duration::from_millis(100))
+                .await;
+        }
+        cx.update(|window, cx| {
+            let closed = window.prompt(
+                PromptLevel::Info,
+                i18n::t!("The Network Restriction Stays On"),
+                Some(i18n::t!(
+                    "`allow_unrestricted_network` did not take effect. A settings profile or the \
+                     global settings file may keep it off."
+                )),
+                &[PromptButton::ok(i18n::t!("Close"))],
+                cx,
+            );
+            window
+                .spawn(cx, async move |_| {
+                    closed.await.ok();
+                })
+                .detach();
+        })
+        .log_err();
+        false
+    })
 }
 
 fn ask_to_start_outside_sandbox(

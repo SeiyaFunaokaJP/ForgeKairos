@@ -3704,6 +3704,10 @@ msgid "What `git reset` keeps of the changes."
 msgstr "`git reset` で変更をどう残すかです。"
 
 msgctxt "settings schema"
+msgid "What a new agent thread starts with in a project, keyed by the absolute\npath of the project's folder (for a project on a remote host, the\nhost's connection, `#`, then the path there). The chat input's buttons\ncan still change it for one thread; that change is not saved. Only read\nfrom the user settings file.\n\nDefault: {}"
+msgstr "新しいエージェントのスレッドをプロジェクトごとにどう始めるか。キーはプロジェクトのフォルダーの絶対パスです (リモートホスト上のプロジェクトは、ホストの接続、`#`、そのホスト上のパスの順)。チャット入力欄のボタンでスレッドごとに変えることもできますが、その変更は保存されません。ユーザー設定ファイルからのみ読み込まれます。\n\n既定値: {}"
+
+msgctxt "settings schema"
 msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
 msgstr "このプロファイルのオーバーライドを適用する前に使用するベース設定を指定します。\n\n- `user`: ユーザー設定の上に適用します (既定)\n- `default`: ユーザーのカスタマイズを無視して、ForgeKairos の既定設定の上に適用します"
 
@@ -3944,6 +3948,10 @@ msgid "Whether a terminal opened over SSH runs its shell inside a session the\nr
 msgstr "SSH で開いたターミナルが、リモートのサーバーが生かし続けるセッションの中でシェルを動かすかどうか。接続が切れても実行中のコマンドは止まらず出力も失われず、接続し直すとすべて表示して続きから使えます。Windows ではない SSH のホストだけが対象です。\n\n既定値: true"
 
 msgctxt "settings schema"
+msgid "Whether a thread of the built-in agent may lift its network restriction\n(the network button next to the chat input): its sandboxed terminal\ncommands and fetches then reach any host without asking. While this is\noff, that button asks to turn it on first. The editor's network\nallowlist still applies. Only the user settings file is read: neither a\nproject's settings nor an agent can turn it on.\nDefault: false"
+msgstr "組み込みエージェントのスレッドがネットワーク制限を解除できるかどうか (チャット入力欄のネットワークのボタン)。解除すると、サンドボックス内のターミナルのコマンドと fetch が確認なしにすべてのホストに接続します。オフの間は、そのボタンがまずこの設定をオンにするか確認します。エディターのネットワークの許可リストは引き続き適用されます。ユーザー設定ファイルからのみ読み込まれます (プロジェクトの設定やエージェントからはオンにできません)。\n既定値: false"
+
+msgctxt "settings schema"
 msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
 msgstr "エージェントが書き込んだワークツリーで、ユーザーが変更を確認して再開するまで、そのワークツリー自身のコード (プロジェクトの言語サーバーのモード、フォーマッター、プロジェクトの prettier) を止めるかどうか。ユーザーの設定ファイルからだけ読み、プロジェクトやサーバーの設定ではオフにできません。\n\n既定値: true"
 
@@ -4140,12 +4148,20 @@ msgid "Whether the agent panel should use flexible (proportional) sizing when do
 msgstr "エージェントパネルを左右にドックしたときに、可変 (比例) サイズを使用するかどうかを設定します。\n\n有効にすると、`default_width` はパネルの幅を制御しなくなり、パネルをリセットすると既定の比率に戻ります。\n\n既定値: true"
 
 msgctxt "settings schema"
+msgid "Whether the agent's terminal commands run in the sandbox. `false` runs\nthem outside it, which needs `sandbox_permissions.allow_outside_sandbox`;\nexternal agents then start outside it without asking."
+msgstr "エージェントのターミナルのコマンドをサンドボックスの中で実行するかどうか。`false` にするとサンドボックスの外で実行します (`sandbox_permissions.allow_outside_sandbox` が必要)。外部エージェントは確認なしでサンドボックスの外で起動します。"
+
+msgctxt "settings schema"
 msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"
 msgstr "ブレークポイントを ForgeKairos セッション間で再利用するかどうかを設定します。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
 msgstr "前回ドックを閉じていても、起動時にブラウザーパネルを開くかどうか。\n\n既定値: false"
+
+msgctxt "settings schema"
+msgid "Whether the built-in agent's network access stays limited to the\nallowed hosts. `false` lets its terminal commands and fetches reach any\nhost without asking, which needs\n`sandbox_permissions.allow_unrestricted_network`; the editor's network\nallowlist still applies, and fetches still refuse local and private\naddresses. Not applied to projects on a remote host yet."
+msgstr "組み込みエージェントのネットワークアクセスを許可されたホストに限るかどうか。`false` にすると、ターミナルのコマンドと fetch が確認なしにすべてのホストに接続します (`sandbox_permissions.allow_unrestricted_network` が必要)。エディターのネットワークの許可リストは引き続き適用され、fetch はローカルやプライベートのアドレスを引き続き拒否します。リモートホスト上のプロジェクトにはまだ適用されません。"
 
 msgctxt "settings schema"
 msgid "Whether the built-in browser goes through the egress allowlist proxy.\n\nThe browser is human-driven, so like the terminal it is outside egress\ncontrol by default.\n\nDefault: false"
@@ -4528,8 +4544,8 @@ msgid "Whether to keep the text selection after copying it to the clipboard.\n\n
 msgstr "クリップボードにコピーした後にテキスト選択を保持するかどうかを指定します。\n\n既定値: true"
 
 msgctxt "settings schema"
-msgid "Whether to limit the content width in the agent panel. When enabled,\ncontent will be constrained to `max_content_width` and centered when\nthe panel is wider than that value, for optimal readability.\n\nDefault: true"
-msgstr "エージェントパネルのコンテンツ幅を制限するかどうかを指定します。有効にすると、コンテンツは `max_content_width` に制限され、パネルがその値より広い場合は、最適な読みやすさのために中央寄せになります。\n\n既定値: true"
+msgid "Whether to limit the content width in the agent panel. When enabled,\ncontent will be constrained to `max_content_width` and centered when\nthe panel is wider than that value, for optimal readability.\n\nDefault: false"
+msgstr "エージェントパネルのコンテンツ幅を制限するかどうかを指定します。有効にすると、コンテンツは `max_content_width` に制限され、パネルがその値より広い場合は、最適な読みやすさのために中央寄せになります。\n\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether to limit the width of the rendered markdown content. When\nenabled, content is constrained to `max_width` and centered\nhorizontally within the preview pane, for optimal readability.\n\nDefault: false"

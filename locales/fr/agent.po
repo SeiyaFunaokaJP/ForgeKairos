@@ -409,8 +409,14 @@ msgstr "Prendre un instantané de la page"
 msgid "Terminal command"
 msgstr "Commande de terminal"
 
+msgid "The network restriction is turned off for this thread"
+msgstr "La restriction réseau est désactivée pour cette conversation"
+
 msgid "The review was stopped because the settings changed"
 msgstr "L'examen a été arrêté, car les paramètres ont changé"
+
+msgid "The sandbox is turned off for this thread"
+msgstr "Le bac à sable est désactivé pour cette conversation"
 
 msgid "The settings allow writing anywhere in the file system"
 msgstr "Les paramètres autorisent l'écriture n'importe où dans le système de fichiers"

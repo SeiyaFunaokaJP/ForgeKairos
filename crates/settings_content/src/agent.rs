@@ -1,4 +1,4 @@
-use collections::{HashMap, IndexMap};
+use collections::{BTreeMap, HashMap, IndexMap};
 use schemars::{JsonSchema, json_schema};
 use serde::{Deserialize, Serialize};
 use settings_macros::{MergeFrom, with_fallible_options};
@@ -351,7 +351,7 @@ pub struct AgentSettingsContent {
     /// content will be constrained to `max_content_width` and centered when
     /// the panel is wider than that value, for optimal readability.
     ///
-    /// Default: true
+    /// Default: false
     pub limit_content_width: Option<bool>,
     /// Maximum content width in pixels for the agent panel. Content will be
     /// centered when the panel is wider than this value.
@@ -451,6 +451,14 @@ pub struct AgentSettingsContent {
     ///
     /// Default: true
     pub git_operations: Option<bool>,
+    /// What a new agent thread starts with in a project, keyed by the absolute
+    /// path of the project's folder (for a project on a remote host, the
+    /// host's connection, `#`, then the path there). The chat input's buttons
+    /// can still change it for one thread; that change is not saved. Only read
+    /// from the user settings file.
+    ///
+    /// Default: {}
+    pub project_thread_defaults: Option<BTreeMap<String, ProjectThreadDefaultsContent>>,
     /// Limits on how much of an attachment (a file, a directory, a selection,
     /// a fetched page, diagnostics or a branch diff) is sent to the agent.
     /// Anything over these limits is sent as an outline or a reference the
@@ -1172,6 +1180,22 @@ impl JsonSchema for GrantedWritePathContent {
 
 #[with_fallible_options]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct ProjectThreadDefaultsContent {
+    /// Whether the agent's terminal commands run in the sandbox. `false` runs
+    /// them outside it, which needs `sandbox_permissions.allow_outside_sandbox`;
+    /// external agents then start outside it without asking.
+    pub sandbox: Option<bool>,
+    /// Whether the built-in agent's network access stays limited to the
+    /// allowed hosts. `false` lets its terminal commands and fetches reach any
+    /// host without asking, which needs
+    /// `sandbox_permissions.allow_unrestricted_network`; the editor's network
+    /// allowlist still applies, and fetches still refuse local and private
+    /// addresses. Not applied to projects on a remote host yet.
+    pub network: Option<bool>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct SandboxPermissionsContent {
     /// Whether anything the agent features start may run outside the sandbox
     /// at all. While this is off, every new way out is refused without asking:
@@ -1185,6 +1209,15 @@ pub struct SandboxPermissionsContent {
     /// file is read: neither a project's settings nor an agent can turn it on.
     /// Default: false
     pub allow_outside_sandbox: Option<bool>,
+
+    /// Whether a thread of the built-in agent may lift its network restriction
+    /// (the network button next to the chat input): its sandboxed terminal
+    /// commands and fetches then reach any host without asking. While this is
+    /// off, that button asks to turn it on first. The editor's network
+    /// allowlist still applies. Only the user settings file is read: neither a
+    /// project's settings nor an agent can turn it on.
+    /// Default: false
+    pub allow_unrestricted_network: Option<bool>,
 
     /// Whether sandboxed terminal commands may always reach any host over the
     /// network without prompting.

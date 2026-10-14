@@ -49,6 +49,7 @@ pub struct EntryViewState {
     user_toggled_thinking_blocks: HashSet<(usize, usize)>,
     expanded_compactions: HashSet<usize>,
     expanded_tool_calls: HashSet<acp_v1::ToolCallId>,
+    auto_expanded_terminal: Option<acp_v1::ToolCallId>,
 }
 
 impl EntryViewState {
@@ -71,6 +72,7 @@ impl EntryViewState {
             user_toggled_thinking_blocks: HashSet::default(),
             expanded_compactions: HashSet::default(),
             expanded_tool_calls: HashSet::default(),
+            auto_expanded_terminal: None,
         }
     }
 
@@ -90,7 +92,23 @@ impl EntryViewState {
         self.expanded_tool_calls.remove(tool_call_id);
     }
 
+    /// Expands a new terminal card and collapses the one expanded this way
+    /// before it, so a long run of commands doesn't leave every output open.
+    pub(crate) fn auto_expand_terminal(&mut self, tool_call_id: acp_v1::ToolCallId) {
+        if let Some(previous) = self.auto_expanded_terminal.take()
+            && previous != tool_call_id
+        {
+            self.expanded_tool_calls.remove(&previous);
+        }
+        self.expanded_tool_calls.insert(tool_call_id.clone());
+        self.auto_expanded_terminal = Some(tool_call_id);
+    }
+
     pub(crate) fn toggle_tool_call_expansion(&mut self, tool_call_id: &acp_v1::ToolCallId) {
+        // Once the user has toggled the card, leave it as they set it.
+        if self.auto_expanded_terminal.as_ref() == Some(tool_call_id) {
+            self.auto_expanded_terminal = None;
+        }
         if !self.expanded_tool_calls.remove(tool_call_id) {
             self.expanded_tool_calls.insert(tool_call_id.clone());
         }
@@ -1024,6 +1042,49 @@ mod tests {
                 view_state.entry(1),
                 Some(Entry::AssistantMessage(_))
             ));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_auto_expanded_terminal_collapses_when_next_one_starts(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", json!({})).await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+
+        let view_state = cx.new(|_cx| {
+            EntryViewState::new(
+                workspace.downgrade(),
+                project.downgrade(),
+                None,
+                Arc::new(RwLock::new(SessionCapabilities::default())),
+                "Test Agent".into(),
+            )
+        });
+
+        let first = acp_v1::ToolCallId::new("first");
+        let second = acp_v1::ToolCallId::new("second");
+        let third = acp_v1::ToolCallId::new("third");
+
+        view_state.update(cx, |state, _cx| {
+            state.auto_expand_terminal(first.clone());
+            assert!(state.is_tool_call_expanded(&first));
+
+            state.auto_expand_terminal(second.clone());
+            assert!(!state.is_tool_call_expanded(&first));
+            assert!(state.is_tool_call_expanded(&second));
+
+            // A card the user opened by hand stays open.
+            state.toggle_tool_call_expansion(&first);
+            state.auto_expand_terminal(third.clone());
+            assert!(state.is_tool_call_expanded(&first));
+            assert!(!state.is_tool_call_expanded(&second));
+            assert!(state.is_tool_call_expanded(&third));
         });
     }
 

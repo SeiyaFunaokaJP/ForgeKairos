@@ -3287,8 +3287,9 @@ fn start_slirp(slirp: &SlirpExecutable, holder_pid: libc::pid_t) -> Result<std::
 }
 
 /// A command's own decision under an any-host grant when no editor-wide
-/// allowlist was sent — always on an SSH host, which is never sent one: every
-/// host, but only at a public address. Local addresses are the host's own
+/// allowlist was sent — only from a client that publishes none (an embedder,
+/// a test), since the editor sends its own with every command on any host:
+/// every host, but only at a public address. Local addresses are the host's own
 /// services (its sshd, a local model server, a database), its LAN and on a
 /// cloud host the metadata service; from WSL also the Windows host behind the
 /// NAT gateway, and with mirrored networking Windows' loopback. With an

@@ -326,6 +326,123 @@ pub fn outside_sandbox_allowed(cx: &App) -> bool {
             .unwrap_or(false)
 }
 
+/// ADR-F96 stage 2: whether a thread of the built-in agent may lift its
+/// network restriction at all
+/// (`agent.sandbox_permissions.allow_unrestricted_network`, off by default).
+/// Read like [`outside_sandbox_allowed`]: from the user's own settings file,
+/// and only while the merged settings agree, so that neither a project nor a
+/// settings profile can turn it on behind the user's file.
+pub fn unrestricted_network_allowed(cx: &App) -> bool {
+    fn read(content: &settings::SettingsContent) -> Option<bool> {
+        content
+            .agent
+            .as_ref()?
+            .sandbox_permissions
+            .as_ref()?
+            .allow_unrestricted_network
+    }
+    crate::worktree_code_execution::from_user_settings(cx, read).unwrap_or(false)
+        && cx
+            .try_global::<settings::SettingsStore>()
+            .and_then(|store| read(store.merged_settings()))
+            .unwrap_or(false)
+}
+
+/// ADR-F96: the keys `project`'s folders are kept under in
+/// `agent.project_thread_defaults`: a local folder's absolute path, or for a
+/// project on a remote host the host's connection, `#`, then the path there
+/// (the shape of ADR-F93's `git.project_accounts`). Empty for a
+/// collaborator's project, which no default applies to.
+pub fn project_thread_defaults_keys(project: &Project, cx: &App) -> Vec<String> {
+    if project.is_via_collab() {
+        return Vec::new();
+    }
+    let connection = project.remote_client().map(|client| {
+        remote::remote_connection_identity(&client.read(cx).connection_options()).persistence_key()
+    });
+    project
+        .visible_worktrees(cx)
+        .map(|worktree| {
+            let path = worktree.read(cx).abs_path();
+            match &connection {
+                Some(connection) => format!("{connection}#{}", path.to_string_lossy()),
+                None => path.to_string_lossy().into_owned(),
+            }
+        })
+        .collect()
+}
+
+/// ADR-F96: whether a new thread in `project` runs its agent's terminal
+/// commands in the sandbox, as the user's own settings file has it for the
+/// project's folders (`agent.project_thread_defaults.<folder>.sandbox`), or
+/// `None` where it says nothing. A project of several folders runs outside
+/// the sandbox only when every one of them says so: a folder that asks for
+/// the sandbox, or says nothing, keeps it.
+///
+/// This is what the user chose, not what runs: running outside the sandbox
+/// also needs [`outside_sandbox_allowed`].
+pub fn project_default_sandbox(project: &Project, cx: &App) -> Option<bool> {
+    project_default(project, cx, |defaults| defaults.sandbox)
+}
+
+/// ADR-F96 stage 2: whether a new thread of the built-in agent in `project`
+/// keeps its network restriction, as the user's own settings file has it for
+/// the project's folders (`agent.project_thread_defaults.<folder>.network`),
+/// with the same rule for several folders as [`project_default_sandbox`].
+/// `None` where the thread's choice does not count
+/// ([`thread_network_choice_applies`]).
+///
+/// This is what the user chose, not what runs: lifting the restriction also
+/// needs [`unrestricted_network_allowed`].
+pub fn project_default_network(project: &Project, cx: &App) -> Option<bool> {
+    if !thread_network_choice_applies(project, cx) {
+        return None;
+    }
+    project_default(project, cx, |defaults| defaults.network)
+}
+
+/// ADR-F96 stage 4: whether a thread's own choice about its network
+/// restriction counts in `project`, rather than the settings alone. A local
+/// project's commands are confined by this machine's sandbox. A remote host's
+/// are confined by its own sandbox helper (ADR-F18), which nests "any host"
+/// inside the editor-wide allowlist the client sends with every command
+/// (ADR-F17); a helper too old to know that allowlist refuses the command
+/// rather than running it without one, and a server of another wire revision
+/// is replaced before the connection is used. A remote host without a helper,
+/// or a collaborator's project, leaves it to the settings.
+pub fn thread_network_choice_applies(project: &Project, cx: &App) -> bool {
+    project.is_local() || project.remote_supports_agent_sandbox(cx)
+}
+
+fn project_default(
+    project: &Project,
+    cx: &App,
+    read: impl Fn(&settings::ProjectThreadDefaultsContent) -> Option<bool>,
+) -> Option<bool> {
+    let choices = project_thread_defaults_keys(project, cx)
+        .into_iter()
+        .map(|key| {
+            crate::worktree_code_execution::from_user_settings(cx, |content| {
+                read(
+                    content
+                        .agent
+                        .as_ref()?
+                        .project_thread_defaults
+                        .as_ref()?
+                        .get(&key)?,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    if choices.contains(&Some(true)) {
+        Some(true)
+    } else if !choices.is_empty() && choices.iter().all(|choice| *choice == Some(false)) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// ADR-F49 decision 19: whether the user has chosen, in their own settings
 /// file, to start `agent_id` outside its sandbox every time
 /// (`agent_servers.<id>.run_outside_sandbox`), and running outside the

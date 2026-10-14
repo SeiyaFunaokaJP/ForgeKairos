@@ -83,6 +83,12 @@ pub struct SystemPromptTemplate<'a> {
     /// turned Git operations off rather than leaving the model to wonder why
     /// the `git` tool is missing.
     pub git_operations_enabled: bool,
+    /// Whether this thread's network restriction is lifted (ADR-F96 stage 2).
+    /// Without saying so, the prompt tells the model the network is blocked
+    /// and it spends a round trip on `allow_hosts` for hosts it can already
+    /// reach; it also has to know that the editor's network allowlist still
+    /// caps where commands can go.
+    pub network_unrestricted: bool,
 }
 
 impl Template for SystemPromptTemplate<'_> {
@@ -146,6 +152,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -177,6 +184,7 @@ mod tests {
                 repo_map: None,
                 code_display,
                 git_operations_enabled: true,
+                network_unrestricted: false,
             }
             .render(&Templates::new())
             .unwrap()
@@ -226,6 +234,7 @@ mod tests {
                 repo_map: None,
                 code_display: false,
                 git_operations_enabled: true,
+                network_unrestricted: false,
             }
             .render(&Templates::new())
             .expect("the template renders")
@@ -255,6 +264,7 @@ mod tests {
             repo_map: Some("# Repository map\nsrc/main.rs\n  fn main [L1-3]".into()),
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -287,6 +297,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -324,6 +335,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -357,6 +369,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -394,6 +407,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -420,6 +434,74 @@ mod tests {
         assert!(rendered.contains("first create it with the `create_directory` tool"));
     }
 
+    /// ADR-F96 stage 2: with the thread's network restriction lifted, the sandbox section says
+    /// hosts need no asking (and that the editor's allowlist still applies) instead of offering
+    /// network requests; with it kept, the section is as before, on every platform.
+    #[test]
+    fn test_system_prompt_sandbox_section_follows_the_thread_network_restriction() {
+        let project = prompt_store::ProjectContext::default();
+        for (is_linux, is_windows) in [(false, false), (true, false), (false, true)] {
+            for network_unrestricted in [false, true] {
+                let template = SystemPromptTemplate {
+                    project: &project,
+                    available_tools: vec!["terminal".into()],
+                    model_name: Some("test-model".to_string()),
+                    date: "2026-01-01".to_string(),
+                    user_agents_md: None,
+                    sandboxing: true,
+                    is_linux,
+                    is_windows,
+                    restricted_workspace: false,
+                    repo_map: None,
+                    code_display: false,
+                    git_operations_enabled: true,
+                    network_unrestricted,
+                };
+                let rendered = template.render(&Templates::new()).unwrap();
+                let context = format!(
+                    "linux: {is_linux}, windows: {is_windows}, unrestricted: {network_unrestricted}"
+                );
+                assert!(rendered.contains("## Terminal sandbox"), "{context}");
+                assert!(rendered.contains("fs_write_paths"), "{context}");
+                assert_eq!(
+                    rendered.contains("the network restriction is lifted for this thread"),
+                    network_unrestricted,
+                    "{context}"
+                );
+                assert_eq!(
+                    rendered.contains("ForgeKairos's own network allowlist still applies"),
+                    network_unrestricted,
+                    "{context}"
+                );
+                assert_eq!(
+                    rendered.contains("outbound network access is blocked"),
+                    !network_unrestricted,
+                    "{context}"
+                );
+                assert_eq!(
+                    rendered.contains("- `allow_hosts: ["),
+                    !network_unrestricted,
+                    "{context}"
+                );
+                assert_eq!(
+                    rendered.contains("- `allow_all_hosts: true`"),
+                    !network_unrestricted,
+                    "{context}"
+                );
+                assert_eq!(
+                    rendered.contains("may not reach the network"),
+                    network_unrestricted && !is_windows,
+                    "{context}"
+                );
+                assert_eq!(
+                    rendered.contains("When access is scoped to specific hosts"),
+                    !network_unrestricted && !is_windows,
+                    "{context}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_system_prompt_linux_sandbox_section_omits_tmpdir() {
         use prompt_store::{ProjectContext, WorktreeContext};
@@ -443,6 +525,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -484,6 +567,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -529,6 +613,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -555,6 +640,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -579,6 +665,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -601,6 +688,7 @@ mod tests {
             repo_map: None,
             code_display: false,
             git_operations_enabled: true,
+            network_unrestricted: false,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();

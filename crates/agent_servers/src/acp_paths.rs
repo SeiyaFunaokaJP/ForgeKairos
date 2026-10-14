@@ -352,6 +352,18 @@ impl AcpPathTranslator {
             .collect()
     }
 
+    /// ADR-F97: サブエージェントに送られたメッセージ (`session_message`) の本文。エージェントが
+    /// 表示させる他の本文と同じく、開けないリンクは落とす。
+    pub fn message_content_to_host(
+        &self,
+        content: Vec<acp::ContentBlock>,
+    ) -> Vec<acp::ContentBlock> {
+        content
+            .into_iter()
+            .filter_map(|block| self.translate_content_block(block, Direction::ToHost))
+            .collect()
+    }
+
     /// ログイン (terminal-auth) で、Zed が持つエージェントのコマンドをサンドボックスの中で実行する
     /// 形に直す。エージェントの実行ファイルと node はワークツリーの外 (WSL の中の置き場所) に
     /// あるので、ワークツリーに閉じ込めずに変換する。全体がホストの絶対パスである値だけを変換し、

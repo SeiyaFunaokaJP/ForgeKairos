@@ -47,6 +47,9 @@ msgstr "1 règle globale"
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "Un hôte contenant un caractère générique ({pattern}) ne peut pas être ajouté à la liste d'autorisation à partir d'un consentement."
 
+msgid "A subagent cannot be stopped on its own. To stop the subagents, stop the main agent."
+msgstr "Un sous-agent ne peut pas être arrêté seul. Pour arrêter les sous-agents, arrêtez l'agent principal."
+
 msgid "ACP Agent"
 msgstr "Agent ACP"
 
@@ -200,6 +203,15 @@ msgstr "Tous les outils sont désactivés, car ce projet n'est pas approuvé"
 msgid "Allow"
 msgstr "Autoriser"
 
+msgid "Allow Any Host"
+msgstr "Autoriser n'importe quel hôte"
+
+msgid "Allow Lifting the Network Restriction?"
+msgstr "Autoriser la levée de la restriction réseau ?"
+
+msgid "Allow Running Outside the Sandbox?"
+msgstr "Autoriser l'exécution hors du bac à sable ?"
+
 msgid "Allowed for this thread:"
 msgstr "Autorisé pour cette conversation :"
 
@@ -217,6 +229,9 @@ msgstr "Une clé API est toujours écrite en texte brut dans settings.json sous 
 
 msgid "An Error Happened"
 msgstr "Une erreur s'est produite"
+
+msgid "Answer the tool call waiting for confirmation before switching."
+msgstr "Répondez à l'appel d'outil en attente de confirmation avant de basculer."
 
 msgid "Anthropic will retain inference logs."
 msgstr "Anthropic conservera les journaux d'inférence."
@@ -268,6 +283,12 @@ msgstr "En attente de confirmation"
 
 msgid "Awaiting Confirmation ({pending_count})"
 msgstr "En attente de confirmation ({pending_count})"
+
+msgid "Background Tasks"
+msgstr "Tâches en arrière-plan"
+
+msgid "Background Tasks: {}"
+msgstr "Tâches en arrière-plan : {}"
 
 msgid "Bad Result"
 msgstr "Mauvais résultat"
@@ -778,6 +799,9 @@ msgstr[1] "Modification de {count} fichiers…"
 msgid "Edits"
 msgstr "Modifications"
 
+msgid "Effort: {}"
+msgstr "Niveau de réflexion : {}"
+
 msgid "Enable Fast Mode"
 msgstr "Activer le mode rapide"
 
@@ -892,6 +916,9 @@ msgstr "Terminé"
 msgid "Finished running tools"
 msgstr "Exécution des outils terminée"
 
+msgid "Follow the Settings"
+msgstr "Suivre les paramètres"
+
 msgid "Follow the {}"
 msgstr "Suivre {}"
 
@@ -992,6 +1019,9 @@ msgstr "En file d'attente"
 msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
 msgstr "En mode Approbation automatique comme en mode L'IA décide, les règles de sécurité intégrées, vos modèles de refus et de confirmation, le bac à sable et la confirmation des écritures dans les fichiers de paramètres continuent de s'appliquer. Les commandes de terminal s'exécutent dans le bac à sable, et les opérations sur des fichiers hors du projet ainsi que les ajouts réseau sont confirmés dans tous les modes. Les commandes de terminal exécutées hors du bac à sable sont également confirmées à chaque fois. Les outils disponibles sont choisis par le profil, pas par le mode. Avec L'IA décide, ce qui est jugé (commandes et chemins) est envoyé au fournisseur du modèle qui juge : un modèle local est donc recommandé."
 
+msgid "In the Sandbox"
+msgstr "Dans le bac à sable"
+
 msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
 msgstr "Dans le bac à sable, Claude Code se connecte uniquement aux hôtes Anthropic suivants. Ils sont ajoutés à la liste d'autorisation de l'IDE et s'appliquent aussi aux commandes de l'agent intégré.\nHôtes à autoriser : {hosts}"
 
@@ -1079,6 +1109,24 @@ msgstr "Lance la CLI officielle de Claude Code dans un onglet de ce panneau. Vou
 msgid "Learn More"
 msgstr "En savoir plus"
 
+msgid "Let the Agent Reach Any Host?"
+msgstr "Laisser l'agent atteindre n'importe quel hôte ?"
+
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
+msgstr "Pour que l'agent de cette conversation et les commandes qu'il exécute atteignent n'importe quel hôte dans les limites de la liste d'autorisation réseau, il faut `allow_unrestricted_network` dans les paramètres du bac à sable de l'agent, qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez dans votre fichier de paramètres."
+
+msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
+msgstr "Pour que les commandes de terminal et les récupérations (fetch) de cette conversation atteignent n'importe quel hôte, il faut `allow_unrestricted_network` dans les paramètres du bac à sable de l'agent, qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez dans votre fichier de paramètres. La liste d'autorisation réseau s'applique toujours."
+
+msgid "Lifting the network restriction is not available for projects on a remote host yet."
+msgstr "La levée de la restriction réseau n'est pas encore disponible pour les projets sur un hôte distant."
+
+msgid "Lifting the network restriction is not available for this agent."
+msgstr "La levée de la restriction réseau n'est pas disponible pour cet agent."
+
+msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
+msgstr "La levée de la restriction réseau nécessite un bac à sable sur l'hôte distant, ce que cette connexion n'a pas."
+
 msgid "Link only"
 msgstr "Lien uniquement"
 
@@ -1151,6 +1199,9 @@ msgstr "Entrée de registre manquante."
 msgid "Model {} was not found"
 msgstr "Modèle {} introuvable"
 
+msgid "Model: {}"
+msgstr "Modèle : {}"
+
 msgid "Move Back to Panel"
 msgstr "Remettre dans le panneau"
 
@@ -1163,6 +1214,12 @@ msgstr "Accès réseau"
 msgid "Network access"
 msgstr "Accès réseau"
 
+msgid "Network: Restricted"
+msgstr "Réseau : restreint"
+
+msgid "Network: Unrestricted"
+msgstr "Réseau : non restreint"
+
 msgid "New Agent Thread"
 msgstr "Nouvelle conversation avec l'agent"
 
@@ -1174,6 +1231,9 @@ msgstr "Nouvel onglet"
 
 msgid "New Thread"
 msgstr "Nouvelle conversation"
+
+msgid "New Threads in This Project"
+msgstr "Nouvelles conversations dans ce projet"
 
 msgid "New Thread…"
 msgstr "Nouvelle conversation…"
@@ -1354,6 +1414,9 @@ msgstr "Ouvrir les paramètres du bac à sable"
 
 msgid "Open Skill"
 msgstr "Ouvrir la compétence"
+
+msgid "Open Subagent"
+msgstr "Ouvrir le sous-agent"
 
 msgid "Open Tabs"
 msgstr "Onglets ouverts"
@@ -1574,6 +1637,12 @@ msgstr "Restaurer le point de contrôle"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "Restaure tous les fichiers du projet à l'état qu'ils avaient à ce point de la conversation."
 
+msgid "Restrict the Agent's Network Again?"
+msgstr "Restreindre de nouveau le réseau de l'agent ?"
+
+msgid "Restrict the Network"
+msgstr "Restreindre le réseau"
+
 msgid "Restricted Mode"
 msgstr "Mode restreint"
 
@@ -1645,6 +1714,12 @@ msgstr "S'exécute hors du bac à sable (avec les propres autorisations de Forge
 
 msgid "Sandbox"
 msgstr "Bac à sable"
+
+msgid "Sandbox: Off"
+msgstr "Bac à sable : désactivé"
+
+msgid "Sandbox: On"
+msgstr "Bac à sable : activé"
 
 msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
 msgstr "Les bacs à sable disposant d'un accès en écriture à un emplacement sur un lecteur Windows peuvent ne pas assurer une isolation complète du système de fichiers."
@@ -1802,6 +1877,15 @@ msgstr "Démarrer (cette conversation uniquement)"
 msgid "Start (This Time Only)"
 msgstr "Démarrer (cette fois uniquement)"
 
+msgid "Start Again Restricted"
+msgstr "Redémarrer avec restriction"
+
+msgid "Start Again Without Host Limits"
+msgstr "Redémarrer sans limite d'hôtes"
+
+msgid "Start Again in the Sandbox"
+msgstr "Redémarrer dans le bac à sable"
+
 msgid "Start Claude Code outside the sandbox?"
 msgstr "Démarrer Claude Code hors du bac à sable ?"
 
@@ -1819,6 +1903,12 @@ msgstr "Démarrer hors du bac à sable…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "Démarrer `{program}` hors du bac à sable ?"
+
+msgid "Start the Agent Again in the Sandbox?"
+msgstr "Redémarrer l'agent dans le bac à sable ?"
+
+msgid "Started (status unknown)"
+msgstr "Démarrée (état inconnu)"
 
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "Démarré hors du bac à sable, cet agent s'exécute avec les propres autorisations de ForgeKairos et peut aussi exécuter les hooks et les serveurs MCP du projet. Une confirmation vous sera demandée pour chaque conversation avant son démarrage."
@@ -1865,6 +1955,9 @@ msgstr "Sortie du sous-agent"
 msgid "Subagents Awaiting Permission:"
 msgstr "Sous-agents en attente d'autorisation :"
 
+msgid "Subagents: {}"
+msgstr "Sous-agents : {}"
+
 msgid "Submit"
 msgstr "Envoyer"
 
@@ -1904,6 +1997,18 @@ msgstr "Cible"
 msgid "Terminal"
 msgstr "Terminal"
 
+msgid "Terminal commands and fetches may reach any host without asking, within the network allowlist; fetches still never reach local or private addresses. Click to restrict this thread again. Right-click to set the default for this project."
+msgstr "Les commandes de terminal et les récupérations (fetch) peuvent atteindre n'importe quel hôte sans demander, dans les limites de la liste d'autorisation réseau ; les récupérations n'atteignent toujours jamais les adresses locales ou privées. Cliquez pour restreindre de nouveau cette conversation. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "Terminal commands and fetches reach only the allowed hosts and ask for others. Click to let this thread reach any host; commands still ask first as before. Right-click to set the default for this project."
+msgstr "Les commandes de terminal et les récupérations (fetch) n'atteignent que les hôtes autorisés et demandent pour les autres. Cliquez pour permettre à cette conversation d'atteindre n'importe quel hôte ; les commandes demandent toujours d'abord, comme avant. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
+msgstr "Les commandes du terminal s'exécutent dans le bac à sable. Cliquez pour exécuter les commandes de cette conversation hors de celui-ci ; chacune demande toujours une confirmation. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "Terminal commands run outside the sandbox, and each one asks first. Click to turn the sandbox back on for this thread. Right-click to set the default for this project."
+msgstr "Les commandes du terminal s'exécutent hors du bac à sable, et chacune demande une confirmation. Cliquez pour réactiver le bac à sable pour cette conversation. Clic droit pour définir la valeur par défaut de ce projet."
+
 msgid "Terminal inline assistant error: {}"
 msgstr "Erreur de l'assistant inline du terminal : {}"
 
@@ -1916,11 +2021,20 @@ msgstr "Le Claude Code envoyé à l'hôte distant est introuvable. Réessayez."
 msgid "The JSON is hidden because the saved settings contain values that look like secrets."
 msgstr "Le JSON est masqué, car les paramètres enregistrés contiennent des valeurs qui ressemblent à des secrets."
 
+msgid "The Network Restriction Stays On"
+msgstr "La restriction réseau reste activée"
+
 msgid "The Zed server on the remote host is not ready yet (internal error)."
 msgstr "Le serveur ForgeKairos de l'hôte distant n'est pas encore prêt (erreur interne)."
 
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "Le serveur ForgeKairos de l'hôte distant n'est pas encore prêt. Attendez la fin de la connexion et réessayez."
+
+msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
+msgstr "L'agent et les commandes qu'il exécute peuvent atteindre n'importe quel hôte dans les limites de la liste d'autorisation réseau. Cliquez pour redémarrer l'agent avec ses seuls hôtes. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "L'agent et les commandes qu'il exécute n'atteignent que les hôtes propres à l'agent. Cliquez pour redémarrer l'agent afin qu'il puisse atteindre n'importe quel hôte dans les limites de la liste d'autorisation réseau. Clic droit pour définir la valeur par défaut de ce projet."
 
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "L'agent peut lire le dépôt, mais pas le modifier. Cliquez pour activer les opérations Git pour cette conversation."
@@ -1930,6 +2044,24 @@ msgstr "L'agent peut indexer, valider, changer de branche, etc., avec les hooks 
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "L'agent ne peut pas utiliser `getDiagnostics` : il ne voit donc pas les erreurs et avertissements affichés par l'éditeur. {reason}"
+
+msgid "The agent is starting. Try again once it has started."
+msgstr "L'agent est en cours de démarrage. Réessayez une fois qu'il a démarré."
+
+msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "L'agent s'exécute dans le bac à sable. Cliquez pour le redémarrer hors du bac à sable, dans une nouvelle session. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "L'agent s'exécute hors du bac à sable et peut utiliser ses propres outils sans demander. Cliquez pour le redémarrer dans le bac à sable, dans une nouvelle session. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "L'agent s'arrête et redémarre dans le bac à sable, pour cette conversation uniquement. L'agent et les commandes qu'il exécute peuvent alors atteindre n'importe quel hôte autorisé par la liste d'autorisation réseau, et pas seulement les hôtes propres à l'agent. La conversation est relue si l'agent le permet, et se poursuit sinon dans une nouvelle session."
+
+msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "L'agent s'arrête et redémarre dans le bac à sable, en n'atteignant que ses propres hôtes. La conversation est relue si l'agent le permet, et se poursuit sinon dans une nouvelle session."
+
+msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
+msgstr "L'agent s'arrête et redémarre dans le bac à sable. La conversation se poursuit dans une nouvelle session : la session actuelle est conservée hors du bac à sable, où l'agent du bac à sable ne peut pas la lire."
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "L'agent a été ajouté à settings.json, mais il n'a pas encore été chargé. Ouvrez-le plus tard depuis le menu +."
@@ -1995,6 +2127,12 @@ msgstr "L'hôte distant ne dispose pas de suffisamment d'espace libre ({required
 
 msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
 msgstr "L'hôte distant ne dispose pas de `sha256sum` : il est donc impossible de confirmer que Claude Code n'a pas été remplacé. Installez coreutils sur l'hôte distant et réessayez."
+
+msgid "The sandbox is off, so the network is not restricted either."
+msgstr "Le bac à sable est désactivé, donc le réseau n'est pas restreint non plus."
+
+msgid "The sandbox is turned off for this thread."
+msgstr "Le bac à sable est désactivé pour cette conversation."
 
 msgid "The sandboxed Claude Code is not available because no folder is open."
 msgstr "Le Claude Code en bac à sable n'est pas disponible, car aucun dossier n'est ouvert."
@@ -2079,6 +2217,9 @@ msgstr "Cet agent ne prend actuellement pas en charge les espaces de travail mul
 
 msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
 msgstr "Cet agent ne propose pas de connexion par abonnement. Pour l'utiliser avec un abonnement, lancez le Claude Code officiel et connectez-vous-y."
+
+msgid "This agent has no hosts of its own: only the network allowlist limits it, so there is nothing to lift."
+msgstr "Cet agent n'a pas d'hôtes propres : seule la liste d'autorisation réseau le limite, il n'y a donc rien à lever."
 
 msgid "This agent is installed via npx (npm)"
 msgstr "Cet agent est installé via npx (npm)"
@@ -2214,6 +2355,12 @@ msgstr "Réessayer"
 
 msgid "Try to restart the agent"
 msgstr "Essayer de redémarrer l'agent"
+
+msgid "Turn On and Continue"
+msgstr "Activer et continuer"
+
+msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "Désactiver le bac à sable nécessite \"Autoriser l'exécution hors du bac à sable\" (Paramètres > IA > Bac à sable), qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
 
 msgid "Type anything to edit"
 msgstr "Saisissez du texte pour modifier"
@@ -2370,6 +2517,9 @@ msgstr "Vos paramètres et votre connexion habituels sont utilisés tels quels."
 
 msgid "[Unsupported message content — this message cannot be edited or resent]"
 msgstr "[Contenu de message non pris en charge — ce message ne peut être ni modifié ni renvoyé]"
+
+msgid "`allow_unrestricted_network` did not take effect. A settings profile or the global settings file may keep it off."
+msgstr "`allow_unrestricted_network` n'a pas pris effet. Un profil de paramètres ou le fichier de paramètres global le maintient peut-être désactivé."
 
 msgid "a URI"
 msgstr "un URI"
@@ -2590,6 +2740,9 @@ msgstr "{} a refusé de répondre à cette requête"
 msgid "{} tokens"
 msgstr "{} jetons"
 
+msgid "{} working"
+msgstr "{} en cours"
+
 msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— {count} fichier modifié"
@@ -2680,6 +2833,10 @@ msgctxt "model list section"
 msgid "Favorite"
 msgstr "Favoris"
 
+msgctxt "model or effort"
+msgid "Default"
+msgstr "Par défaut"
+
 msgctxt "permission pattern menu"
 msgid "Always for `{}` commands"
 msgstr "Toujours pour les commandes `{}`"
@@ -2687,6 +2844,30 @@ msgstr "Toujours pour les commandes `{}`"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "Source"
+
+msgctxt "subagent status"
+msgid "Awaiting Permission"
+msgstr "En attente d'autorisation"
+
+msgctxt "subagent status"
+msgid "Cancelled"
+msgstr "Annulé"
+
+msgctxt "subagent status"
+msgid "Failed"
+msgstr "Échec"
+
+msgctxt "subagent status"
+msgid "Idle"
+msgstr "Inactif"
+
+msgctxt "subagent status"
+msgid "Running"
+msgstr "En cours"
+
+msgctxt "subagent status"
+msgid "Unknown"
+msgstr "Inconnu"
 
 msgctxt "subagent title"
 msgid "Subagent Failed"

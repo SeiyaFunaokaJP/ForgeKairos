@@ -3703,6 +3703,10 @@ msgid "What `git reset` keeps of the changes."
 msgstr "Was `git reset` von den Änderungen behält."
 
 msgctxt "settings schema"
+msgid "What a new agent thread starts with in a project, keyed by the absolute\npath of the project's folder (for a project on a remote host, the\nhost's connection, `#`, then the path there). The chat input's buttons\ncan still change it for one thread; that change is not saved. Only read\nfrom the user settings file.\n\nDefault: {}"
+msgstr "Womit ein neuer Agent-Thread in einem Projekt beginnt, nach dem absoluten Pfad des Projektordners (bei einem Projekt auf einem Remote-Host: die Verbindung des Hosts, `#`, dann der Pfad dort). Die Schaltflächen der Chat-Eingabe können dies für einen Thread weiterhin ändern; diese Änderung wird nicht gespeichert. Wird nur aus der Benutzereinstellungsdatei gelesen.\n\nStandard: {}"
+
+msgctxt "settings schema"
 msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
 msgstr "Von welchen Basiseinstellungen ausgegangen wird, bevor die Überschreibungen dieses Profils angewendet werden.\n\n- `user`: Auf die Benutzereinstellungen anwenden (Standard)\n- `default`: Auf die Standardeinstellungen von ForgeKairos anwenden, Benutzeranpassungen werden ignoriert"
 
@@ -3943,6 +3947,10 @@ msgid "Whether a terminal opened over SSH runs its shell inside a session the\nr
 msgstr "Legt fest, ob ein über SSH geöffnetes Terminal seine Shell in einer Sitzung ausführt, die der Remote-Server am Leben hält, sodass eine abgebrochene Verbindung weder laufende Befehle stoppt noch die Ausgabe verliert: Beim erneuten Verbinden wird alles wieder angezeigt und es geht weiter. Nur für SSH-Hosts, die nicht unter Windows laufen.\n\nStandard: true"
 
 msgctxt "settings schema"
+msgid "Whether a thread of the built-in agent may lift its network restriction\n(the network button next to the chat input): its sandboxed terminal\ncommands and fetches then reach any host without asking. While this is\noff, that button asks to turn it on first. The editor's network\nallowlist still applies. Only the user settings file is read: neither a\nproject's settings nor an agent can turn it on.\nDefault: false"
+msgstr "Ob ein Thread des integrierten Agenten seine Netzwerkbeschränkung aufheben darf (die Netzwerk-Schaltfläche neben der Chat-Eingabe): Seine Terminalbefehle in der Sandbox und seine Abrufe (fetch) erreichen dann ohne Nachfrage jeden Host. Solange dies ausgeschaltet ist, fragt die Schaltfläche zuerst, ob es eingeschaltet werden soll. Die Netzwerk-Zulassungsliste des Editors gilt weiterhin. Wird nur aus der Benutzereinstellungsdatei gelesen: Weder die Einstellungen eines Projekts noch ein Agent können es einschalten.\nStandard: false"
+
+msgctxt "settings schema"
 msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
 msgstr "Legt fest, ob ein Worktree, in den ein Agent geschrieben hat, die Ausführung seines eigenen Codes (Projektmodi von Sprachservern, Formatierer, das Prettier des Projekts) anhält, bis der Benutzer die Änderungen prüft und ihn fortsetzt. Wird nur aus der Benutzereinstellungsdatei gelesen: Projekt- und Servereinstellungen können dies nicht deaktivieren.\n\nStandard: true"
 
@@ -4139,12 +4147,20 @@ msgid "Whether the agent panel should use flexible (proportional) sizing when do
 msgstr "Legt fest, ob das Agent-Panel bei Andocken links oder rechts eine flexible (proportionale) Größe verwendet.\n\nWenn aktiviert, steuert `default_width` die Panelbreite nicht, und das Zurücksetzen des Panels stellt das Standardverhältnis wieder her.\n\nStandard: true"
 
 msgctxt "settings schema"
+msgid "Whether the agent's terminal commands run in the sandbox. `false` runs\nthem outside it, which needs `sandbox_permissions.allow_outside_sandbox`;\nexternal agents then start outside it without asking."
+msgstr "Ob die Terminalbefehle des Agenten in der Sandbox ausgeführt werden. `false` führt sie außerhalb aus, was `sandbox_permissions.allow_outside_sandbox` erfordert; externe Agenten starten dann ohne Nachfrage außerhalb der Sandbox."
+
+msgctxt "settings schema"
 msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"
 msgstr "Legt fest, ob Haltepunkte über ForgeKairos-Sitzungen hinweg wiederverwendet werden.\n\nStandard: true"
 
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
 msgstr "Legt fest, ob das Browser-Panel beim Start geöffnet wird, auch wenn sein Dock zuletzt geschlossen war.\n\nStandard: false"
+
+msgctxt "settings schema"
+msgid "Whether the built-in agent's network access stays limited to the\nallowed hosts. `false` lets its terminal commands and fetches reach any\nhost without asking, which needs\n`sandbox_permissions.allow_unrestricted_network`; the editor's network\nallowlist still applies, and fetches still refuse local and private\naddresses. Not applied to projects on a remote host yet."
+msgstr "Ob der Netzwerkzugriff des integrierten Agenten auf die zugelassenen Hosts beschränkt bleibt. `false` lässt seine Terminalbefehle und Abrufe (fetch) ohne Nachfrage jeden Host erreichen, was `sandbox_permissions.allow_unrestricted_network` erfordert; die Netzwerk-Zulassungsliste des Editors gilt weiterhin, und Abrufe lehnen lokale und private Adressen weiterhin ab. Gilt noch nicht für Projekte auf einem Remote-Host."
 
 msgctxt "settings schema"
 msgid "Whether the built-in browser goes through the egress allowlist proxy.\n\nThe browser is human-driven, so like the terminal it is outside egress\ncontrol by default.\n\nDefault: false"
@@ -4527,8 +4543,8 @@ msgid "Whether to keep the text selection after copying it to the clipboard.\n\n
 msgstr "Legt fest, ob die Textauswahl nach dem Kopieren in die Zwischenablage erhalten bleibt.\n\nStandard: true"
 
 msgctxt "settings schema"
-msgid "Whether to limit the content width in the agent panel. When enabled,\ncontent will be constrained to `max_content_width` and centered when\nthe panel is wider than that value, for optimal readability.\n\nDefault: true"
-msgstr "Legt fest, ob die Inhaltsbreite im Agent-Panel begrenzt wird. Wenn aktiviert, wird der Inhalt für optimale Lesbarkeit auf `max_content_width` begrenzt und zentriert, wenn das Panel breiter als dieser Wert ist.\n\nStandard: true"
+msgid "Whether to limit the content width in the agent panel. When enabled,\ncontent will be constrained to `max_content_width` and centered when\nthe panel is wider than that value, for optimal readability.\n\nDefault: false"
+msgstr "Legt fest, ob die Inhaltsbreite im Agent-Panel begrenzt wird. Wenn aktiviert, wird der Inhalt für optimale Lesbarkeit auf `max_content_width` begrenzt und zentriert, wenn das Panel breiter als dieser Wert ist.\n\nStandard: false"
 
 msgctxt "settings schema"
 msgid "Whether to limit the width of the rendered markdown content. When\nenabled, content is constrained to `max_width` and centered\nhorizontally within the preview pane, for optimal readability.\n\nDefault: false"

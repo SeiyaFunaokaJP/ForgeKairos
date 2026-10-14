@@ -1,4 +1,6 @@
 mod debug_log;
+/// ADR-F97: Claude's subagents (the ACP subagents RFD).
+mod subagents;
 mod transport;
 
 use debug_log::AcpDebugLog;
@@ -60,6 +62,7 @@ use terminal::terminal_settings::{AlternateScroll, CursorShape};
 
 use crate::acp_paths::AcpPathTranslator;
 use crate::{CURSOR_ID, GEMINI_ID};
+use subagents::handle_incoming_session_update;
 use util::path_mapping::WslWorktreeRootsError;
 
 pub const GEMINI_TERMINAL_AUTH_METHOD_ID: &str = "spawn-gemini-cli";
@@ -132,6 +135,8 @@ struct ClientContext {
     /// ADR-F49 decision 5 (8c): the system the commands this agent asks for
     /// are written for, which is where it runs.
     commands_os: AgentCommandsOs,
+    /// ADR-F97: where the sessions of an agent's subagents go.
+    subagents: subagents::SubagentRouting,
 }
 
 fn dispatch_queue_closed_error() -> acp::Error {
@@ -644,6 +649,7 @@ pub async fn connect(
     default_mode: Option<acp::SessionModeId>,
     default_config_options: HashMap<String, AgentConfigOptionValue>,
     run_outside_sandbox: bool,
+    lift_agent_hosts: bool,
     cx: &mut AsyncApp,
 ) -> Result<Rc<dyn AgentConnection>> {
     let conn = AcpConnection::stdio(
@@ -654,6 +660,7 @@ pub async fn connect(
         default_mode,
         default_config_options,
         run_outside_sandbox,
+        lift_agent_hosts,
         cx,
     )
     .await?;
@@ -748,7 +755,7 @@ fn client_builder(
         )
         // --- Notification handlers (agent→client) ---
         .on_receive_notification(
-            on_notification!(handle_session_notification),
+            on_notification!(handle_incoming_session_update),
             agent_client_protocol::on_receive_notification!(),
         )
         .on_receive_notification(
@@ -813,6 +820,7 @@ impl AcpConnection {
         default_mode: Option<acp::SessionModeId>,
         default_config_options: HashMap<String, AgentConfigOptionValue>,
         run_outside_sandbox: bool,
+        lift_agent_hosts: bool,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
         let root_dir = project.read_with(cx, |project, cx| {
@@ -888,6 +896,7 @@ impl AcpConnection {
                         &project,
                         &command,
                         root_dir.clone(),
+                        lift_agent_hosts,
                         cx,
                     )
                     .await?;
@@ -914,6 +923,7 @@ impl AcpConnection {
                         distro.clone(),
                         root_dir.clone(),
                         paths.as_ref(),
+                        lift_agent_hosts,
                         cx,
                     )
                     .await?;
@@ -1043,6 +1053,7 @@ impl AcpConnection {
             request_elicitations: request_elicitations.clone(),
             paths: paths.clone(),
             commands_os,
+            subagents: subagents::SubagentRouting::for_agent(&agent_id),
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -1077,8 +1088,8 @@ impl AcpConnection {
 
         let beta_features_enabled = cx.update(|cx| cx.has_flag::<AcpBetaFeatureFlag>());
         let initialize_response = connection
-            .send_request(
-                acp::InitializeRequest::new(ProtocolVersion::V1)
+            .send_request(subagents::InitializeWithExtraCapabilities {
+                request: acp::InitializeRequest::new(ProtocolVersion::V1)
                     .client_capabilities(client_capabilities_for_agent(
                         &agent_id,
                         beta_features_enabled,
@@ -1087,7 +1098,9 @@ impl AcpConnection {
                         acp::Implementation::new("zed", version)
                             .title(release_channel.map(ToOwned::to_owned)),
                     ),
-            )
+                // ADR-F97: `subagents` is not a field of the schema's type yet.
+                extra_capabilities: subagents::extra_client_capabilities_for_agent(&agent_id),
+            })
             .block_task()
             .boxed_local();
         let (response, status_fut) =
@@ -2318,6 +2331,8 @@ struct AgentSandboxSession {
     env: HashMap<String, String>,
     cwd: Option<PathBuf>,
     route: AgentSandboxRoute,
+    /// ADR-F96 stage 3: what limits its network, for the thread's button.
+    network: acp_thread::AgentSandboxNetwork,
 }
 
 enum AgentSandboxRoute {
@@ -2635,6 +2650,31 @@ fn editor_allowlist_entries(cx: &App) -> Option<Vec<String>> {
     )
 }
 
+/// ADR-F96 stage 3: the hosts a start's sandbox is given. Lifting the agent's
+/// own hosts leaves it as an agent that has none, which
+/// [`local_agent_sandbox_policy`] caps by the editor-wide allowlist alone —
+/// and, in a process that publishes no allowlist, by no host at all. The
+/// agent's hosts are still checked against the allowlist before this
+/// ([`ensure_hosts_allowed`]): it needs to reach them either way.
+fn hosts_for_start(
+    hosts: AgentSandboxHosts,
+    lift_agent_hosts: bool,
+) -> (AgentSandboxHosts, acp_thread::AgentSandboxNetwork) {
+    match hosts {
+        AgentSandboxHosts::EditorAllowlist => (
+            AgentSandboxHosts::EditorAllowlist,
+            acp_thread::AgentSandboxNetwork::EditorAllowlist,
+        ),
+        AgentSandboxHosts::Listed(_) if lift_agent_hosts => (
+            AgentSandboxHosts::EditorAllowlist,
+            acp_thread::AgentSandboxNetwork::AgentHostsLifted,
+        ),
+        hosts @ AgentSandboxHosts::Listed(_) => {
+            (hosts, acp_thread::AgentSandboxNetwork::AgentHosts)
+        }
+    }
+}
+
 fn ensure_hosts_allowed(hosts: &AgentSandboxHosts, cx: &mut AsyncApp) -> Result<()> {
     let missing = cx.update(|cx| hosts_missing_from_editor_allowlist(hosts, cx));
     if missing.is_empty() {
@@ -2764,6 +2804,7 @@ async fn local_sandboxed_agent_command(
     project: &Entity<Project>,
     command: &AgentServerCommand,
     root_dir: Option<PathBuf>,
+    lift_agent_hosts: bool,
     cx: &mut AsyncApp,
 ) -> Result<(std::process::Command, AgentSandboxSession, sandbox::Sandbox)> {
     let (fs, key_roots, worktree_roots, git_dirs) = project.read_with(cx, |project, cx| {
@@ -2800,6 +2841,7 @@ async fn local_sandboxed_agent_command(
         )));
     };
     ensure_hosts_allowed(&hosts, cx)?;
+    let (hosts, network) = hosts_for_start(hosts, lift_agent_hosts);
 
     let mut write_scope = worktree_roots;
     write_scope.push(config_dir);
@@ -2855,6 +2897,7 @@ async fn local_sandboxed_agent_command(
             env,
             cwd: root_dir,
             route: AgentSandboxRoute::Local { policy },
+            network,
         },
         sandbox,
     ))
@@ -2948,6 +2991,7 @@ async fn wsl_sandboxed_agent_command(
     distro: Option<String>,
     root_dir: Option<PathBuf>,
     paths: Option<&Arc<AcpPathTranslator>>,
+    lift_agent_hosts: bool,
     cx: &mut AsyncApp,
 ) -> Result<WslAgentLaunch> {
     let sandbox_command = command
@@ -3013,6 +3057,7 @@ async fn wsl_sandboxed_agent_command(
         distro_name.as_deref(),
     );
     ensure_hosts_allowed(&hosts, cx)?;
+    let (hosts, network) = hosts_for_start(hosts, lift_agent_hosts);
     let policy = local_agent_sandbox_policy(
         &sandbox_write_paths,
         &git_dirs,
@@ -3098,6 +3143,7 @@ async fn wsl_sandboxed_agent_command(
                 distro,
                 editor_allowlist,
             },
+            network,
         },
         sandbox,
         session_id,
@@ -3294,6 +3340,7 @@ async fn wsl_sandboxed_agent_command(
     _distro: Option<String>,
     _root_dir: Option<PathBuf>,
     _paths: Option<&Arc<AcpPathTranslator>>,
+    _lift_agent_hosts: bool,
     _cx: &mut AsyncApp,
 ) -> Result<WslAgentLaunch> {
     Err(sandbox_unavailable(i18n::tr(WSL_WITHOUT_RUNTIME_REASON)))
@@ -3536,6 +3583,7 @@ fn remote_sandboxed_agent_command(
                 readable_paths: plan.readable_paths,
                 network_ceiling,
             },
+            network: hosts_for_start(hosts.clone(), false).1,
         },
         session_id,
     ))
@@ -4105,6 +4153,10 @@ impl AgentConnection for AcpConnection {
 
     fn runs_outside_sandbox(&self) -> bool {
         self.runs_outside_sandbox
+    }
+
+    fn sandbox_network(&self) -> Option<acp_thread::AgentSandboxNetwork> {
+        self.sandbox_session.as_ref().map(|session| session.network)
     }
 
     fn sandbox_write_scope(&self) -> Option<Vec<PathBuf>> {
@@ -4788,6 +4840,7 @@ pub mod test_support {
             request_elicitations: request_elicitations.clone(),
             paths: None,
             commands_os: AgentCommandsOs::Projects,
+            subagents: subagents::SubagentRouting::default(),
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -5610,6 +5663,65 @@ mod tests {
             .network
         };
         assert_eq!(with_ceiling(false, listed), with_ceiling(true, listed));
+    }
+
+    /// ADR-F96 stage 3: a thread that lifts its external agent's network
+    /// restriction drops the agent's own hosts and leaves the editor-wide
+    /// allowlist as the only cap — never the raw network: with no allowlist
+    /// published the agent reaches nothing. Without the lift, and for an
+    /// agent with no hosts of its own, nothing changes.
+    #[test]
+    fn lifting_an_agents_hosts_leaves_only_the_editor_allowlist() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let agent_hosts = || AgentSandboxHosts::Listed(vec!["chatgpt.com".to_string()]);
+        let network_of = |hosts: AgentSandboxHosts, lift: bool| {
+            let (hosts, network) = hosts_for_start(hosts, lift);
+            let policy =
+                local_agent_sandbox_policy(&[worktree.path().to_path_buf()], &[], &[], &hosts)
+                    .expect("a policy");
+            (policy.network, network)
+        };
+
+        assert_eq!(
+            with_ceiling(true, || network_of(agent_hosts(), true)),
+            (
+                sandbox::SandboxNetPolicy::Unrestricted,
+                acp_thread::AgentSandboxNetwork::AgentHostsLifted
+            ),
+            "under the ceiling, the ceiling alone decides"
+        );
+        assert_eq!(
+            with_ceiling(false, || network_of(agent_hosts(), true)),
+            (
+                sandbox::SandboxNetPolicy::Restricted {
+                    allowed_domains: Vec::new()
+                },
+                acp_thread::AgentSandboxNetwork::AgentHostsLifted
+            ),
+            "with no ceiling there is nothing to lift to"
+        );
+        assert_eq!(
+            with_ceiling(true, || network_of(agent_hosts(), false)),
+            (
+                sandbox::SandboxNetPolicy::Restricted {
+                    allowed_domains: vec!["chatgpt.com".to_string()]
+                },
+                acp_thread::AgentSandboxNetwork::AgentHosts
+            ),
+        );
+        for lift in [false, true] {
+            assert_eq!(
+                with_ceiling(true, || network_of(
+                    AgentSandboxHosts::EditorAllowlist,
+                    lift
+                )),
+                (
+                    sandbox::SandboxNetPolicy::Unrestricted,
+                    acp_thread::AgentSandboxNetwork::EditorAllowlist
+                ),
+                "an agent with no hosts of its own has nothing to lift"
+            );
+        }
     }
 
     #[test]
@@ -7117,6 +7229,7 @@ mod tests {
             None,
             HashMap::default(),
             true,
+            false,
             &mut async_cx,
         )
         .fuse();
@@ -7251,6 +7364,7 @@ exit 7
                     None,
                     HashMap::default(),
                     true,
+                    false,
                     &mut cx.to_async(),
                 )
                 .await
@@ -7520,6 +7634,7 @@ exit 7
             request_elicitations: request_elicitations.clone(),
             paths: None,
             commands_os: AgentCommandsOs::Projects,
+            subagents: subagents::SubagentRouting::default(),
         };
         // `TestAppContext::spawn` hands out an `AsyncApp` by value, whereas the
         // production path uses `Context::spawn` which hands out `&mut AsyncApp`.
@@ -9310,6 +9425,21 @@ exit 7
         paths: Option<Arc<AcpPathTranslator>>,
         cx: &mut gpui::TestAppContext,
     ) -> BoundaryHarness {
+        connect_boundary_harness_with_routing(
+            project,
+            paths,
+            subagents::SubagentRouting::holding(),
+            cx,
+        )
+        .await
+    }
+
+    async fn connect_boundary_harness_with_routing(
+        project: &Entity<Project>,
+        paths: Option<Arc<AcpPathTranslator>>,
+        subagent_routing: subagents::SubagentRouting,
+        cx: &mut gpui::TestAppContext,
+    ) -> BoundaryHarness {
         let (client_transport, agent_transport) = agent_client_protocol::Channel::duplex();
         let new_sessions: Arc<Mutex<Vec<acp::NewSessionRequest>>> = Arc::default();
         let prompts: Arc<Mutex<Vec<acp::PromptRequest>>> = Arc::default();
@@ -9411,6 +9541,7 @@ exit 7
             request_elicitations: request_elicitations.clone(),
             paths: paths.clone(),
             commands_os: AgentCommandsOs::Projects,
+            subagents: subagent_routing,
         };
         let dispatch_task = cx.spawn({
             let mut dispatch_rx = dispatch_rx;
@@ -10052,6 +10183,7 @@ done
             None,
             HashMap::default(),
             false,
+            false,
             &mut cx.to_async(),
         )
         .await
@@ -10230,6 +10362,7 @@ done
                     None,
                     HashMap::default(),
                     false,
+                    false,
                     &mut cx.to_async(),
                 )
                 .await
@@ -10395,6 +10528,7 @@ done
             None,
             HashMap::default(),
             false,
+            false,
             &mut cx.to_async(),
         )
         .await
@@ -10540,6 +10674,7 @@ done
             None,
             Some(project_dir.clone()),
             None,
+            false,
             &mut cx.to_async(),
         )
         .await
@@ -10680,6 +10815,734 @@ done
         cx.run_until_parked();
         cx.update(|_| ());
         cx.run_until_parked();
+    }
+
+    /// ADR-F97: the `session/update` the adapter sends, written as it is on the
+    /// wire, since the schema crate has no type for the RFD's two kinds.
+    fn raw_session_update(
+        session_id: &acp::SessionId,
+        update: serde_json::Value,
+    ) -> agent_client_protocol::UntypedMessage {
+        agent_client_protocol::UntypedMessage::new(
+            "session/update",
+            serde_json::json!({ "sessionId": session_id, "update": update }),
+        )
+        .expect("a session update serializes")
+    }
+
+    fn send_raw(harness: &BoundaryHarness, message: agent_client_protocol::UntypedMessage) {
+        harness
+            .agent
+            .send_notification(message)
+            .expect("the notification is sent");
+    }
+
+    fn announce_subagent(
+        harness: &BoundaryHarness,
+        parent_session_id: &acp::SessionId,
+        child_session_id: &acp::SessionId,
+        state: serde_json::Value,
+    ) {
+        send_raw(
+            harness,
+            raw_session_update(
+                parent_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "subagent_update",
+                    "sessionId": child_session_id,
+                    "title": "Explore (research)",
+                    "description": "Find the entry point",
+                    "state": state,
+                }),
+            ),
+        );
+    }
+
+    fn external_child(
+        parent: &Entity<AcpThread>,
+        child_session_id: &acp::SessionId,
+        cx: &mut gpui::TestAppContext,
+    ) -> (
+        acp_thread::ExternalSubagentStatus,
+        Option<acp::ToolCallId>,
+        Entity<AcpThread>,
+    ) {
+        parent.read_with(cx, |parent, _| {
+            let child = parent
+                .external_subagent(child_session_id)
+                .expect("the child was announced on its parent");
+            (
+                child.status,
+                child.parent_tool_call_id.clone(),
+                child.thread.clone(),
+            )
+        })
+    }
+
+    #[test]
+    fn only_claude_is_told_that_subagents_are_shown() {
+        use agent_client_protocol::JsonRpcMessage as _;
+
+        for (agent, expected) in [
+            (crate::CLAUDE_AGENT_ID, Some(serde_json::json!({}))),
+            ("codex-acp", None),
+            (CURSOR_ID, None),
+            (GEMINI_ID, None),
+        ] {
+            let agent_id = AgentId::new(agent);
+            let request = subagents::InitializeWithExtraCapabilities {
+                request: acp::InitializeRequest::new(ProtocolVersion::V1)
+                    .client_capabilities(client_capabilities_for_agent(&agent_id, false)),
+                extra_capabilities: subagents::extra_client_capabilities_for_agent(&agent_id),
+            };
+            let message = request
+                .to_untyped_message()
+                .expect("the initialize request serializes");
+            assert_eq!(message.method(), "initialize");
+            let capabilities = &message.params()["clientCapabilities"];
+            assert_eq!(
+                capabilities.get("subagents"),
+                expected.as_ref(),
+                "the subagents capability of {agent}"
+            );
+            assert_eq!(
+                capabilities.get("terminal"),
+                Some(&serde_json::json!(true)),
+                "the schema's capabilities are kept for {agent}"
+            );
+            assert_eq!(
+                message.params().get("protocolVersion"),
+                Some(&serde_json::json!(1))
+            );
+        }
+    }
+
+    #[test]
+    fn the_rfds_session_updates_are_read_before_the_schemas_type() {
+        use agent_client_protocol::JsonRpcMessage as _;
+
+        let subagent_update = serde_json::json!({
+            "sessionId": "parent",
+            "update": {
+                "sessionUpdate": "subagent_update",
+                "sessionId": "child",
+                "state": { "state": "idle", "stopReason": "error", "error": { "code": -32603, "message": "boom" } },
+            },
+        });
+        assert!(
+            serde_json::from_value::<acp::SessionNotification>(subagent_update.clone()).is_err(),
+            "the schema crate alone cannot read the RFD's update"
+        );
+        let parsed =
+            subagents::IncomingSessionUpdate::parse_message("session/update", &subagent_update)
+                .expect("the RFD's update is read");
+        assert!(matches!(
+            parsed,
+            subagents::IncomingSessionUpdate::Subagent(subagents::SubagentNotification {
+                update: subagents::SubagentSessionUpdate::SubagentUpdate(_),
+                ..
+            })
+        ));
+
+        let message = serde_json::json!({
+            "sessionId": "child",
+            "update": {
+                "sessionUpdate": "session_message",
+                "messageId": "toolu_1",
+                "recipientSessionId": "child",
+                "content": [{ "type": "text", "text": "Look around" }],
+            },
+        });
+        let parsed = subagents::IncomingSessionUpdate::parse_message("session/update", &message)
+            .expect("the RFD's message is read");
+        assert!(matches!(
+            parsed,
+            subagents::IncomingSessionUpdate::Subagent(subagents::SubagentNotification {
+                update: subagents::SubagentSessionUpdate::SessionMessage(_),
+                ..
+            })
+        ));
+
+        let chunk = serde_json::to_value(acp::SessionNotification::new(
+            acp::SessionId::new("parent"),
+            acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new("hi".into())),
+        ))
+        .expect("a chunk serializes");
+        assert!(matches!(
+            subagents::IncomingSessionUpdate::parse_message("session/update", &chunk),
+            Ok(subagents::IncomingSessionUpdate::Session(_))
+        ));
+    }
+
+    #[test]
+    fn updates_of_unannounced_sessions_are_held_within_limits() {
+        let session = |index: usize| acp::SessionId::new(format!("child-{index}"));
+        let update = |session_id: &acp::SessionId| {
+            subagents::HeldUpdate::Session(acp::SessionNotification::new(
+                session_id.clone(),
+                acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new("x".into())),
+            ))
+        };
+
+        let not_told = subagents::SubagentRouting::for_agent(&AgentId::new("codex-acp"));
+        assert!(
+            !not_told.hold(&session(0), update(&session(0))),
+            "an agent that was not told about subagents has no unannounced children"
+        );
+        assert_eq!(not_told.held_count(&session(0)), 0);
+
+        let routing = subagents::SubagentRouting::for_agent(&AgentId::new(crate::CLAUDE_AGENT_ID));
+        for _ in 0..subagents::MAX_HELD_UPDATES_PER_SESSION + 5 {
+            assert!(routing.hold(&session(0), update(&session(0))));
+        }
+        assert_eq!(
+            routing.held_count(&session(0)),
+            subagents::MAX_HELD_UPDATES_PER_SESSION
+        );
+        for index in 1..=subagents::MAX_HELD_SESSIONS {
+            routing.hold(&session(index), update(&session(index)));
+        }
+        assert_eq!(
+            routing.held_count(&session(0)),
+            0,
+            "the oldest session gives way to a new one"
+        );
+        assert_eq!(
+            routing.held_count(&session(subagents::MAX_HELD_SESSIONS)),
+            1
+        );
+    }
+
+    async fn assert_a_subagent_reaches_its_thread(
+        paths: Option<Arc<AcpPathTranslator>>,
+        agent_file: &str,
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, paths, cx).await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+
+        // The parent's Agent call, as the adapter reports it.
+        send_raw(
+            &harness,
+            raw_session_update(
+                &parent_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": "toolu_1",
+                    "title": "Find the entry point",
+                    "kind": "think",
+                    "status": "in_progress",
+                    "rawInput": {
+                        "description": "Find the entry point",
+                        "prompt": "Look around",
+                        "subagent_type": "research",
+                        "model": "haiku",
+                        "effort": "low",
+                    },
+                    "_meta": { "claudeCode": { "toolName": "Agent" } },
+                }),
+            ),
+        );
+        // An update of the child that overtakes its announcement is held.
+        send_raw(
+            &harness,
+            raw_session_update(
+                &child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": "child-call-1",
+                    "title": "Read main.rs",
+                    "kind": "read",
+                    "status": "in_progress",
+                    "locations": [{ "path": agent_file }],
+                }),
+            ),
+        );
+        cx.run_until_parked();
+        assert!(
+            parent.read_with(cx, |parent, _| parent.external_subagents().is_empty()),
+            "nothing is shown of a child before it is announced"
+        );
+
+        announce_subagent(
+            &harness,
+            &parent_session_id,
+            &child_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        send_raw(
+            &harness,
+            raw_session_update(
+                &child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "session_message",
+                    "messageId": "toolu_1",
+                    "senderSessionId": parent_session_id,
+                    "recipientSessionId": child_session_id,
+                    "content": [{ "type": "text", "text": "Look around" }],
+                }),
+            ),
+        );
+        cx.run_until_parked();
+
+        let (status, linked_call, child) = external_child(&parent, &child_session_id, cx);
+        assert_eq!(status, acp_thread::ExternalSubagentStatus::Running);
+        assert_eq!(linked_call, Some(acp::ToolCallId::new("toolu_1")));
+        parent.read_with(cx, |parent, _| {
+            let child = parent
+                .external_subagent(&child_session_id)
+                .expect("the child is listed");
+            assert_eq!(child.title.as_deref(), Some("Explore (research)"));
+            assert_eq!(child.description.as_deref(), Some("Find the entry point"));
+            let (_, call) = parent
+                .tool_call(&acp::ToolCallId::new("toolu_1"))
+                .expect("the parent's Agent call");
+            assert_eq!(
+                call.subagent_session_info
+                    .as_ref()
+                    .map(|info| info.session_id.clone()),
+                Some(child_session_id.clone()),
+                "the Agent call's card shows the child"
+            );
+            assert_eq!(
+                acp_thread::requested_model_and_effort(call),
+                (Some("haiku".to_string()), Some("low".to_string()))
+            );
+        });
+        child.read_with(cx, |child, cx| {
+            assert_eq!(child.parent_session_id(), Some(&parent_session_id));
+            let (_, call) = child
+                .tool_call(&acp::ToolCallId::new("child-call-1"))
+                .expect("the held update reached the child once it was announced");
+            assert_eq!(
+                call.locations
+                    .iter()
+                    .map(|location| location.path.clone())
+                    .collect::<Vec<_>>(),
+                [PathBuf::from(util::path!("/project/src/main.rs"))],
+            );
+            let prompts = child
+                .entries()
+                .iter()
+                .filter_map(|entry| entry.user_message())
+                .map(|message| message.content.to_markdown(cx))
+                .collect::<Vec<_>>();
+            assert_eq!(prompts.len(), 1, "the child's prompt: {prompts:?}");
+            assert!(prompts[0].contains("Look around"), "{prompts:?}");
+        });
+
+        // The agent sends the parent's call whole again, which builds the
+        // call anew: its card still shows the child.
+        send_raw(
+            &harness,
+            raw_session_update(
+                &parent_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": "toolu_1",
+                    "title": "Find the entry point",
+                    "kind": "think",
+                    "status": "completed",
+                    "rawInput": { "description": "Find the entry point" },
+                    "_meta": { "claudeCode": { "toolName": "Agent" } },
+                }),
+            ),
+        );
+        cx.run_until_parked();
+        parent.read_with(cx, |parent, _| {
+            let (_, call) = parent
+                .tool_call(&acp::ToolCallId::new("toolu_1"))
+                .expect("the parent's Agent call");
+            assert_eq!(
+                call.subagent_session_info
+                    .as_ref()
+                    .map(|info| info.session_id.clone()),
+                Some(child_session_id.clone()),
+                "the Agent call sent again keeps showing the child"
+            );
+        });
+
+        // The adapter replays a child when the session is loaded again: one
+        // thread, one prompt.
+        send_raw(
+            &harness,
+            raw_session_update(
+                &child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": { "type": "text", "text": "Found it" },
+                }),
+            ),
+        );
+        announce_subagent(
+            &harness,
+            &parent_session_id,
+            &child_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        send_raw(
+            &harness,
+            raw_session_update(
+                &child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "session_message",
+                    "messageId": "toolu_1",
+                    "recipientSessionId": child_session_id,
+                    "content": [{ "type": "text", "text": "Look around" }],
+                }),
+            ),
+        );
+        send_raw(
+            &harness,
+            raw_session_update(
+                &parent_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "subagent_update",
+                    "sessionId": child_session_id,
+                    "state": { "state": "idle", "stopReason": "end_turn" },
+                }),
+            ),
+        );
+        cx.run_until_parked();
+
+        let (status, _, same_child) = external_child(&parent, &child_session_id, cx);
+        assert_eq!(status, acp_thread::ExternalSubagentStatus::Idle);
+        assert_eq!(same_child.entity_id(), child.entity_id());
+        parent.read_with(cx, |parent, _| {
+            assert_eq!(parent.external_subagents().len(), 1);
+            let child = parent
+                .external_subagent(&child_session_id)
+                .expect("the child is listed");
+            assert_eq!(
+                child.title.as_deref(),
+                Some("Explore (research)"),
+                "a state change without a title keeps the title"
+            );
+        });
+        child.read_with(cx, |child, cx| {
+            let prompts = child
+                .entries()
+                .iter()
+                .filter_map(|entry| entry.user_message())
+                .map(|message| message.content.to_markdown(cx))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                prompts
+                    .iter()
+                    .map(|prompt| prompt.matches("Look around").count())
+                    .sum::<usize>(),
+                1,
+                "a replayed message is not shown again: {prompts:?}"
+            );
+        });
+
+        send_raw(
+            &harness,
+            raw_session_update(
+                &parent_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "subagent_update",
+                    "sessionId": child_session_id,
+                    "state": { "state": "idle", "stopReason": "cancelled" },
+                }),
+            ),
+        );
+        cx.run_until_parked();
+        assert_eq!(
+            external_child(&parent, &child_session_id, cx).0,
+            acp_thread::ExternalSubagentStatus::Cancelled
+        );
+    }
+
+    /// ADR-F97: a subagent the adapter announces gets its own thread in the
+    /// parent's conversation, and its session's updates go there.
+    #[gpui::test]
+    async fn an_external_subagent_reaches_its_own_thread(cx: &mut gpui::TestAppContext) {
+        assert_a_subagent_reaches_its_thread(None, util::path!("/project/src/main.rs"), cx).await;
+    }
+
+    /// ADR-F97: an agent that was not told about subagents gets nothing of
+    /// the RFD's updates read: no child, and its unknown sessions not held.
+    #[gpui::test]
+    async fn an_agent_not_told_about_subagents_gets_no_children(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness_with_routing(
+            &project,
+            None,
+            subagents::SubagentRouting::for_agent(&AgentId::new("codex-acp")),
+            cx,
+        )
+        .await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+
+        announce_subagent(
+            &harness,
+            &parent_session_id,
+            &child_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        send_raw(
+            &harness,
+            raw_session_update(
+                &child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "session_message",
+                    "messageId": "toolu_1",
+                    "recipientSessionId": child_session_id,
+                    "content": [{ "type": "text", "text": "Look around" }],
+                }),
+            ),
+        );
+        cx.run_until_parked();
+
+        assert!(
+            parent.read_with(cx, |parent, _| parent.external_subagents().is_empty()),
+            "no child is made for an agent that was not told about subagents"
+        );
+        assert!(
+            harness
+                .connection
+                .sessions
+                .borrow()
+                .get(&child_session_id)
+                .is_none(),
+            "the child's session is not routed anywhere"
+        );
+    }
+
+    /// ADR-F97 with ADR-F49 decision 23: the same through a connection whose
+    /// paths are the sandbox's.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn an_external_subagent_of_a_wsl_agent_reaches_its_own_thread(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        assert_a_subagent_reaches_its_thread(
+            Some(wsl_translator(r"C:\project")),
+            "/mnt/c/project/src/main.rs",
+            cx,
+        )
+        .await;
+    }
+
+    /// ADR-F97: a child's message keeps only the links this machine can open,
+    /// as the other text of a sandboxed agent does.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn a_wsl_subagents_message_names_this_machines_files(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness =
+            connect_boundary_harness(&project, Some(wsl_translator(r"C:\project")), cx).await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+
+        announce_subagent(
+            &harness,
+            &parent_session_id,
+            &child_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        send_raw(
+            &harness,
+            raw_session_update(
+                &child_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "session_message",
+                    "messageId": "toolu_1",
+                    "recipientSessionId": child_session_id,
+                    "content": [
+                        { "type": "resource_link", "name": "main.rs", "uri": "file:///mnt/c/project/src/main.rs" },
+                        { "type": "resource_link", "name": "secret", "uri": "file:///mnt/c/outside/secret" },
+                    ],
+                }),
+            ),
+        );
+        cx.run_until_parked();
+
+        let (_, _, child) = external_child(&parent, &child_session_id, cx);
+        let links = child.read_with(cx, |child, _| {
+            child
+                .entries()
+                .iter()
+                .filter_map(|entry| entry.user_message())
+                .flat_map(|message| message.content.source_blocks().to_vec())
+                .filter_map(|block| match block {
+                    agent_client_protocol::schema::v2::ContentBlock::ResourceLink(link) => {
+                        Some(link.uri)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            links.len(),
+            1,
+            "the link outside the worktree is left out: {links:?}"
+        );
+        assert!(
+            !links[0].contains("/mnt/c/"),
+            "the link is this machine's: {links:?}"
+        );
+    }
+
+    /// ADR-F97: a child's own child reported before the child itself waits
+    /// for it, and then lands in the child's thread.
+    #[gpui::test]
+    async fn a_grandchild_reported_early_waits_for_its_parent(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, None, cx).await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+        let grandchild_session_id = acp::SessionId::new("grandchild-session");
+
+        send_raw(
+            &harness,
+            raw_session_update(
+                &grandchild_session_id,
+                serde_json::json!({
+                    "sessionUpdate": "session_message",
+                    "messageId": "toolu_9",
+                    "recipientSessionId": grandchild_session_id,
+                    "content": [{ "type": "text", "text": "Dig deeper" }],
+                }),
+            ),
+        );
+        announce_subagent(
+            &harness,
+            &child_session_id,
+            &grandchild_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        cx.run_until_parked();
+        announce_subagent(
+            &harness,
+            &parent_session_id,
+            &child_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        cx.run_until_parked();
+
+        let (_, _, child) = external_child(&parent, &child_session_id, cx);
+        let (status, _, grandchild) = external_child(&child, &grandchild_session_id, cx);
+        assert_eq!(status, acp_thread::ExternalSubagentStatus::Running);
+        grandchild.read_with(cx, |grandchild, cx| {
+            assert_eq!(grandchild.parent_session_id(), Some(&child_session_id));
+            let prompts = grandchild
+                .entries()
+                .iter()
+                .filter_map(|entry| entry.user_message())
+                .map(|message| message.content.to_markdown(cx))
+                .collect::<Vec<_>>();
+            assert_eq!(prompts, ["Dig deeper"], "the early message waited too");
+        });
+    }
+
+    /// ADR-F97: a shell command the agent or a child started in the
+    /// background is listed as started, and one that failed is not.
+    #[gpui::test]
+    async fn background_shell_commands_are_listed_as_started(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let harness = connect_boundary_harness(&project, None, cx).await;
+        let parent = boundary_thread(&harness, &project, cx).await;
+        let parent_session_id = parent.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp::SessionId::new("child-session");
+
+        let bash =
+            |session_id: &acp::SessionId, id: &str, status: &str, input: serde_json::Value| {
+                raw_session_update(
+                    session_id,
+                    serde_json::json!({
+                        "sessionUpdate": "tool_call",
+                        "toolCallId": id,
+                        "title": "Terminal",
+                        "kind": "execute",
+                        "status": status,
+                        "rawInput": input,
+                        "_meta": { "claudeCode": { "toolName": "Bash" } },
+                    }),
+                )
+            };
+        send_raw(
+            &harness,
+            bash(
+                &parent_session_id,
+                "bg-1",
+                "completed",
+                serde_json::json!({
+                    "command": "npm run dev",
+                    "description": "Start the dev server",
+                    "run_in_background": true,
+                }),
+            ),
+        );
+        send_raw(
+            &harness,
+            bash(
+                &parent_session_id,
+                "bg-failed",
+                "failed",
+                serde_json::json!({ "command": "false", "run_in_background": true }),
+            ),
+        );
+        send_raw(
+            &harness,
+            bash(
+                &parent_session_id,
+                "fg-1",
+                "completed",
+                serde_json::json!({ "command": "ls", "description": "List files" }),
+            ),
+        );
+        announce_subagent(
+            &harness,
+            &parent_session_id,
+            &child_session_id,
+            serde_json::json!({ "state": "running" }),
+        );
+        send_raw(
+            &harness,
+            bash(
+                &child_session_id,
+                "bg-child",
+                "in_progress",
+                serde_json::json!({
+                    "command": "cargo watch -x check\ncargo test",
+                    "run_in_background": true,
+                }),
+            ),
+        );
+        cx.run_until_parked();
+
+        let tasks = parent.read_with(cx, |parent, cx| parent.background_shell_tasks(cx));
+        assert_eq!(
+            tasks
+                .iter()
+                .map(|task| (
+                    task.session_id.clone(),
+                    task.tool_call_id.0.to_string(),
+                    task.label.to_string()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    parent_session_id,
+                    "bg-1".to_string(),
+                    "Start the dev server".to_string()
+                ),
+                (
+                    child_session_id,
+                    "bg-child".to_string(),
+                    "cargo watch -x check".to_string()
+                ),
+            ]
+        );
     }
 }
 

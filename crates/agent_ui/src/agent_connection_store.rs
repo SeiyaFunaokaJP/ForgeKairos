@@ -90,6 +90,13 @@ pub struct ActiveAcpConnection {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct OutsideSandboxConnectionId(u64);
 
+/// ADR-F96 stage 3: which view a connection whose sandbox lets the agent reach
+/// any host the editor-wide allowlist permits belongs to. Like a start outside
+/// the sandbox, the user asks for it in one thread, so it is never handed to
+/// another view or a new thread.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct UnrestrictedNetworkConnectionId(u64);
+
 /// ADR-F49 (new decision): keeps an agent's connection while something that is
 /// not a view is using it. See [`AgentConnectionStore::lease_connection`].
 ///
@@ -108,6 +115,11 @@ enum ConnectionSlot {
     /// settings start it outside every time, for the threads whose session
     /// was started in the sandbox (the shared connection is the one outside).
     InSandbox(Agent),
+    /// ADR-F96 stage 3: the agent in its sandbox without its own hosts.
+    UnrestrictedNetwork {
+        id: UnrestrictedNetworkConnectionId,
+        agent: Agent,
+    },
 }
 
 /// ADR-F49 decision 19 (8c): where a view's start goes.
@@ -119,13 +131,17 @@ pub enum ConnectionPlace {
     OutsideSandbox(OutsideSandboxConnectionId),
     /// In the sandbox, whatever the settings say.
     InSandbox,
+    /// In the sandbox without the agent's own hosts, the start the user asked
+    /// for in this view (ADR-F96 stage 3).
+    UnrestrictedNetwork(UnrestrictedNetworkConnectionId),
 }
 
 impl ConnectionSlot {
     fn agent(&self) -> &Agent {
         match self {
             ConnectionSlot::Shared(agent) | ConnectionSlot::InSandbox(agent) => agent,
-            ConnectionSlot::OutsideSandbox { agent, .. } => agent,
+            ConnectionSlot::OutsideSandbox { agent, .. }
+            | ConnectionSlot::UnrestrictedNetwork { agent, .. } => agent,
         }
     }
 
@@ -154,6 +170,12 @@ pub struct AgentConnectionStore {
     next_outside_sandbox_id: u64,
     /// ADR-F49 decision 19 (8c): see [`ConnectionSlot::InSandbox`].
     in_sandbox: HashMap<Agent, Entity<AgentConnectionEntry>>,
+    /// ADR-F96 stage 3: connections without the agent's own hosts, by the view
+    /// that asked for each of them.
+    unrestricted_network:
+        HashMap<UnrestrictedNetworkConnectionId, (Agent, Entity<AgentConnectionEntry>)>,
+    /// The same as `superseded_outside_sandbox`, for `unrestricted_network`.
+    superseded_unrestricted_network: HashSet<UnrestrictedNetworkConnectionId>,
     /// Versions reported by [`AgentConnectionEntryEvent::NewVersionAvailable`],
     /// kept after the event has been delivered. The event fires once and drops
     /// the connection entry with it, so without this the agent registry page
@@ -192,6 +214,8 @@ impl AgentConnectionStore {
             superseded_outside_sandbox: HashSet::default(),
             next_outside_sandbox_id: 0,
             in_sandbox: HashMap::default(),
+            unrestricted_network: HashMap::default(),
+            superseded_unrestricted_network: HashSet::default(),
             new_versions: HashMap::default(),
             holders: HashMap::default(),
             leases: HashMap::default(),
@@ -235,6 +259,7 @@ impl AgentConnectionStore {
             .values()
             .chain(self.outside_sandbox.values().map(|(_, entry)| entry))
             .chain(self.in_sandbox.values())
+            .chain(self.unrestricted_network.values().map(|(_, entry)| entry))
             .filter_map(|entry| match entry.read(cx) {
                 AgentConnectionEntry::Connected(state) => state
                     .connection
@@ -290,6 +315,9 @@ impl AgentConnectionStore {
             ConnectionPlace::OutsideSandbox(id) => {
                 ConnectionSlot::OutsideSandbox { id, agent: key }
             }
+            ConnectionPlace::UnrestrictedNetwork(id) => {
+                ConnectionSlot::UnrestrictedNetwork { id, agent: key }
+            }
         };
         if let Some(entry) = self.slot_entry(&slot)
             && matches!(entry.read(cx), AgentConnectionEntry::Connecting { .. })
@@ -301,6 +329,9 @@ impl AgentConnectionStore {
             // with a connection outside the sandbox.
             ConnectionSlot::OutsideSandbox { id, .. } => {
                 self.superseded_outside_sandbox.insert(id);
+            }
+            ConnectionSlot::UnrestrictedNetwork { id, .. } => {
+                self.superseded_unrestricted_network.insert(id);
             }
             slot => self.remove_slot_entry(&slot),
         }
@@ -429,12 +460,50 @@ impl AgentConnectionStore {
             .map(|(_, entry)| entry.clone())
     }
 
+    /// ADR-F96 stage 3: connects the agent again in its sandbox without its
+    /// own hosts, so that it reaches any host the editor-wide allowlist
+    /// permits. In the sandbox whatever the user's settings say — a start
+    /// outside it has no network restriction of its own to lift — and, like
+    /// [`Self::connect_outside_sandbox`], the asking view's alone.
+    pub fn connect_with_unrestricted_network(
+        &mut self,
+        key: Agent,
+        server: Rc<dyn AgentServer>,
+        cx: &mut Context<Self>,
+    ) -> UnrestrictedNetworkConnectionId {
+        let id = UnrestrictedNetworkConnectionId(self.next_outside_sandbox_id);
+        self.next_outside_sandbox_id += 1;
+        self.insert_connection(
+            ConnectionSlot::UnrestrictedNetwork { id, agent: key },
+            server,
+            cx,
+        );
+        id
+    }
+
+    /// The connection `id` names, as [`Self::outside_sandbox_connection`]
+    /// does for those outside the sandbox.
+    pub fn unrestricted_network_connection(
+        &self,
+        id: UnrestrictedNetworkConnectionId,
+    ) -> Option<Entity<AgentConnectionEntry>> {
+        if self.superseded_unrestricted_network.contains(&id) {
+            return None;
+        }
+        self.unrestricted_network
+            .get(&id)
+            .map(|(_, entry)| entry.clone())
+    }
+
     fn slot_entry(&self, slot: &ConnectionSlot) -> Option<&Entity<AgentConnectionEntry>> {
         match slot {
             ConnectionSlot::Shared(key) => self.entries.get(key),
             ConnectionSlot::InSandbox(key) => self.in_sandbox.get(key),
             ConnectionSlot::OutsideSandbox { id, .. } => {
                 self.outside_sandbox.get(id).map(|(_, entry)| entry)
+            }
+            ConnectionSlot::UnrestrictedNetwork { id, .. } => {
+                self.unrestricted_network.get(id).map(|(_, entry)| entry)
             }
         }
     }
@@ -450,6 +519,10 @@ impl AgentConnectionStore {
             ConnectionSlot::OutsideSandbox { id, agent } => {
                 self.outside_sandbox.insert(*id, (agent.clone(), entry));
             }
+            ConnectionSlot::UnrestrictedNetwork { id, agent } => {
+                self.unrestricted_network
+                    .insert(*id, (agent.clone(), entry));
+            }
         }
     }
 
@@ -464,6 +537,10 @@ impl AgentConnectionStore {
             ConnectionSlot::OutsideSandbox { id, .. } => {
                 self.outside_sandbox.remove(id);
                 self.superseded_outside_sandbox.remove(id);
+            }
+            ConnectionSlot::UnrestrictedNetwork { id, .. } => {
+                self.unrestricted_network.remove(id);
+                self.superseded_unrestricted_network.remove(id);
             }
         }
     }
@@ -567,6 +644,9 @@ impl AgentConnectionStore {
                             ConnectionSlot::OutsideSandbox { id, .. } => {
                                 this.superseded_outside_sandbox.insert(*id);
                             }
+                            ConnectionSlot::UnrestrictedNetwork { id, .. } => {
+                                this.superseded_unrestricted_network.insert(*id);
+                            }
                         }
                         cx.notify();
                     })
@@ -638,6 +718,10 @@ impl AgentConnectionStore {
             },
             ConnectionPlace::AsTheSettingsSay => ConnectionSlot::Shared(key.clone()),
             ConnectionPlace::InSandbox => ConnectionSlot::InSandbox(key.clone()),
+            ConnectionPlace::UnrestrictedNetwork(id) => ConnectionSlot::UnrestrictedNetwork {
+                id,
+                agent: key.clone(),
+            },
         };
         self.unused_since.remove(&slot);
         self.holders.retain(|_, (_, view)| view.upgrade().is_some());
@@ -731,6 +815,12 @@ impl AgentConnectionStore {
             )
             .chain(self.outside_sandbox.iter().map(|(id, (agent, _))| {
                 ConnectionSlot::OutsideSandbox {
+                    id: *id,
+                    agent: agent.clone(),
+                }
+            }))
+            .chain(self.unrestricted_network.iter().map(|(id, (agent, _))| {
+                ConnectionSlot::UnrestrictedNetwork {
                     id: *id,
                     agent: agent.clone(),
                 }
@@ -846,6 +936,11 @@ impl AgentConnectionStore {
         let outside_sandbox = &self.outside_sandbox;
         self.superseded_outside_sandbox
             .retain(|id| outside_sandbox.contains_key(id));
+        self.unrestricted_network
+            .retain(|_, (key, _)| still_there(key));
+        let unrestricted_network = &self.unrestricted_network;
+        self.superseded_unrestricted_network
+            .retain(|id| unrestricted_network.contains_key(id));
         self.unused_since
             .retain(|slot, _| still_there(slot.agent()));
         cx.notify();
@@ -877,6 +972,11 @@ impl AgentConnectionStore {
             }
             ConnectionSlot::InSandbox(_) => {
                 delegate = delegate.in_sandbox_whatever_the_settings();
+            }
+            ConnectionSlot::UnrestrictedNetwork { .. } => {
+                delegate = delegate
+                    .in_sandbox_whatever_the_settings()
+                    .lift_agent_hosts();
             }
         }
 

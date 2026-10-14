@@ -276,7 +276,7 @@ async fn create_out_of_project_directory(
     // grant a not-yet-existing directory. Otherwise keep the historical
     // "outside the project" rejection.
     let sandboxing = project.read_with(cx, |project, cx| {
-        crate::sandboxing::sandboxing_enabled_for_project(project, cx)
+        event_stream.sandboxing_enabled(project, cx)
     });
     let platform_supported = cfg!(any(target_os = "linux", target_os = "macos"));
     if !sandboxing || !platform_supported {

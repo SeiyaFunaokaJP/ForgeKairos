@@ -284,6 +284,9 @@ msgstr "すべてのドメインを許可"
 msgid "Allow All File System Writes"
 msgstr "ファイルシステムへの書き込みをすべて許可"
 
+msgid "Allow Lifting the Network Restriction for a Thread"
+msgstr "スレッドごとのネットワーク制限の解除を許可する"
+
 msgid "Allow Running Outside the Sandbox"
 msgstr "サンドボックスの外での実行を許可する"
 
@@ -1380,6 +1383,9 @@ msgstr "内蔵ブラウザーのページでのキー操作"
 msgid "Project"
 msgstr "プロジェクト"
 
+msgid "Project Defaults for New Threads"
+msgstr "新しいスレッドのプロジェクトごとの既定"
+
 msgid "Project-wide symbol renames by the language server"
 msgstr "言語サーバーによるプロジェクト全体のシンボル名変更"
 
@@ -1962,6 +1968,9 @@ msgstr "許可を求めるダイアログで、紛らわしい Unicode 文字 (�
 msgid "Web search queries"
 msgstr "Web 検索のクエリ"
 
+msgid "What new agent threads start with in each project folder: whether terminal commands run in the sandbox and whether the network is restricted. Set it by right-clicking the sandbox or network button next to the agent panel's message input, or edit agent.project_thread_defaults in settings.json."
+msgstr "プロジェクトのフォルダーごとに、新しいエージェントのスレッドがどう始まるか (ターミナルのコマンドをサンドボックスの中で実行するか、ネットワークを制限するか) です。エージェントパネルの入力欄の横にあるサンドボックスかネットワークのボタンを右クリックして設定するか、settings.json の agent.project_thread_defaults を編集します。"
+
 msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
 msgstr "有効にすると、ACP エージェント・MCP サーバー・AI エージェントのインストールに使う npm の各子プロセスに、ループバックのプロキシを渡してその外部通信も上の許可リストで判定します。既定は有効です。無効にすると、これらの子プロセスの外部通信は許可リストの統制外になります (IDE 本体からの AI 通信は統制されたままです)。"
 
@@ -1973,6 +1982,9 @@ msgstr "SSH 接続先で実行する場合、コマンドは接続先で解決�
 
 msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
 msgstr "オフ (既定) の間は、エージェントの機能が新しく起動・実行するものをサンドボックスの外では動かしません。サンドボックスで実行できないターミナルコマンド、外部エージェントや Claude Code のサンドボックスの外での起動、サンドボックスの外で始めたスレッドの再開は、確認せずに拒否し、常にサンドボックスの外で起動する設定も無視します。すでにサンドボックスの外で動いている接続はそのまま残ります。MCP サーバー (コンテキストサーバー) はこの設定の対象外です。オンの間は、それぞれ従来どおり確認するか、それぞれの設定に従います。"
+
+msgid "When on, a thread of the built-in agent can lift its network restriction with the network button next to the message input: its sandboxed terminal commands and fetches then reach any host without asking. Commands still reach only the hosts within the editor-wide network allowlist, and fetches still never reach local or private addresses. When off (the default), that button asks to turn this on first. Each command still asks for confirmation as before."
+msgstr "オンにすると、内蔵エージェントのスレッドが、入力欄の横のネットワークのボタンでネットワークの制限を外せます。外すと、そのスレッドのサンドボックス内のターミナルのコマンドと fetch は、接続先のホストを確認せずに、どのホストにも接続できます。それでもコマンドが接続できるのは IDE 全体のネットワーク許可リストの範囲内だけで、fetch はローカルやプライベートのアドレスには接続しません。オフ (既定) のときは、そのボタンがまずこの設定をオンにするか確認します。コマンドごとの実行の確認はこれまでどおりです。"
 
 msgid "When the server runs on the SSH host, type the path on the host directly."
 msgstr "SSH 接続先で実行する場合は、接続先のパスを直接入力してください。"

@@ -6354,6 +6354,193 @@ async fn test_adding_remote_skill(cx: &mut TestAppContext, server_cx: &mut TestA
     );
 }
 
+/// ADR-F96 stage 4: a remote project with a folder, on a host that reports
+/// `server_binary` as its installed server (and so its sandbox helper).
+async fn project_for_network_choice(
+    server_binary: Option<Arc<util::rel_path::RelPath>>,
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) -> (Entity<Project>, Entity<HeadlessProject>, String) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(path!("/project"), json!({})).await;
+    let (project, headless) = init_test_with_server_binary(fs, server_binary, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/project"), true, cx)
+        })
+        .await
+        .expect("the folder opens");
+    cx.run_until_parked();
+    cx.update(|cx| {
+        LanguageModelRegistry::test(cx);
+    });
+    let keys =
+        cx.update(|cx| project::agent_sandbox::project_thread_defaults_keys(project.read(cx), cx));
+    let [key] = keys.as_slice() else {
+        panic!("one folder has one key: {keys:?}");
+    };
+    assert!(
+        key.starts_with("mock:") && key.contains('#'),
+        "a remote folder is kept under its host's connection: {key}"
+    );
+    (project, headless, key.clone())
+}
+
+fn set_network_choice_settings(
+    default_key: Option<&str>,
+    all_hosts: bool,
+    cx: &mut TestAppContext,
+) {
+    let mut defaults = serde_json::Map::new();
+    if let Some(key) = default_key {
+        defaults.insert(key.to_string(), json!({ "network": false }));
+    }
+    let settings = json!({ "agent": {
+        "sandbox_permissions": {
+            "allow_unrestricted_network": true,
+            "allow_all_hosts": all_hosts,
+        },
+        "project_thread_defaults": defaults,
+    }})
+    .to_string();
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store
+                .set_user_settings(&settings, cx)
+                .result()
+                .expect("valid user settings");
+        });
+    });
+}
+
+fn native_thread_for(project: &Entity<Project>, cx: &mut TestAppContext) -> Entity<agent::Thread> {
+    cx.update(|cx| {
+        cx.new(|cx| {
+            agent::Thread::new(
+                project.clone(),
+                cx.new(|_cx| Default::default()),
+                cx.new(|cx| {
+                    agent::ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                }),
+                Templates::new(),
+                None,
+                cx,
+            )
+        })
+    })
+}
+
+/// ADR-F96 stage 4: on a remote host whose commands its own sandbox helper confines (and keeps
+/// inside the editor-wide allowlist), a thread's network choice counts as it does locally, and a
+/// new thread starts from the default kept under the host's key.
+#[gpui::test]
+async fn test_thread_network_choice_counts_on_a_remote_host_with_a_sandbox_helper(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let helper = rel_path(".zed_server/forgekairos-remote-server-dev-0.0.0").into_arc();
+    let (project, _headless, key) = project_for_network_choice(Some(helper), cx, server_cx).await;
+    cx.update(|cx| {
+        assert!(project.read(cx).remote_supports_agent_sandbox(cx));
+        assert!(project::agent_sandbox::thread_network_choice_applies(
+            project.read(cx),
+            cx
+        ));
+    });
+
+    let (_, folder) = key.split_once('#').expect("the key names the folder");
+    for elsewhere in [
+        folder.to_string(),
+        format!("ssh:user@another-host:#{folder}"),
+    ] {
+        set_network_choice_settings(Some(&elsewhere), false, cx);
+        cx.update(|cx| {
+            assert_eq!(
+                project::agent_sandbox::project_default_network(project.read(cx), cx),
+                None,
+                "the same folder on another host is another folder: {elsewhere}"
+            );
+        });
+    }
+
+    set_network_choice_settings(Some(&key), false, cx);
+    cx.update(|cx| {
+        assert_eq!(
+            project::agent_sandbox::project_default_network(project.read(cx), cx),
+            Some(false),
+            "the default is read under the host's key"
+        );
+    });
+    let thread = native_thread_for(&project, cx);
+    cx.update(|cx| {
+        let thread = thread.read(cx);
+        assert_eq!(thread.network_choice(), Some(false));
+        assert!(thread.network_choice_applies(cx));
+        assert!(
+            thread.network_restriction_turned_off(cx),
+            "the thread starts with the restriction lifted, as its project's default says"
+        );
+    });
+
+    set_network_choice_settings(None, true, cx);
+    cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(Some(true), cx)));
+    cx.update(|cx| {
+        assert!(
+            !thread.read(cx).network_restriction_turned_off(cx),
+            "a choice to keep the restriction wins over the settings' any host"
+        );
+    });
+}
+
+/// ADR-F96 stage 4: on a remote host without a sandbox helper of its own, nothing keeps a
+/// command inside the editor-wide allowlist on the host, so a thread's network choice and the
+/// project's default are ignored and the settings decide.
+#[gpui::test]
+async fn test_thread_network_choice_is_ignored_on_a_remote_host_without_a_sandbox_helper(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let (project, _headless, key) = project_for_network_choice(None, cx, server_cx).await;
+    cx.update(|cx| {
+        assert!(!project.read(cx).remote_supports_agent_sandbox(cx));
+        assert!(!project::agent_sandbox::thread_network_choice_applies(
+            project.read(cx),
+            cx
+        ));
+    });
+
+    set_network_choice_settings(Some(&key), false, cx);
+    cx.update(|cx| {
+        assert_eq!(
+            project::agent_sandbox::project_default_network(project.read(cx), cx),
+            None,
+            "the default does not apply here"
+        );
+    });
+    let thread = native_thread_for(&project, cx);
+    cx.update(|cx| {
+        let thread = thread.read(cx);
+        assert_eq!(thread.network_choice(), None);
+        assert!(!thread.network_restriction_turned_off(cx));
+    });
+    cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(Some(false), cx)));
+    cx.update(|cx| {
+        assert!(
+            !thread.read(cx).network_restriction_turned_off(cx),
+            "a choice to lift the restriction is ignored, even though it is allowed"
+        );
+    });
+
+    set_network_choice_settings(None, true, cx);
+    cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(Some(true), cx)));
+    cx.update(|cx| {
+        assert!(
+            thread.read(cx).network_restriction_turned_off(cx),
+            "the settings decide, whatever the thread chose"
+        );
+    });
+}
+
 #[gpui::test]
 async fn test_remote_external_agent_server(
     cx: &mut TestAppContext,
@@ -7987,6 +8174,17 @@ pub async fn init_test_with_fs(
     cx: &mut TestAppContext,
     server_cx: &mut TestAppContext,
 ) -> (Entity<Project>, Entity<HeadlessProject>) {
+    init_test_with_server_binary(server_fs, None, cx, server_cx).await
+}
+
+/// [`init_test_with_fs`] for a host that reports `server_binary` as its
+/// installed remote server, which is also its sandbox helper (ADR-F18).
+async fn init_test_with_server_binary(
+    server_fs: Arc<dyn Fs>,
+    server_binary: Option<Arc<util::rel_path::RelPath>>,
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) -> (Entity<Project>, Entity<HeadlessProject>) {
     cx.update(|cx| {
         release_channel::init(semver::Version::new(0, 0, 0), cx);
     });
@@ -7995,7 +8193,12 @@ pub async fn init_test_with_fs(
     });
     init_logger();
 
-    let (opts, ssh_server_client, _) = RemoteClient::fake_server(cx, server_cx);
+    let (opts, ssh_server_client, _) = match server_binary {
+        Some(server_binary) => {
+            RemoteClient::fake_server_with_server_binary(server_binary, cx, server_cx)
+        }
+        None => RemoteClient::fake_server(cx, server_cx),
+    };
     let http_client = Arc::new(BlockedHttpClient);
     let node_runtime = NodeRuntime::unavailable();
     let languages = Arc::new(LanguageRegistry::new(cx.executor()));

@@ -31,7 +31,7 @@ use ide_query::AssistSource;
 use crate::sandboxing::{
     SandboxRequest, ThreadSandbox, ThreadSandboxGrants, sandbox_git_dirs,
     sandbox_worktree_writable_paths, sandboxing_available_for_project,
-    sandboxing_enabled_for_project,
+    sandboxing_enabled_for_thread,
 };
 use agent_client_protocol::schema::v1 as acp;
 use agent_settings::{
@@ -961,6 +961,10 @@ pub struct ToolPermissionContext {
     /// established at this point; both are then judged as if the command could
     /// run with Zed's own reach (決定 2).
     pub terminal_execution: Option<TerminalExecution>,
+    /// Whether the card should say that this thread's network restriction is
+    /// lifted (ADR-F96 stage 2), so that the command it asks about may reach
+    /// any host.
+    pub network_unrestricted_for_thread: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1037,6 +1041,7 @@ impl ToolPermissionContext {
             input_values,
             scope: ToolPermissionScope::ToolInput,
             terminal_execution: None,
+            network_unrestricted_for_thread: false,
         }
     }
 
@@ -1046,6 +1051,7 @@ impl ToolPermissionContext {
             input_values: target_paths,
             scope: ToolPermissionScope::SymlinkTarget,
             terminal_execution: None,
+            network_unrestricted_for_thread: false,
         }
     }
 
@@ -1067,6 +1073,13 @@ impl ToolPermissionContext {
     /// (決定 2).
     pub fn in_sandbox(mut self) -> Self {
         self.terminal_execution = Some(TerminalExecution::Sandboxed);
+        self
+    }
+
+    /// Marks a card about a command of a thread whose network restriction
+    /// the user lifted (ADR-F96 stage 2), so that the card says so.
+    pub fn with_network_unrestricted_for_thread(mut self) -> Self {
+        self.network_unrestricted_for_thread = true;
         self
     }
 
@@ -1452,6 +1465,18 @@ pub struct Thread {
     /// chat input's Git button switches it; a new thread starts with
     /// `agent.git_operations`.
     git_operations_enabled: bool,
+    /// Whether this thread runs terminal commands in the sandbox (ADR-F96): the
+    /// project's default when the thread was made or read back, then what the
+    /// chat input's sandbox button chose; `None` lets the settings decide. Not
+    /// saved: a thread read back after a restart of Zed starts from the
+    /// project's default again.
+    sandbox_choice: Option<bool>,
+    /// Whether this thread keeps the built-in agent's network restriction
+    /// (ADR-F96 stage 2), `Some(false)` to lift it: the project's default when
+    /// the thread was made or read back, then what the chat input's network
+    /// button chose; `None` lets the settings decide. Not saved, like
+    /// `sandbox_choice`.
+    network_choice: Option<bool>,
     prompt_capabilities_tx: watch::Sender<acp::PromptCapabilities>,
     pub(crate) prompt_capabilities_rx: watch::Receiver<acp::PromptCapabilities>,
     pub(crate) project: Entity<Project>,
@@ -1578,6 +1603,8 @@ impl Thread {
             .as_ref()
             .and_then(|model| model.speed);
         let git_operations_enabled = settings.git_operations;
+        let sandbox_choice = project::agent_sandbox::project_default_sandbox(project.read(cx), cx);
+        let network_choice = project::agent_sandbox::project_default_network(project.read(cx), cx);
         let (prompt_capabilities_tx, prompt_capabilities_rx) =
             watch::channel(Self::prompt_capabilities(model.as_ref()));
         let model = match model {
@@ -1621,6 +1648,8 @@ impl Thread {
             speed,
             thinking_effort,
             git_operations_enabled,
+            sandbox_choice,
+            network_choice,
             prompt_capabilities_tx,
             prompt_capabilities_rx,
             project,
@@ -1646,6 +1675,8 @@ impl Thread {
         self.speed = parent.speed;
         self.thinking_enabled = parent.thinking_enabled;
         self.git_operations_enabled = parent.git_operations_enabled;
+        self.sandbox_choice = parent.sandbox_choice;
+        self.network_choice = parent.network_choice;
         self.thinking_effort = parent.thinking_effort.clone();
         self.summarization_model = parent.summarization_model.clone();
         self.profile_id = parent.profile_id.clone();
@@ -1950,6 +1981,8 @@ impl Thread {
         let git_operations_enabled = db_thread
             .git_operations_enabled
             .unwrap_or(settings.git_operations);
+        let sandbox_choice = project::agent_sandbox::project_default_sandbox(project.read(cx), cx);
+        let network_choice = project::agent_sandbox::project_default_network(project.read(cx), cx);
 
         let saved_selection = db_thread.model.map(|model| SelectedModel {
             provider: model.provider.into(),
@@ -2016,6 +2049,8 @@ impl Thread {
             thinking_effort: db_thread.thinking_effort,
             speed: db_thread.speed,
             git_operations_enabled,
+            sandbox_choice,
+            network_choice,
             project,
             action_log,
             updated_at: db_thread.updated_at,
@@ -2044,14 +2079,11 @@ impl Thread {
         if !self.sandboxing_available(cx) {
             return None;
         }
-        let persistent = AgentSettings::get_global(cx).sandbox_permissions.clone();
+        let (persistent, thread_policy) = self.sandbox_status_parts(cx);
         let git_dirs = sandbox_git_dirs(self.project.read(cx), cx);
-        let settings = crate::sandboxing::settings_thread_sandbox(&persistent)
+        let settings = crate::sandboxing::thread_sandbox(&persistent, self.sandbox_turned_off(cx))
             .with_protected_paths(git_dirs.clone());
-        let thread = crate::sandboxing::policy_with_protected_paths(
-            self.sandbox_grants.borrow().to_policy(),
-            git_dirs,
-        );
+        let thread = crate::sandboxing::policy_with_protected_paths(thread_policy, git_dirs);
         Some((settings, thread))
     }
 
@@ -2063,9 +2095,9 @@ impl Thread {
             return None;
         }
 
-        let persistent = AgentSettings::get_global(cx).sandbox_permissions.clone();
-        let settings_sandbox = crate::sandboxing::settings_thread_sandbox(&persistent);
-        let thread_policy = self.sandbox_grants.borrow().to_policy();
+        let (persistent, thread_policy) = self.sandbox_status_parts(cx);
+        let settings_sandbox =
+            crate::sandboxing::thread_sandbox(&persistent, self.sandbox_turned_off(cx));
 
         let project = self.project.read(cx);
         let baseline_writable_paths = sandbox_worktree_writable_paths(project, cx);
@@ -2091,10 +2123,29 @@ impl Thread {
         ))
     }
 
+    /// The two halves of the sandbox status: what the settings grant, and what
+    /// this thread adds. A network restriction the thread's own choice lifted
+    /// (ADR-F96 stage 2) shows in the thread's half; one it kept hides the
+    /// settings' "any host", which no longer applies to it.
+    fn sandbox_status_parts(
+        &self,
+        cx: &App,
+    ) -> (agent_settings::SandboxPermissions, sandbox::SandboxPolicy) {
+        let mut persistent = AgentSettings::get_global(cx).sandbox_permissions.clone();
+        let mut thread_policy = self.sandbox_grants.borrow().to_policy();
+        if self.network_choice.is_some() && self.network_choice_applies(cx) {
+            persistent.allow_all_hosts = false;
+            if self.network_restriction_turned_off(cx) {
+                thread_policy.network = sandbox::SandboxNetPolicy::Unrestricted;
+            }
+        }
+        (persistent, thread_policy)
+    }
+
     /// Whether agent terminal commands are sandboxed for this thread's project,
     /// so the UI can decide whether to surface the sandbox status at all.
     pub fn sandboxing_enabled(&self, cx: &App) -> bool {
-        sandboxing_enabled_for_project(self.project.read(cx), cx)
+        sandboxing_enabled_for_thread(self.project.read(cx), self.sandbox_choice, cx)
     }
 
     /// Whether sandboxing is *applicable* for this thread's project (feature on,
@@ -2325,6 +2376,74 @@ impl Thread {
                 .ok();
         }
         cx.notify();
+    }
+
+    pub fn sandbox_choice(&self) -> Option<bool> {
+        self.sandbox_choice
+    }
+
+    /// Turns the sandbox on or off for this thread's terminal commands and the
+    /// subagents it is running, from the next request on (ADR-F96).
+    pub fn set_sandbox_choice(&mut self, sandbox: Option<bool>, cx: &mut Context<Self>) {
+        self.sandbox_choice = sandbox;
+        for subagent in &self.running_subagents {
+            subagent
+                .update(cx, |thread, cx| {
+                    thread.set_sandbox_choice(sandbox, cx);
+                })
+                .ok();
+        }
+        cx.notify();
+    }
+
+    /// Whether the sandbox is turned off for this thread, by its own choice
+    /// or the settings (ADR-F96).
+    pub fn sandbox_turned_off(&self, cx: &App) -> bool {
+        crate::sandboxing::sandbox_turned_off(self.sandbox_choice, cx)
+    }
+
+    pub fn network_choice(&self) -> Option<bool> {
+        self.network_choice
+    }
+
+    /// Whether this thread's own network choice counts in its project, rather
+    /// than the settings alone (ADR-F96 stage 4).
+    pub fn network_choice_applies(&self, cx: &App) -> bool {
+        project::agent_sandbox::thread_network_choice_applies(self.project.read(cx), cx)
+    }
+
+    /// Keeps or lifts the network restriction for this thread's terminal
+    /// commands and fetches, and for the subagents it is running, from the
+    /// next command on (ADR-F96 stage 2).
+    pub fn set_network_choice(&mut self, restricted: Option<bool>, cx: &mut Context<Self>) {
+        self.network_choice = restricted;
+        for subagent in &self.running_subagents {
+            subagent
+                .update(cx, |thread, cx| {
+                    thread.set_network_choice(restricted, cx);
+                })
+                .ok();
+        }
+        cx.notify();
+    }
+
+    /// Whether this thread's network restriction is lifted, by its own choice
+    /// or the settings (ADR-F96 stage 2).
+    pub fn network_restriction_turned_off(&self, cx: &App) -> bool {
+        crate::sandboxing::network_restriction_turned_off(
+            self.network_choice,
+            self.project.read(cx),
+            cx,
+        )
+    }
+
+    /// The sandbox permissions this thread's commands and fetches run under
+    /// (ADR-F96 stage 2).
+    pub(crate) fn sandbox_permissions(&self, cx: &App) -> agent_settings::SandboxPermissions {
+        crate::sandboxing::thread_sandbox_permissions(
+            &AgentSettings::get_global(cx).sandbox_permissions,
+            self.network_restriction_turned_off(cx),
+        )
     }
 
     pub fn thinking_effort(&self) -> Option<&String> {
@@ -4532,7 +4651,7 @@ impl Thread {
         // Terminal variants are configured by users under the canonical
         // `terminal` name. Expose the one matching the current sandbox state
         // to the model under that name.
-        let use_sandboxed_terminal = sandboxing_enabled_for_project(self.project.read(cx), cx);
+        let use_sandboxed_terminal = self.sandboxing_enabled(cx);
 
         // Tools that aren't allowed in restricted workspaces must never be
         // provided to the model while the workspace is restricted, regardless
@@ -4740,10 +4859,7 @@ impl Thread {
             model_name: self.model().map(|m| m.name().0.to_string()),
             date: Local::now().format("%Y-%m-%d").to_string(),
             user_agents_md,
-            sandboxing: crate::sandboxing::sandboxing_enabled_for_project(
-                self.project.read(cx),
-                cx,
-            ),
+            sandboxing: self.sandboxing_enabled(cx),
             is_linux: cfg!(target_os = "linux"),
             is_windows: cfg!(target_os = "windows"),
             restricted_workspace: TrustedWorktrees::has_restricted_worktrees(
@@ -4756,6 +4872,7 @@ impl Thread {
                 .map(|(_key, map)| map.clone()),
             code_display: ide_query::code_display(cx).is_some(),
             git_operations_enabled: self.git_operations_enabled,
+            network_unrestricted: self.network_restriction_turned_off(cx),
         }
         .render(&self.templates)
         .context("failed to build system prompt")
@@ -6161,6 +6278,28 @@ impl ToolCallEventStream {
         (stream, ToolCallEventStreamReceiver(events_rx))
     }
 
+    /// Like [`Self::test`], but tied to `thread` as a real tool call's stream
+    /// is: it shares the thread's sandbox grants and reads its choices.
+    #[cfg(test)]
+    pub(crate) fn test_for_thread(
+        thread: &Entity<Thread>,
+        cx: &App,
+    ) -> (Self, ToolCallEventStreamReceiver) {
+        let (events_tx, events_rx) = mpsc::unbounded::<Result<ThreadEvent>>();
+        let (_cancellation_tx, cancellation_rx) = watch::channel(false);
+        let stream = ToolCallEventStream::new(
+            "test_id".into(),
+            acp::ToolCallId::new("0:test_id"),
+            ThreadEventStream::new(events_tx),
+            None,
+            cancellation_rx,
+            thread.read(cx).sandbox_grants.clone(),
+            Rc::new(RefCell::new(ThreadPermissionJudge::default())),
+            Some(thread.downgrade()),
+        );
+        (stream, ToolCallEventStreamReceiver(events_rx))
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_with_cancellation() -> (Self, ToolCallEventStreamReceiver, watch::Sender<bool>) {
         let (events_tx, events_rx) = mpsc::unbounded::<Result<ThreadEvent>>();
@@ -6213,6 +6352,59 @@ impl ToolCallEventStream {
             permission_judge,
             thread,
         }
+    }
+
+    /// The sandbox choice of the owning thread's chat input (ADR-F96), `None`
+    /// where it made none or the stream is not tied to a live thread.
+    pub(crate) fn thread_sandbox_choice(&self, cx: &App) -> Option<bool> {
+        self.thread
+            .as_ref()
+            .and_then(|thread| thread.upgrade())
+            .and_then(|thread| thread.read(cx).sandbox_choice())
+    }
+
+    /// Whether the owning thread's commands run in the sandbox in `project`
+    /// (ADR-F96).
+    pub(crate) fn sandboxing_enabled(&self, project: &Project, cx: &App) -> bool {
+        crate::sandboxing::sandboxing_enabled_for_thread(
+            project,
+            self.thread_sandbox_choice(cx),
+            cx,
+        )
+    }
+
+    /// Whether the sandbox is turned off for the owning thread (ADR-F96); for
+    /// a stream not tied to a live thread, whether the settings turn it off.
+    pub(crate) fn sandbox_turned_off(&self, cx: &App) -> bool {
+        match self.thread.as_ref().and_then(|thread| thread.upgrade()) {
+            Some(thread) => thread.read(cx).sandbox_turned_off(cx),
+            None => {
+                AgentSettings::get_global(cx)
+                    .sandbox_permissions
+                    .allow_unsandboxed
+            }
+        }
+    }
+
+    /// The sandbox permissions the owning thread's commands and fetches run
+    /// under (ADR-F96 stage 2); for a stream not tied to a live thread, the
+    /// settings'.
+    pub(crate) fn sandbox_permissions(&self, cx: &App) -> agent_settings::SandboxPermissions {
+        thread_sandbox_permissions(&self.thread, cx)
+    }
+
+    /// Whether the owning thread's own choice lifted its network restriction
+    /// (ADR-F96 stage 2), rather than the settings.
+    pub(crate) fn network_restriction_turned_off_by_thread(&self, cx: &App) -> bool {
+        self.thread
+            .as_ref()
+            .and_then(|thread| thread.upgrade())
+            .is_some_and(|thread| {
+                let thread = thread.read(cx);
+                thread.network_choice() == Some(false)
+                    && thread.network_choice_applies(cx)
+                    && thread.network_restriction_turned_off(cx)
+            })
     }
 
     /// Whether the owning thread is a subagent, so prompts can say "for this
@@ -6644,7 +6836,8 @@ impl ToolCallEventStream {
         reason: String,
         cx: &mut App,
     ) -> Task<Result<()>> {
-        if Self::sandbox_request_covered_by_grants(&request, &self.sandbox_grants, cx) {
+        if Self::sandbox_request_covered_by_grants(&request, &self.sandbox_grants, &self.thread, cx)
+        {
             return Task::ready(Ok(()));
         }
 
@@ -6777,6 +6970,7 @@ impl ToolCallEventStream {
                         if !request.allow_fs_write_all && cx.update(|cx| Self::sandbox_request_covered_by_grants(
                             &request,
                             &sandbox_grants,
+                            &thread,
                             cx,
                         )) {
                             drop(response_rx);
@@ -6891,12 +7085,12 @@ impl ToolCallEventStream {
     fn sandbox_request_covered_by_grants(
         request: &SandboxRequest,
         sandbox_grants: &Rc<RefCell<ThreadSandboxGrants>>,
+        thread: &Option<WeakEntity<Thread>>,
         cx: &App,
     ) -> bool {
-        let settings = AgentSettings::get_global(cx);
         sandbox_grants
             .borrow()
-            .covers_with_persistent(request, &settings.sandbox_permissions)
+            .covers_with_persistent(request, &thread_sandbox_permissions(thread, cx))
     }
 
     fn handle_sandbox_permission_outcome(
@@ -7467,6 +7661,24 @@ impl ToolCallEventStream {
             }
         }
 
+        let card_meta = context
+            .as_ref()
+            .is_some_and(|context| context.network_unrestricted_for_thread)
+            .then(|| {
+                acp_thread::meta_with_sandbox_authorization(
+                    acp_thread::SandboxAuthorizationDetails {
+                        command: None,
+                        network_hosts: Vec::new(),
+                        network_all_hosts: true,
+                        allow_fs_write_all: false,
+                        write_paths: Vec::new(),
+                        warn_windows_fs: false,
+                        reason: i18n::t!("The network restriction is turned off for this thread")
+                            .to_string(),
+                        outside_sandbox_reason: None,
+                    },
+                )
+            });
         let fs = self.fs.clone();
         let stream = self.stream.clone();
         let tool_call_id = self.tool_call_id.clone();
@@ -7525,7 +7737,8 @@ impl ToolCallEventStream {
                             tool_call: acp::ToolCallUpdate::new(
                                 tool_call_id.clone(),
                                 acp::ToolCallUpdateFields::new().title(title),
-                            ),
+                            )
+                            .meta(card_meta),
                             options,
                             response: response_tx,
                             context,
@@ -7712,6 +7925,18 @@ impl ToolCallEventStream {
                 });
             }
         }
+    }
+}
+
+/// The sandbox permissions of `thread`'s commands and fetches (ADR-F96 stage
+/// 2), or the settings' where there is no live thread.
+fn thread_sandbox_permissions(
+    thread: &Option<WeakEntity<Thread>>,
+    cx: &App,
+) -> agent_settings::SandboxPermissions {
+    match thread.as_ref().and_then(|thread| thread.upgrade()) {
+        Some(thread) => thread.read(cx).sandbox_permissions(cx),
+        None => AgentSettings::get_global(cx).sandbox_permissions.clone(),
     }
 }
 
@@ -10690,6 +10915,661 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// ADR-F96 stage 2: the system prompt is built for every request, so lifting a thread's
+    /// network restriction tells the model from the next turn on, and keeping it again takes
+    /// that back. A choice the settings do not allow changes nothing in the prompt either.
+    #[gpui::test]
+    async fn test_system_prompt_follows_the_thread_network_choice(cx: &mut TestAppContext) {
+        use feature_flags::FeatureFlagAppExt as _;
+        use gpui::UpdateGlobal as _;
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            cx.update_flags(true, vec!["sandboxing".to_string()]);
+        });
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree("/root", json!({})).await;
+        let project = Project::test(fs, ["/root".as_ref()], cx).await;
+        let thread = cx.update(|cx| {
+            cx.new(|cx| {
+                Thread::new(
+                    project.clone(),
+                    cx.new(|_cx| prompt_store::ProjectContext::default()),
+                    cx.new(|cx| {
+                        ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                    }),
+                    Templates::new(),
+                    None,
+                    cx,
+                )
+            })
+        });
+        let system_prompt = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let messages = thread
+                    .read(cx)
+                    .build_request_messages(vec!["terminal".into()], cx);
+                let system = messages.first().expect("a system message");
+                assert_eq!(system.role, Role::System);
+                system.string_contents()
+            })
+        };
+        let says_lifted = |cx: &mut TestAppContext| {
+            let prompt = system_prompt(cx);
+            assert!(prompt.contains("## Terminal sandbox"));
+            let lifted = prompt.contains("the network restriction is lifted for this thread");
+            assert_eq!(
+                prompt.contains("outbound network access is blocked"),
+                !lifted
+            );
+            lifted
+        };
+        let choose = |choice: Option<bool>, cx: &mut TestAppContext| {
+            cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(choice, cx)));
+        };
+
+        assert!(!says_lifted(cx));
+        choose(Some(false), cx);
+        assert!(
+            !says_lifted(cx),
+            "lifting the restriction is not allowed in the settings"
+        );
+
+        cx.update(|cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": true } } }"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("valid user settings");
+            });
+        });
+        assert!(says_lifted(cx));
+        choose(Some(true), cx);
+        assert!(
+            !says_lifted(cx),
+            "keeping the restriction again takes it back"
+        );
+    }
+
+    /// ADR-F96: the chat input's sandbox switch turns the sandbox off for its thread only while
+    /// running outside the sandbox is allowed (ADR-F92), and back on whatever the settings say.
+    /// A new thread starts from the project's default, and without one the settings decide; a
+    /// project of several folders leaves the sandbox only when every folder's default says so.
+    #[gpui::test]
+    async fn test_thread_sandbox_choice(cx: &mut TestAppContext) {
+        use feature_flags::FeatureFlagAppExt as _;
+        use gpui::UpdateGlobal as _;
+        use util::path;
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            cx.update_flags(true, vec!["sandboxing".to_string()]);
+        });
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(path!("/a"), json!({})).await;
+        fs.insert_tree(path!("/b"), json!({})).await;
+        let project = Project::test(fs, [path!("/a").as_ref(), path!("/b").as_ref()], cx).await;
+        let (thread, subagent) = cx.update(|cx| {
+            let project_context = cx.new(|_cx| prompt_store::ProjectContext::default());
+            let context_server_store = project.read(cx).context_server_store();
+            let context_server_registry =
+                cx.new(|cx| ContextServerRegistry::new(context_server_store, cx));
+            let thread = cx.new(|cx| {
+                Thread::new(
+                    project.clone(),
+                    project_context,
+                    context_server_registry,
+                    Templates::new(),
+                    None,
+                    cx,
+                )
+            });
+            let subagent = cx.new(|cx| {
+                let mut subagent = Thread::new(
+                    project.clone(),
+                    cx.new(|_cx| prompt_store::ProjectContext::default()),
+                    cx.new(|cx| {
+                        ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                    }),
+                    Templates::new(),
+                    None,
+                    cx,
+                );
+                subagent.inherit_parent_settings(&thread, cx);
+                subagent
+            });
+            thread.update(cx, |thread, _| {
+                thread.running_subagents.push(subagent.downgrade())
+            });
+            (thread, subagent)
+        });
+        let set_user_settings = |json: &str, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                settings::SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(json, cx)
+                        .result()
+                        .expect("valid user settings");
+                });
+            });
+        };
+        let new_thread = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                cx.new(|cx| {
+                    Thread::new(
+                        project.clone(),
+                        cx.new(|_cx| prompt_store::ProjectContext::default()),
+                        cx.new(|cx| {
+                            ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                        }),
+                        Templates::new(),
+                        None,
+                        cx,
+                    )
+                })
+            })
+        };
+        let sandboxed_in = |thread: &Entity<Thread>, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let thread = thread.read(cx);
+                assert_eq!(
+                    thread.sandboxing_enabled(cx),
+                    !thread.sandbox_turned_off(cx)
+                );
+                thread.sandboxing_enabled(cx)
+            })
+        };
+        let sandboxed = |cx: &mut TestAppContext| sandboxed_in(&thread, cx);
+        let choose = |choice: Option<bool>, cx: &mut TestAppContext| {
+            cx.update(|cx| thread.update(cx, |thread, cx| thread.set_sandbox_choice(choice, cx)));
+        };
+
+        assert!(sandboxed(cx));
+        choose(Some(false), cx);
+        assert!(sandboxed(cx), "running outside the sandbox is not allowed");
+
+        set_user_settings(
+            r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } } }"#,
+            cx,
+        );
+        assert!(!sandboxed(cx));
+        assert!(
+            !cx.update(|cx| subagent.read(cx).sandboxing_enabled(cx)),
+            "the subagent follows"
+        );
+
+        set_user_settings(
+            r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true, "allow_unsandboxed": true } } }"#,
+            cx,
+        );
+        choose(Some(true), cx);
+        assert!(sandboxed(cx), "the thread's choice wins over the settings");
+        choose(None, cx);
+        assert!(!sandboxed(cx), "without a choice the settings decide");
+
+        let (key_a, key_b) = cx.update(|cx| {
+            let keys = project::agent_sandbox::project_thread_defaults_keys(project.read(cx), cx);
+            (keys[0].clone(), keys[1].clone())
+        });
+        let with_defaults = |a: serde_json::Value, b: serde_json::Value| {
+            let mut defaults = serde_json::Map::new();
+            defaults.insert(key_a.clone(), a);
+            defaults.insert(key_b.clone(), b);
+            json!({ "agent": {
+                "sandbox_permissions": { "allow_outside_sandbox": true },
+                "project_thread_defaults": defaults,
+            }})
+            .to_string()
+        };
+        set_user_settings(&with_defaults(json!({ "sandbox": false }), json!({})), cx);
+        assert!(
+            sandboxed_in(&new_thread(cx), cx),
+            "a folder that says nothing keeps the sandbox"
+        );
+        set_user_settings(
+            &with_defaults(json!({ "sandbox": false }), json!({ "sandbox": false })),
+            cx,
+        );
+        assert!(
+            sandboxed(cx),
+            "the default is for new threads, not this one"
+        );
+        let new = new_thread(cx);
+        assert!(!sandboxed_in(&new, cx), "every folder says so");
+        cx.update(|cx| new.update(cx, |thread, cx| thread.set_sandbox_choice(Some(true), cx)));
+        assert!(
+            sandboxed_in(&new, cx),
+            "the thread's choice wins over the project's default"
+        );
+    }
+
+    /// ADR-F96 stage 2: the chat input's network switch lifts its thread's network restriction
+    /// (and its subagents') only while `allow_unrestricted_network` allows it. Lifted, the
+    /// thread's commands get the sandbox's unrestricted network and no host needs asking for;
+    /// kept, a thread restricts even where the settings allow every host. A new thread starts
+    /// from the project's default, which every folder has to agree on.
+    #[gpui::test]
+    async fn test_thread_network_choice(cx: &mut TestAppContext) {
+        use feature_flags::FeatureFlagAppExt as _;
+        use gpui::UpdateGlobal as _;
+        use util::path;
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            cx.update_flags(true, vec!["sandboxing".to_string()]);
+        });
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(path!("/a"), json!({})).await;
+        fs.insert_tree(path!("/b"), json!({})).await;
+        let project = Project::test(fs, [path!("/a").as_ref(), path!("/b").as_ref()], cx).await;
+        let new_thread = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                cx.new(|cx| {
+                    Thread::new(
+                        project.clone(),
+                        cx.new(|_cx| prompt_store::ProjectContext::default()),
+                        cx.new(|cx| {
+                            ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                        }),
+                        Templates::new(),
+                        None,
+                        cx,
+                    )
+                })
+            })
+        };
+        let thread = new_thread(cx);
+        let subagent = new_thread(cx);
+        cx.update(|cx| {
+            subagent.update(cx, |subagent, cx| {
+                subagent.inherit_parent_settings(&thread, cx)
+            });
+            thread.update(cx, |thread, _| {
+                thread.running_subagents.push(subagent.downgrade())
+            });
+        });
+        let set_user_settings = |json: &str, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                settings::SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(json, cx)
+                        .result()
+                        .expect("valid user settings");
+                });
+            });
+        };
+        let unrestricted_in = |thread: &Entity<Thread>, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let thread = thread.read(cx);
+                let unrestricted = thread.network_restriction_turned_off(cx);
+                let permissions = thread.sandbox_permissions(cx);
+                assert_eq!(permissions.allow_all_hosts, unrestricted);
+                assert_eq!(
+                    crate::sandboxing::settings_sandbox_policy(&permissions).network
+                        == sandbox::SandboxNetPolicy::Unrestricted,
+                    unrestricted,
+                    "lifting the restriction is the sandbox's own unrestricted network"
+                );
+                unrestricted
+            })
+        };
+        let unrestricted = |cx: &mut TestAppContext| unrestricted_in(&thread, cx);
+        let choose = |choice: Option<bool>, cx: &mut TestAppContext| {
+            cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(choice, cx)));
+        };
+        // Whether a host this thread never granted can be reached without a card.
+        let host_needs_no_card = |cx: &mut TestAppContext| {
+            let (event_stream, mut receiver) =
+                cx.update(|cx| ToolCallEventStream::test_for_thread(&thread, cx));
+            let request = SandboxRequest {
+                network: crate::sandboxing::NetworkRequest::Hosts(vec![
+                    http_proxy::HostPattern::parse("example.com").expect("a host pattern"),
+                ]),
+                ..Default::default()
+            };
+            let authorization =
+                cx.update(|cx| event_stream.authorize_sandbox(request, String::new(), cx));
+            cx.run_until_parked();
+            let asked = matches!(
+                receiver.0.try_recv(),
+                Ok(Ok(ThreadEvent::ToolCallAuthorization(_)))
+            );
+            drop(authorization);
+            !asked
+        };
+
+        assert!(!unrestricted(cx));
+        assert!(!host_needs_no_card(cx));
+        choose(Some(false), cx);
+        assert!(
+            !unrestricted(cx),
+            "lifting the restriction is not allowed in the settings"
+        );
+        assert!(!host_needs_no_card(cx));
+
+        set_user_settings(
+            r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": true } } }"#,
+            cx,
+        );
+        assert!(unrestricted(cx));
+        assert!(host_needs_no_card(cx));
+        assert!(unrestricted_in(&subagent, cx), "the subagent follows");
+        cx.update(|cx| {
+            let (event_stream, _receiver) = ToolCallEventStream::test_for_thread(&thread, cx);
+            assert!(event_stream.network_restriction_turned_off_by_thread(cx));
+            assert_eq!(
+                event_stream
+                    .effective_sandbox_request(
+                        &SandboxRequest::default(),
+                        &event_stream.sandbox_permissions(cx)
+                    )
+                    .network,
+                crate::sandboxing::NetworkRequest::AnyHost,
+                "every command of the thread may reach any host"
+            );
+        });
+
+        choose(Some(true), cx);
+        assert!(!unrestricted(cx));
+        assert!(!unrestricted_in(&subagent, cx), "the subagent follows back");
+
+        set_user_settings(
+            r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": true, "allow_all_hosts": true } } }"#,
+            cx,
+        );
+        assert!(
+            !unrestricted(cx),
+            "the thread's choice wins over the settings"
+        );
+        choose(None, cx);
+        assert!(unrestricted(cx), "without a choice the settings decide");
+
+        let (key_a, key_b) = cx.update(|cx| {
+            let keys = project::agent_sandbox::project_thread_defaults_keys(project.read(cx), cx);
+            (keys[0].clone(), keys[1].clone())
+        });
+        let with_defaults = |a: serde_json::Value, b: serde_json::Value| {
+            let mut defaults = serde_json::Map::new();
+            defaults.insert(key_a.clone(), a);
+            defaults.insert(key_b.clone(), b);
+            json!({ "agent": {
+                "sandbox_permissions": { "allow_unrestricted_network": true },
+                "project_thread_defaults": defaults,
+            }})
+            .to_string()
+        };
+        set_user_settings(&with_defaults(json!({ "network": false }), json!({})), cx);
+        assert!(
+            !unrestricted_in(&new_thread(cx), cx),
+            "a folder that says nothing keeps the restriction"
+        );
+        set_user_settings(
+            &with_defaults(json!({ "network": false }), json!({ "network": false })),
+            cx,
+        );
+        let new = new_thread(cx);
+        assert!(unrestricted_in(&new, cx), "every folder says so");
+        assert_eq!(cx.update(|cx| new.read(cx).network_choice()), Some(false));
+    }
+
+    /// ADR-F96 stage 2: `allow_unrestricted_network` counts only where the user's own settings
+    /// file has it and the merged settings agree, so that settings layered over the user's file
+    /// can neither turn it on behind the user's back nor be overruled by it.
+    #[gpui::test]
+    async fn test_unrestricted_network_needs_the_user_file_and_the_merged_settings(
+        cx: &mut TestAppContext,
+    ) {
+        use feature_flags::FeatureFlagAppExt as _;
+        use gpui::UpdateGlobal as _;
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            cx.update_flags(true, vec!["sandboxing".to_string()]);
+        });
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree("/root", json!({})).await;
+        let project = Project::test(fs, ["/root".as_ref()], cx).await;
+        let thread = cx.update(|cx| {
+            cx.new(|cx| {
+                Thread::new(
+                    project.clone(),
+                    cx.new(|_cx| prompt_store::ProjectContext::default()),
+                    cx.new(|cx| {
+                        ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                    }),
+                    Templates::new(),
+                    None,
+                    cx,
+                )
+            })
+        });
+        cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(Some(false), cx)));
+        let set_settings = |user: &str, server: &str, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                settings::SettingsStore::update_global(cx, |store, cx| {
+                    store
+                        .set_user_settings(user, cx)
+                        .result()
+                        .expect("valid user settings");
+                    store
+                        .set_server_settings(server, cx)
+                        .expect("valid server settings");
+                });
+            });
+        };
+        let unrestricted = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let allowed = project::agent_sandbox::unrestricted_network_allowed(cx);
+                assert_eq!(thread.read(cx).network_restriction_turned_off(cx), allowed);
+                allowed
+            })
+        };
+        const ON: &str =
+            r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": true } } }"#;
+        const OFF: &str =
+            r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": false } } }"#;
+
+        set_settings(ON, "", cx);
+        assert!(unrestricted(cx));
+        set_settings("{}", ON, cx);
+        assert!(
+            !unrestricted(cx),
+            "settings over the user's file cannot turn it on"
+        );
+        set_settings(ON, OFF, cx);
+        assert!(
+            !unrestricted(cx),
+            "settings over the user's file that keep it off win"
+        );
+    }
+
+    /// ADR-F96 stage 2: with its thread's network restriction lifted, a fetch reaches a host
+    /// nobody granted without a card, while loopback and private addresses stay refused (SSRF);
+    /// a sandboxed command's card says why it may reach any host, and asking for particular
+    /// hosts is refused as pointless.
+    #[gpui::test]
+    async fn test_thread_network_choice_in_fetch_and_terminal(cx: &mut TestAppContext) {
+        use feature_flags::FeatureFlagAppExt as _;
+        use gpui::UpdateGlobal as _;
+
+        crate::tests::init_test(cx);
+        let set_default_permission =
+            |mode: settings::ToolPermissionMode, cx: &mut TestAppContext| {
+                cx.update(|cx| {
+                    settings::SettingsStore::update_global(cx, |store, cx| {
+                        store.update_user_settings(cx, |content| {
+                            let agent = content.agent.get_or_insert_default();
+                            agent
+                                .sandbox_permissions
+                                .get_or_insert_default()
+                                .allow_unrestricted_network = Some(true);
+                            agent.tool_permissions.get_or_insert_default().default = Some(mode);
+                        });
+                    });
+                });
+            };
+        cx.update(|cx| cx.update_flags(true, vec!["sandboxing".to_string()]));
+        set_default_permission(settings::ToolPermissionMode::Allow, cx);
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree("/root", json!({})).await;
+        let project = Project::test(fs, ["/root".as_ref()], cx).await;
+        let thread = cx.update(|cx| {
+            cx.new(|cx| {
+                Thread::new(
+                    project.clone(),
+                    cx.new(|_cx| prompt_store::ProjectContext::default()),
+                    cx.new(|cx| {
+                        ContextServerRegistry::new(project.read(cx).context_server_store(), cx)
+                    }),
+                    Templates::new(),
+                    None,
+                    cx,
+                )
+            })
+        });
+        let choose = |choice: Option<bool>, cx: &mut TestAppContext| {
+            cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(choice, cx)));
+        };
+
+        let http_client = gpui::http_client::FakeHttpClient::create(|request| async move {
+            let uri = request.uri().to_string();
+            assert!(
+                !uri.contains("10.0.0.5") && !uri.contains("localhost"),
+                "a local or private address must never be requested, but saw {uri}"
+            );
+            Ok(gpui::http_client::Response::builder()
+                .status(200)
+                .header("content-type", "text/plain")
+                .body("hello".into())
+                .expect("a response"))
+        });
+        #[allow(clippy::arc_with_non_send_sync)]
+        let fetch = Arc::new(crate::FetchTool::new(http_client));
+        let fetch_asks = |url: &str, cx: &mut TestAppContext| {
+            let (event_stream, mut receiver) =
+                cx.update(|cx| ToolCallEventStream::test_for_thread(&thread, cx));
+            let input: crate::FetchToolInput =
+                serde_json::from_value(json!({ "url": url })).expect("a fetch input");
+            let task = cx.update(|cx| {
+                fetch
+                    .clone()
+                    .run(crate::ToolInput::resolved(input), event_stream, cx)
+            });
+            cx.run_until_parked();
+            let asked = matches!(
+                receiver.0.try_recv(),
+                Ok(Ok(ThreadEvent::ToolCallAuthorization(_)))
+            );
+            drop(task);
+            asked
+        };
+        let fetch_error = |url: &str, cx: &mut TestAppContext| {
+            let (event_stream, _receiver) =
+                cx.update(|cx| ToolCallEventStream::test_for_thread(&thread, cx));
+            let input: crate::FetchToolInput =
+                serde_json::from_value(json!({ "url": url })).expect("a fetch input");
+            cx.update(|cx| {
+                fetch
+                    .clone()
+                    .run(crate::ToolInput::resolved(input), event_stream, cx)
+            })
+        };
+
+        assert!(
+            fetch_asks("https://example.com/page", cx),
+            "a restricted thread asks for the host"
+        );
+        choose(Some(false), cx);
+        assert!(
+            !fetch_asks("https://example.com/page", cx),
+            "a lifted restriction asks for no host"
+        );
+        for url in ["http://10.0.0.5/internal", "http://localhost:3000/api"] {
+            let error = fetch_error(url, cx)
+                .await
+                .expect_err("a local or private address stays refused");
+            assert!(error.contains("isn't allowed"), "{url}: {error}");
+        }
+
+        let environment = Rc::new(cx.update(|cx| {
+            crate::tests::FakeThreadEnvironment::default().with_terminal(
+                crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0),
+            )
+        }));
+        #[allow(clippy::arc_with_non_send_sync)]
+        let terminal = Arc::new(SandboxedTerminalTool::new(
+            project.clone(),
+            environment.clone(),
+        ));
+        let run_terminal = |input: serde_json::Value, cx: &mut TestAppContext| {
+            let (event_stream, receiver) =
+                cx.update(|cx| ToolCallEventStream::test_for_thread(&thread, cx));
+            let input: crate::SandboxedTerminalToolInput =
+                serde_json::from_value(input).expect("a terminal input");
+            let task = cx.update(|cx| {
+                terminal
+                    .clone()
+                    .run(crate::ToolInput::resolved(input), event_stream, cx)
+            });
+            (task, receiver)
+        };
+
+        let (task, _receiver) = run_terminal(
+            json!({
+                "command": "curl https://github.com",
+                "cd": "root",
+                "allow_hosts": ["github.com"],
+                "reason": "fetch from github",
+            }),
+            cx,
+        );
+        let error = task
+            .await
+            .expect_err("asking for particular hosts is pointless");
+        assert!(
+            error.contains("Unrestricted network access is enabled for this thread"),
+            "{error}"
+        );
+        assert_eq!(environment.terminal_creation_count(), 0);
+
+        set_default_permission(settings::ToolPermissionMode::Confirm, cx);
+        let (task, mut receiver) = run_terminal(json!({ "command": "echo hi", "cd": "root" }), cx);
+        let authorization = receiver.expect_authorization().await;
+        let details =
+            acp_thread::sandbox_authorization_details_from_meta(&authorization.tool_call.meta)
+                .expect("the card says the network restriction is off");
+        assert!(details.network_all_hosts);
+        assert_eq!(
+            details.reason,
+            "The network restriction is turned off for this thread"
+        );
+        drop(authorization);
+        assert!(task.await.is_err(), "an unanswered card runs nothing");
+        assert_eq!(environment.terminal_creation_count(), 0);
+
+        choose(Some(true), cx);
+        let (task, mut receiver) = run_terminal(json!({ "command": "echo hi", "cd": "root" }), cx);
+        let authorization = receiver.expect_authorization().await;
+        assert!(
+            acp_thread::sandbox_authorization_details_from_meta(&authorization.tool_call.meta)
+                .is_none(),
+            "a restricted thread's card is as before"
+        );
+        drop(authorization);
+        assert!(task.await.is_err());
     }
 
     /// ADR-F89: the browser tools reach the model only while the built-in

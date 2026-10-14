@@ -60,6 +60,9 @@ use super::elicitation::{
 };
 use super::*;
 
+/// ADR-F97: an external agent's subagents and background shell commands.
+mod background_work;
+
 const DATA_RETENTION_LEARN_MORE_URL: &str = "https://support.claude.com/en/articles/15425996-data-retention-practices-for-mythos-class-models";
 
 #[derive(Default)]
@@ -668,6 +671,9 @@ pub struct ThreadView {
     dismissed_skill_loading_issues: HashSet<SkillLoadingIssue>,
     pub(crate) thread_search_bar: Option<Entity<super::thread_search_bar::ThreadSearchBar>>,
     pub(crate) thread_search_visible: bool,
+    /// ADR-F97: whether the list of subagents and background tasks is open.
+    background_work_expanded: bool,
+    _background_work_clock: Option<Task<()>>,
 }
 impl Focusable for ThreadView {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -875,6 +881,7 @@ impl ThreadView {
         let parent_session_id = thread.read(cx).parent_session_id().cloned();
 
         subscriptions.push(cx.observe(&thread, |_, _, cx| cx.notify()));
+        subscriptions.push(cx.observe(&thread, |this, _, cx| this.sync_background_work_clock(cx)));
 
         let has_slash_completions = session_capabilities.read().has_slash_completions();
         let placeholder = placeholder_text(agent_display_name.as_ref(), has_slash_completions);
@@ -1169,6 +1176,8 @@ impl ThreadView {
             dismissed_skill_loading_issues: HashSet::default(),
             thread_search_bar: None,
             thread_search_visible: false,
+            background_work_expanded: false,
+            _background_work_clock: None,
         };
 
         this.sync_reported_activity(cx);
@@ -1408,7 +1417,7 @@ impl ThreadView {
             ViewEvent::NewTerminal(tool_call_id) => {
                 if AgentSettings::get_global(cx).expand_terminal_card {
                     self.entry_view_state.update(cx, |state, _cx| {
-                        state.expand_tool_call(tool_call_id.clone());
+                        state.auto_expand_terminal(tool_call_id.clone());
                     });
                 }
             }
@@ -3595,8 +3604,14 @@ impl ThreadView {
             .render_main_agent_awaiting_permission(window, cx)
             .or_else(|| self.render_subagents_awaiting_permission(cx));
         let has_awaiting_permission = awaiting_permission.is_some();
+        let background_work = self.render_background_work(cx);
 
-        if changed_buffers.is_empty() && !has_plan && queue_is_empty && !has_awaiting_permission {
+        if changed_buffers.is_empty()
+            && !has_plan
+            && queue_is_empty
+            && !has_awaiting_permission
+            && background_work.is_none()
+        {
             return None;
         }
 
@@ -3638,6 +3653,15 @@ impl ThreadView {
                             gpui::BoxShadow::new(px(1.), px(-1.), gpui::black().opacity(0.12))
                                 .blur_radius(px(2.)),
                         ])
+                    })
+                    .when_some(background_work, |this, element| {
+                        this.child(element).when(
+                            has_awaiting_permission
+                                || has_plan
+                                || !changed_buffers.is_empty()
+                                || !queue_is_empty,
+                            |this| this.child(Divider::horizontal().color(DividerColor::Border)),
+                        )
                     })
                     .when_some(awaiting_permission, |this, element| this.child(element))
                     .when(
@@ -4691,8 +4715,21 @@ impl ThreadView {
 
         let server_view = self.server_view.clone();
         let thread = self.thread.clone();
-        let is_done = thread.read(cx).status() == ThreadStatus::Idle;
-        let is_canceled_or_failed = self.is_subagent_canceled_or_failed(cx);
+        // ADR-F97: an external agent's child runs no turn of this side's; its
+        // parent says how it is doing, and it cannot be stopped from here.
+        let external_status = self.external_subagent_status(cx);
+        let is_done = match external_status {
+            Some(status) => !status.is_working(),
+            None => thread.read(cx).status() == ThreadStatus::Idle,
+        };
+        let is_canceled_or_failed = match external_status {
+            Some(status) => matches!(
+                status,
+                acp_thread::ExternalSubagentStatus::Failed
+                    | acp_thread::ExternalSubagentStatus::Cancelled
+            ),
+            None => self.is_subagent_canceled_or_failed(cx),
+        };
 
         let max_content_width = AgentSettings::get_global(cx).max_content_width;
 
@@ -4735,7 +4772,7 @@ impl ThreadView {
                         .child(
                             h_flex()
                                 .gap_0p5()
-                                .when(!is_done, |this| {
+                                .when(!is_done && external_status.is_none(), |this| {
                                     this.child(
                                         IconButton::new("stop_subagent", IconName::Stop)
                                             .icon_size(IconSize::Small)
@@ -4886,6 +4923,8 @@ impl ThreadView {
                                     .children(self.render_token_usage(cx))
                                     .children(self.render_tool_permission_control(cx))
                                     .children(self.render_git_operations_toggle(cx))
+                                    .children(self.render_sandbox_toggle(cx))
+                                    .children(self.render_network_toggle(cx))
                                     .children(self.profile_selector.clone())
                                     // 思考の制御はモデルセレクターの直左に置く。
                                     // 左クラスターに埋もれていて見つからないという
@@ -5429,7 +5468,16 @@ impl ThreadView {
         let tooltip = match status.settings_sandbox {
             // With the sandbox off in settings the per-thread grants are moot,
             // so don't show them.
-            ThreadSandbox::Unsandboxed => SandboxStatusTooltip::disabled_in_settings(),
+            ThreadSandbox::Unsandboxed => {
+                if self
+                    .as_native_thread(cx)
+                    .is_some_and(|thread| thread.read(cx).sandbox_choice() == Some(false))
+                {
+                    SandboxStatusTooltip::disabled_for_thread()
+                } else {
+                    SandboxStatusTooltip::disabled_in_settings()
+                }
+            }
             ThreadSandbox::Sandboxed(settings_policy) => {
                 let settings = augment_settings_sandbox_policy(&settings_policy, baseline);
                 let thread = SandboxPolicyDisplay::from_policy(&status.thread_policy);
@@ -6388,6 +6436,594 @@ impl ThreadView {
                 .into_any_element(),
         )
     }
+
+    /// Whether this thread runs in the sandbox, for its sandbox switch (ADR-F96): the built-in
+    /// agent's terminal commands, or the external agent as a whole. `None` where there is no
+    /// sandbox to switch: a project kind without one, or a collaborator's project.
+    fn thread_sandboxed(&self, cx: &App) -> Option<bool> {
+        if self.thread.read(cx).project().read(cx).is_via_collab() {
+            return None;
+        }
+        if let Some(thread) = self.as_native_thread(cx) {
+            let thread = thread.read(cx);
+            return thread
+                .sandboxing_available(cx)
+                .then(|| !thread.sandbox_turned_off(cx));
+        }
+        let server_view = self.server_view.upgrade()?;
+        let server_view = server_view.read(cx);
+        server_view
+            .is_external_agent()
+            .then(|| !server_view.runs_outside_sandbox(cx))
+    }
+
+    /// The thread's sandbox switch (ADR-F96). The built-in agent runs this thread's terminal
+    /// commands in or out of the sandbox from the next one on; an external agent runs in or out
+    /// of it as a whole, so it is started again there. A right click picks what new threads in
+    /// this project start with; "outside" there needs running outside the sandbox allowed, as the
+    /// button does.
+    fn render_sandbox_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let sandboxed = self.thread_sandboxed(cx)?;
+        let awaiting_confirmation = self.tool_call_awaiting_confirmation(cx);
+        let native = self.as_native_thread(cx).is_some();
+        let starting = self.external_agent_starting(cx);
+        let (tooltip_title, tooltip_meta) = match (sandboxed, native) {
+            (_, false) if starting => (
+                if sandboxed {
+                    i18n::t!("Sandbox: On")
+                } else {
+                    i18n::t!("Sandbox: Off")
+                },
+                i18n::t!("The agent is starting. Try again once it has started."),
+            ),
+            (true, true) => (
+                i18n::t!("Sandbox: On"),
+                i18n::t!(
+                    "Terminal commands run in the sandbox. Click to run this thread's commands \
+                     outside it; each one still asks first. Right-click to set the default for \
+                     this project."
+                ),
+            ),
+            (false, true) => (
+                i18n::t!("Sandbox: Off"),
+                i18n::t!(
+                    "Terminal commands run outside the sandbox, and each one asks first. Click to \
+                     turn the sandbox back on for this thread. Right-click to set the default for \
+                     this project."
+                ),
+            ),
+            (true, false) => (
+                i18n::t!("Sandbox: On"),
+                i18n::t!(
+                    "The agent runs in the sandbox. Click to start it again outside the sandbox, \
+                     in a new session. Right-click to set the default for this project."
+                ),
+            ),
+            (false, false) => (
+                i18n::t!("Sandbox: Off"),
+                i18n::t!(
+                    "The agent runs outside the sandbox and may use its own tools without asking. \
+                     Click to start it again in the sandbox, in a new session. Right-click to set \
+                     the default for this project."
+                ),
+            ),
+        };
+        let tooltip_meta = if awaiting_confirmation {
+            awaiting_confirmation_reason()
+        } else {
+            tooltip_meta
+        };
+        let button = IconButton::new(
+            "thread-sandbox",
+            if sandboxed {
+                IconName::Lock
+            } else {
+                IconName::LockOff
+            },
+        )
+        .icon_size(IconSize::Small)
+        .icon_color(if sandboxed {
+            Color::Muted
+        } else {
+            Color::Warning
+        })
+        .disabled(starting || awaiting_confirmation)
+        .tooltip(move |_window, cx| Tooltip::with_meta(tooltip_title, None, tooltip_meta, cx))
+        .on_click(cx.listener(move |this, _, window, cx| {
+            this.toggle_thread_sandbox(sandboxed, window, cx);
+        }));
+        let project = self.thread.read(cx).project().clone();
+        Some(
+            right_click_menu("thread-sandbox-default")
+                .trigger(move |_, _, _| button)
+                .menu(move |window, cx| {
+                    let project = project.clone();
+                    ContextMenu::build(window, cx, move |menu, _, cx| {
+                        let current =
+                            project::agent_sandbox::project_default_sandbox(project.read(cx), cx);
+                        let entry =
+                            |menu: ContextMenu, label: &'static str, value: Option<bool>| {
+                                let project = project.clone();
+                                menu.toggleable_entry(
+                                    label,
+                                    current == value,
+                                    IconPosition::Start,
+                                    None,
+                                    move |window, cx| {
+                                        if value != Some(false) {
+                                            set_project_default_sandbox(&project, value, cx);
+                                            return;
+                                        }
+                                        let fs = project.read(cx).fs().clone();
+                                        let allowed =
+                                        crate::sandboxed_claude_code::allow_outside_sandbox_first(
+                                            fs, window, cx,
+                                        );
+                                        let project = project.clone();
+                                        cx.spawn(async move |cx| {
+                                            if allowed.await {
+                                                cx.update(|cx| {
+                                                    set_project_default_sandbox(&project, value, cx)
+                                                });
+                                            }
+                                        })
+                                        .detach();
+                                    },
+                                )
+                            };
+                        let menu = menu.header(i18n::t!("New Threads in This Project"));
+                        let menu = entry(menu, i18n::t!("Follow the Settings"), None);
+                        let menu = entry(menu, i18n::t!("In the Sandbox"), Some(true));
+                        entry(menu, i18n::t!("Outside the Sandbox"), Some(false))
+                    })
+                })
+                .into_any_element(),
+        )
+    }
+
+    /// Whether this thread or one of its subagents has a tool call waiting for confirmation, so that
+    /// its sandbox and network switches wait until it is answered (ADR-F96). The card already shown
+    /// was put together under the conditions of the moment it was asked for; disabling the
+    /// switches keeps it from describing conditions that no longer hold.
+    fn tool_call_awaiting_confirmation(&self, cx: &App) -> bool {
+        let session_id = self.thread.read(cx).session_id();
+        self.conversation
+            .read(cx)
+            .tool_call_awaiting_confirmation_in(session_id, cx)
+    }
+
+    /// Whether this thread's external agent is (re)starting, so that its sandbox switch has no
+    /// connection to start again yet.
+    fn external_agent_starting(&self, cx: &App) -> bool {
+        self.as_native_thread(cx).is_none()
+            && self
+                .server_view
+                .upgrade()
+                .is_some_and(|server_view| server_view.read(cx).is_loading())
+    }
+
+    /// The thread's network switch (ADR-F96 stages 2 to 4), shown wherever its sandbox switch is.
+    /// The built-in agent's terminal commands and fetches keep to the allowed hosts, or reach any
+    /// host from the next one on, on a remote host too where its own sandbox helper confines them;
+    /// an external agent starts again with or without its own hosts (see
+    /// [`Self::external_agent_network`]). It is disabled, with the reason, where the choice cannot
+    /// be kept (a remote host without such a helper, an external agent on a remote host) and while
+    /// the sandbox is off (nothing left to restrict). A right click picks what new threads in this
+    /// project start with.
+    fn render_network_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.thread_sandboxed(cx)?;
+        let awaiting_confirmation = self.tool_call_awaiting_confirmation(cx);
+        let project = self.thread.read(cx).project().clone();
+        let native_thread = self.as_native_thread(cx);
+        let (unrestricted, disabled_reason) = match &native_thread {
+            Some(thread) => {
+                let thread = thread.read(cx);
+                if thread.sandbox_turned_off(cx) {
+                    (
+                        true,
+                        Some(i18n::t!(
+                            "The sandbox is off, so the network is not restricted either."
+                        )),
+                    )
+                } else if !thread.network_choice_applies(cx) {
+                    (
+                        thread.network_restriction_turned_off(cx),
+                        Some(i18n::t!(
+                            "Lifting the network restriction needs a sandbox on the remote host, \
+                             which this connection does not have."
+                        )),
+                    )
+                } else {
+                    (thread.network_restriction_turned_off(cx), None)
+                }
+            }
+            None => self.external_agent_network(cx),
+        };
+        let disabled_reason =
+            disabled_reason.or_else(|| awaiting_confirmation.then(awaiting_confirmation_reason));
+        let tooltip_title = if unrestricted {
+            i18n::t!("Network: Unrestricted")
+        } else {
+            i18n::t!("Network: Restricted")
+        };
+        let tooltip_meta = match disabled_reason {
+            Some(reason) => reason,
+            None if native_thread.is_none() && unrestricted => i18n::t!(
+                "The agent and the commands it runs may reach any host within the network \
+                 allowlist. Click to start the agent again with only its own hosts. Right-click \
+                 to set the default for this project."
+            ),
+            None if native_thread.is_none() => i18n::t!(
+                "The agent and the commands it runs reach only the agent's own hosts. Click to \
+                 start the agent again so that it may reach any host within the network \
+                 allowlist. Right-click to set the default for this project."
+            ),
+            None if unrestricted => i18n::t!(
+                "Terminal commands and fetches may reach any host without asking, within the \
+                 network allowlist; fetches still never reach local or private addresses. Click to \
+                 restrict this thread again. Right-click to set the default for this project."
+            ),
+            None => i18n::t!(
+                "Terminal commands and fetches reach only the allowed hosts and ask for others. \
+                 Click to let this thread reach any host; commands still ask first as before. \
+                 Right-click to set the default for this project."
+            ),
+        };
+        let enabled = disabled_reason.is_none();
+        let button = IconButton::new("thread-network", IconName::Public)
+            .icon_size(IconSize::Small)
+            .icon_color(if unrestricted {
+                Color::Warning
+            } else {
+                Color::Muted
+            })
+            .disabled(!enabled)
+            .tooltip(move |_window, cx| Tooltip::with_meta(tooltip_title, None, tooltip_meta, cx))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.toggle_thread_network(unrestricted, window, cx);
+            }));
+        let default_applies = match &native_thread {
+            Some(thread) => thread.read(cx).network_choice_applies(cx),
+            None => project.read(cx).is_local(),
+        };
+        if !default_applies {
+            return Some(button.into_any_element());
+        }
+        let external_agent = native_thread.is_none();
+        Some(
+            right_click_menu("thread-network-default")
+                .trigger(move |_, _, _| button)
+                .menu(move |window, cx| {
+                    let project = project.clone();
+                    ContextMenu::build(window, cx, move |menu, _, cx| {
+                        let current =
+                            project::agent_sandbox::project_default_network(project.read(cx), cx);
+                        let entry =
+                            |menu: ContextMenu, label: &'static str, value: Option<bool>| {
+                                let project = project.clone();
+                                menu.toggleable_entry(
+                                    label,
+                                    current == value,
+                                    IconPosition::Start,
+                                    None,
+                                    move |window, cx| {
+                                        if value != Some(false) {
+                                            set_project_default_network(&project, value, cx);
+                                            return;
+                                        }
+                                        // As for the button: the settings' own "any host" already
+                                        // lets this default count for the built-in agent, so there
+                                        // is nothing to ask. An external agent's start lifts its
+                                        // hosts only under `allow_unrestricted_network` itself.
+                                        if !external_agent
+                                            && AgentSettings::get_global(cx)
+                                                .sandbox_permissions
+                                                .allow_all_hosts
+                                        {
+                                            set_project_default_network(&project, value, cx);
+                                            return;
+                                        }
+                                        let fs = project.read(cx).fs().clone();
+                                        let allowed = if external_agent {
+                                            crate::sandboxed_claude_code::allow_unrestricted_network_first_for_external_agent(
+                                                fs, window, cx,
+                                            )
+                                        } else {
+                                            crate::sandboxed_claude_code::allow_unrestricted_network_first(
+                                                fs, window, cx,
+                                            )
+                                        };
+                                        let project = project.clone();
+                                        cx.spawn(async move |cx| {
+                                            if allowed.await {
+                                                cx.update(|cx| {
+                                                    set_project_default_network(&project, value, cx)
+                                                });
+                                            }
+                                        })
+                                        .detach();
+                                    },
+                                )
+                            };
+                        let menu = menu.header(i18n::t!("New Threads in This Project"));
+                        let menu = entry(menu, i18n::t!("Follow the Settings"), None);
+                        let menu = entry(menu, i18n::t!("Restrict the Network"), Some(true));
+                        entry(menu, i18n::t!("Allow Any Host"), Some(false))
+                    })
+                })
+                .into_any_element(),
+        )
+    }
+
+    /// Keeps or lifts the network restriction for this thread (ADR-F96 stage 2). Lifting it first
+    /// makes sure the user allows that at all (`allow_unrestricted_network`).
+    fn toggle_thread_network(
+        &mut self,
+        unrestricted: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.tool_call_awaiting_confirmation(cx) {
+            return;
+        }
+        let Some(thread) = self.as_native_thread(cx) else {
+            self.toggle_external_agent_network(unrestricted, window, cx);
+            return;
+        };
+        // The settings' own "any host" already lets a choice to lift the restriction count, so
+        // there is nothing to ask about.
+        if unrestricted
+            || AgentSettings::get_global(cx)
+                .sandbox_permissions
+                .allow_all_hosts
+        {
+            thread.update(cx, |thread, cx| {
+                thread.set_network_choice(Some(unrestricted), cx)
+            });
+            cx.notify();
+            return;
+        }
+        let fs = self.thread.read(cx).project().read(cx).fs().clone();
+        let allowed =
+            crate::sandboxed_claude_code::allow_unrestricted_network_first(fs, window, cx);
+        cx.spawn(async move |this, cx| {
+            if !allowed.await {
+                return;
+            }
+            this.update(cx, |this, cx| {
+                // A confirmation may have been asked for while the dialog was open.
+                if this.tool_call_awaiting_confirmation(cx) {
+                    return;
+                }
+                thread.update(cx, |thread, cx| thread.set_network_choice(Some(false), cx));
+                cx.notify();
+            })
+            .log_err();
+        })
+        .detach();
+    }
+
+    /// The network switch's state for an external agent (ADR-F96 stage 3): whether its sandbox
+    /// lets it reach any host within the network allowlist, and why the switch is disabled.
+    pub(super) fn external_agent_network(&self, cx: &App) -> (bool, Option<&'static str>) {
+        let Some(server_view) = self.server_view.upgrade() else {
+            return (
+                false,
+                Some(i18n::t!(
+                    "The agent is starting. Try again once it has started."
+                )),
+            );
+        };
+        let server_view = server_view.read(cx);
+        if server_view.runs_outside_sandbox(cx) {
+            return (
+                true,
+                Some(i18n::t!(
+                    "The sandbox is off, so the network is not restricted either."
+                )),
+            );
+        }
+        if !self.thread.read(cx).project().read(cx).is_local() {
+            return (
+                false,
+                Some(i18n::t!(
+                    "Lifting the network restriction is not available for projects on a \
+                     remote host yet."
+                )),
+            );
+        }
+        if server_view.is_loading() {
+            return (
+                false,
+                Some(i18n::t!(
+                    "The agent is starting. Try again once it has started."
+                )),
+            );
+        }
+        match server_view.agent_sandbox_network() {
+            Some(acp_thread::AgentSandboxNetwork::AgentHosts) => (false, None),
+            Some(acp_thread::AgentSandboxNetwork::AgentHostsLifted) => (true, None),
+            Some(acp_thread::AgentSandboxNetwork::EditorAllowlist) => (
+                false,
+                Some(i18n::t!(
+                    "This agent has no hosts of its own: only the network allowlist limits it, \
+                     so there is nothing to lift."
+                )),
+            ),
+            None => (
+                false,
+                Some(i18n::t!(
+                    "Lifting the network restriction is not available for this agent."
+                )),
+            ),
+        }
+    }
+
+    /// Starts this thread's external agent again with its own hosts lifted, or back on them
+    /// (ADR-F96 stage 3), after asking. Lifting them first makes sure the user allows that at
+    /// all (`allow_unrestricted_network`), as the built-in agent's switch does.
+    pub(super) fn toggle_external_agent_network(
+        &mut self,
+        unrestricted: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(server_view) = self.server_view.upgrade() else {
+            return;
+        };
+        // While the agent is starting there is no connection to start again,
+        // so asking (and writing the setting) would come to nothing.
+        if server_view.read(cx).is_loading() {
+            return;
+        }
+        if unrestricted {
+            server_view.update(cx, |server_view, cx| {
+                if server_view.can_restart_with_network(false, cx) {
+                    server_view.restart_with_network(false, window, cx);
+                }
+            });
+            return;
+        }
+        let fs = self.thread.read(cx).project().read(cx).fs().clone();
+        let allowed =
+            crate::sandboxed_claude_code::allow_unrestricted_network_first_for_external_agent(
+                fs, window, cx,
+            );
+        let server_view = server_view.downgrade();
+        cx.spawn_in(window, async move |_this, cx| {
+            if !allowed.await {
+                return;
+            }
+            server_view
+                .update_in(cx, |server_view, window, cx| {
+                    if server_view.can_restart_with_network(true, cx) {
+                        server_view.restart_with_network(true, window, cx);
+                    }
+                })
+                .log_err();
+        })
+        .detach();
+    }
+
+    /// Turns the sandbox on or off for this thread (ADR-F96). Turning it off first makes sure
+    /// running outside the sandbox is allowed at all (ADR-F92).
+    fn toggle_thread_sandbox(
+        &mut self,
+        sandboxed: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.tool_call_awaiting_confirmation(cx) {
+            return;
+        }
+        let fs = self.thread.read(cx).project().read(cx).fs().clone();
+        if let Some(thread) = self.as_native_thread(cx) {
+            if !sandboxed {
+                thread.update(cx, |thread, cx| thread.set_sandbox_choice(Some(true), cx));
+                cx.notify();
+                return;
+            }
+            let allowed = crate::sandboxed_claude_code::allow_outside_sandbox_first(fs, window, cx);
+            cx.spawn(async move |this, cx| {
+                if !allowed.await {
+                    return;
+                }
+                this.update(cx, |this, cx| {
+                    // A confirmation may have been asked for while the dialog was open.
+                    if this.tool_call_awaiting_confirmation(cx) {
+                        return;
+                    }
+                    thread.update(cx, |thread, cx| thread.set_sandbox_choice(Some(false), cx));
+                    cx.notify();
+                })
+                .log_err();
+            })
+            .detach();
+            return;
+        }
+        let Some(server_view) = self.server_view.upgrade() else {
+            return;
+        };
+        // While the agent is starting there is no connection to start again,
+        // so asking (and writing the setting) would come to nothing.
+        if server_view.read(cx).is_loading() {
+            return;
+        }
+        if !sandboxed {
+            server_view.update(cx, |server_view, cx| {
+                if server_view.can_restart_in_sandbox(cx) {
+                    server_view.restart_in_sandbox(window, cx);
+                }
+            });
+            return;
+        }
+        let allowed = crate::sandboxed_claude_code::allow_outside_sandbox_first(fs, window, cx);
+        let server_view = server_view.downgrade();
+        cx.spawn_in(window, async move |_this, cx| {
+            if !allowed.await {
+                return;
+            }
+            server_view
+                .update_in(cx, |server_view, window, cx| {
+                    if server_view.can_restart_outside_sandbox(cx) {
+                        server_view.restart_outside_sandbox(window, cx);
+                    }
+                })
+                .log_err();
+        })
+        .detach();
+    }
+}
+
+/// Why the thread's sandbox and network switches are disabled while a tool call waits for
+/// confirmation (ADR-F96).
+fn awaiting_confirmation_reason() -> &'static str {
+    i18n::t!("Answer the tool call waiting for confirmation before switching.")
+}
+
+/// Writes what new threads in `project` start with, in the user's settings file, under each of
+/// its folders (ADR-F96); `None` removes it, so that the settings decide.
+fn set_project_default_sandbox(project: &Entity<Project>, sandbox: Option<bool>, cx: &mut App) {
+    set_project_default(project, sandbox, |defaults| &mut defaults.sandbox, cx);
+}
+
+/// Writes whether new threads in `project` keep the network restriction (ADR-F96 stage 2), the
+/// same way as [`set_project_default_sandbox`].
+fn set_project_default_network(project: &Entity<Project>, network: Option<bool>, cx: &mut App) {
+    set_project_default(project, network, |defaults| &mut defaults.network, cx);
+}
+
+fn set_project_default(
+    project: &Entity<Project>,
+    value: Option<bool>,
+    field: fn(&mut settings::ProjectThreadDefaultsContent) -> &mut Option<bool>,
+    cx: &mut App,
+) {
+    let keys = project::agent_sandbox::project_thread_defaults_keys(project.read(cx), cx);
+    if keys.is_empty() {
+        return;
+    }
+    let fs = project.read(cx).fs().clone();
+    update_settings_file(fs, cx, move |settings, _| {
+        let defaults = settings
+            .agent
+            .get_or_insert_default()
+            .project_thread_defaults
+            .get_or_insert_default();
+        for key in keys {
+            match value {
+                Some(value) => *field(defaults.entry(key).or_default()) = Some(value),
+                None => {
+                    if let Some(entry) = defaults.get_mut(&key) {
+                        *field(entry) = None;
+                        if *entry == settings::ProjectThreadDefaultsContent::default() {
+                            defaults.remove(&key);
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 struct TokenUsageTooltip {
@@ -11555,19 +12191,27 @@ impl ThreadView {
         let files_changed = changed_buffers.len();
         let diff_stats = DiffStats::all_files(changed_buffers, cx);
 
+        // ADR-F97: an external agent's child, which outlives its call when
+        // it was launched in the background.
+        let external_subagent = subagent_session_id
+            .as_ref()
+            .and_then(|session_id| self.thread.read(cx).external_subagent(session_id))
+            .map(|child| child.status);
+
         let is_running = matches!(
             tool_call.status(),
             ToolCallStatus::Pending
                 | ToolCallStatus::InProgress
                 | ToolCallStatus::WaitingForConfirmation
-        );
+        ) || external_subagent.is_some_and(|status| status.is_working());
 
         let is_failed = matches!(
             tool_call.status(),
             ToolCallStatus::Failed | ToolCallStatus::Rejected
-        );
+        ) || external_subagent == Some(acp_thread::ExternalSubagentStatus::Failed);
 
         let is_cancelled = matches!(tool_call.status(), ToolCallStatus::Canceled)
+            || external_subagent == Some(acp_thread::ExternalSubagentStatus::Cancelled)
             || tool_call.content().iter().any(|c| match c {
                 ToolCallContent::ContentBlock { block, .. } => {
                     block.text_content(cx) == Some("User canceled")
@@ -11581,6 +12225,15 @@ impl ThreadView {
                 let thread = thread.read(cx);
                 let model = thread.model()?;
                 Some(model.name().0)
+            })
+            .or_else(|| {
+                let status = external_subagent?;
+                let (model, effort) = acp_thread::requested_model_and_effort(tool_call);
+                Some(SharedString::from(format!(
+                    "{} · {}",
+                    background_work::subagent_status_label(status),
+                    background_work::model_and_effort_label(model.as_deref(), effort.as_deref())
+                )))
             });
         let thread_title = thread
             .as_ref()
@@ -11779,9 +12432,14 @@ impl ThreadView {
                                     }))
                             }),
                     )
-                    .when(is_running && subagent_session_id.is_some(), |buttons| {
-                        buttons.child(
-                            IconButton::new(format!("stop-subagent-{}", entry_ix), IconName::Stop)
+                    .when(
+                        is_running && subagent_session_id.is_some() && external_subagent.is_none(),
+                        |buttons| {
+                            buttons.child(
+                                IconButton::new(
+                                    format!("stop-subagent-{}", entry_ix),
+                                    IconName::Stop,
+                                )
                                 .icon_size(IconSize::Small)
                                 .icon_color(Color::Error)
                                 .tooltip(Tooltip::text(i18n::t!("Stop Subagent")))
@@ -11800,8 +12458,9 @@ impl ThreadView {
                                         ))
                                     },
                                 ),
-                        )
-                    }),
+                            )
+                        },
+                    ),
             )
             .when_some(thread_view, |this, thread_view| {
                 let thread = &thread_view.read(cx).thread;

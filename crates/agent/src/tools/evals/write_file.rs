@@ -202,6 +202,7 @@ impl WriteToolTest {
                 user_agents_md: None,
                 sandboxing: false,
                 git_operations_enabled: true,
+                network_unrestricted: false,
                 is_linux: cfg!(target_os = "linux"),
                 is_windows: cfg!(target_os = "windows"),
                 restricted_workspace: false,

@@ -44,6 +44,9 @@ msgstr "グローバルルール 1 件"
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "ワイルドカードを含むホスト ({pattern}) は、同意からは許可リストに追加できません。"
 
+msgid "A subagent cannot be stopped on its own. To stop the subagents, stop the main agent."
+msgstr "サブエージェントは個別には停止できません。停止するには、メインエージェントを停止してください。"
+
 msgid "ACP Agent"
 msgstr "ACP エージェント"
 
@@ -197,6 +200,15 @@ msgstr "このプロジェクトは未信頼のため、ツールをすべて無
 msgid "Allow"
 msgstr "許可"
 
+msgid "Allow Any Host"
+msgstr "すべてのホストを許可"
+
+msgid "Allow Lifting the Network Restriction?"
+msgstr "ネットワーク制限の解除を許可しますか？"
+
+msgid "Allow Running Outside the Sandbox?"
+msgstr "サンドボックスの外での実行を許可しますか？"
+
 msgid "Allowed for this thread:"
 msgstr "このスレッドでの許可:"
 
@@ -214,6 +226,9 @@ msgstr "settings.json の `agent_servers` → `{}` → `env` → `{variable}` �
 
 msgid "An Error Happened"
 msgstr "エラーが発生しました"
+
+msgid "Answer the tool call waiting for confirmation before switching."
+msgstr "確認待ちのツール呼び出しに答えてから切り替えてください。"
 
 msgid "Anthropic will retain inference logs."
 msgstr "Anthropic が推論ログを保持します。"
@@ -265,6 +280,12 @@ msgstr "確認待ち"
 
 msgid "Awaiting Confirmation ({pending_count})"
 msgstr "確認待ち ({pending_count})"
+
+msgid "Background Tasks"
+msgstr "バックグラウンドのタスク"
+
+msgid "Background Tasks: {}"
+msgstr "バックグラウンドのタスク: {}"
 
 msgid "Bad Result"
 msgstr "悪い結果"
@@ -774,6 +795,9 @@ msgstr[0] "{count} 件のファイルを編集中…"
 msgid "Edits"
 msgstr "編集"
 
+msgid "Effort: {}"
+msgstr "思考の深さ: {}"
+
 msgid "Enable Fast Mode"
 msgstr "ファストモードを有効化"
 
@@ -888,6 +912,9 @@ msgstr "終了"
 msgid "Finished running tools"
 msgstr "ツールの実行が完了しました"
 
+msgid "Follow the Settings"
+msgstr "設定に従う"
+
 msgid "Follow the {}"
 msgstr "{} に追従"
 
@@ -986,6 +1013,9 @@ msgstr "キュー内"
 msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
 msgstr "「全自動」でも「AI が判定」でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。ターミナルのコマンドはサンドボックスの中で実行され、プロジェクトの外へのファイル操作とネットワークの追加は、どのモードでも確認します。サンドボックスの外で実行されるターミナルコマンドも毎回確認します。使えるツールの種類はモードではなくプロファイルで選びます。「AI が判定」の判定内容 (コマンドやパス) は判定に使うモデルの提供元に送られるので、ローカルのモデルをお勧めします。"
 
+msgid "In the Sandbox"
+msgstr "サンドボックスの中"
+
 msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
 msgstr "サンドボックスの Claude Code は Anthropic の次のホストにだけ接続します。これらのホストは IDE 全体の許可リストに追加し、内蔵エージェントのコマンドにも適用されます。\n許可が必要なホスト: {hosts}"
 
@@ -1073,6 +1103,24 @@ msgstr "公式の Claude Code CLI をこのパネルのタブで起動します�
 msgid "Learn More"
 msgstr "詳細"
 
+msgid "Let the Agent Reach Any Host?"
+msgstr "エージェントがすべてのホストに接続できるようにしますか？"
+
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
+msgstr "このスレッドのエージェントとそのコマンドが、ネットワークの許可リストの範囲ですべてのホストに接続できるようにするには、エージェントのサンドボックス設定の `allow_unrestricted_network` が必要ですが、オフになっています。オンにしますか？ 設定ファイルでオフにするまでオンのままです。"
+
+msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
+msgstr "このスレッドのターミナルのコマンドと fetch がすべてのホストに接続できるようにするには、エージェントのサンドボックス設定の `allow_unrestricted_network` が必要ですが、オフになっています。オンにしますか？ 設定ファイルでオフにするまでオンのままです。ネットワークの許可リストは引き続き適用されます。"
+
+msgid "Lifting the network restriction is not available for projects on a remote host yet."
+msgstr "リモートホスト上のプロジェクトでは、ネットワーク制限の解除はまだ使えません。"
+
+msgid "Lifting the network restriction is not available for this agent."
+msgstr "このエージェントでは、ネットワーク制限の解除は使えません。"
+
+msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
+msgstr "ネットワーク制限の解除には接続先のホストのサンドボックスが必要ですが、この接続にはありません。"
+
 msgid "Link only"
 msgstr "リンクのみ"
 
@@ -1145,6 +1193,9 @@ msgstr "レジストリの項目が見つかりません。"
 msgid "Model {} was not found"
 msgstr "モデル {} が見つかりません"
 
+msgid "Model: {}"
+msgstr "モデル: {}"
+
 msgid "Move Back to Panel"
 msgstr "パネルに戻す"
 
@@ -1157,6 +1208,12 @@ msgstr "ネットワークアクセス"
 msgid "Network access"
 msgstr "ネットワークアクセス"
 
+msgid "Network: Restricted"
+msgstr "ネットワーク: 制限あり"
+
+msgid "Network: Unrestricted"
+msgstr "ネットワーク: 制限なし"
+
 msgid "New Agent Thread"
 msgstr "新しいエージェントスレッド"
 
@@ -1168,6 +1225,9 @@ msgstr "新しいタブ"
 
 msgid "New Thread"
 msgstr "新しいスレッド"
+
+msgid "New Threads in This Project"
+msgstr "このプロジェクトの新しいスレッド"
 
 msgid "New Thread…"
 msgstr "新規スレッド…"
@@ -1348,6 +1408,9 @@ msgstr "サンドボックスの設定を開く"
 
 msgid "Open Skill"
 msgstr "スキルを開く"
+
+msgid "Open Subagent"
+msgstr "サブエージェントを開く"
 
 msgid "Open Tabs"
 msgstr "開いているタブ"
@@ -1568,6 +1631,12 @@ msgstr "チェックポイントを復元"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "プロジェクト内のすべてのファイルを、会話のこの時点の内容に復元します。"
 
+msgid "Restrict the Agent's Network Again?"
+msgstr "エージェントのネットワークを再び制限しますか？"
+
+msgid "Restrict the Network"
+msgstr "ネットワークを制限する"
+
 msgid "Restricted Mode"
 msgstr "制限モード"
 
@@ -1639,6 +1708,12 @@ msgstr "サンドボックスの外 (ForgeKairos 本体の権限) で実行さ�
 
 msgid "Sandbox"
 msgstr "サンドボックス"
+
+msgid "Sandbox: Off"
+msgstr "サンドボックス: オフ"
+
+msgid "Sandbox: On"
+msgstr "サンドボックス: オン"
 
 msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
 msgstr "Windows ドライブ上の場所への書き込みを許可したサンドボックスでは、ファイルシステムの分離が完全でない場合があります。"
@@ -1796,6 +1871,15 @@ msgstr "起動 (このスレッドのみ)"
 msgid "Start (This Time Only)"
 msgstr "起動 (今回のみ)"
 
+msgid "Start Again Restricted"
+msgstr "制限ありで起動し直す"
+
+msgid "Start Again Without Host Limits"
+msgstr "ホストの制限なしで起動し直す"
+
+msgid "Start Again in the Sandbox"
+msgstr "サンドボックスの中で起動し直す"
+
 msgid "Start Claude Code outside the sandbox?"
 msgstr "Claude Code をサンドボックスの外で起動しますか？"
 
@@ -1813,6 +1897,12 @@ msgstr "サンドボックスの外で起動…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "`{program}` をサンドボックスの外で起動しますか？"
+
+msgid "Start the Agent Again in the Sandbox?"
+msgstr "エージェントをサンドボックスの中で起動し直しますか？"
+
+msgid "Started (status unknown)"
+msgstr "起動済み (状態は不明)"
 
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "サンドボックスの外で起動すると、このエージェントは ForgeKairos 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前にスレッドごとに確認します。"
@@ -1859,6 +1949,9 @@ msgstr "サブエージェントの出力"
 msgid "Subagents Awaiting Permission:"
 msgstr "権限を待機中のサブエージェント:"
 
+msgid "Subagents: {}"
+msgstr "サブエージェント: {}"
+
 msgid "Submit"
 msgstr "送信"
 
@@ -1898,6 +1991,18 @@ msgstr "解決先"
 msgid "Terminal"
 msgstr "ターミナル"
 
+msgid "Terminal commands and fetches may reach any host without asking, within the network allowlist; fetches still never reach local or private addresses. Click to restrict this thread again. Right-click to set the default for this project."
+msgstr "ターミナルのコマンドと fetch は、ネットワークの許可リストの範囲で、確認なしにすべてのホストに接続できます。fetch はローカルやプライベートのアドレスには引き続き接続しません。クリックでこのスレッドを再び制限します。右クリックでこのプロジェクトの既定を設定します。"
+
+msgid "Terminal commands and fetches reach only the allowed hosts and ask for others. Click to let this thread reach any host; commands still ask first as before. Right-click to set the default for this project."
+msgstr "ターミナルのコマンドと fetch は許可されたホストにだけ接続し、それ以外は確認します。クリックでこのスレッドがすべてのホストに接続できるようにします (コマンドの確認はこれまでどおりです)。右クリックでこのプロジェクトの既定を設定します。"
+
+msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
+msgstr "ターミナルのコマンドはサンドボックスの中で実行されます。クリックすると、このスレッドのコマンドをサンドボックスの外で実行します (1 件ずつ確認は続きます)。右クリックで、このプロジェクトの既定を設定します。"
+
+msgid "Terminal commands run outside the sandbox, and each one asks first. Click to turn the sandbox back on for this thread. Right-click to set the default for this project."
+msgstr "ターミナルのコマンドはサンドボックスの外で実行され、1 件ずつ確認します。クリックすると、このスレッドでサンドボックスをオンに戻します。右クリックで、このプロジェクトの既定を設定します。"
+
 msgid "Terminal inline assistant error: {}"
 msgstr "ターミナルインラインアシスタントのエラー: {}"
 
@@ -1910,11 +2015,20 @@ msgstr "接続先へ送った Claude Code が見つかりません。もう一�
 msgid "The JSON is hidden because the saved settings contain values that look like secrets."
 msgstr "保存済みの設定に秘密情報らしい値が含まれるため、JSON を隠しています。"
 
+msgid "The Network Restriction Stays On"
+msgstr "ネットワーク制限はオンのままです"
+
 msgid "The Zed server on the remote host is not ready yet (internal error)."
 msgstr "接続先のホストの ForgeKairos サーバーがまだ用意されていません (内部エラー)。"
 
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "接続先のホストの ForgeKairos サーバーがまだ用意されていません。接続が終わるまで待ってからもう一度お試しください。"
+
+msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
+msgstr "エージェントとそのコマンドは、ネットワークの許可リストの範囲ですべてのホストに接続できます。クリックで、自身のホストだけに接続できる状態でエージェントを起動し直します。右クリックでこのプロジェクトの既定を設定します。"
+
+msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "エージェントとそのコマンドは、エージェント自身のホストだけに接続できます。クリックで、ネットワークの許可リストの範囲ですべてのホストに接続できるようにエージェントを起動し直します。右クリックでこのプロジェクトの既定を設定します。"
 
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "エージェントはリポジトリを読めますが、変更はできません。クリックすると、このスレッドで Git 操作をオンにします。"
@@ -1924,6 +2038,24 @@ msgstr "エージェントはステージ・コミット・ブランチの切り
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"
+
+msgid "The agent is starting. Try again once it has started."
+msgstr "エージェントを起動しています。起動してからもう一度お試しください。"
+
+msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "エージェントはサンドボックスの中で動いています。クリックすると、サンドボックスの外で新しいセッションとして起動し直します。右クリックで、このプロジェクトの既定を設定します。"
+
+msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "エージェントはサンドボックスの外で動いていて、自分のツールを確認なしで使うことがあります。クリックすると、サンドボックスの中で新しいセッションとして起動し直します。右クリックで、このプロジェクトの既定を設定します。"
+
+msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "エージェントを止めて、このスレッドだけサンドボックスの中で起動し直します。エージェントとそのコマンドは、エージェント自身のホストだけでなく、ネットワークの許可リストが許すすべてのホストに接続できるようになります。エージェントが対応していれば会話を読み戻し、対応していなければ新しいセッションで続けます。"
+
+msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "エージェントを止めて、サンドボックスの中で、自身のホストだけに接続できる状態で起動し直します。エージェントが対応していれば会話を読み戻し、対応していなければ新しいセッションで続けます。"
+
+msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
+msgstr "エージェントを止めて、サンドボックスの中で起動し直します。会話は新しいセッションで続きます。今のセッションはサンドボックスの外に残り、サンドボックスの中のエージェントからは読めません。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "エージェントを settings.json に追加しましたが、まだ読み込まれていません。後で + メニューから開いてください。"
@@ -1988,6 +2120,12 @@ msgstr "接続先のホストの空き容量が足りません (必要 {required
 
 msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
 msgstr "接続先のホストに `sha256sum` がないため、Claude Code が置き換えられていないことを確認できません。接続先に coreutils をインストールしてから再試行してください。"
+
+msgid "The sandbox is off, so the network is not restricted either."
+msgstr "サンドボックスがオフのため、ネットワークも制限されていません。"
+
+msgid "The sandbox is turned off for this thread."
+msgstr "このスレッドではサンドボックスがオフになっています。"
 
 msgid "The sandboxed Claude Code is not available because no folder is open."
 msgstr "フォルダーを開いていないため、サンドボックスの Claude Code は使えません。"
@@ -2072,6 +2210,9 @@ msgstr "このエージェントは現在マルチルートワークスペース
 
 msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
 msgstr "このエージェントはサブスクリプションでのサインインを出していません。サブスクリプションで使うには、公式の Claude Code を起動してその画面でログインしてください。"
+
+msgid "This agent has no hosts of its own: only the network allowlist limits it, so there is nothing to lift."
+msgstr "このエージェントには自身のホストの一覧がなく、ネットワークの許可リストだけで制限されています。解除できる制限はありません。"
 
 msgid "This agent is installed via npx (npm)"
 msgstr "このエージェントは npx (npm) 経由でインストールされます"
@@ -2207,6 +2348,12 @@ msgstr "もう一度試す"
 
 msgid "Try to restart the agent"
 msgstr "エージェントの再起動を試みます"
+
+msgid "Turn On and Continue"
+msgstr "オンにして続ける"
+
+msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "サンドボックスをオフにするには「サンドボックスの外での実行を許可する」(設定 > AI > サンドボックス) が必要ですが、オフになっています。オンにしますか？ 設定でオフにするまでオンのままです。"
 
 msgid "Type anything to edit"
 msgstr "何か入力すると編集できます"
@@ -2363,6 +2510,9 @@ msgstr "設定とログインは普段のものをそのまま使います。"
 
 msgid "[Unsupported message content — this message cannot be edited or resent]"
 msgstr "[サポートされていないメッセージの内容 — このメッセージは編集も再送信もできません]"
+
+msgid "`allow_unrestricted_network` did not take effect. A settings profile or the global settings file may keep it off."
+msgstr "`allow_unrestricted_network` が有効になりませんでした。設定プロファイルやグローバル設定ファイルでオフに保たれている可能性があります。"
 
 msgid "a URI"
 msgstr "URI"
@@ -2577,6 +2727,9 @@ msgstr "{} がこのリクエストへの応答を拒否しました"
 msgid "{} tokens"
 msgstr "{} トークン"
 
+msgid "{} working"
+msgstr "{} 件が実行中"
+
 msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— {count} 件のファイルを変更"
@@ -2665,6 +2818,10 @@ msgctxt "model list section"
 msgid "Favorite"
 msgstr "お気に入り"
 
+msgctxt "model or effort"
+msgid "Default"
+msgstr "既定"
+
 msgctxt "permission pattern menu"
 msgid "Always for `{}` commands"
 msgstr "`{}` コマンドで常に許可"
@@ -2672,6 +2829,30 @@ msgstr "`{}` コマンドで常に許可"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "要求元"
+
+msgctxt "subagent status"
+msgid "Awaiting Permission"
+msgstr "許可待ち"
+
+msgctxt "subagent status"
+msgid "Cancelled"
+msgstr "キャンセル済み"
+
+msgctxt "subagent status"
+msgid "Failed"
+msgstr "失敗"
+
+msgctxt "subagent status"
+msgid "Idle"
+msgstr "待機"
+
+msgctxt "subagent status"
+msgid "Running"
+msgstr "実行中"
+
+msgctxt "subagent status"
+msgid "Unknown"
+msgstr "不明"
 
 msgctxt "subagent title"
 msgid "Subagent Failed"

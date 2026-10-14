@@ -47,6 +47,9 @@ msgstr "1 条全局规则"
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "无法通过同意将含通配符的主机（{pattern}）添加到允许列表。"
 
+msgid "A subagent cannot be stopped on its own. To stop the subagents, stop the main agent."
+msgstr "子智能体无法单独停止。要停止子智能体，请停止主智能体。"
+
 msgid "ACP Agent"
 msgstr "ACP 智能体"
 
@@ -200,6 +203,15 @@ msgstr "由于此项目不受信任，所有工具均已禁用"
 msgid "Allow"
 msgstr "允许"
 
+msgid "Allow Any Host"
+msgstr "允许任意主机"
+
+msgid "Allow Lifting the Network Restriction?"
+msgstr "允许解除网络限制？"
+
+msgid "Allow Running Outside the Sandbox?"
+msgstr "允许在沙盒外运行？"
+
 msgid "Allowed for this thread:"
 msgstr "本次会话中允许："
 
@@ -217,6 +229,9 @@ msgstr "settings.json 中的 `agent_servers` → `{}` → `env` → `{variable}`
 
 msgid "An Error Happened"
 msgstr "发生了错误"
+
+msgid "Answer the tool call waiting for confirmation before switching."
+msgstr "请先回应等待确认的工具调用，再进行切换。"
 
 msgid "Anthropic will retain inference logs."
 msgstr "Anthropic 将保留推理日志。"
@@ -268,6 +283,12 @@ msgstr "等待确认"
 
 msgid "Awaiting Confirmation ({pending_count})"
 msgstr "等待确认（{pending_count}）"
+
+msgid "Background Tasks"
+msgstr "后台任务"
+
+msgid "Background Tasks: {}"
+msgstr "后台任务：{}"
 
 msgid "Bad Result"
 msgstr "结果不佳"
@@ -777,6 +798,9 @@ msgstr[0] "正在编辑 {count} 个文件…"
 msgid "Edits"
 msgstr "编辑"
 
+msgid "Effort: {}"
+msgstr "思考深度：{}"
+
 msgid "Enable Fast Mode"
 msgstr "启用快速模式"
 
@@ -891,6 +915,9 @@ msgstr "已完成"
 msgid "Finished running tools"
 msgstr "工具运行完成"
 
+msgid "Follow the Settings"
+msgstr "遵循设置"
+
 msgid "Follow the {}"
 msgstr "跟随 {}"
 
@@ -989,6 +1016,9 @@ msgstr "队列中"
 msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
 msgstr "无论是“全自动”还是“AI 判定”，内置安全规则、你设置的拒绝和确认模式、沙盒以及写入设置文件时的确认仍然适用。终端命令在沙盒内运行，在任何模式下，项目之外的文件操作和网络添加都需要确认。在沙盒外运行的终端命令也每次都需要确认。可用的工具由配置文件决定，而不是由模式决定。使用“AI 判定”时，被判定的内容（命令和路径）会发送给判定所用模型的提供商，因此建议使用本地模型。"
 
+msgid "In the Sandbox"
+msgstr "沙盒内"
+
 msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
 msgstr "在沙盒中，Claude Code 只会连接以下 Anthropic 主机。这些主机会添加到 IDE 全局的允许列表中，也适用于内置智能体的命令。\n需要允许的主机：{hosts}"
 
@@ -1076,6 +1106,24 @@ msgstr "在此面板的标签页中启动官方 Claude Code CLI。在 CLI 的界
 msgid "Learn More"
 msgstr "了解详情"
 
+msgid "Let the Agent Reach Any Host?"
+msgstr "允许智能体访问任意主机？"
+
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
+msgstr "要让此会话的智能体及其运行的命令访问网络允许列表范围内的任意主机，需要开启智能体沙盒设置中的 `allow_unrestricted_network`，但它目前处于关闭状态。是否开启？在设置文件中关闭之前它会一直保持开启。"
+
+msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
+msgstr "要让此会话的终端命令和 fetch 访问任意主机，需要开启智能体沙盒设置中的 `allow_unrestricted_network`，但它目前处于关闭状态。是否开启？在设置文件中关闭之前它会一直保持开启。网络允许列表仍然适用。"
+
+msgid "Lifting the network restriction is not available for projects on a remote host yet."
+msgstr "远程主机上的项目暂不支持解除网络限制。"
+
+msgid "Lifting the network restriction is not available for this agent."
+msgstr "此智能体不支持解除网络限制。"
+
+msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
+msgstr "解除网络限制需要远程主机上的沙盒，而此连接没有。"
+
 msgid "Link only"
 msgstr "仅链接"
 
@@ -1148,6 +1196,9 @@ msgstr "缺少注册表条目。"
 msgid "Model {} was not found"
 msgstr "未找到模型 {}"
 
+msgid "Model: {}"
+msgstr "模型：{}"
+
 msgid "Move Back to Panel"
 msgstr "移回面板"
 
@@ -1160,6 +1211,12 @@ msgstr "网络访问"
 msgid "Network access"
 msgstr "网络访问"
 
+msgid "Network: Restricted"
+msgstr "网络：受限"
+
+msgid "Network: Unrestricted"
+msgstr "网络：不受限"
+
 msgid "New Agent Thread"
 msgstr "新建智能体会话"
 
@@ -1171,6 +1228,9 @@ msgstr "新建标签页"
 
 msgid "New Thread"
 msgstr "新建会话"
+
+msgid "New Threads in This Project"
+msgstr "此项目中的新会话"
 
 msgid "New Thread…"
 msgstr "新建会话…"
@@ -1351,6 +1411,9 @@ msgstr "打开沙盒设置"
 
 msgid "Open Skill"
 msgstr "打开技能"
+
+msgid "Open Subagent"
+msgstr "打开子智能体"
 
 msgid "Open Tabs"
 msgstr "打开的标签页"
@@ -1571,6 +1634,12 @@ msgstr "恢复到检查点"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "将项目中的所有文件还原为对话中此时间点的内容。"
 
+msgid "Restrict the Agent's Network Again?"
+msgstr "重新限制智能体的网络？"
+
+msgid "Restrict the Network"
+msgstr "限制网络"
+
 msgid "Restricted Mode"
 msgstr "受限模式"
 
@@ -1642,6 +1711,12 @@ msgstr "在沙盒外运行（使用 ForgeKairos 自身的权限）"
 
 msgid "Sandbox"
 msgstr "沙盒"
+
+msgid "Sandbox: Off"
+msgstr "沙盒：关"
+
+msgid "Sandbox: On"
+msgstr "沙盒：开"
 
 msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
 msgstr "可写入 Windows 驱动器位置的沙盒可能无法提供完整的文件系统隔离。"
@@ -1799,6 +1874,15 @@ msgstr "启动（仅此会话）"
 msgid "Start (This Time Only)"
 msgstr "启动（仅此一次）"
 
+msgid "Start Again Restricted"
+msgstr "受限重新启动"
+
+msgid "Start Again Without Host Limits"
+msgstr "不限主机重新启动"
+
+msgid "Start Again in the Sandbox"
+msgstr "在沙盒内重新启动"
+
 msgid "Start Claude Code outside the sandbox?"
 msgstr "在沙盒外启动 Claude Code？"
 
@@ -1816,6 +1900,12 @@ msgstr "在沙盒外启动…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "在沙盒外启动 `{program}`？"
+
+msgid "Start the Agent Again in the Sandbox?"
+msgstr "在沙盒内重新启动智能体？"
+
+msgid "Started (status unknown)"
+msgstr "已启动（状态未知）"
 
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "在沙盒外启动时，此智能体以 ForgeKairos 自身的权限运行，还可以运行项目的钩子和 MCP 服务器。每个会话启动前都会询问你。"
@@ -1862,6 +1952,9 @@ msgstr "子智能体输出"
 msgid "Subagents Awaiting Permission:"
 msgstr "等待授权的子智能体："
 
+msgid "Subagents: {}"
+msgstr "子智能体：{}"
+
 msgid "Submit"
 msgstr "提交"
 
@@ -1901,6 +1994,18 @@ msgstr "目标"
 msgid "Terminal"
 msgstr "终端"
 
+msgid "Terminal commands and fetches may reach any host without asking, within the network allowlist; fetches still never reach local or private addresses. Click to restrict this thread again. Right-click to set the default for this project."
+msgstr "终端命令和 fetch 可在网络允许列表范围内无需确认地访问任意主机；fetch 仍不会访问本地或私有地址。点击可重新限制此会话。右键点击可设置此项目的默认值。"
+
+msgid "Terminal commands and fetches reach only the allowed hosts and ask for others. Click to let this thread reach any host; commands still ask first as before. Right-click to set the default for this project."
+msgstr "终端命令和 fetch 只访问允许的主机，其他主机需要确认。点击可让此会话访问任意主机；命令仍会像以前一样先请求确认。右键点击可设置此项目的默认值。"
+
+msgid "Terminal commands run in the sandbox. Click to run this thread's commands outside it; each one still asks first. Right-click to set the default for this project."
+msgstr "终端命令在沙盒内运行。点击以在沙盒外运行此会话的命令；每条命令仍会先询问。右键点击以设置此项目的默认值。"
+
+msgid "Terminal commands run outside the sandbox, and each one asks first. Click to turn the sandbox back on for this thread. Right-click to set the default for this project."
+msgstr "终端命令在沙盒外运行，每条命令都会先询问。点击以为此会话重新开启沙盒。右键点击以设置此项目的默认值。"
+
 msgid "Terminal inline assistant error: {}"
 msgstr "终端内联助手错误：{}"
 
@@ -1913,11 +2018,20 @@ msgstr "找不到发送到远程主机的 Claude Code。请重试。"
 msgid "The JSON is hidden because the saved settings contain values that look like secrets."
 msgstr "由于保存的设置包含看似机密的值，已隐藏 JSON。"
 
+msgid "The Network Restriction Stays On"
+msgstr "网络限制保持开启"
+
 msgid "The Zed server on the remote host is not ready yet (internal error)."
 msgstr "远程主机上的 ForgeKairos 服务器尚未就绪（内部错误）。"
 
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "远程主机上的 ForgeKairos 服务器尚未就绪。请等待连接完成后重试。"
+
+msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
+msgstr "智能体及其运行的命令可在网络允许列表范围内访问任意主机。点击可重新启动智能体，使其只能访问自己的主机。右键点击可设置此项目的默认值。"
+
+msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "智能体及其运行的命令只能访问智能体自己的主机。点击可重新启动智能体，使其可在网络允许列表范围内访问任意主机。右键点击可设置此项目的默认值。"
 
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "智能体可以读取仓库，但不能更改它。点击以为此会话开启 Git 操作。"
@@ -1927,6 +2041,24 @@ msgstr "智能体可以暂存、提交、切换分支等，但钩子已关闭且
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "智能体无法使用 `getDiagnostics`，因此看不到编辑器显示的错误和警告。{reason}"
+
+msgid "The agent is starting. Try again once it has started."
+msgstr "智能体正在启动。请在启动完成后重试。"
+
+msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "智能体在沙盒内运行。点击以在沙盒外以新会话重新启动它。右键点击以设置此项目的默认值。"
+
+msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
+msgstr "智能体在沙盒外运行，可能会不经询问就使用自己的工具。点击以在沙盒内以新会话重新启动它。右键点击以设置此项目的默认值。"
+
+msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "智能体会停止，然后仅为此会话在沙盒内重新启动。之后，智能体及其运行的命令不仅能访问智能体自己的主机，还能访问网络允许列表所允许的任意主机。如果智能体支持，对话会被读回；否则将在新会话中继续。"
+
+msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
+msgstr "智能体会停止，然后在沙盒内重新启动，只能访问它自己的主机。如果智能体支持，对话会被读回；否则将在新会话中继续。"
+
+msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
+msgstr "智能体会停止，然后在沙盒内重新启动。对话将在新会话中继续：当前会话保留在沙盒外，沙盒内的智能体无法读取它。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "智能体已添加到 settings.json，但尚未加载。请稍后从 + 菜单中打开它。"
@@ -1991,6 +2123,12 @@ msgstr "远程主机的可用空间不足（需要 {required} MB，可用 {avail
 
 msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
 msgstr "远程主机上没有 `sha256sum`，因此无法确认 Claude Code 未被替换。请在远程主机上安装 coreutils 后重试。"
+
+msgid "The sandbox is off, so the network is not restricted either."
+msgstr "沙盒已关闭，因此网络也不受限制。"
+
+msgid "The sandbox is turned off for this thread."
+msgstr "此会话的沙盒已关闭。"
 
 msgid "The sandboxed Claude Code is not available because no folder is open."
 msgstr "由于未打开任何文件夹，沙盒版 Claude Code 不可用。"
@@ -2075,6 +2213,9 @@ msgstr "此智能体目前不支持多根工作区"
 
 msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
 msgstr "此智能体不提供订阅登录。要通过订阅使用，请启动官方 Claude Code 并在其中登录。"
+
+msgid "This agent has no hosts of its own: only the network allowlist limits it, so there is nothing to lift."
+msgstr "此智能体没有自己的主机列表：只受网络允许列表限制，因此没有可解除的限制。"
 
 msgid "This agent is installed via npx (npm)"
 msgstr "此智能体通过 npx（npm）安装"
@@ -2210,6 +2351,12 @@ msgstr "重试"
 
 msgid "Try to restart the agent"
 msgstr "尝试重启智能体"
+
+msgid "Turn On and Continue"
+msgstr "开启并继续"
+
+msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "关闭沙盒需要开启“允许在沙盒外运行”（设置 > AI > 沙盒），但它目前已关闭。要开启吗？在设置中关闭之前，它会一直保持开启。"
 
 msgid "Type anything to edit"
 msgstr "输入任意内容以编辑"
@@ -2366,6 +2513,9 @@ msgstr "按原样使用你平时的设置和登录。"
 
 msgid "[Unsupported message content — this message cannot be edited or resent]"
 msgstr "[不受支持的消息内容——此消息无法编辑或重新发送]"
+
+msgid "`allow_unrestricted_network` did not take effect. A settings profile or the global settings file may keep it off."
+msgstr "`allow_unrestricted_network` 未生效。设置配置文件或全局设置文件可能使其保持关闭。"
 
 msgid "a URI"
 msgstr "URI"
@@ -2580,6 +2730,9 @@ msgstr "{} 拒绝响应此请求"
 msgid "{} tokens"
 msgstr "{} 个 Token"
 
+msgid "{} working"
+msgstr "{} 个运行中"
+
 msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "——更改了 {count} 个文件"
@@ -2668,6 +2821,10 @@ msgctxt "model list section"
 msgid "Favorite"
 msgstr "收藏"
 
+msgctxt "model or effort"
+msgid "Default"
+msgstr "默认"
+
 msgctxt "permission pattern menu"
 msgid "Always for `{}` commands"
 msgstr "对 `{}` 命令始终允许"
@@ -2675,6 +2832,30 @@ msgstr "对 `{}` 命令始终允许"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "来源"
+
+msgctxt "subagent status"
+msgid "Awaiting Permission"
+msgstr "等待授权"
+
+msgctxt "subagent status"
+msgid "Cancelled"
+msgstr "已取消"
+
+msgctxt "subagent status"
+msgid "Failed"
+msgstr "失败"
+
+msgctxt "subagent status"
+msgid "Idle"
+msgstr "空闲"
+
+msgctxt "subagent status"
+msgid "Running"
+msgstr "运行中"
+
+msgctxt "subagent status"
+msgid "Unknown"
+msgstr "未知"
 
 msgctxt "subagent title"
 msgid "Subagent Failed"

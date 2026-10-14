@@ -287,6 +287,9 @@ msgstr "允許所有網域"
 msgid "Allow All File System Writes"
 msgstr "允許寫入整個檔案系統"
 
+msgid "Allow Lifting the Network Restriction for a Thread"
+msgstr "允許為單一會話解除網路限制"
+
 msgid "Allow Running Outside the Sandbox"
 msgstr "允許在沙箱外執行"
 
@@ -1383,6 +1386,9 @@ msgstr "在內建瀏覽器的頁面中按下按鍵"
 msgid "Project"
 msgstr "專案"
 
+msgid "Project Defaults for New Threads"
+msgstr "新會話的專案預設值"
+
 msgid "Project-wide symbol renames by the language server"
 msgstr "由語言伺服器在整個專案中重新命名符號"
 
@@ -1965,6 +1971,9 @@ msgstr "當核准提示要求的網域或寫入路徑包含可能造成混淆的
 msgid "Web search queries"
 msgstr "網頁搜尋查詢"
 
+msgid "What new agent threads start with in each project folder: whether terminal commands run in the sandbox and whether the network is restricted. Set it by right-clicking the sandbox or network button next to the agent panel's message input, or edit agent.project_thread_defaults in settings.json."
+msgstr "新的代理會話在每個專案資料夾中的初始設定：終端機命令是否在沙箱中執行，以及是否限制網路。您可以在代理面板輸入框旁的沙箱或網路按鈕上按右鍵來設定，也可以在 settings.json 中編輯 agent.project_thread_defaults。"
+
 msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
 msgstr "啟用時，ACP 代理、MCP 伺服器，以及用於安裝 AI 代理的 npm 的每個子處理序都會取得回送 Proxy，因此其對外連線也會依上方的允許清單檢查。預設為啟用。停用時，這些子處理序的對外連線將不受允許清單管控（IDE 本身的 AI 連線仍受管控）。"
 
@@ -1976,6 +1985,9 @@ msgstr "在 SSH 主機上執行時，命令會在該處解析（由擴充功能�
 
 msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
 msgstr "關閉時（預設），代理功能新啟動或執行的任何項目都不會在沙箱外執行：無法在沙箱中執行的終端機命令、在沙箱外啟動外部代理或 Claude Code，以及繼續在沙箱外開始的會話，全部都會直接拒絕而不詢問，且一律在沙箱外啟動的設定也會被忽略。已在沙箱外執行的連線會繼續執行。MCP 伺服器（上下文伺服器）不在此設定的範圍內。開啟時，上述各項會先詢問，或依循各自的設定。"
+
+msgid "When on, a thread of the built-in agent can lift its network restriction with the network button next to the message input: its sandboxed terminal commands and fetches then reach any host without asking. Commands still reach only the hosts within the editor-wide network allowlist, and fetches still never reach local or private addresses. When off (the default), that button asks to turn this on first. Each command still asks for confirmation as before."
+msgstr "開啟後，內建代理的會話可以透過輸入框旁的網路按鈕解除網路限制：該會話在沙箱中的終端機命令和 fetch 之後無須確認即可連線到任何主機。命令仍只能連線到整個編輯器網路允許清單範圍內的主機，fetch 仍不會連線到本機或私人位址。關閉時（預設），該按鈕會先詢問是否開啟此設定。每個命令仍會像以前一樣要求確認。"
 
 msgid "When the server runs on the SSH host, type the path on the host directly."
 msgstr "伺服器在 SSH 主機上執行時，請直接輸入主機上的路徑。"

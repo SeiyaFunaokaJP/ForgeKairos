@@ -97,7 +97,13 @@ pub(crate) fn policy_with_protected_paths(
 /// sandbox entirely; otherwise the writable-path and host grants form its
 /// scope. The per-thread overrides come from [`ThreadSandboxGrants::to_policy`].
 pub fn settings_thread_sandbox(persistent: &SandboxPermissions) -> ThreadSandbox {
-    if persistent.allow_unsandboxed {
+    thread_sandbox(persistent, persistent.allow_unsandboxed)
+}
+
+/// [`settings_thread_sandbox`] for a thread whose sandbox is turned off or not
+/// as [`sandbox_turned_off`] says, rather than as the setting alone does.
+pub(crate) fn thread_sandbox(persistent: &SandboxPermissions, turned_off: bool) -> ThreadSandbox {
+    if turned_off {
         ThreadSandbox::Unsandboxed
     } else {
         ThreadSandbox::Sandboxed(settings_sandbox_policy(persistent))
@@ -149,11 +155,88 @@ pub fn settings_sandbox_policy(persistent: &SandboxPermissions) -> SandboxPolicy
 /// omit the sandbox section from the system prompt, because every command would
 /// run without a wrap regardless (and, per ADR-F46, ask for approval each
 /// time).
-pub(crate) fn sandboxing_enabled_for_project(project: &Project, cx: &App) -> bool {
-    sandboxing_available_for_project(project, cx)
-        && !AgentSettings::get_global(cx)
+///
+/// ADR-F96: a thread may turn the sandbox on or off for itself
+/// (`thread_choice`, `None` where the settings decide); see
+/// [`sandbox_turned_off`].
+pub(crate) fn sandboxing_enabled_for_thread(
+    project: &Project,
+    thread_choice: Option<bool>,
+    cx: &App,
+) -> bool {
+    sandboxing_available_for_project(project, cx) && !sandbox_turned_off(thread_choice, cx)
+}
+
+/// ADR-F96: whether the sandbox is turned off for a thread: by its own choice
+/// (which starts as the project's default), else by the `allow_unsandboxed`
+/// setting. A choice to turn it off counts only while running outside the
+/// sandbox is allowed at all (ADR-F92); otherwise the commands stay in the
+/// sandbox.
+pub(crate) fn sandbox_turned_off(thread_choice: Option<bool>, cx: &App) -> bool {
+    match thread_choice {
+        Some(sandbox) => !sandbox && project::agent_sandbox::outside_sandbox_allowed(cx),
+        None => {
+            AgentSettings::get_global(cx)
+                .sandbox_permissions
+                .allow_unsandboxed
+        }
+    }
+}
+
+/// ADR-F96 stage 2: whether a thread's network restriction is lifted, so that
+/// its sandboxed terminal commands and its fetches reach any host without
+/// asking for each one: by its own choice (`thread_choice`, `Some(true)` to
+/// keep the restriction, starting as the project's default), else by the
+/// `allow_all_hosts` setting.
+///
+/// A choice to lift it counts only while the user allows that at all
+/// (`allow_unrestricted_network`), and any choice counts only where the
+/// project's sandbox keeps "any host" inside the editor-wide allowlist
+/// (stage 4, [`project::agent_sandbox::thread_network_choice_applies`]: a
+/// local project, or a remote host with its own sandbox helper); elsewhere
+/// the settings decide.
+pub(crate) fn network_restriction_turned_off(
+    thread_choice: Option<bool>,
+    project: &Project,
+    cx: &App,
+) -> bool {
+    network_restriction_lifted(
+        thread_choice,
+        project::agent_sandbox::thread_network_choice_applies(project, cx),
+        project::agent_sandbox::unrestricted_network_allowed(cx),
+        AgentSettings::get_global(cx)
             .sandbox_permissions
-            .allow_unsandboxed
+            .allow_all_hosts,
+    )
+}
+
+fn network_restriction_lifted(
+    thread_choice: Option<bool>,
+    choice_applies: bool,
+    unrestricted_network_allowed: bool,
+    all_hosts_in_settings: bool,
+) -> bool {
+    match thread_choice {
+        Some(restricted) if choice_applies => {
+            !restricted && (unrestricted_network_allowed || all_hosts_in_settings)
+        }
+        _ => all_hosts_in_settings,
+    }
+}
+
+/// The sandbox permissions a thread's commands and fetches run under: the
+/// persistent ones, with "any host" as [`network_restriction_turned_off`]
+/// says. Lifting the restriction is the sandbox's own unrestricted network
+/// ([`SandboxNetPolicy::Unrestricted`]), not a wildcard host, which host
+/// patterns refuse; the editor's network allowlist still caps it.
+pub(crate) fn thread_sandbox_permissions(
+    persistent: &SandboxPermissions,
+    network_turned_off: bool,
+) -> SandboxPermissions {
+    SandboxPermissions {
+        allow_all_hosts: network_turned_off,
+        ..persistent.clone()
+    }
 }
 
 /// Whether agent-run terminal commands should be wrapped in an OS-level
@@ -1084,6 +1167,39 @@ mod tests {
             !grants
                 .covers_with_persistent(&request(hosts(&["github.com"]), false, &[]), &persistent)
         );
+    }
+
+    /// ADR-F96 stage 4: where a project's sandbox cannot keep "any host" inside the editor-wide
+    /// allowlist (a remote host without its own helper), a thread's choice is ignored either way
+    /// and the settings decide; where it can (a local project, or a remote host with a helper),
+    /// the choice decides as on this machine.
+    #[test]
+    fn a_thread_network_choice_counts_only_where_its_sandbox_keeps_the_ceiling() {
+        for allowed in [false, true] {
+            for all_hosts in [false, true] {
+                for choice in [None, Some(true), Some(false)] {
+                    assert_eq!(
+                        network_restriction_lifted(choice, false, allowed, all_hosts),
+                        all_hosts,
+                        "ignored: {choice:?}, allowed {allowed}, all hosts {all_hosts}"
+                    );
+                }
+                assert_eq!(
+                    network_restriction_lifted(None, true, allowed, all_hosts),
+                    all_hosts,
+                    "without a choice the settings decide"
+                );
+                assert!(
+                    !network_restriction_lifted(Some(true), true, allowed, all_hosts),
+                    "a choice to keep the restriction wins over the settings"
+                );
+                assert_eq!(
+                    network_restriction_lifted(Some(false), true, allowed, all_hosts),
+                    allowed || all_hosts,
+                    "lifting needs it allowed: allowed {allowed}, all hosts {all_hosts}"
+                );
+            }
+        }
     }
 
     #[test]
