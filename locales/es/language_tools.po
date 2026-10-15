@@ -44,6 +44,9 @@ msgstr "Pila de contexto actual"
 msgid "Current editor has no associated language"
 msgstr "El editor actual no tiene ningún lenguaje asociado"
 
+msgid "Don't Show Again"
+msgstr "No volver a mostrar"
+
 msgid "Download Denied"
 msgstr "Descarga denegada"
 
@@ -133,6 +136,9 @@ msgstr "Memoria {used} (índice en segundo plano {background_index}, archivos ab
 
 msgid "Messages"
 msgstr "Mensajes"
+
+msgid "No compile commands for clangd"
+msgstr "No hay comandos de compilación para clangd"
 
 msgid "No folders are paused."
 msgstr "No hay carpetas detenidas."
@@ -316,6 +322,9 @@ msgstr "No se puede reanudar hasta que termine la respuesta del agente. Si no te
 
 msgid "You can't resume until the running sessions and commands end."
 msgstr "No se puede reanudar hasta que terminen las sesiones y los comandos en ejecución."
+
+msgid "clangd found no compile_commands.json or compile_flags.txt for {file_name}, so it may not find definitions in libraries or in other files. Generate one in the project's folder or its `build` folder, for example with `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- make`. With a cross compiler, also add `--query-driver=<path to the compiler>` to `lsp.clangd.binary.arguments`."
+msgstr "clangd no encontró compile_commands.json ni compile_flags.txt para {file_name}, por lo que es posible que no encuentre definiciones en bibliotecas ni en otros archivos. Genere uno en la carpeta del proyecto o en su carpeta `build`, por ejemplo con `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` o `bear -- make`. Con un compilador cruzado, agregue también `--query-driver=<ruta al compilador>` a `lsp.clangd.binary.arguments`."
 
 msgid "clangd is using {used} of memory, over its limit of {limit}. It was restarted less than 10 minutes ago, so it is left running."
 msgstr "clangd está usando {used} de memoria, por encima de su límite de {limit}. Se reinició hace menos de 10 minutos, así que se deja en ejecución."

@@ -104,6 +104,7 @@ gpui = { workspace = true, features = ["test-support"] }
 http_client = { workspace = true, features = ["test-support"] }
 language = { workspace = true, features = ["test-support"] }
 language_model = { workspace = true, features = ["test-support"] }
+language_tools.workspace = true
 lsp = { workspace = true, features = ["test-support"] }
 node_runtime = { workspace = true, features = ["test-support"] }
 pretty_assertions.workspace = true

@@ -1,4 +1,5 @@
 mod clangd_memory_notification;
+pub mod compile_commands_notification;
 mod highlights_tree_view;
 mod key_context_view;
 pub mod lsp_button;
@@ -24,6 +25,7 @@ pub fn init(cx: &mut App) {
     key_context_view::init(cx);
     paused_worktree_code::init(cx);
     clangd_memory_notification::init(cx);
+    compile_commands_notification::init(cx);
 }
 
 fn get_or_create_tool<T>(

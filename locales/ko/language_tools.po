@@ -44,6 +44,9 @@ msgstr "현재 컨텍스트 스택"
 msgid "Current editor has no associated language"
 msgstr "현재 편집기에 연결된 언어가 없습니다"
 
+msgid "Don't Show Again"
+msgstr "다시 표시 안 함"
+
 msgid "Download Denied"
 msgstr "다운로드 거부됨"
 
@@ -133,6 +136,9 @@ msgstr "메모리 {used} (백그라운드 색인 {background_index}, 열린 파�
 
 msgid "Messages"
 msgstr "메시지"
+
+msgid "No compile commands for clangd"
+msgstr "clangd용 컴파일 명령 없음"
 
 msgid "No folders are paused."
 msgstr "일시 중지된 폴더가 없습니다."
@@ -316,6 +322,9 @@ msgstr "에이전트의 응답이 끝날 때까지 재개할 수 없습니다. �
 
 msgid "You can't resume until the running sessions and commands end."
 msgstr "실행 중인 세션과 명령이 끝날 때까지 재개할 수 없습니다."
+
+msgid "clangd found no compile_commands.json or compile_flags.txt for {file_name}, so it may not find definitions in libraries or in other files. Generate one in the project's folder or its `build` folder, for example with `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- make`. With a cross compiler, also add `--query-driver=<path to the compiler>` to `lsp.clangd.binary.arguments`."
+msgstr "clangd가 {file_name}에 대한 compile_commands.json 또는 compile_flags.txt를 찾지 못해 라이브러리나 다른 파일의 정의를 찾지 못할 수 있습니다. 프로젝트 폴더나 그 `build` 폴더에 `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` 또는 `bear -- make` 등으로 생성하세요. 크로스 컴파일러를 사용한다면 `lsp.clangd.binary.arguments`에 `--query-driver=<컴파일러 경로>`도 추가하세요."
 
 msgid "clangd is using {used} of memory, over its limit of {limit}. It was restarted less than 10 minutes ago, so it is left running."
 msgstr "clangd가 메모리를 {used} 사용하여 제한 {limit}을(를) 초과했습니다. 다시 시작한 지 10분이 지나지 않았으므로 계속 실행합니다."
