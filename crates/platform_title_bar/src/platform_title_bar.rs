@@ -21,8 +21,6 @@ use crate::{
     system_window_tabs::SystemWindowTabs,
 };
 
-const DRAG_AREA_GROUP: &str = "platform-title-bar-drag-area";
-
 pub use system_window_tabs::{
     DraggedWindowTab, MergeAllWindows, MoveTabToNewWindow, ShowNextWindowTab, ShowPreviousWindowTab,
 };
@@ -54,6 +52,7 @@ pub struct PlatformTitleBar {
     id: ElementId,
     platform_style: PlatformStyle,
     children: SmallVec<[AnyElement; 2]>,
+    second_row: Option<SmallVec<[AnyElement; 5]>>,
     should_move: bool,
     system_window_tabs: Entity<SystemWindowTabs>,
     button_layout: Option<WindowButtonLayout>,
@@ -69,6 +68,7 @@ impl PlatformTitleBar {
             id: id.into(),
             platform_style,
             children: SmallVec::new(),
+            second_row: None,
             should_move: false,
             system_window_tabs,
             button_layout: None,
@@ -102,6 +102,19 @@ impl PlatformTitleBar {
         T: IntoIterator<Item = AnyElement>,
     {
         self.children = children.into_iter().collect();
+    }
+
+    /// Adds a second row under the bar (used when the application menu takes the first row).
+    /// The row is part of the drag area, and a line and the first row's tint set the rows apart.
+    pub fn set_second_row<T>(&mut self, children: T)
+    where
+        T: IntoIterator<Item = AnyElement>,
+    {
+        self.second_row = Some(children.into_iter().collect());
+    }
+
+    pub fn clear_second_row(&mut self) {
+        self.second_row = None;
     }
 
     pub fn set_button_layout(&mut self, button_layout: Option<WindowButtonLayout>) {
@@ -213,6 +226,14 @@ impl Render for PlatformTitleBar {
         let titlebar_color = self.title_bar_color(window, cx);
         let close_action = Box::new(workspace::CloseWindow);
         let children = mem::take(&mut self.children);
+        // Keep the row itself when only its children were taken, so a render of this view
+        // alone doesn't collapse the bar's height.
+        let second_row_children = self.second_row.as_mut().map(mem::take);
+        let first_row_color = if second_row_children.is_some() {
+            tint_title_bar_color(titlebar_color, cx)
+        } else {
+            titlebar_color
+        };
         let is_fullscreen = window.is_fullscreen() || window.is_simple_fullscreen();
         let can_zoom = self.platform_style == PlatformStyle::Linux
             && supported_controls.maximize
@@ -264,6 +285,17 @@ impl Render for PlatformTitleBar {
         let last_child_index = children.len().checked_sub(1);
         let inner_rounding =
             theme::CLIENT_SIDE_DECORATION_ROUNDING - theme::CLIENT_SIDE_DECORATION_BORDER;
+        let shows_window_menu = !is_fullscreen
+            && self.platform_style == PlatformStyle::Linux
+            && matches!(decorations, Decorations::Client { .. })
+            && supported_controls.window_menu;
+        let with_window_menu = |row: Stateful<Div>| {
+            row.when(shows_window_menu, |row| {
+                row.on_mouse_down(MouseButton::Right, move |ev, window, _| {
+                    window.show_window_menu(ev.position)
+                })
+            })
+        };
 
         let title_bar = h_flex()
             .id(self.id.clone())
@@ -275,23 +307,10 @@ impl Render for PlatformTitleBar {
                 if is_fullscreen {
                     this.pl_2()
                 } else if self.platform_style == PlatformStyle::Mac && show_left_controls {
-                    // The traffic lights sit on top of this strip. It stays draggable, but it
-                    // blocks the bar's hover so the drag area highlight never shows while the
-                    // pointer is on a traffic light.
-                    this.child(Self::with_window_drag_listeners(
-                        div()
-                            .id("traffic-light-spacer")
-                            .flex_none()
-                            .w(px(TRAFFIC_LIGHT_PADDING))
-                            .h_full()
-                            .occlude(),
-                        self.platform_style,
-                        can_zoom,
-                        cx,
-                    ))
+                    this.pl(px(TRAFFIC_LIGHT_PADDING))
                 } else if let Some(controls) = left_controls {
                     this.child(
-                        non_draggable_area(controls, titlebar_color)
+                        non_draggable_area(controls)
                             .when(round_top_left, |area| area.rounded_tl(inner_rounding)),
                     )
                 } else {
@@ -311,15 +330,9 @@ impl Render for PlatformTitleBar {
                     .mt(-theme::CLIENT_SIDE_DECORATION_BORDER)
                     .mb(-theme::CLIENT_SIDE_DECORATION_BORDER)
                     .border(theme::CLIENT_SIDE_DECORATION_BORDER)
-                    .border_color(titlebar_color),
+                    .border_color(first_row_color),
             })
-            .bg(titlebar_color)
-            // A fullscreen window can't be moved, so its title bar has no drag area to show.
-            .when(!is_fullscreen, |this| {
-                let hover_color = drag_area_hover_color(titlebar_color, cx);
-                this.group(DRAG_AREA_GROUP)
-                    .hover(move |style| style.bg(hover_color).border_color(hover_color))
-            })
+            .bg(first_row_color)
             .content_stretch()
             .child(
                 div()
@@ -331,7 +344,7 @@ impl Render for PlatformTitleBar {
                     .overflow_x_hidden()
                     .w_full()
                     .children(children.into_iter().enumerate().map(|(index, child)| {
-                        non_draggable_area(child, titlebar_color).when(
+                        non_draggable_area(child).when(
                             round_top_right
                                 && !has_right_controls
                                 && Some(index) == last_child_index,
@@ -340,24 +353,37 @@ impl Render for PlatformTitleBar {
                     })),
             )
             .children(right_controls.map(|controls| {
-                non_draggable_area(controls, titlebar_color)
+                non_draggable_area(controls)
                     .when(round_top_right, |area| area.rounded_tr(inner_rounding))
-            }))
-            .when(
-                !is_fullscreen
-                    && self.platform_style == PlatformStyle::Linux
-                    && matches!(decorations, Decorations::Client { .. })
-                    && supported_controls.window_menu,
-                |titlebar| {
-                    titlebar.on_mouse_down(MouseButton::Right, move |ev, window, _| {
-                        window.show_window_menu(ev.position)
-                    })
-                },
-            );
+            }));
+        let title_bar = with_window_menu(title_bar);
+
+        let second_row = second_row_children.map(|children| {
+            let row = h_flex()
+                .id("platform-title-bar-second-row")
+                .window_control_area(WindowControlArea::Drag)
+                .w_full()
+                .h(height)
+                .pl_2()
+                .justify_between()
+                .bg(titlebar_color)
+                .border_t_1()
+                // Theme border colors can match either row (One Dark's `border` is the tinted
+                // row's color), so the line is the tinted row's color tinted once more.
+                .border_color(tint_title_bar_color(first_row_color, cx))
+                .children(children.into_iter().map(non_draggable_area));
+            with_window_menu(Self::with_window_drag_listeners(
+                row,
+                self.platform_style,
+                can_zoom,
+                cx,
+            ))
+        });
 
         v_flex()
             .w_full()
             .child(title_bar)
+            .children(second_row)
             .child(self.system_window_tabs.clone().into_any_element())
     }
 }
@@ -410,22 +436,16 @@ impl PlatformTitleBar {
 }
 
 /// Wraps an element of the title bar so it is excluded from the drag area. It occludes the
-/// bar's hitbox, so neither the bar's drag listeners, the Windows `HTCAPTION` hit test, nor
-/// the bar's hover highlight apply over it, and it masks the highlight with the plain title
-/// bar color while the drag area is hovered.
-fn non_draggable_area(element: impl IntoElement, titlebar_color: Hsla) -> Div {
-    h_flex()
-        .h_full()
-        .occlude()
-        .group_hover(DRAG_AREA_GROUP, move |style| style.bg(titlebar_color))
-        .child(element)
+/// bar's hitbox, so neither the bar's drag listeners nor the Windows `HTCAPTION` hit test
+/// apply over it.
+fn non_draggable_area(element: impl IntoElement) -> Div {
+    h_flex().h_full().occlude().child(element)
 }
 
-fn drag_area_hover_color(titlebar_color: Hsla, cx: &App) -> Hsla {
-    // Themes often make the ghost hover nearly the title bar color (One Light differs by 3 of
-    // 255), which leaves the drag area unmarked, so tint toward the text color instead: it
-    // contrasts with the bar in light and dark themes alike.
-    titlebar_color.blend(cx.theme().colors().text.opacity(0.1))
+fn tint_title_bar_color(theme_color: Hsla, cx: &App) -> Hsla {
+    // Tinting toward the text color sets the menu row apart from the second row in light and
+    // dark themes alike.
+    theme_color.blend(cx.theme().colors().text.opacity(0.06))
 }
 
 impl ParentElement for PlatformTitleBar {
@@ -436,100 +456,98 @@ impl ParentElement for PlatformTitleBar {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, rc::Rc};
-
     use gpui::{
-        AnyWindowHandle, Modifiers, MouseButton, Pixels, Point, TestAppContext, canvas, point,
+        AnyWindowHandle, Modifiers, MouseButton, Pixels, Point, ScaledPixels, TestAppContext, point,
     };
     use settings::SettingsStore;
 
     use super::*;
 
     const CHILD_WIDTH: Pixels = px(40.);
-    const PROBE_WIDTH: Pixels = px(10.);
-    const HIGHLIGHTED_PROBE_WIDTH: Pixels = px(20.);
 
     struct TitleBarHost {
         title_bar: Entity<PlatformTitleBar>,
-        probe_width: Rc<Cell<Pixels>>,
+        with_second_row: bool,
+    }
+
+    fn child(id: &'static str) -> AnyElement {
+        div().id(id).w(CHILD_WIDTH).h(px(16.)).into_any_element()
     }
 
     impl Render for TitleBarHost {
         fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let probe_width = self.probe_width.clone();
-            let child = div()
-                .id("interactive-child")
-                .w(CHILD_WIDTH)
-                .h_full()
-                .child(
-                    // Only stateful elements apply group hover styles during layout.
-                    div()
-                        .id("drag-area-highlight-probe")
-                        .w(PROBE_WIDTH)
-                        .h(px(4.))
-                        .group_hover(DRAG_AREA_GROUP, |style| style.w(HIGHLIGHTED_PROBE_WIDTH))
-                        .child(canvas(
-                            move |bounds, _, _| probe_width.set(bounds.size.width),
-                            |_, _, _, _| {},
-                        )),
-                )
-                .into_any_element();
-            self.title_bar
-                .update(cx, |title_bar, _| title_bar.set_children([child]));
+            let with_second_row = self.with_second_row;
+            self.title_bar.update(cx, |title_bar, _| {
+                title_bar.set_children([child("first-row-child")]);
+                if with_second_row {
+                    title_bar.set_second_row([child("second-row-child")]);
+                } else {
+                    title_bar.clear_second_row();
+                }
+            });
             div().size_full().child(self.title_bar.clone())
         }
+    }
+
+    struct Row {
+        child_point: Point<Pixels>,
+        empty_point: Point<Pixels>,
     }
 
     struct Fixture {
         window: AnyWindowHandle,
         title_bar: Entity<PlatformTitleBar>,
-        probe_width: Rc<Cell<Pixels>>,
-        child_point: Point<Pixels>,
-        empty_point: Point<Pixels>,
+        height: Pixels,
+        first_row: Row,
+        second_row: Row,
     }
 
-    fn init_test(cx: &mut TestAppContext) -> Fixture {
+    fn init_test(cx: &mut TestAppContext, with_second_row: bool) -> Fixture {
         cx.update(|cx| {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
             theme_settings::init(theme::LoadThemes::JustBase, cx);
         });
-        let probe_width = Rc::new(Cell::new(px(0.)));
-        let window = cx.add_window({
-            let probe_width = probe_width.clone();
-            move |_, cx| TitleBarHost {
-                title_bar: cx.new(|cx| PlatformTitleBar::new("test-title-bar", cx)),
-                probe_width,
-            }
+        let window = cx.add_window(move |_, cx| TitleBarHost {
+            title_bar: cx.new(|cx| PlatformTitleBar::new("test-title-bar", cx)),
+            with_second_row,
         });
         let title_bar = window
             .read_with(cx, |host, _| host.title_bar.clone())
             .expect("window should be open");
         let window = AnyWindowHandle::from(window);
-        let (child_point, empty_point) = cx
+        let (height, first_row, second_row) = cx
             .update_window(window, |_, window, cx| {
                 window.draw(cx).clear(cx);
                 let height = platform_title_bar_height(window);
                 let middle = height / 2.;
-                // The bar has an 8px left padding (or the traffic light strip on macOS)
-                // before the first child.
-                let child_left = if PlatformStyle::platform() == PlatformStyle::Mac {
+                // Both rows have an 8px left padding before their first child, except the
+                // first row on macOS, which leaves room for the traffic lights instead.
+                let first_child_left = if PlatformStyle::platform() == PlatformStyle::Mac {
                     px(TRAFFIC_LIGHT_PADDING)
                 } else {
                     px(8.)
                 };
+                let empty_x = window.viewport_size().width / 2.;
                 (
-                    point(child_left + CHILD_WIDTH / 2., middle),
-                    point(window.viewport_size().width / 2., middle),
+                    height,
+                    Row {
+                        child_point: point(first_child_left + CHILD_WIDTH / 2., middle),
+                        empty_point: point(empty_x, middle),
+                    },
+                    Row {
+                        child_point: point(px(8.) + CHILD_WIDTH / 2., height + middle),
+                        empty_point: point(empty_x, height + middle),
+                    },
                 )
             })
             .expect("window should be open");
         Fixture {
             window,
             title_bar,
-            probe_width,
-            child_point,
-            empty_point,
+            height,
+            first_row,
+            second_row,
         }
     }
 
@@ -571,38 +589,11 @@ mod tests {
         .expect("window should be open");
     }
 
-    #[gpui::test]
-    fn drag_area_highlight_only_over_empty_space(cx: &mut TestAppContext) {
-        let fixture = init_test(cx);
-        assert_eq!(fixture.probe_width.get(), PROBE_WIDTH);
-
-        move_mouse(cx, fixture.window, fixture.empty_point);
-        assert_eq!(
-            fixture.probe_width.get(),
-            HIGHLIGHTED_PROBE_WIDTH,
-            "hovering the empty part of the title bar should highlight the drag area"
-        );
-
-        move_mouse(cx, fixture.window, fixture.child_point);
-        assert_eq!(
-            fixture.probe_width.get(),
-            PROBE_WIDTH,
-            "hovering an interactive child should not highlight the drag area"
-        );
-
-        move_mouse(cx, fixture.window, point(px(1.), px(500.)));
-        assert_eq!(
-            fixture.probe_width.get(),
-            PROBE_WIDTH,
-            "leaving the title bar should clear the highlight"
-        );
-    }
-
     fn painted_background_at(
         cx: &mut TestAppContext,
         window: AnyWindowHandle,
         position: Point<Pixels>,
-    ) -> Hsla {
+    ) -> Option<Hsla> {
         cx.update_window(window, |_, window, _| {
             let position = position.scale(window.scale_factor());
             window
@@ -617,76 +608,113 @@ mod tests {
                 })
                 .max_by_key(|quad| quad.order)
                 .and_then(|quad| quad.background.as_solid())
-                .expect("a solid background should be painted at the position")
         })
         .expect("window should be open")
     }
 
-    #[gpui::test]
-    fn drag_area_highlight_does_not_paint_over_children(cx: &mut TestAppContext) {
-        let fixture = init_test(cx);
-        let (titlebar_color, hover_color) = cx
-            .update_window(fixture.window, |_, window, cx| {
-                let titlebar_color = fixture
-                    .title_bar
-                    .update(cx, |title_bar, cx| title_bar.title_bar_color(window, cx));
-                (titlebar_color, drag_area_hover_color(titlebar_color, cx))
-            })
-            .expect("window should be open");
-        assert_ne!(titlebar_color, hover_color);
-
-        move_mouse(cx, fixture.window, fixture.empty_point);
-        assert_eq!(
-            painted_background_at(cx, fixture.window, fixture.empty_point),
-            hover_color,
-            "the hovered drag area should be highlighted"
-        );
-        assert_eq!(
-            painted_background_at(cx, fixture.window, fixture.child_point),
-            titlebar_color,
-            "the highlight should not cover the bar's children"
-        );
-    }
-
-    #[gpui::test]
-    fn drag_starts_only_where_the_highlight_shows(cx: &mut TestAppContext) {
-        let fixture = init_test(cx);
+    fn assert_armed_only_on_empty_space(cx: &mut TestAppContext, fixture: &Fixture, row: &Row) {
         let should_move = |cx: &mut TestAppContext| {
             fixture
                 .title_bar
                 .read_with(cx, |title_bar, _| title_bar.should_move)
         };
 
-        move_mouse(cx, fixture.window, fixture.empty_point);
-        press_mouse(cx, fixture.window, fixture.empty_point);
+        move_mouse(cx, fixture.window, row.empty_point);
+        press_mouse(cx, fixture.window, row.empty_point);
         assert!(
             should_move(cx),
-            "pressing the empty part of the title bar should arm a window move"
+            "pressing the empty part of the row should arm a window move"
         );
-        release_mouse(cx, fixture.window, fixture.empty_point);
+        release_mouse(cx, fixture.window, row.empty_point);
         assert!(!should_move(cx));
 
-        move_mouse(cx, fixture.window, fixture.child_point);
-        press_mouse(cx, fixture.window, fixture.child_point);
+        move_mouse(cx, fixture.window, row.child_point);
+        press_mouse(cx, fixture.window, row.child_point);
         assert!(
             !should_move(cx),
             "pressing an interactive child should not arm a window move"
         );
+        release_mouse(cx, fixture.window, row.child_point);
+    }
+
+    fn theme_title_bar_color(cx: &mut TestAppContext, fixture: &Fixture) -> Hsla {
+        cx.update_window(fixture.window, |_, window, cx| {
+            fixture
+                .title_bar
+                .update(cx, |title_bar, cx| title_bar.title_bar_color(window, cx))
+        })
+        .expect("window should be open")
+    }
+
+    fn has_line_between_rows(cx: &mut TestAppContext, fixture: &Fixture) -> bool {
+        let theme_color = theme_title_bar_color(cx, fixture);
+        cx.update_window(fixture.window, |_, window, cx| {
+            let line_color = tint_title_bar_color(tint_title_bar_color(theme_color, cx), cx);
+            let top = fixture.height.scale(window.scale_factor());
+            window.painted_quads().into_iter().any(|quad| {
+                quad.border_color == line_color
+                    && quad.border_widths.top > ScaledPixels(0.)
+                    && quad.border_widths.bottom == ScaledPixels(0.)
+                    && quad.bounds.top() == top
+            })
+        })
+        .expect("window should be open")
     }
 
     #[gpui::test]
-    fn no_drag_area_highlight_in_fullscreen(cx: &mut TestAppContext) {
-        let fixture = init_test(cx);
-        cx.update_window(fixture.window, |_, window, _| window.toggle_fullscreen())
-            .expect("window should be open");
-        cx.update_window(fixture.window, |_, window, cx| window.draw(cx).clear(cx))
-            .expect("window should be open");
+    fn menu_row_is_tinted_apart_from_the_second_row(cx: &mut TestAppContext) {
+        let fixture = init_test(cx, true);
+        let second_row_color = theme_title_bar_color(cx, &fixture);
+        let first_row_color = cx.update(|cx| tint_title_bar_color(second_row_color, cx));
+        assert_ne!(first_row_color, second_row_color);
 
-        move_mouse(cx, fixture.window, fixture.empty_point);
-        assert_eq!(
-            fixture.probe_width.get(),
-            PROBE_WIDTH,
-            "a fullscreen window can't be dragged, so nothing should be highlighted"
+        for position in [fixture.first_row.empty_point, fixture.first_row.child_point] {
+            assert_eq!(
+                painted_background_at(cx, fixture.window, position),
+                Some(first_row_color),
+                "the menu row, children included, should be tinted at {position:?}"
+            );
+        }
+        for position in [
+            fixture.second_row.empty_point,
+            fixture.second_row.child_point,
+        ] {
+            assert_eq!(
+                painted_background_at(cx, fixture.window, position),
+                Some(second_row_color),
+                "the second row should keep the theme color at {position:?}"
+            );
+        }
+        assert!(
+            has_line_between_rows(cx, &fixture),
+            "a thin line should separate the two rows"
         );
+    }
+
+    #[gpui::test]
+    fn single_row_keeps_the_theme_color(cx: &mut TestAppContext) {
+        let fixture = init_test(cx, false);
+        let theme_color = theme_title_bar_color(cx, &fixture);
+        for position in [fixture.first_row.empty_point, fixture.first_row.child_point] {
+            assert_eq!(
+                painted_background_at(cx, fixture.window, position),
+                Some(theme_color),
+                "with no second row there is nothing to set the bar apart from at {position:?}"
+            );
+        }
+        assert!(!has_line_between_rows(cx, &fixture));
+    }
+
+    #[gpui::test]
+    fn drag_starts_only_on_empty_space(cx: &mut TestAppContext) {
+        let fixture = init_test(cx, false);
+        assert_armed_only_on_empty_space(cx, &fixture, &fixture.first_row);
+    }
+
+    #[gpui::test]
+    fn second_row_is_part_of_the_drag_area(cx: &mut TestAppContext) {
+        let fixture = init_test(cx, true);
+        assert_armed_only_on_empty_space(cx, &fixture, &fixture.second_row);
+        assert_armed_only_on_empty_space(cx, &fixture, &fixture.first_row);
     }
 }
