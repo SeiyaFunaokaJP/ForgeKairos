@@ -1534,6 +1534,215 @@ async fn test_remote_lsp(cx: &mut TestAppContext, server_cx: &mut TestAppContext
 }
 
 #[gpui::test]
+async fn test_remote_definition_outside_the_worktree(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code/project"),
+        json!({ "lib.rs": "fn main() { puts(); }" }),
+    )
+    .await;
+    fs.insert_tree(
+        path!("/usr/include"),
+        json!({ "stdio.rs": "// header\nfn puts() {}\n" }),
+    )
+    .await;
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    let capabilities = lsp::ServerCapabilities {
+        definition_provider: Some(lsp::OneOf::Left(true)),
+        ..lsp::ServerCapabilities::default()
+    };
+    project.update(cx, |project, _| {
+        project.languages().add(rust_lang());
+        project.languages().register_fake_lsp_adapter(
+            "Rust",
+            FakeLspAdapter {
+                name: "rust-analyzer",
+                capabilities: capabilities.clone(),
+                ..FakeLspAdapter::default()
+            },
+        );
+    });
+    let mut fake_servers = server_cx.update(|cx| {
+        headless.read(cx).languages.register_fake_lsp_server(
+            LanguageServerName(SharedString::from("rust-analyzer")),
+            capabilities,
+            Some(Box::new(|fake_server| {
+                fake_server.set_request_handler::<lsp::request::GotoDefinition, _, _>(
+                    |_, _| async move {
+                        Ok(Some(lsp::GotoDefinitionResponse::Scalar(
+                            lsp::Location::new(
+                                lsp::Uri::from_file_path(path!("/usr/include/stdio.rs"))
+                                    .expect("absolute path"),
+                                lsp::Range::new(lsp::Position::new(1, 3), lsp::Position::new(1, 7)),
+                            ),
+                        )))
+                    },
+                );
+            })),
+        )
+    });
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project"), true, cx)
+        })
+        .await
+        .expect("worktree should open")
+        .0
+        .read_with(cx, |worktree, _| worktree.id());
+    let (buffer, _handle) = project
+        .update(cx, |project, cx| {
+            project.open_buffer_with_lsp((worktree_id, rel_path("lib.rs")), cx)
+        })
+        .await
+        .expect("buffer should open with LSP");
+    fake_servers.next().await.expect("LSP should start");
+    cx.run_until_parked();
+
+    let definitions = project
+        .update(cx, |project, cx| project.definitions(&buffer, 13, cx))
+        .await
+        .expect("definitions should resolve")
+        .expect("the server should answer");
+    cx.run_until_parked();
+
+    assert_eq!(
+        definitions.len(),
+        1,
+        "the definition outside the worktree was dropped"
+    );
+    cx.update(|cx| {
+        let target = &definitions[0].target;
+        let target_buffer = target.buffer.read(cx);
+        assert_eq!(target_buffer.text(), "// header\nfn puts() {}\n");
+        assert_eq!(target.range.to_offset(target_buffer), 13..17);
+        let file = target_buffer.file().expect("the target buffer has a file");
+        assert_eq!(
+            file.full_path(cx),
+            PathBuf::from(path!("/usr/include/stdio.rs"))
+        );
+    });
+}
+
+/// Opens `file` of the host's folder `/code/project`, with `tree` at `/code`, in an editor and
+/// says whether the folder was noted as having no compile commands for clangd.
+async fn compile_commands_noted(
+    tree: serde_json::Value,
+    file: &str,
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) -> bool {
+    cx.update(|cx| {
+        let settings_store = SettingsStore::test(cx);
+        cx.set_global(settings_store);
+        theme_settings::init(theme::LoadThemes::JustBase, cx);
+        release_channel::init(semver::Version::new(0, 0, 0), cx);
+        editor::init(cx);
+        language_tools::compile_commands_notification::init(cx);
+    });
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(path!("/code"), tree).await;
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    project.update(cx, |project, _| {
+        project.languages().register_test_language(LanguageConfig {
+            name: "C".into(),
+            matcher: (LanguageMatcher {
+                path_suffixes: vec!["c".into()],
+                ..Default::default()
+            })
+            .into(),
+            ..Default::default()
+        });
+        project.languages().register_fake_lsp_adapter(
+            "C",
+            FakeLspAdapter {
+                name: "clangd",
+                ..FakeLspAdapter::default()
+            },
+        );
+    });
+    // Otherwise the host would look for the real clangd.
+    server_cx.update(|cx| {
+        headless.read(cx).languages.register_fake_lsp_server(
+            LanguageServerName("clangd".into()),
+            lsp::ServerCapabilities::default(),
+            None,
+        )
+    });
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project"), true, cx)
+        })
+        .await
+        .expect("worktree should open")
+        .0
+        .read_with(cx, |worktree, _| worktree.id());
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path(file)), cx)
+        })
+        .await
+        .expect("the file opens");
+    cx.run_until_parked();
+
+    let cx = cx.add_empty_window();
+    let workspace = cx.new_window_entity(|window, cx| {
+        workspace::Workspace::test_new(project.clone(), window, cx)
+    });
+    let editor = cx.new_window_entity(|window, cx| {
+        Editor::for_buffer(buffer, Some(project.clone()), window, cx)
+    });
+    workspace.update_in(cx, |workspace, window, cx| {
+        workspace.add_item_to_active_pane(Box::new(editor), None, true, window, cx);
+    });
+    cx.run_until_parked();
+
+    workspace.read_with(cx, |workspace, _| {
+        workspace.has_notification(
+            &language_tools::compile_commands_notification::notification_id(worktree_id),
+        )
+    })
+}
+
+#[gpui::test]
+async fn test_remote_c_file_without_compile_commands_is_noted(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    assert!(
+        compile_commands_noted(
+            json!({ "project": { "src": { "main.c": "int main(void) { return 0; }\n" } } }),
+            "src/main.c",
+            cx,
+            server_cx,
+        )
+        .await
+    );
+}
+
+#[gpui::test]
+async fn test_remote_compile_commands_outside_the_folder_are_found(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    assert!(
+        !compile_commands_noted(
+            json!({
+                "compile_commands.json": "[]",
+                "project": { "src": { "main.c": "int main(void) { return 0; }\n" } },
+            }),
+            "src/main.c",
+            cx,
+            server_cx,
+        )
+        .await,
+        "the host is asked about what its folder's snapshot leaves out"
+    );
+}
+
+#[gpui::test]
 async fn test_remote_completion_resolve_edit_ranges(
     cx: &mut TestAppContext,
     server_cx: &mut TestAppContext,

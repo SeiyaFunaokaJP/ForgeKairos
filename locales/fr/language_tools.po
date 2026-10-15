@@ -44,6 +44,9 @@ msgstr "Pile de contexte actuelle"
 msgid "Current editor has no associated language"
 msgstr "L'éditeur actuel n'a pas de langage associé"
 
+msgid "Don't Show Again"
+msgstr "Ne plus afficher"
+
 msgid "Download Denied"
 msgstr "Téléchargement refusé"
 
@@ -133,6 +136,9 @@ msgstr "Mémoire {used} (index en arrière-plan {background_index}, fichiers ouv
 
 msgid "Messages"
 msgstr "Messages"
+
+msgid "No compile commands for clangd"
+msgstr "Aucune commande de compilation pour clangd"
 
 msgid "No folders are paused."
 msgstr "Aucun dossier n'est suspendu."
@@ -316,6 +322,9 @@ msgstr "Vous ne pouvez pas reprendre tant que la réponse de l'agent n'est pas t
 
 msgid "You can't resume until the running sessions and commands end."
 msgstr "Vous ne pouvez pas reprendre tant que les sessions et commandes en cours ne sont pas terminées."
+
+msgid "clangd found no compile_commands.json or compile_flags.txt for {file_name}, so it may not find definitions in libraries or in other files. Generate one, for example with `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- make`. To keep it out of the project, generate it in another folder, such as one under your home folder, and add `--compile-commands-dir=<that folder>` to `lsp.clangd.binary.arguments`. In the project's folder or its `build` folder, clangd finds it without that, and `.git/info/exclude` keeps it out of git. With a cross compiler, also add `--query-driver=<path to the compiler>` to `lsp.clangd.binary.arguments`."
+msgstr "clangd n'a trouvé ni compile_commands.json ni compile_flags.txt pour {file_name} ; il risque donc de ne pas trouver les définitions situées dans des bibliothèques ou dans d'autres fichiers. Générez-en un, par exemple avec `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` ou `bear -- make`. Pour le garder hors du projet, générez-le dans un autre dossier, par exemple sous votre dossier personnel, et ajoutez `--compile-commands-dir=<ce dossier>` à `lsp.clangd.binary.arguments`. Dans le dossier du projet ou dans son dossier `build`, clangd le trouve sans cela, et `.git/info/exclude` le tient hors de git. Avec un compilateur croisé, ajoutez aussi `--query-driver=<chemin du compilateur>` à `lsp.clangd.binary.arguments`."
 
 msgid "clangd is using {used} of memory, over its limit of {limit}. It was restarted less than 10 minutes ago, so it is left running."
 msgstr "clangd utilise {used} de mémoire, au-delà de sa limite de {limit}. Il a été redémarré il y a moins de 10 minutes : il reste donc en cours d'exécution."

@@ -41,6 +41,9 @@ msgstr "現在のコンテキストスタック"
 msgid "Current editor has no associated language"
 msgstr "現在のエディターには言語が関連付けられていません。"
 
+msgid "Don't Show Again"
+msgstr "今後表示しない"
+
 msgid "Download Denied"
 msgstr "ダウンロード拒否"
 
@@ -130,6 +133,9 @@ msgstr "メモリ {used} (背景索引 {background_index}、開いているフ�
 
 msgid "Messages"
 msgstr "メッセージ"
+
+msgid "No compile commands for clangd"
+msgstr "clangd のコンパイル設定がありません"
 
 msgid "No folders are paused."
 msgstr "止めているフォルダーはありません。"
@@ -313,6 +319,9 @@ msgstr "エージェントの応答が終わるまで再開できません。終
 
 msgid "You can't resume until the running sessions and commands end."
 msgstr "実行中のセッション・コマンドが終わるまで再開できません。"
+
+msgid "clangd found no compile_commands.json or compile_flags.txt for {file_name}, so it may not find definitions in libraries or in other files. Generate one, for example with `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- make`. To keep it out of the project, generate it in another folder, such as one under your home folder, and add `--compile-commands-dir=<that folder>` to `lsp.clangd.binary.arguments`. In the project's folder or its `build` folder, clangd finds it without that, and `.git/info/exclude` keeps it out of git. With a cross compiler, also add `--query-driver=<path to the compiler>` to `lsp.clangd.binary.arguments`."
+msgstr "{file_name} の compile_commands.json も compile_flags.txt も clangd が見つけられないため、ライブラリや別のファイルの定義が見つからないことがあります。`cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` や `bear -- make` などで作成してください。プロジェクトの中に置きたくない場合は、プロジェクトの外 (例: ホームフォルダーの下) に作成し、`lsp.clangd.binary.arguments` に `--compile-commands-dir=<そのフォルダー>` を追加してください。プロジェクトのフォルダーかその `build` フォルダーに置けばこの設定は不要で、`.git/info/exclude` で git の管理から外せます。クロスコンパイラを使う場合は、`lsp.clangd.binary.arguments` に `--query-driver=<コンパイラのパス>` も追加してください。"
 
 msgid "clangd is using {used} of memory, over its limit of {limit}. It was restarted less than 10 minutes ago, so it is left running."
 msgstr "clangd のメモリ使用量が {used} になり、上限の {limit} を超えています。前回の再起動から 10 分たっていないため、再起動せずにそのまま動かしています。"

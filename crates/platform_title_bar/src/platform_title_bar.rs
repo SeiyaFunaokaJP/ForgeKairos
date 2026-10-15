@@ -422,8 +422,10 @@ fn non_draggable_area(element: impl IntoElement, titlebar_color: Hsla) -> Div {
 }
 
 fn drag_area_hover_color(titlebar_color: Hsla, cx: &App) -> Hsla {
-    // Half of the ghost button hover, so a hovered button still stands out from it.
-    titlebar_color.blend(cx.theme().colors().ghost_element_hover.opacity(0.5))
+    // Themes often make the ghost hover nearly the title bar color (One Light differs by 3 of
+    // 255), which leaves the drag area unmarked, so tint toward the text color instead: it
+    // contrasts with the bar in light and dark themes alike.
+    titlebar_color.blend(cx.theme().colors().text.opacity(0.1))
 }
 
 impl ParentElement for PlatformTitleBar {

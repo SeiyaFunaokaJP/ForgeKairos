@@ -9,7 +9,7 @@ use anyhow::Result;
 use collections::HashSet;
 use futures::FutureExt as _;
 use gpui::{App, AsyncApp, Context, Entity, EntityId, Global, Task, WeakEntity};
-use language::{Bias, Buffer, BufferSnapshot, CharKind, Point, ToOffset as _};
+use language::{Bias, Buffer, BufferSnapshot, CharKind, OffsetRangeExt as _, Point, ToOffset as _};
 use project::{Location, LocationLink, Project, ProjectPath, project_settings::ProjectSettings};
 use settings::Settings as _;
 use util::ResultExt as _;
@@ -30,6 +30,7 @@ struct IndexQuery {
     name: String,
     near: Option<ProjectPath>,
     origin: Location,
+    is_called: bool,
 }
 
 fn is_c_family(buffer: &Buffer) -> bool {
@@ -57,6 +58,7 @@ fn index_query(buffer: &Entity<Buffer>, position: text::Anchor, cx: &App) -> Opt
     if is_in_comment_or_string(&snapshot, range.clone()) {
         return None;
     }
+    let is_called = is_called_function(&snapshot, range.clone());
     let near = buffer_ref.file().map(|file| ProjectPath {
         worktree_id: file.worktree_id(cx),
         path: file.path().clone(),
@@ -68,7 +70,32 @@ fn index_query(buffer: &Entity<Buffer>, position: text::Anchor, cx: &App) -> Opt
             buffer: buffer.clone(),
             range: snapshot.anchor_after(range.start)..snapshot.anchor_before(range.end),
         },
+        is_called,
     })
+}
+
+/// Whether `range` is the name of the function in a call, the only place where C has an
+/// implicit declaration. Elsewhere, a language server answering with the name itself is right:
+/// the name is that of a local variable, a parameter or a field being declared, which the
+/// index does not hold, and the index's namesakes are other things.
+fn is_called_function(snapshot: &BufferSnapshot, range: Range<usize>) -> bool {
+    snapshot
+        .syntax_layers_for_range(range.clone(), false)
+        .any(|layer| {
+            let Some(node) = layer
+                .node()
+                .descendant_for_byte_range(range.start, range.end)
+            else {
+                return false;
+            };
+            node.kind() == "identifier"
+                && node.parent().is_some_and(|parent| {
+                    parent.kind() == "call_expression"
+                        && parent
+                            .child_by_field_name("function")
+                            .is_some_and(|function| function.id() == node.id())
+                })
+        })
 }
 
 /// Whether `range` is in a comment, or in a string literal other than an `#include`'s path:
@@ -143,8 +170,22 @@ pub(crate) fn definitions_with_index_fallback(
         };
         match answered {
             Some(Ok(Some(links))) if !links.is_empty() => {
-                forget_name_matches(cx);
-                Ok(Some(links))
+                // clangd without the file's compile flags (no `compile_commands.json`) cannot
+                // find a function from a header it cannot resolve, takes the call for an
+                // implicit declaration and answers with the name under the cursor itself.
+                let points_back = query.is_called
+                    && cx.update(|cx| links.iter().all(|link| points_at(link, &query.origin, cx)));
+                if !points_back {
+                    forget_name_matches(cx);
+                    return Ok(Some(links));
+                }
+                let from_index = links_from_index(&project, query, timeout, cx).await;
+                if from_index.is_empty() {
+                    forget_name_matches(cx);
+                    Ok(Some(links))
+                } else {
+                    Ok(Some(from_index))
+                }
             }
             Some(answer) => {
                 let from_index = links_from_index(&project, query, timeout, cx).await;
@@ -168,6 +209,17 @@ pub(crate) fn definitions_with_index_fallback(
             }
         }
     })
+}
+
+/// Whether `link` goes to where `origin` already is.
+fn points_at(link: &LocationLink, origin: &Location, cx: &App) -> bool {
+    if link.target.buffer != origin.buffer {
+        return false;
+    }
+    let snapshot = origin.buffer.read(cx).snapshot();
+    let target = link.target.range.to_offset(&snapshot);
+    let origin = origin.range.to_offset(&snapshot);
+    target.start <= origin.end && origin.start <= target.end
 }
 
 fn forget_name_matches(cx: &mut AsyncApp) {
@@ -304,9 +356,13 @@ mod tests {
     }
 
     async fn c_context(cx: &mut TestAppContext) -> EditorLspTestContext {
+        c_context_for(c_language(), cx).await
+    }
+
+    async fn c_context_for(language: Language, cx: &mut TestAppContext) -> EditorLspTestContext {
         init_test(cx, |_| {});
         EditorLspTestContext::new(
-            c_language(),
+            language,
             lsp::ServerCapabilities {
                 definition_provider: Some(lsp::OneOf::Left(true)),
                 ..lsp::ServerCapabilities::default()
@@ -575,6 +631,100 @@ mod tests {
         let editors =
             cx.update_workspace(|workspace, _, cx| workspace.items_of_type::<Editor>(cx).count());
         assert_eq!(editors, 1, "the index's candidate in other.c is not opened");
+        assert!(!has_name_match_notice(&mut cx));
+    }
+
+    #[gpui::test]
+    async fn test_language_server_pointing_back_at_the_name_falls_back_on_the_index(
+        cx: &mut TestAppContext,
+    ) {
+        let mut cx = c_context_for(c_language_with_grammar(), cx).await;
+        cx.set_state("int main(void) { return ˇfoo(); }\n");
+        let _index = install_index(
+            &mut cx,
+            ("dir/file.c", "int main(void) { return foo(); }\n"),
+            &[("dir/other.c", "int foo(void) { return 1; }\n")],
+        )
+        .await;
+        // What clangd answers for a call it takes for an implicit declaration.
+        cx.lsp
+            .set_request_handler::<lsp::request::GotoDefinition, _, _>(|params, _| async move {
+                Ok(Some(lsp::GotoDefinitionResponse::Scalar(lsp::Location {
+                    uri: params.text_document_position_params.text_document.uri,
+                    range: lsp::Range::new(lsp::Position::new(0, 24), lsp::Position::new(0, 27)),
+                })))
+            });
+
+        assert_eq!(go_to_definition(&mut cx).await, Navigated::Yes);
+        assert_eq!(active_path(&mut cx), "dir/other.c");
+        assert_eq!(active_selection_text(&mut cx), "foo");
+        assert!(has_name_match_notice(&mut cx));
+    }
+
+    #[gpui::test]
+    async fn test_language_server_pointing_back_at_a_definition_is_kept(cx: &mut TestAppContext) {
+        let mut cx = c_context_for(c_language_with_grammar(), cx).await;
+        let text = "int foo(void) { return 0; }\n";
+        cx.set_state("int ˇfoo(void) { return 0; }\n");
+        let _index = install_index(
+            &mut cx,
+            ("dir/file.c", text),
+            &[("dir/other.c", "int foo(void) { return 1; }\n")],
+        )
+        .await;
+        cx.lsp
+            .set_request_handler::<lsp::request::GotoDefinition, _, _>(|params, _| async move {
+                Ok(Some(lsp::GotoDefinitionResponse::Scalar(lsp::Location {
+                    uri: params.text_document_position_params.text_document.uri,
+                    range: lsp::Range::new(lsp::Position::new(0, 4), lsp::Position::new(0, 7)),
+                })))
+            });
+
+        go_to_definition(&mut cx).await;
+        assert_eq!(active_path(&mut cx), "dir/file.c");
+        let editors =
+            cx.update_workspace(|workspace, _, cx| workspace.items_of_type::<Editor>(cx).count());
+        assert_eq!(editors, 1, "the namesake in other.c is not opened");
+        assert!(!has_name_match_notice(&mut cx));
+    }
+
+    #[gpui::test]
+    async fn test_language_server_pointing_back_at_a_local_declaration_is_kept(
+        cx: &mut TestAppContext,
+    ) {
+        let mut cx = c_context_for(c_language_with_grammar(), cx).await;
+        let text = "int main(void) { int foo = 0; return foo; }
+";
+        cx.set_state(
+            "int main(void) { int ˇfoo = 0; return foo; }
+",
+        );
+        let _index = install_index(
+            &mut cx,
+            ("dir/file.c", text),
+            &[(
+                "dir/other.c",
+                "int foo(void) { return 1; }
+",
+            )],
+        )
+        .await;
+        cx.lsp
+            .set_request_handler::<lsp::request::GotoDefinition, _, _>(|params, _| async move {
+                Ok(Some(lsp::GotoDefinitionResponse::Scalar(lsp::Location {
+                    uri: params.text_document_position_params.text_document.uri,
+                    range: lsp::Range::new(lsp::Position::new(0, 21), lsp::Position::new(0, 24)),
+                })))
+            });
+
+        go_to_definition(&mut cx).await;
+        assert_eq!(active_path(&mut cx), "dir/file.c");
+        let editors =
+            cx.update_workspace(|workspace, _, cx| workspace.items_of_type::<Editor>(cx).count());
+        assert_eq!(
+            editors, 1,
+            "a local variable is not taken for the function of the same name"
+        );
         assert!(!has_name_match_notice(&mut cx));
     }
 
