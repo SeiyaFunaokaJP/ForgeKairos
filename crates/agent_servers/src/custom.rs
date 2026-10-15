@@ -537,6 +537,10 @@ impl AgentServer for CustomAgentServer {
         IconName::Terminal
     }
 
+    fn starts_on_first_message(&self) -> bool {
+        true
+    }
+
     fn default_mode(&self, cx: &App) -> Option<acp::SessionModeId> {
         let settings = cx.read_global(|settings: &SettingsStore, _| {
             settings
