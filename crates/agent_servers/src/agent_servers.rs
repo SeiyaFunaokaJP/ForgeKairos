@@ -117,6 +117,14 @@ pub trait AgentServer: Send {
 
     fn into_any(self: Rc<Self>) -> Rc<dyn Any>;
 
+    /// ADR-F99: whether a new thread of this agent waits for its first message
+    /// before starting the agent, so that the sandbox and network it starts
+    /// with can be picked first. Only an agent whose whole process the sandbox
+    /// holds has anything to pick before it starts.
+    fn starts_on_first_message(&self) -> bool {
+        false
+    }
+
     fn default_mode(&self, _cx: &App) -> Option<acp_schema::SessionModeId> {
         None
     }

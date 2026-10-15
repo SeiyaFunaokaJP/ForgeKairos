@@ -918,6 +918,9 @@ msgstr "已完成"
 msgid "Finished running tools"
 msgstr "工具运行完成"
 
+msgid "Fixed for this thread once the agent has started. Start a new thread to pick again. Right-click to set the default for this project."
+msgstr "智能体启动后，此会话中的设置即固定。要重新选择，请新建会话。右键点击可设置此项目的默认值。"
+
 msgid "Follow the Settings"
 msgstr "遵循设置"
 
@@ -1109,17 +1112,11 @@ msgstr "在此面板的标签页中启动官方 Claude Code CLI。在 CLI 的界
 msgid "Learn More"
 msgstr "了解详情"
 
-msgid "Let the Agent Reach Any Host?"
-msgstr "允许智能体访问任意主机？"
-
 msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "要让此会话的智能体及其运行的命令访问网络允许列表范围内的任意主机，需要开启“允许为单个会话解除网络限制”（设置 > AI > 沙盒），但它目前处于关闭状态。是否开启？在设置中关闭之前它会一直保持开启。"
 
 msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
 msgstr "要让此会话的终端命令和 fetch 访问任意主机，需要开启“允许为单个会话解除网络限制”（设置 > AI > 沙盒），但它目前处于关闭状态。是否开启？在设置中关闭之前它会一直保持开启。网络允许列表仍然适用。"
-
-msgid "Lifting the network restriction is not available for this agent."
-msgstr "此智能体不支持解除网络限制。"
 
 msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
 msgstr "解除网络限制需要远程主机上的沙盒，而此连接没有。"
@@ -1634,9 +1631,6 @@ msgstr "恢复到检查点"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "将项目中的所有文件还原为对话中此时间点的内容。"
 
-msgid "Restrict the Agent's Network Again?"
-msgstr "重新限制智能体的网络？"
-
 msgid "Restrict the Network"
 msgstr "限制网络"
 
@@ -1874,15 +1868,6 @@ msgstr "启动（仅此会话）"
 msgid "Start (This Time Only)"
 msgstr "启动（仅此一次）"
 
-msgid "Start Again Restricted"
-msgstr "受限重新启动"
-
-msgid "Start Again Without Host Limits"
-msgstr "不限主机重新启动"
-
-msgid "Start Again in the Sandbox"
-msgstr "在沙盒内重新启动"
-
 msgid "Start Claude Code outside the sandbox?"
 msgstr "在沙盒外启动 Claude Code？"
 
@@ -1900,9 +1885,6 @@ msgstr "在沙盒外启动…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "在沙盒外启动 `{program}`？"
-
-msgid "Start the Agent Again in the Sandbox?"
-msgstr "在沙盒内重新启动智能体？"
 
 msgid "Started (status unknown)"
 msgstr "已启动（状态未知）"
@@ -2027,11 +2009,11 @@ msgstr "远程主机上的 ForgeKairos 服务器尚未就绪（内部错误）�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "远程主机上的 ForgeKairos 服务器尚未就绪。请等待连接完成后重试。"
 
-msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
-msgstr "智能体及其运行的命令可在网络允许列表范围内访问任意主机。点击可重新启动智能体，使其只能访问自己的主机。右键点击可设置此项目的默认值。"
+msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
+msgstr "智能体及其运行的命令将可在网络允许列表范围内访问任意主机。点击可限制为只访问智能体自己的主机。右键点击可设置此项目的默认值。"
 
-msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
-msgstr "智能体及其运行的命令只能访问智能体自己的主机。点击可重新启动智能体，使其可在网络允许列表范围内访问任意主机。右键点击可设置此项目的默认值。"
+msgid "The agent and the commands it runs will reach only the agent's own hosts. Click to let them reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "智能体及其运行的命令将只能访问智能体自己的主机。点击可让它们在网络允许列表范围内访问任意主机。右键点击可设置此项目的默认值。"
 
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "智能体可以读取仓库，但不能更改它。点击以为此会话开启 Git 操作。"
@@ -2042,29 +2024,20 @@ msgstr "智能体可以暂存、提交、切换分支等，但钩子已关闭且
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "智能体无法使用 `getDiagnostics`，因此看不到编辑器显示的错误和警告。{reason}"
 
-msgid "The agent is starting. Try again once it has started."
-msgstr "智能体正在启动。请在启动完成后重试。"
-
-msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
-msgstr "智能体在沙盒内运行。点击以在沙盒外以新会话重新启动它。右键点击以设置此项目的默认值。"
-
-msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
-msgstr "智能体在沙盒外运行，可能会不经询问就使用自己的工具。点击以在沙盒内以新会话重新启动它。右键点击以设置此项目的默认值。"
-
-msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
-msgstr "智能体会停止，然后仅为此会话在沙盒内重新启动。之后，智能体及其运行的命令不仅能访问智能体自己的主机，还能访问网络允许列表所允许的任意主机。如果智能体支持，对话会被读回；否则将在新会话中继续。"
-
-msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
-msgstr "智能体会停止，然后在沙盒内重新启动，只能访问它自己的主机。如果智能体支持，对话会被读回；否则将在新会话中继续。"
-
-msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
-msgstr "智能体会停止，然后在沙盒内重新启动。对话将在新会话中继续：当前会话保留在沙盒外，沙盒内的智能体无法读取它。"
+msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
+msgstr "发送第一条消息时智能体才会启动。请先选择它的沙盒和网络：启动后，此会话中会保持不变。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "智能体已添加到 settings.json，但尚未加载。请稍后从 + 菜单中打开它。"
 
 msgid "The agent was stopped because it wasn't in use. Sending a message reconnects it"
 msgstr "由于未在使用，智能体已停止。发送消息会重新连接"
+
+msgid "The agent will start in the sandbox. Click to start it outside the sandbox instead. Right-click to set the default for this project."
+msgstr "智能体将在沙盒内启动。点击可改为在沙盒外启动。右键点击可设置此项目的默认值。"
+
+msgid "The agent will start outside the sandbox and may use its own tools without asking. Click to start it in the sandbox instead. Right-click to set the default for this project."
+msgstr "智能体将在沙盒外启动，并可不经询问使用自己的工具。点击可改为在沙盒内启动。右键点击可设置此项目的默认值。"
 
 msgid "The agent's network access needs hosts added to the allowlist"
 msgstr "智能体的网络访问需要将主机添加到允许列表"
@@ -2220,9 +2193,6 @@ msgstr "此智能体没有自己的主机列表：只受网络允许列表限制
 msgid "This agent is installed via npx (npm)"
 msgstr "此智能体通过 npx（npm）安装"
 
-msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
-msgstr "这也会开启“允许为单个会话解除网络限制”（设置 > AI > 沙盒），它目前已关闭。在设置中关闭之前，它会一直保持开启。"
-
 msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
 msgstr "这也会开启“允许在沙盒外运行”（设置 > AI > 沙盒），它目前已关闭。在设置中关闭之前，它会一直保持开启。"
 
@@ -2360,9 +2330,6 @@ msgstr "尝试重启智能体"
 
 msgid "Turn On and Continue"
 msgstr "开启并继续"
-
-msgid "Turn On and Start Again"
-msgstr "开启并重新启动"
 
 msgid "Turn On and Start Outside"
 msgstr "开启并在沙盒外启动"
