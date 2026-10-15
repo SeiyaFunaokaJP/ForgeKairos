@@ -697,6 +697,11 @@ impl MessageEditor {
         *self.local_commands.write() = commands;
     }
 
+    #[cfg(test)]
+    pub(crate) fn session_capabilities(&self) -> &SharedSessionCapabilities {
+        &self.session_capabilities
+    }
+
     pub fn set_session_capabilities(
         &mut self,
         session_capabilities: SharedSessionCapabilities,

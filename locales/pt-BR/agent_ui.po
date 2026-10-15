@@ -2077,6 +2077,9 @@ msgstr[1] "A mensagem excede o limite de tamanho, então {count} anexos grandes 
 msgid "The model"
 msgstr "O modelo"
 
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "O modelo e as outras opções são os que a última conversa deste agente ofereceu. O que você escolher é aplicado antes de sua primeira mensagem ser enviada."
+
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "O modelo parou porque atingiu o comprimento máximo de saída. Você pode pedir que ele continue de onde parou."
 

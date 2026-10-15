@@ -51,6 +51,7 @@ use crate::{AgentThreadSource, DEFAULT_THREAD_TITLE, resolve_agent_image};
 use lru::LruCache;
 use rope::Point;
 use settings::{NotifyWhenAgentWaiting, Settings as _, SettingsStore};
+use std::cell::{Cell, RefCell};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -94,9 +95,9 @@ use crate::profile_selector::{ProfileProvider, ProfileSelector};
 use crate::sandboxed_claude_code::OutsideSandboxStart;
 use crate::thread_item::ThreadItem;
 use crate::thread_metadata_store::{
-    LaunchChoice, ThreadId, ThreadMetadataStore, record_thread_started_outside_sandbox,
-    record_thread_started_with_network_lifted, thread_started_outside_sandbox,
-    thread_started_with_network_lifted,
+    LaunchChoice, SessionOptionsSnapshot, ThreadId, ThreadMetadataStore,
+    record_thread_started_outside_sandbox, record_thread_started_with_network_lifted,
+    thread_started_outside_sandbox, thread_started_with_network_lifted,
 };
 use crate::ui::{AgentNotification, AgentNotificationEvent};
 use crate::{
@@ -997,6 +998,9 @@ pub struct ConversationView {
     /// default or their settings start it there. "Outside" taken over from the
     /// last thread is asked for once more when the draft is sent.
     outside_confirmed: bool,
+    /// ADR-F100: what was picked on the not yet started thread's pickers, on
+    /// its way to the session the send starts.
+    prelaunch_picks: Option<Rc<PrelaunchSessionOptions>>,
     agent_server_store: Entity<AgentServerStore>,
     workspace: WeakEntity<Workspace>,
     project: Entity<Project>,
@@ -1222,7 +1226,229 @@ struct ParkedServerState {
     /// much as the text is, and the session that is opened again has to be
     /// opened on the same ones.
     work_dirs: Option<PathList>,
+    /// ADR-F100: the model, mode and other options of the last session of
+    /// this agent, to pick from before a new thread's agent starts.
+    prelaunch: Option<PrelaunchPickers>,
     _editor_subscription: Subscription,
+}
+
+/// ADR-F100: the pickers a not yet started thread shows, built from what the
+/// agent's last session offered ([`SessionOptionsSnapshot`]).
+struct PrelaunchPickers {
+    options: Rc<PrelaunchSessionOptions>,
+    config_options_view: Option<Entity<ConfigOptionsView>>,
+    mode_selector: Option<Entity<ModeSelector>>,
+}
+
+/// ADR-F100: stands in for a session that does not exist yet, so the
+/// session's own pickers ([`ConfigOptionsView`], [`ModeSelector`]) can be
+/// shown before the start. A pick only changes what is shown here and is
+/// remembered as picked; [`ConversationView::apply_prelaunch_picks`] makes it
+/// on the session once there is one.
+struct PrelaunchSessionOptions {
+    config_options: RefCell<Vec<acp_v1::SessionConfigOption>>,
+    modes: RefCell<Option<acp_v1::SessionModeState>>,
+    picked_config_options: RefCell<Vec<acp_v1::SessionConfigId>>,
+    mode_picked: Cell<bool>,
+    available_commands: Vec<acp_v1::AvailableCommand>,
+}
+
+impl PrelaunchSessionOptions {
+    /// What the last session offered, set to the agent's defaults where the
+    /// user has them, since those are what a new session starts with.
+    fn new(snapshot: SessionOptionsSnapshot, agent: &Rc<dyn AgentServer>, cx: &App) -> Self {
+        let mut config_options = snapshot.config_options.unwrap_or_default();
+        for option in &mut config_options {
+            let Some(default) = agent.default_config_option(option.id.0.as_ref(), cx) else {
+                continue;
+            };
+            match &mut option.kind {
+                acp_v1::SessionConfigKind::Select(select) => {
+                    if let Some(value_id) = default.as_value_id()
+                        && select_offers_value(select, value_id)
+                    {
+                        select.current_value = acp_v1::SessionConfigValueId::new(value_id);
+                    }
+                }
+                acp_v1::SessionConfigKind::Boolean(boolean) => {
+                    if let Some(value) = default.as_bool() {
+                        boolean.current_value = value;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut modes = snapshot.modes;
+        if let Some(modes) = &mut modes
+            && let Some(default_mode) = agent.default_mode(cx)
+            && modes
+                .available_modes
+                .iter()
+                .any(|mode| mode.id == default_mode)
+        {
+            modes.current_mode_id = default_mode;
+        }
+        Self {
+            config_options: RefCell::new(config_options),
+            modes: RefCell::new(modes),
+            picked_config_options: RefCell::new(Vec::new()),
+            mode_picked: Cell::new(false),
+            available_commands: snapshot.available_commands,
+        }
+    }
+
+    fn has_config_options(&self) -> bool {
+        !self.config_options.borrow().is_empty()
+    }
+
+    fn has_modes(&self) -> bool {
+        self.modes
+            .borrow()
+            .as_ref()
+            .is_some_and(|modes| !modes.available_modes.is_empty())
+    }
+
+    /// The values the user picked, in the order they first picked them.
+    fn picked_config_option_values(
+        &self,
+    ) -> Vec<(acp_v1::SessionConfigId, acp_v1::SessionConfigOptionValue)> {
+        let config_options = self.config_options.borrow();
+        self.picked_config_options
+            .borrow()
+            .iter()
+            .filter_map(|config_id| {
+                let option = config_options
+                    .iter()
+                    .find(|option| &option.id == config_id)?;
+                let value = match &option.kind {
+                    acp_v1::SessionConfigKind::Select(select) => {
+                        acp_v1::SessionConfigOptionValue::value_id(select.current_value.clone())
+                    }
+                    acp_v1::SessionConfigKind::Boolean(boolean) => {
+                        acp_v1::SessionConfigOptionValue::boolean(boolean.current_value)
+                    }
+                    _ => return None,
+                };
+                Some((config_id.clone(), value))
+            })
+            .collect()
+    }
+
+    fn picked_mode(&self) -> Option<acp_v1::SessionModeId> {
+        if !self.mode_picked.get() {
+            return None;
+        }
+        self.modes
+            .borrow()
+            .as_ref()
+            .map(|modes| modes.current_mode_id.clone())
+    }
+}
+
+fn select_offers_value(select: &acp_v1::SessionConfigSelect, value_id: &str) -> bool {
+    match &select.options {
+        acp_v1::SessionConfigSelectOptions::Ungrouped(options) => {
+            options.iter().any(|option| &*option.value.0 == value_id)
+        }
+        acp_v1::SessionConfigSelectOptions::Grouped(groups) => groups.iter().any(|group| {
+            group
+                .options
+                .iter()
+                .any(|option| &*option.value.0 == value_id)
+        }),
+        _ => false,
+    }
+}
+
+/// Whether `option` can take `value`, and does not have it already.
+fn config_option_would_change(
+    option: &acp_v1::SessionConfigOption,
+    value: &acp_v1::SessionConfigOptionValue,
+) -> bool {
+    match (&option.kind, value) {
+        (
+            acp_v1::SessionConfigKind::Select(select),
+            acp_v1::SessionConfigOptionValue::ValueId { value },
+        ) => select.current_value != *value && select_offers_value(select, &value.0),
+        (
+            acp_v1::SessionConfigKind::Boolean(boolean),
+            acp_v1::SessionConfigOptionValue::Boolean { value },
+        ) => boolean.current_value != *value,
+        _ => false,
+    }
+}
+
+impl acp_thread::AgentSessionConfigOptions for PrelaunchSessionOptions {
+    fn config_options(&self) -> Vec<acp_v1::SessionConfigOption> {
+        self.config_options.borrow().clone()
+    }
+
+    fn set_config_option(
+        &self,
+        config_id: acp_v1::SessionConfigId,
+        value: acp_v1::SessionConfigOptionValue,
+        _cx: &mut App,
+    ) -> Task<Result<Vec<acp_v1::SessionConfigOption>>> {
+        let mut config_options = self.config_options.borrow_mut();
+        let Some(option) = config_options
+            .iter_mut()
+            .find(|option| option.id == config_id)
+        else {
+            return Task::ready(Err(anyhow!("no option {} to pick", config_id.0)));
+        };
+        match (&mut option.kind, value) {
+            (
+                acp_v1::SessionConfigKind::Select(select),
+                acp_v1::SessionConfigOptionValue::ValueId { value },
+            ) if select_offers_value(select, &value.0) => select.current_value = value,
+            (
+                acp_v1::SessionConfigKind::Boolean(boolean),
+                acp_v1::SessionConfigOptionValue::Boolean { value },
+            ) => boolean.current_value = value,
+            _ => {
+                return Task::ready(Err(anyhow!(
+                    "the value picked does not fit the option {}",
+                    config_id.0
+                )));
+            }
+        }
+        let mut picked = self.picked_config_options.borrow_mut();
+        if !picked.contains(&config_id) {
+            picked.push(config_id);
+        }
+        Task::ready(Ok(config_options.clone()))
+    }
+}
+
+impl acp_thread::AgentSessionModes for PrelaunchSessionOptions {
+    fn current_mode(&self) -> acp_v1::SessionModeId {
+        self.modes
+            .borrow()
+            .as_ref()
+            .map(|modes| modes.current_mode_id.clone())
+            .unwrap_or_else(|| acp_v1::SessionModeId::new(""))
+    }
+
+    fn all_modes(&self) -> Vec<acp_v1::SessionMode> {
+        self.modes
+            .borrow()
+            .as_ref()
+            .map(|modes| modes.available_modes.clone())
+            .unwrap_or_default()
+    }
+
+    fn set_mode(&self, mode: acp_v1::SessionModeId, _cx: &mut App) -> Task<Result<()>> {
+        let mut modes = self.modes.borrow_mut();
+        let Some(modes) = modes
+            .as_mut()
+            .filter(|modes| modes.available_modes.iter().any(|known| known.id == mode))
+        else {
+            return Task::ready(Err(anyhow!("no mode {mode} to pick")));
+        };
+        modes.current_mode_id = mode;
+        self.mode_picked.set(true);
+        Task::ready(Ok(()))
+    }
 }
 
 /// What a parked view is being started again for: the user pressed send, or
@@ -1539,7 +1765,8 @@ impl ConversationView {
                 window,
                 cx,
             );
-            Self::parked_state(message_editor, work_dirs, true, window, cx)
+            let prelaunch = Self::prelaunch_pickers(&agent, &project, &workspace, window, cx);
+            Self::parked_state(message_editor, work_dirs, true, prelaunch, window, cx)
         } else {
             Self::initial_state(
                 agent.clone(),
@@ -1573,6 +1800,7 @@ impl ConversationView {
             launch_choice,
             launch_choice_fixed: new_thread_launch.is_some() && starts_now,
             outside_confirmed,
+            prelaunch_picks: None,
             agent_server_store,
             workspace,
             project: project.clone(),
@@ -2125,6 +2353,22 @@ impl ConversationView {
                             conversation
                         });
 
+                        if this.records_session_options(&thread, cx) {
+                            this.record_session_options(&thread, cx);
+                        }
+                        // ADR-F100: what was picked before the start goes to
+                        // the session before the draft does.
+                        let prelaunch = this.prelaunch_picks.take();
+                        let send_after_picks = prelaunch.is_some()
+                            && adopted_draft
+                                .as_ref()
+                                .is_some_and(|draft| draft.auto_submit);
+                        let adopted_draft = adopted_draft.map(|mut draft| {
+                            if send_after_picks {
+                                draft.auto_submit = false;
+                            }
+                            draft
+                        });
                         let current = this.new_thread_view(
                             thread,
                             conversation.clone(),
@@ -2134,6 +2378,15 @@ impl ConversationView {
                             window,
                             cx,
                         );
+                        if let Some(prelaunch) = prelaunch {
+                            Self::apply_prelaunch_picks(
+                                &current,
+                                &prelaunch,
+                                send_after_picks,
+                                window,
+                                cx,
+                            );
+                        }
 
                         if this.focus_handle.contains_focused(window, cx) {
                             current
@@ -2706,7 +2959,7 @@ impl ConversationView {
         // The session this view had went with the connection, so it must not
         // be written out or resumed from.
         self.root_session_id = None;
-        let state = Self::parked_state(message_editor, work_dirs, false, window, cx);
+        let state = Self::parked_state(message_editor, work_dirs, false, None, window, cx);
         self.set_server_state(state, cx);
         log::info!(
             "parked the empty draft of {}: nothing has used its connection",
@@ -2763,6 +3016,10 @@ impl ConversationView {
             editor: parked.message_editor.clone(),
             auto_submit: matches!(then, Unpark::AndSend),
         };
+        let prelaunch_picks = parked
+            .prelaunch
+            .as_ref()
+            .map(|prelaunch| prelaunch.options.clone());
         let work_dirs = parked.work_dirs.clone();
         // A start that does not come back replaces this view with a card of
         // its own (the sign-in, the allowlist, the plain failure), and the box
@@ -2823,6 +3080,7 @@ impl ConversationView {
                 cx,
             );
         }
+        self.prelaunch_picks = prelaunch_picks;
         let state = Self::initial_state(
             self.agent.clone(),
             self.connection_store.clone(),
@@ -3320,6 +3578,13 @@ impl ConversationView {
                 }
             }
             AcpThreadEvent::AvailableCommandsUpdated(available_commands) => {
+                if self.records_session_options(thread, cx) && !available_commands.is_empty() {
+                    crate::thread_metadata_store::record_last_available_commands(
+                        self.agent.agent_id(),
+                        available_commands.clone(),
+                        cx,
+                    );
+                }
                 if let Some(thread_view) = self.thread_view(&session_id) {
                     let available_skills = thread
                         .read(cx)
@@ -6265,8 +6530,13 @@ impl ConversationView {
         cx: &mut Context<Self>,
     ) -> Entity<MessageEditor> {
         let display_name = agent_display_name(agent_server_store.read(cx), &agent.agent_id());
-        let placeholder = placeholder_text(display_name.as_ref(), false);
         let agent_id = agent.agent_id();
+        // ADR-F100: the slash commands are the ones the agent's last session
+        // announced, until this thread's own session announces its.
+        let available_commands = crate::thread_metadata_store::last_session_options(&agent_id, cx)
+            .map(|snapshot| snapshot.available_commands)
+            .unwrap_or_default();
+        let placeholder = placeholder_text(display_name.as_ref(), !available_commands.is_empty());
         // What the agent accepts is only known once it runs; images and
         // attached context are let in until then, as the agents this applies
         // to take them, and the session's own capabilities replace these when
@@ -6275,7 +6545,7 @@ impl ConversationView {
             acp_v1::PromptCapabilities::new()
                 .image(true)
                 .embedded_context(true),
-            Vec::new(),
+            available_commands,
             Vec::new(),
         );
         cx.new(|cx| {
@@ -6323,6 +6593,7 @@ impl ConversationView {
         message_editor: Entity<MessageEditor>,
         work_dirs: Option<PathList>,
         not_started: bool,
+        prelaunch: Option<PrelaunchPickers>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> ServerState {
@@ -6349,8 +6620,154 @@ impl ConversationView {
             message_editor,
             not_started,
             work_dirs,
+            prelaunch,
             _editor_subscription: editor_subscription,
         })
+    }
+
+    /// ADR-F100: the pickers of the agent's last session, for a new thread to
+    /// pick from before its first message starts the agent. None when no
+    /// session of the agent has run yet: what it offers is not known.
+    /// Without either kind of option there are no pickers, only the slash
+    /// commands.
+    fn prelaunch_pickers(
+        agent: &Rc<dyn AgentServer>,
+        project: &Entity<Project>,
+        workspace: &WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<PrelaunchPickers> {
+        let snapshot = crate::thread_metadata_store::last_session_options(&agent.agent_id(), cx)?;
+        let options = Rc::new(PrelaunchSessionOptions::new(snapshot, agent, cx));
+        let fs = project.read(cx).fs().clone();
+        // The same choice a running thread makes: an agent's options take the
+        // place of its modes.
+        let config_options_view = options.has_config_options().then(|| {
+            let agent_launchers = crate::model_selector::agent_launch_source(
+                project.downgrade(),
+                workspace.clone(),
+                agent.agent_id(),
+            );
+            cx.new(|cx| {
+                ConfigOptionsView::new(
+                    options.clone(),
+                    agent.clone(),
+                    fs.clone(),
+                    Some(agent_launchers),
+                    window,
+                    cx,
+                )
+            })
+        });
+        let mode_selector = (config_options_view.is_none() && options.has_modes())
+            .then(|| cx.new(|_| ModeSelector::new(options.clone(), agent.clone(), fs)));
+        Some(PrelaunchPickers {
+            options,
+            config_options_view,
+            mode_selector,
+        })
+    }
+
+    /// ADR-F100: only the root session of an agent that starts on the first
+    /// message is what a new thread of it is shown before its start.
+    fn records_session_options(&self, thread: &Entity<AcpThread>, cx: &App) -> bool {
+        self.agent.starts_on_first_message() && thread.read(cx).parent_session_id().is_none()
+    }
+
+    fn record_session_options(&self, thread: &Entity<AcpThread>, cx: &mut App) {
+        let thread = thread.read(cx);
+        let connection = thread.connection().clone();
+        let session_id = thread.session_id().clone();
+        let available_commands = thread.available_commands().to_vec();
+        let config_options = connection
+            .session_config_options(&session_id, cx)
+            .map(|config_options| config_options.config_options());
+        let modes = connection
+            .session_modes(&session_id, cx)
+            .map(|modes| acp_v1::SessionModeState::new(modes.current_mode(), modes.all_modes()));
+        crate::thread_metadata_store::record_last_session_options(
+            self.agent.agent_id(),
+            SessionOptionsSnapshot {
+                config_options,
+                modes,
+                available_commands,
+            },
+            cx,
+        );
+    }
+
+    /// ADR-F100: makes what was picked before the start on the session that
+    /// just started, then sends the draft if the start was a send, so that the
+    /// first message already goes with the picked model and mode. Until the
+    /// agent announces its slash commands, the last session's stand in for
+    /// them, so a first message that is one is taken as one.
+    fn apply_prelaunch_picks(
+        thread_view: &Entity<ThreadView>,
+        prelaunch: &PrelaunchSessionOptions,
+        send: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (thread, session_capabilities) = {
+            let thread_view = thread_view.read(cx);
+            (
+                thread_view.thread.clone(),
+                thread_view.session_capabilities.clone(),
+            )
+        };
+        if thread.read(cx).available_commands().is_empty()
+            && !prelaunch.available_commands.is_empty()
+        {
+            session_capabilities
+                .write()
+                .set_available_commands(prelaunch.available_commands.clone());
+        }
+        let connection = thread.read(cx).connection().clone();
+        let session_id = thread.read(cx).session_id().clone();
+        let mut picks = Vec::new();
+        if let Some(config_options) = connection.session_config_options(&session_id, cx) {
+            let current = config_options.config_options();
+            for (config_id, value) in prelaunch.picked_config_option_values() {
+                let applies = current
+                    .iter()
+                    .find(|option| option.id == config_id)
+                    .is_some_and(|option| config_option_would_change(option, &value));
+                if applies {
+                    let task = config_options.set_config_option(config_id, value, cx);
+                    picks.push(cx.spawn(async move |_, _| task.await.map(|_| ())));
+                }
+            }
+        } else if let Some(mode) = prelaunch.picked_mode()
+            && let Some(modes) = connection.session_modes(&session_id, cx)
+            && modes.current_mode() != mode
+            && modes.all_modes().iter().any(|known| known.id == mode)
+        {
+            picks.push(modes.set_mode(mode, cx));
+        }
+        if picks.is_empty() {
+            if send {
+                thread_view.update(cx, |thread_view, cx| thread_view.send(window, cx));
+            }
+            return;
+        }
+        let thread_view = thread_view.downgrade();
+        cx.spawn_in(window, async move |_, cx| {
+            for result in futures::future::join_all(picks).await {
+                // The draft goes all the same: what failed to apply shows on
+                // the session's own pickers, which the user can still change.
+                if let Err(error) = result {
+                    log::error!(
+                        "could not apply what was picked before the agent started: {error:#}"
+                    );
+                }
+            }
+            if send {
+                thread_view
+                    .update_in(cx, |thread_view, window, cx| thread_view.send(window, cx))
+                    .log_err();
+            }
+        })
+        .detach();
     }
 
     fn start_agent_outside_sandbox(
@@ -6531,6 +6948,7 @@ impl ConversationView {
         &self,
         not_started: bool,
         message_editor: &Entity<MessageEditor>,
+        prelaunch: Option<&PrelaunchPickers>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let is_editor_empty = message_editor.read(cx).text(cx).trim().is_empty();
@@ -6550,12 +6968,21 @@ impl ConversationView {
                     message_editor.update(cx, |editor, cx| editor.send(cx));
                 }
             });
-        h_flex()
+        // ADR-F100: laid out like a running thread's row, the session's
+        // pickers between the switches and the send button.
+        let pickers = prelaunch.map(|prelaunch| {
+            h_flex()
+                .min_w_0()
+                .flex_wrap()
+                .gap_1()
+                .children(prelaunch.config_options_view.clone())
+                .children(prelaunch.mode_selector.clone())
+        });
+        v_flex()
             .w_full()
             .min_w_0()
-            .gap_2()
-            .justify_between()
-            .child(div().flex_1().min_w_0().when(not_started, |this| {
+            .gap_1()
+            .when(not_started, |this| {
                 this.child(
                     Label::new(i18n::t!(
                         "The agent starts when you send your first message. Pick its sandbox and \
@@ -6564,9 +6991,28 @@ impl ConversationView {
                     .size(LabelSize::Small)
                     .color(Color::Muted),
                 )
-            }))
-            .children(self.render_launch_switches(cx))
-            .child(send_button)
+            })
+            .when(not_started && pickers.is_some(), |this| {
+                this.child(
+                    Label::new(i18n::t!(
+                        "The model and the other options are the ones this agent's last thread \
+                         offered. What you pick is set before your first message is sent."
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+                )
+            })
+            .child(
+                h_flex()
+                    .w_full()
+                    .min_w_0()
+                    .flex_wrap()
+                    .gap_1()
+                    .justify_end()
+                    .children(self.render_launch_switches(cx))
+                    .children(pickers)
+                    .child(send_button),
+            )
     }
 
     fn render_launch_switches(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
@@ -7047,6 +7493,7 @@ impl Render for ConversationView {
                             .child(self.render_launch_row(
                                 parked.not_started,
                                 &parked.message_editor,
+                                parked.prelaunch.as_ref(),
                                 cx,
                             )),
                     )
@@ -11506,6 +11953,9 @@ pub(crate) mod tests {
 
     /// ADR-F96: the network and sandbox switches' follow-ups (TODO F57).
     mod network_switch_tests;
+
+    /// ADR-F100: the session's pickers before a new thread's agent starts.
+    mod prelaunch_pickers_tests;
 
     fn failed_to_start() -> LoadError {
         LoadError::Other("エージェントの起動に失敗しました".into())

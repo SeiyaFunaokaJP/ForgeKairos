@@ -2070,6 +2070,9 @@ msgstr[0] "1 メッセージの上限を超えるため、大きい添付 {count
 msgid "The model"
 msgstr "モデル"
 
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "モデルとその他のオプションは、このエージェントの前回のスレッドで選べたものです。ここで選んだものは、最初のメッセージを送信する前に設定されます。"
+
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "モデルは最大出力長に達したため停止しました。続きから再開するよう指示できます。"
 

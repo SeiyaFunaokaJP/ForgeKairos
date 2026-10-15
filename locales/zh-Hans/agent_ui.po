@@ -2073,6 +2073,9 @@ msgstr[0] "消息超出大小上限，因此 {count} 个较大的附件被缩减
 msgid "The model"
 msgstr "模型"
 
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "模型和其他选项来自此代理上一个会话所提供的内容。你在这里选择的内容会在发送第一条消息之前生效。"
+
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "模型已达到最大输出长度而停止。你可以让它从中断处继续。"
 

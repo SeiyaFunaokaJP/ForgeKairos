@@ -2073,6 +2073,9 @@ msgstr[0] "메시지가 크기 한도를 초과하여 큰 첨부 파일 {count}�
 msgid "The model"
 msgstr "모델"
 
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "모델과 다른 옵션은 이 에이전트의 이전 스레드에서 제공된 것입니다. 여기서 고른 항목은 첫 메시지를 보내기 전에 설정됩니다."
+
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "모델이 최대 출력 길이에 도달하여 중지되었습니다. 중단된 지점부터 계속하도록 요청할 수 있습니다."
 

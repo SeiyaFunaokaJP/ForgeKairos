@@ -94,6 +94,7 @@ pub fn init(cx: &mut App) {
     load_outside_sandbox_consents(cx);
     load_threads_started_with_network_lifted(cx);
     load_last_launch_choices(cx);
+    load_last_session_options(cx);
     register_revoke_outside_sandbox_consents(cx);
 }
 
@@ -441,6 +442,100 @@ pub fn record_last_launch_choice(agent_id: AgentId, choice: LaunchChoice, cx: &m
             .await
     })
     .detach_and_log_err(cx);
+}
+
+/// ADR-F100: what the last session of an external agent offered — its
+/// options (model, effort, …), its modes and its slash commands — by agent.
+/// A new thread of that agent has no session until its first message, and
+/// shows these in the meantime so they can be picked before the start.
+const LAST_SESSION_OPTIONS_NAMESPACE: &str = "agent_last_session_options";
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SessionOptionsSnapshot {
+    #[serde(default)]
+    pub config_options: Option<Vec<acp::SessionConfigOption>>,
+    #[serde(default)]
+    pub modes: Option<acp::SessionModeState>,
+    #[serde(default)]
+    pub available_commands: Vec<acp::AvailableCommand>,
+}
+
+#[derive(Default)]
+struct LastSessionOptions(HashMap<AgentId, SessionOptionsSnapshot>);
+
+impl Global for LastSessionOptions {}
+
+fn load_last_session_options(cx: &mut App) {
+    let snapshots = KeyValueStore::global(cx)
+        .scoped(LAST_SESSION_OPTIONS_NAMESPACE)
+        .read_all()
+        .log_err()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(agent_id, value)| {
+            // An agent's options change shape between its versions; one that
+            // no longer reads is only a picker not shown before the start.
+            let snapshot = serde_json::from_str::<SessionOptionsSnapshot>(&value)
+                .with_context(|| format!("reading the last session options of {agent_id}"))
+                .log_err()?;
+            Some((AgentId(agent_id.into()), snapshot))
+        })
+        .collect();
+    cx.set_global(LastSessionOptions(snapshots));
+}
+
+/// What the last session of `agent_id` offered, if one ran.
+pub fn last_session_options(agent_id: &AgentId, cx: &App) -> Option<SessionOptionsSnapshot> {
+    cx.try_global::<LastSessionOptions>()
+        .and_then(|snapshots| snapshots.0.get(agent_id).cloned())
+}
+
+/// Writes down what a session of `agent_id` offers. Commands arrive after the
+/// session does, so an empty list keeps the ones written before rather than
+/// leaving the next thread without any.
+pub fn record_last_session_options(
+    agent_id: AgentId,
+    mut snapshot: SessionOptionsSnapshot,
+    cx: &mut App,
+) {
+    let snapshots = &mut cx.default_global::<LastSessionOptions>().0;
+    if snapshot.available_commands.is_empty()
+        && let Some(previous) = snapshots.get(&agent_id)
+    {
+        snapshot.available_commands = previous.available_commands.clone();
+    }
+    if snapshots.get(&agent_id) == Some(&snapshot) {
+        return;
+    }
+    let value = match serde_json::to_string(&snapshot) {
+        Ok(value) => value,
+        Err(error) => {
+            log::error!("could not write the session options of {agent_id}: {error}");
+            return;
+        }
+    };
+    let key = agent_id.0.to_string();
+    snapshots.insert(agent_id, snapshot);
+    let kvp = KeyValueStore::global(cx);
+    cx.background_spawn(async move {
+        kvp.scoped(LAST_SESSION_OPTIONS_NAMESPACE)
+            .write(key, value)
+            .await
+    })
+    .detach_and_log_err(cx);
+}
+
+/// Writes down the slash commands a session of `agent_id` announced, leaving
+/// its options as they were when it started: an option the agent changed on
+/// its own later (a mode it left) is not what the next thread starts with.
+pub fn record_last_available_commands(
+    agent_id: AgentId,
+    available_commands: Vec<acp::AvailableCommand>,
+    cx: &mut App,
+) {
+    let mut snapshot = last_session_options(&agent_id, cx).unwrap_or_default();
+    snapshot.available_commands = available_commands;
+    record_last_session_options(agent_id, snapshot, cx);
 }
 
 /// Migrate existing thread metadata from native agent thread store to the new metadata storage.

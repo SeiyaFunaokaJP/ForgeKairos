@@ -2077,6 +2077,9 @@ msgstr[1] "Le message dépasse sa taille maximale : {count} pièces jointes volu
 msgid "The model"
 msgstr "Le modèle"
 
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "Le modèle et les autres options sont ceux que proposait la dernière conversation de cet agent. Ce que vous choisissez est appliqué avant l'envoi de votre premier message."
+
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "Le modèle s'est arrêté parce qu'il a atteint sa longueur de sortie maximale. Vous pouvez lui demander de reprendre là où il s'est arrêté."
 
