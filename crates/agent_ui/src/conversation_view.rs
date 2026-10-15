@@ -1672,22 +1672,55 @@ impl ConversationView {
     /// Drops the cached connection for this agent (so the next request spawns a
     /// fresh server process) and rebuilds the thread state from scratch.
     pub(crate) fn retry_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let place = match (self.outside_sandbox, self.unrestricted_network) {
-            (Some(id), _) => ConnectionPlace::OutsideSandbox(id),
-            (None, Some(id)) => ConnectionPlace::UnrestrictedNetwork(id),
-            (None, None) if self.resumed_in_sandbox_despite_choice || self.kept_in_sandbox => {
-                ConnectionPlace::InSandbox
-            }
-            (None, None) => ConnectionPlace::AsTheSettingsSay,
-        };
+        let place = self.connection_place();
         self.connection_store.update(cx, |store, cx| {
             store.restart_connection_at(self.connection_key.clone(), place, self.agent.clone(), cx);
         });
         self.reset(window, cx);
     }
 
+    /// Where this view's connection is, among the agent's connections.
+    fn connection_place(&self) -> ConnectionPlace {
+        match (self.outside_sandbox, self.unrestricted_network) {
+            (Some(id), _) => ConnectionPlace::OutsideSandbox(id),
+            (None, Some(id)) => ConnectionPlace::UnrestrictedNetwork(id),
+            (None, None) if self.resumed_in_sandbox_despite_choice || self.kept_in_sandbox => {
+                ConnectionPlace::InSandbox
+            }
+            (None, None) => ConnectionPlace::AsTheSettingsSay,
+        }
+    }
+
     fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.reset_with(ResetSession::Resume, window, cx);
+    }
+
+    /// ADR-F99: a start that launched the installed version reports the
+    /// registry's newer one before there is a thread to show it on.
+    fn show_new_version_reported_at_start(&self, cx: &mut Context<Self>) {
+        if let Some(version) = self
+            .connection_store
+            .read(cx)
+            .new_version_available(&self.connection_key)
+            .cloned()
+            && let Some(thread) = self.root_thread_view()
+        {
+            thread.update(cx, |thread, cx| {
+                thread.new_server_version_available = Some(version);
+                cx.notify();
+            });
+        }
+    }
+
+    /// ADR-F99: the user agreed to update the agent (its update banner) where
+    /// this view's connection installed it. The start this makes installs the
+    /// registry's version there.
+    pub(crate) fn update_agent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let place = self.connection_place();
+        self.connection_store.update(cx, |store, cx| {
+            store.begin_agent_update(&self.connection_key, place, cx)
+        });
+        self.reset(window, cx);
     }
 
     fn reset_with(&mut self, session: ResetSession, window: &mut Window, cx: &mut Context<Self>) {
@@ -2061,6 +2094,7 @@ impl ConversationView {
                             }),
                             cx,
                         );
+                        this.show_new_version_reported_at_start(cx);
                         // ADR-F96 stage 3: `allow_unrestricted_network` may have
                         // been turned off while this start was on its way, when
                         // there was no running agent to restrict yet.
@@ -12066,6 +12100,81 @@ pub(crate) mod tests {
         assert!(shows_outside_sandbox_banner(&view, cx));
     }
 
+    /// Reports a newer version as soon as it is started, the way a start that
+    /// launched the installed version does (ADR-F99), and counts its starts.
+    struct ReportsAtStartServer {
+        connects: Arc<std::sync::atomic::AtomicUsize>,
+        senders: Arc<Mutex<Vec<watch::Sender<Option<String>>>>>,
+    }
+
+    impl AgentServer for ReportsAtStartServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            "Test".into()
+        }
+
+        fn connect(
+            &self,
+            mut delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            _cx: &mut App,
+        ) -> Task<gpui::Result<Rc<dyn AgentConnection>>> {
+            self.connects
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if let Some(mut sender) = delegate.take_new_version_sender() {
+                sender.send(Some("2.0.0".to_string())).ok();
+                self.senders.lock().push(sender);
+            }
+            Task::ready(Ok(Rc::new(StubAgentConnection::new())))
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    /// ADR-F99: the version a start reports before its thread exists still
+    /// shows the update banner; restarting without agreeing to it keeps the
+    /// connection (its next start would launch the same version), and the
+    /// update restarts it.
+    #[gpui::test]
+    async fn test_a_version_reported_at_start_shows_the_banner(cx: &mut TestAppContext) {
+        init_test(cx);
+        let connects = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let server = ReportsAtStartServer {
+            connects: connects.clone(),
+            senders: Arc::default(),
+        };
+        let (view, cx) = setup_conversation_view(server, cx).await;
+        let banner = |view: &Entity<ConversationView>, cx: &mut VisualTestContext| {
+            view.read_with(cx, |view, cx| {
+                view.root_thread_view()
+                    .and_then(|thread| thread.read(cx).new_server_version_available.clone())
+            })
+        };
+        assert_eq!(banner(&view, cx).as_deref(), Some("2.0.0"));
+        assert_eq!(connects.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        view.update_in(cx, |view, window, cx| view.reset(window, cx));
+        cx.run_until_parked();
+        assert_eq!(
+            connects.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the report alone does not replace the connection"
+        );
+
+        view.update_in(cx, |view, window, cx| view.update_agent(window, cx));
+        cx.run_until_parked();
+        assert_eq!(
+            connects.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "the update starts anew"
+        );
+    }
+
     /// ADR-F49 決定 19 (8c): a newer version of an agent started outside its
     /// sandbox does not take the banner away while that agent still runs,
     /// and the update starts the new version outside again, unasked.
@@ -12097,7 +12206,7 @@ pub(crate) mod tests {
         );
 
         // What the update button does.
-        view.update_in(cx, |view, window, cx| view.reset(window, cx));
+        view.update_in(cx, |view, window, cx| view.update_agent(window, cx));
         cx.run_until_parked();
         assert!(!cx.has_pending_prompt());
         assert_eq!(server.starts(), (1, 2), "the new version, outside again");

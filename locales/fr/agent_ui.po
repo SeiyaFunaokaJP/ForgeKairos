@@ -197,6 +197,9 @@ msgstr "Métadonnées de toutes les conversations de la barre latérale"
 msgid "All domains (unrestricted)"
 msgstr "Tous les domaines (sans restriction)"
 
+msgid "All external agents are up to date."
+msgstr "Tous les agents externes sont à jour."
+
 msgid "All paths except protected Git metadata"
 msgstr "Tous les chemins d'accès, à l'exception des métadonnées Git protégées"
 
@@ -232,6 +235,11 @@ msgstr "Une clé API est toujours écrite en texte brut dans settings.json sous 
 
 msgid "An Error Happened"
 msgstr "Une erreur s'est produite"
+
+msgid "An update is available for {count} external agent: {list}"
+msgid_plural "Updates are available for {count} external agents: {list}"
+msgstr[0] "Une mise à jour est disponible pour {count} agent externe : {list}"
+msgstr[1] "Des mises à jour sont disponibles pour {count} agents externes : {list}"
 
 msgid "Answer the tool call waiting for confirmation before switching."
 msgstr "Répondez à l'appel d'outil en attente de confirmation avant de basculer."
@@ -377,6 +385,9 @@ msgstr "Discutez de votre base de code."
 msgid "Check for Claude Code Updates"
 msgstr "Rechercher des mises à jour de Claude Code"
 
+msgid "Check for Updates"
+msgstr "Rechercher des mises à jour"
+
 msgid "Check the server docs for required arguments and environment variables."
 msgstr "Consultez la documentation du serveur pour connaître les arguments et les variables d'environnement requis."
 
@@ -431,8 +442,8 @@ msgstr "Cliquez pour afficher l'aperçu"
 msgid "Click to copy rating ID"
 msgstr "Cliquez pour copier l'ID d'évaluation"
 
-msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
-msgstr "Cliquez pour ouvrir une conversation avec cet agent. Rien n'est mis à jour depuis cet endroit, et les sessions en cours ne sont pas arrêtées. Les nouvelles conversations connectées démarrent la dernière version, et les conversations en cours affichent une bannière de mise à jour."
+msgid "Click to update. Running sessions are not stopped: the agent's next start installs the new version, and running threads show an update banner."
+msgstr "Cliquez pour mettre à jour. Les sessions en cours ne sont pas arrêtées : la nouvelle version est installée au prochain démarrage de l'agent, et les fils en cours affichent une bannière de mise à jour."
 
 msgid "Clipboard does not contain text"
 msgstr "Le presse-papiers ne contient pas de texte"
@@ -565,6 +576,9 @@ msgstr "Coût : {}"
 
 msgid "Could not authenticate with {provider}."
 msgstr "Impossible de s'authentifier auprès de {provider}."
+
+msgid "Could not check for agent updates: {error}"
+msgstr "Impossible de rechercher des mises à jour des agents : {error}"
 
 msgid "Could not check the Claude Code already placed in WSL."
 msgstr "Impossible de vérifier le Claude Code déjà en place dans WSL."
@@ -1096,6 +1110,9 @@ msgstr "Conserver"
 
 msgid "Keep All"
 msgstr "Tout conserver"
+
+msgid "Later"
+msgstr "Plus tard"
 
 msgid "Latest"
 msgstr "Dernier"
@@ -2015,6 +2032,9 @@ msgstr "Erreur de l'assistant inline du terminal : {}"
 msgid "Thanks for your feedback!"
 msgstr "Merci pour vos commentaires !"
 
+msgid "The ACP registry is not available, so agent updates cannot be checked."
+msgstr "Le registre ACP n'est pas disponible : impossible de rechercher des mises à jour des agents."
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "Le Claude Code envoyé à l'hôte distant est introuvable. Réessayez."
 
@@ -2404,6 +2424,9 @@ msgstr "Retirer le modèle des favoris"
 msgid "Unknown"
 msgstr "Inconnu"
 
+msgid "Update"
+msgstr "Mettre à jour"
+
 msgid "Update Claude Code to v{to}"
 msgstr "Mettre à jour Claude Code vers v{to}"
 
@@ -2418,6 +2441,9 @@ msgstr "Mise à jour disponible : v{latest}"
 
 msgid "Update to v{}"
 msgstr "Mettre à jour vers la v{}"
+
+msgid "Updates when it next starts"
+msgstr "Mise à jour au prochain démarrage"
 
 msgid "Upgrade"
 msgstr "Mettre à niveau"
@@ -2640,6 +2666,9 @@ msgstr "{keybinding} pour discuter"
 
 msgid "{minutes} minutes ago"
 msgstr "il y a {minutes} minutes"
+
+msgid "{name} {installed} → {available}"
+msgstr "{name} {installed} → {available}"
 
 msgid "{notice}. Starts `{program}` on this PC in the project folder."
 msgstr "{notice}. Démarre `{program}` sur ce PC dans le dossier du projet."

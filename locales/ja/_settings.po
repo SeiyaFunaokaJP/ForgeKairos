@@ -17,6 +17,14 @@ msgctxt "ActivateOnClose"
 msgid "Neighbour"
 msgstr "隣のタブ"
 
+msgctxt "AgentServersUpdateCheck"
+msgid "Manual"
+msgstr "手動"
+
+msgctxt "AgentServersUpdateCheck"
+msgid "On Startup"
+msgstr "起動時"
+
 msgctxt "AlternateScroll"
 msgid "Off"
 msgstr "オフ"
@@ -1392,6 +1400,10 @@ msgstr "エージェントパネルのフォント"
 msgctxt "settings"
 msgid "Agent Review"
 msgstr "エージェントのレビュー"
+
+msgctxt "settings"
+msgid "Agent Update Check"
+msgstr "エージェントの更新確認"
 
 msgctxt "settings"
 msgid "Allow Rewrap"
@@ -5264,6 +5276,10 @@ msgstr "バッファーの変更を自動保存するタイミングです。"
 msgctxt "settings"
 msgid "When to hide the mouse cursor."
 msgstr "マウスカーソルを隠すタイミングです。"
+
+msgctxt "settings"
+msgid "When to look for newer versions of the external agents installed from the ACP registry. An agent keeps starting the installed version until you agree to an update. Manual only checks when you run \"agent: check for agent updates\" or click Check for Updates on the ACP registry page."
+msgstr "ACP レジストリからインストールした外部エージェントの新しいバージョンを確認するタイミングです。更新に同意するまでは、インストール済みのバージョンで起動し続けます。手動にすると、\"agent: check for agent updates\" を実行するか、ACP レジストリのページで「更新を確認」をクリックしたときだけ確認します。"
 
 msgctxt "settings"
 msgid "When to play a sound when the agent has either completed its response, or needs user input."

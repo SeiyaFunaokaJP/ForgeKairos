@@ -197,6 +197,9 @@ msgstr "侧边栏所有会话的元数据"
 msgid "All domains (unrestricted)"
 msgstr "所有域名（不受限制）"
 
+msgid "All external agents are up to date."
+msgstr "所有外部智能体均为最新版本。"
+
 msgid "All paths except protected Git metadata"
 msgstr "除受保护的 Git 元数据外的所有路径"
 
@@ -232,6 +235,10 @@ msgstr "settings.json 中的 `agent_servers` → `{}` → `env` → `{variable}`
 
 msgid "An Error Happened"
 msgstr "发生了错误"
+
+msgid "An update is available for {count} external agent: {list}"
+msgid_plural "Updates are available for {count} external agents: {list}"
+msgstr[0] "{count} 个外部智能体有可用更新：{list}"
 
 msgid "Answer the tool call waiting for confirmation before switching."
 msgstr "请先回应等待确认的工具调用，再进行切换。"
@@ -377,6 +384,9 @@ msgstr "聊聊你的代码库。"
 msgid "Check for Claude Code Updates"
 msgstr "检查 Claude Code 更新"
 
+msgid "Check for Updates"
+msgstr "检查更新"
+
 msgid "Check the server docs for required arguments and environment variables."
 msgstr "查看服务器文档，了解所需的参数和环境变量。"
 
@@ -431,8 +441,8 @@ msgstr "点击预览"
 msgid "Click to copy rating ID"
 msgstr "点击以复制评价 ID"
 
-msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
-msgstr "点击以打开与此智能体的会话。不会从此处进行任何更新，也不会停止正在运行的会话。新连接的会话会启动最新版本，正在运行的会话会显示更新横幅。"
+msgid "Click to update. Running sessions are not stopped: the agent's next start installs the new version, and running threads show an update banner."
+msgstr "点击以更新。不会停止正在运行的会话：智能体下次启动时会安装新版本，正在运行的线程会显示更新横幅。"
 
 msgid "Clipboard does not contain text"
 msgstr "剪贴板中没有文本"
@@ -565,6 +575,9 @@ msgstr "费用：{}"
 
 msgid "Could not authenticate with {provider}."
 msgstr "无法向 {provider} 认证。"
+
+msgid "Could not check for agent updates: {error}"
+msgstr "无法检查智能体更新：{error}"
 
 msgid "Could not check the Claude Code already placed in WSL."
 msgstr "无法检查已放置在 WSL 中的 Claude Code。"
@@ -1093,6 +1106,9 @@ msgstr "保留"
 
 msgid "Keep All"
 msgstr "全部保留"
+
+msgid "Later"
+msgstr "稍后"
 
 msgid "Latest"
 msgstr "最新"
@@ -2012,6 +2028,9 @@ msgstr "终端内联助手错误：{}"
 msgid "Thanks for your feedback!"
 msgstr "感谢你的反馈！"
 
+msgid "The ACP registry is not available, so agent updates cannot be checked."
+msgstr "ACP 注册表不可用，因此无法检查智能体更新。"
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "找不到发送到远程主机的 Claude Code。请重试。"
 
@@ -2400,6 +2419,9 @@ msgstr "取消收藏模型"
 msgid "Unknown"
 msgstr "未知"
 
+msgid "Update"
+msgstr "更新"
+
 msgid "Update Claude Code to v{to}"
 msgstr "将 Claude Code 更新到 v{to}"
 
@@ -2414,6 +2436,9 @@ msgstr "有可用更新：v{latest}"
 
 msgid "Update to v{}"
 msgstr "更新至 v{}"
+
+msgid "Updates when it next starts"
+msgstr "下次启动时更新"
 
 msgid "Upgrade"
 msgstr "升级"
@@ -2630,6 +2655,9 @@ msgstr "{keybinding} 打开聊天"
 
 msgid "{minutes} minutes ago"
 msgstr "{minutes} 分钟前"
+
+msgid "{name} {installed} → {available}"
+msgstr "{name} {installed} → {available}"
 
 msgid "{notice}. Starts `{program}` on this PC in the project folder."
 msgstr "{notice}。在本机的项目文件夹中启动 `{program}`。"

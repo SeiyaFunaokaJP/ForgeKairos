@@ -59,6 +59,11 @@ msgctxt "action documentation"
 msgid "agent::ChatWithFollow"
 msgstr "開始聊天並跟隨代理。"
 
+#. Checks the ACP registry for newer versions of the installed external agents, and asks before updating them.
+msgctxt "action documentation"
+msgid "agent::CheckForAgentUpdates"
+msgstr "在 ACP 登錄庫中檢查已安裝外部代理的新版本，並在更新前徵求同意。"
+
 #. Clears all messages from the queue.
 msgctxt "action documentation"
 msgid "agent::ClearMessageQueue"

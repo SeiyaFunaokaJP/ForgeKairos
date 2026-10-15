@@ -13,7 +13,8 @@ use gpui::{
     WeakEntity,
 };
 
-use project::{AgentServerStore, AgentServersUpdated, Project};
+use project::agent_update::AgentInstallPlace;
+use project::{AgentLaunchTarget, AgentServerStore, AgentServersUpdated, Project};
 use settings::{Settings as _, SettingsStore};
 use watch::Receiver;
 
@@ -137,6 +138,17 @@ pub enum ConnectionPlace {
 }
 
 impl ConnectionSlot {
+    fn at(agent: Agent, place: ConnectionPlace) -> Self {
+        match place {
+            ConnectionPlace::AsTheSettingsSay => ConnectionSlot::Shared(agent),
+            ConnectionPlace::InSandbox => ConnectionSlot::InSandbox(agent),
+            ConnectionPlace::OutsideSandbox(id) => ConnectionSlot::OutsideSandbox { id, agent },
+            ConnectionPlace::UnrestrictedNetwork(id) => {
+                ConnectionSlot::UnrestrictedNetwork { id, agent }
+            }
+        }
+    }
+
     fn agent(&self) -> &Agent {
         match self {
             ConnectionSlot::Shared(agent) | ConnectionSlot::InSandbox(agent) => agent,
@@ -198,6 +210,9 @@ pub struct AgentConnectionStore {
     /// were still starting, to close once they have started if no view has
     /// come onto them by then.
     left_while_starting: HashSet<ConnectionSlot>,
+    /// ADR-F99: where each connection's start installed its agent, which an
+    /// update agreed to from its thread replaces.
+    install_places: HashMap<ConnectionSlot, AgentInstallPlace>,
     idle_watch: Task<()>,
     idle_watch_running: bool,
     _subscriptions: Vec<Subscription>,
@@ -226,6 +241,7 @@ impl AgentConnectionStore {
             leases: HashMap::default(),
             unused_since: HashMap::default(),
             left_while_starting: HashSet::default(),
+            install_places: HashMap::default(),
             idle_watch: Task::ready(()),
             idle_watch_running: false,
             _subscriptions: subscriptions,
@@ -240,6 +256,122 @@ impl AgentConnectionStore {
 
     pub fn project(&self) -> &Entity<Project> {
         &self.project
+    }
+
+    /// ADR-F99: the user agreed, from a thread's update banner, to update
+    /// `agent` where the connection at `place` installed it. The next start
+    /// there installs the registry's version, so no start is handed one of
+    /// the agent's connections any more: the views that use one keep it until
+    /// they start again.
+    pub fn begin_agent_update(
+        &mut self,
+        agent: &Agent,
+        place: ConnectionPlace,
+        cx: &mut Context<Self>,
+    ) {
+        if let Agent::Custom { id } = agent {
+            let slot = ConnectionSlot::at(agent.clone(), place);
+            let install_place = self
+                .install_places
+                .get(&slot)
+                .cloned()
+                .unwrap_or_else(|| self.install_place(&slot, cx));
+            self.project
+                .read(cx)
+                .agent_server_store()
+                .read(cx)
+                .approve_agent_update(id, install_place);
+        }
+        self.supersede_connections_of(agent, cx);
+    }
+
+    /// ADR-F99: where a start for `slot` installs its agent: this host when it
+    /// starts outside the sandbox (or on a remote host, whose store keeps its
+    /// own agreements), and on Windows the WSL distro of the project's folders
+    /// when it starts in the sandbox — as `CustomAgentServer::connect` decides
+    /// its launch target.
+    fn install_place(&self, slot: &ConnectionSlot, cx: &App) -> AgentInstallPlace {
+        let Agent::Custom { id } = slot.agent() else {
+            return AgentInstallPlace::Host;
+        };
+        let project = self.project.read(cx);
+        if !project.is_local() {
+            return AgentInstallPlace::Host;
+        }
+        let outside_sandbox = match slot {
+            ConnectionSlot::OutsideSandbox { .. } => true,
+            ConnectionSlot::InSandbox(_) | ConnectionSlot::UnrestrictedNetwork { .. } => false,
+            ConnectionSlot::Shared(_) => {
+                agent_servers::runs_outside_sandbox_by_user_choice(id.as_ref(), cx)
+            }
+        };
+        if outside_sandbox {
+            return AgentInstallPlace::Host;
+        }
+        let roots =
+            project::agent_sandbox::project_key_roots(project.worktree_store().read(cx), cx);
+        match project::agent_sandbox::wsl_distro_for_roots(&roots) {
+            Ok(wsl_distro) => {
+                AgentInstallPlace::for_launch_target(&AgentLaunchTarget::Sandbox { wsl_distro })
+            }
+            // That start fails before it installs anything.
+            Err(_) => AgentInstallPlace::Host,
+        }
+    }
+
+    /// ADR-F99: the update check found `version` of `agent` and the user
+    /// agreed to it for the places that were behind
+    /// ([`crate::agent_updates::approve_agent_updates`]). The threads on its
+    /// connections show the update banner, which restarts them on the new
+    /// version.
+    pub fn announce_agent_update(
+        &mut self,
+        agent: &Agent,
+        version: SharedString,
+        cx: &mut Context<Self>,
+    ) {
+        self.new_versions.insert(agent.clone(), version.clone());
+        let entries = self
+            .entries
+            .get(agent)
+            .into_iter()
+            .chain(self.in_sandbox.get(agent))
+            .chain(
+                self.outside_sandbox
+                    .values()
+                    .chain(self.unrestricted_network.values())
+                    .filter(|(key, _)| key == agent)
+                    .map(|(_, entry)| entry),
+            )
+            .cloned()
+            .collect::<Vec<_>>();
+        for entry in entries {
+            let version = version.clone();
+            entry.update(cx, |_, cx| {
+                cx.emit(AgentConnectionEntryEvent::NewVersionAvailable(version));
+            });
+        }
+        self.supersede_connections_of(agent, cx);
+    }
+
+    fn supersede_connections_of(&mut self, agent: &Agent, cx: &mut Context<Self>) {
+        // The shared ones go, so that the next request starts anew.
+        self.remove_slot_entry(&ConnectionSlot::Shared(agent.clone()));
+        self.remove_slot_entry(&ConnectionSlot::InSandbox(agent.clone()));
+        // ADR-F49 decision 19 (8c): these views keep using theirs until they
+        // start again, and the idle disconnect has to be able to find them
+        // until then and after.
+        for (id, (key, _)) in &self.outside_sandbox {
+            if key == agent {
+                self.superseded_outside_sandbox.insert(*id);
+            }
+        }
+        for (id, (key, _)) in &self.unrestricted_network {
+            if key == agent {
+                self.superseded_unrestricted_network.insert(*id);
+            }
+        }
+        cx.notify();
     }
 
     pub fn entry(&self, key: &Agent) -> Option<&Entity<AgentConnectionEntry>> {
@@ -575,6 +707,11 @@ impl AgentConnectionStore {
         server: Rc<dyn AgentServer>,
         cx: &mut Context<Self>,
     ) -> Entity<AgentConnectionEntry> {
+        // ADR-F99: a start that still launches an older version than the
+        // registry's says so again itself.
+        self.new_versions.remove(slot.agent());
+        let install_place = self.install_place(&slot, cx);
+        self.install_places.insert(slot.clone(), install_place);
         let (mut new_version_rx, mut loading_status_rx, connect_task) =
             self.start_connection(server, &slot, cx);
         let connect_task = connect_task.shared();
@@ -650,6 +787,12 @@ impl AgentConnectionStore {
                             return;
                         }
 
+                        // ADR-F99: the connection stays. A start without the
+                        // user's agreement launches the version installed
+                        // and reports the newer one again, so dropping it
+                        // here would only start that same version once more
+                        // for every thread; the update replaces it
+                        // ([`Self::begin_agent_update`]).
                         let version = SharedString::from(version);
                         this.new_versions
                             .insert(slot.agent().clone(), version.clone());
@@ -658,23 +801,6 @@ impl AgentConnectionStore {
                                 cx.emit(AgentConnectionEntryEvent::NewVersionAvailable(version));
                             })
                             .ok();
-                        match &slot {
-                            // The shared entry goes, so that the next request
-                            // starts the new version.
-                            ConnectionSlot::Shared(_) | ConnectionSlot::InSandbox(_) => {
-                                this.remove_slot_entry(&slot)
-                            }
-                            // ADR-F49 decision 19 (8c): this one's view keeps
-                            // using it until it starts the new version, and
-                            // the idle disconnect has to be able to find it
-                            // until then and after.
-                            ConnectionSlot::OutsideSandbox { id, .. } => {
-                                this.superseded_outside_sandbox.insert(*id);
-                            }
-                            ConnectionSlot::UnrestrictedNetwork { id, .. } => {
-                                this.superseded_unrestricted_network.insert(*id);
-                            }
-                        }
                         cx.notify();
                     })
                     .ok();
@@ -1526,6 +1652,18 @@ mod tests {
             .send(Some("2.0.0".to_string()))
             .expect("the store listens");
         cx.run_until_parked();
+        assert!(
+            store.read_with(cx, |store, _cx| store
+                .outside_sandbox_connection(id)
+                .is_some()),
+            "ADR-F99: a report alone replaces nothing; the next start launches the \
+             installed version anyway"
+        );
+        // What agreeing to the update does.
+        store.update(cx, |store, cx| {
+            store.begin_agent_update(&sandboxed_stub(), ConnectionPlace::OutsideSandbox(id), cx)
+        });
+        cx.run_until_parked();
         store.read_with(cx, |store, _cx| {
             assert!(
                 store.outside_sandbox_connection(id).is_none(),
@@ -1555,6 +1693,52 @@ mod tests {
             "and the agent's process with it"
         );
         drop(sender);
+    }
+
+    /// ADR-F99: agreeing to an update from a thread is told to the store that
+    /// starts the agent, for the place that thread's connection installed it
+    /// in: this host for a start outside the sandbox, and on Windows the WSL
+    /// distro for one in it. The other place's install is left alone.
+    #[gpui::test]
+    async fn test_agreeing_to_an_update_marks_it_for_the_next_start_there(cx: &mut TestAppContext) {
+        let (store, project) = setup(cx).await;
+        let agent_id = AgentId::new("claude-acp");
+        let agent = Agent::Custom {
+            id: agent_id.clone(),
+        };
+        let host = AgentInstallPlace::Host;
+        let sandbox =
+            AgentInstallPlace::for_launch_target(&AgentLaunchTarget::Sandbox { wsl_distro: None });
+        let approved = |place: &AgentInstallPlace, cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                project
+                    .agent_server_store()
+                    .read(cx)
+                    .agent_update_approved(&agent_id, place)
+            })
+        };
+        assert!(!approved(&host, cx));
+        assert!(!approved(&sandbox, cx));
+
+        store.update(cx, |store, cx| {
+            store.begin_agent_update(
+                &agent,
+                ConnectionPlace::OutsideSandbox(OutsideSandboxConnectionId(0)),
+                cx,
+            )
+        });
+        assert!(approved(&host, cx));
+        if cfg!(target_os = "windows") {
+            assert!(
+                !approved(&sandbox, cx),
+                "the distro's install is not the one outside"
+            );
+        }
+
+        store.update(cx, |store, cx| {
+            store.begin_agent_update(&agent, ConnectionPlace::InSandbox, cx)
+        });
+        assert!(approved(&sandbox, cx));
     }
 
     /// Starts outside its sandbox where the delegate says so, and says so.

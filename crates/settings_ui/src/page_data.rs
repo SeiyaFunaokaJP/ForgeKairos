@@ -10409,6 +10409,30 @@ fn ai_page(cx: &App) -> SettingsPage {
                 })),
                 files: USER,
             }),
+            // ADR-F99.
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Agent Update Check",
+                description: "When to look for newer versions of the external agents installed from the ACP registry. An agent keeps starting the installed version until you agree to an update. Manual only checks when you run \"agent: check for agent updates\" or click Check for Updates on the ACP registry page.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("agent.agent_servers_update_check"),
+                    pick: |settings_content| {
+                        settings_content
+                            .agent
+                            .as_ref()?
+                            .agent_servers_update_check
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .agent
+                            .get_or_insert_default()
+                            .agent_servers_update_check = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
         ]);
 
         items.into_boxed_slice()

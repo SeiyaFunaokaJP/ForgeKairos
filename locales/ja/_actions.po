@@ -50,6 +50,10 @@ msgctxt "action"
 msgid "agent::ChatWithFollow"
 msgstr "エージェント: メッセージを送信してフォロー"
 
+msgctxt "action"
+msgid "agent::CheckForAgentUpdates"
+msgstr "エージェント: エージェントの更新を確認"
+
 #. agent: clear message queue
 msgctxt "action"
 msgid "agent::ClearMessageQueue"

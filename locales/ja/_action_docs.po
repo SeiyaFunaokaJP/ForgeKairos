@@ -60,6 +60,11 @@ msgctxt "action documentation"
 msgid "agent::ChatWithFollow"
 msgstr "フォローアップを有効にしてチャットを開始します。"
 
+#. Checks the ACP registry for newer versions of the installed external agents, and asks before updating them.
+msgctxt "action documentation"
+msgid "agent::CheckForAgentUpdates"
+msgstr "インストール済みの外部エージェントの新しいバージョンを ACP レジストリで確認し、更新する前に確認します。"
+
 #. Clears all messages from the queue.
 msgctxt "action documentation"
 msgid "agent::ClearMessageQueue"

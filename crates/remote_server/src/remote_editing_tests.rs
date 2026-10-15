@@ -6838,6 +6838,97 @@ async fn test_remote_external_agent_server(
     );
 }
 
+/// ADR-F99: an update the client's user agreed to reaches the host with the
+/// start it is for, so that the host — whose install it is — installs the
+/// registry's version; a start without one asks the host for nothing of the
+/// kind.
+#[gpui::test]
+async fn test_remote_agent_update_is_agreed_to_on_the_host(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(path!("/project"), json!({})).await;
+
+    let (project, headless_project) = init_test(&fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/project"), true, cx)
+        })
+        .await
+        .unwrap();
+    server_cx.update_global::<SettingsStore, _>(|settings_store, cx| {
+        settings_store
+            .set_server_settings(
+                &json!({
+                    "agent_servers": {
+                        "foo": { "type": "custom", "command": "foo-cli" }
+                    }
+                })
+                .to_string(),
+                cx,
+            )
+            .unwrap();
+    });
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+
+    let agent_id = project::AgentId::new("foo");
+    let start = |cx: &mut TestAppContext| {
+        project.update(cx, |project, cx| {
+            project.agent_server_store().update(cx, |store, cx| {
+                store
+                    .get_external_agent(&"foo".into())
+                    .unwrap()
+                    .get_command(
+                        vec![],
+                        HashMap::default(),
+                        project::AgentLaunchTarget::Host,
+                        &mut cx.to_async(),
+                    )
+            })
+        })
+    };
+    let approved_on_host = |server_cx: &mut TestAppContext| {
+        headless_project.read_with(server_cx, |headless_project, cx| {
+            headless_project
+                .agent_server_store
+                .read(cx)
+                .agent_update_approved(
+                    &project::AgentId::new("foo"),
+                    &project::agent_update::AgentInstallPlace::Host,
+                )
+        })
+    };
+
+    start(cx).await.unwrap();
+    server_cx.run_until_parked();
+    assert!(!approved_on_host(server_cx), "nothing was agreed to");
+
+    project.update(cx, |project, cx| {
+        project
+            .agent_server_store()
+            .read(cx)
+            .approve_agent_update(&agent_id, project::agent_update::AgentInstallPlace::Host)
+    });
+    start(cx).await.unwrap();
+    server_cx.run_until_parked();
+    assert!(
+        approved_on_host(server_cx),
+        "the host was told with the start"
+    );
+    assert!(
+        project.read_with(cx, |project, cx| !project
+            .agent_server_store()
+            .read(cx)
+            .agent_update_approved(
+                &agent_id,
+                &project::agent_update::AgentInstallPlace::Host
+            )),
+        "the client's agreement went with that start"
+    );
+}
+
 /// ADR-F88: the API key the client read from its credential store only fills
 /// in what the host's own settings for the agent leave out: a key spelled out
 /// there wins, as the agent's settings do on the client's own host. What else

@@ -34,6 +34,12 @@ use crate::agent_sandbox::{
     AgentSandboxCommand, AgentSandboxHosts, AgentSandboxState, SandboxedAgentProfile,
     readable_paths_in_data_dir,
 };
+use crate::agent_update::{
+    AgentInstallPlace, AgentUpdateApprovals, INSTALLED_RECORD_FILE_NAME, InstalledAgentLaunch,
+    InstalledAgentRecord, LaunchDecision, UpdateApprovalClaim, host_npx_install_dir,
+    launch_decision, local_agent_update_approvals, read_installed_record, record_start,
+    write_installed_record,
+};
 
 use crate::worktree_store::WorktreeStore;
 
@@ -147,6 +153,19 @@ pub trait ExternalAgentServer {
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>>;
 
+    /// ADR-F99: the command for something other than the agent's own start (a
+    /// terminal sign-in), which never installs an update the user agreed to:
+    /// that is the agent's next real start's to do.
+    fn get_command_without_update(
+        &mut self,
+        extra_args: Vec<String>,
+        extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<AgentServerCommand>> {
+        self.get_command(extra_args, extra_env, target, cx)
+    }
+
     fn version(&self) -> Option<&SharedString> {
         None
     }
@@ -211,6 +230,21 @@ impl ExternalAgentEntry {
 pub struct AgentServerStore {
     state: AgentServerStoreState,
     pub external_agents: HashMap<AgentId, ExternalAgentEntry>,
+    /// ADR-F99: the agents whose update the user agreed to, which the next
+    /// start of each installs.
+    update_approvals: AgentUpdateApprovals,
+}
+
+/// ADR-F99: where a start reports a registry version newer than the one it
+/// launched. Shared with the start's task, which only knows once it has read
+/// the install's record, while the store keeps the sender for the registry
+/// changes it sees itself.
+type NewVersionSlot = Arc<parking_lot::Mutex<Option<watch::Sender<Option<String>>>>>;
+
+fn report_new_version(slot: &NewVersionSlot, version: String) {
+    if let Some(tx) = slot.lock().as_mut() {
+        tx.send(Some(version)).ok();
+    }
 }
 
 pub struct AgentServersUpdated;
@@ -281,6 +315,19 @@ impl AgentServerStore {
 
     pub fn agent_source(&self, name: &AgentId) -> Option<ExternalAgentSource> {
         self.external_agents.get(name).map(|entry| entry.source)
+    }
+
+    /// ADR-F99: the user agreed to update `agent_id` where `place` installs
+    /// it. Its next start there installs the registry's version instead of
+    /// launching the one installed; a remote host's store keeps its agreements
+    /// as [`AgentInstallPlace::Host`], and tells the host with that start's
+    /// request.
+    pub fn approve_agent_update(&self, agent_id: &AgentId, place: AgentInstallPlace) {
+        self.update_approvals.approve(agent_id, place);
+    }
+
+    pub fn agent_update_approved(&self, agent_id: &AgentId, place: &AgentInstallPlace) -> bool {
+        self.update_approvals.is_approved(agent_id, place)
     }
 }
 
@@ -402,6 +449,7 @@ impl AgentServerStore {
             registry.update(cx, |registry, cx| registry.refresh_if_stale(cx));
         }
 
+        let update_approvals = self.update_approvals.clone();
         let registry_agents_by_id = registry_store
             .as_ref()
             .map(|store| {
@@ -487,7 +535,8 @@ impl AgentServerStore {
                                         version: agent.metadata.version.clone(),
                                         targets: agent.targets.clone(),
                                         env: env.clone(),
-                                        new_version_available_tx: None,
+                                        update_approvals: update_approvals.clone(),
+                                        new_version_available_tx: NewVersionSlot::default(),
                                         loading_status_tx: None,
                                     })
                                         as Box<dyn ExternalAgentServer>,
@@ -512,7 +561,8 @@ impl AgentServerStore {
                                         args: agent.args.clone(),
                                         distribution_env: agent.env.clone(),
                                         settings_env: env.clone(),
-                                        new_version_available_tx: None,
+                                        update_approvals: update_approvals.clone(),
+                                        new_version_available_tx: NewVersionSlot::default(),
                                         loading_status_tx: None,
                                     })
                                         as Box<dyn ExternalAgentServer>,
@@ -604,6 +654,7 @@ impl AgentServerStore {
                 _subscriptions: subscriptions,
             },
             external_agents: HashMap::default(),
+            update_approvals: local_agent_update_approvals(cx),
         };
         this.agent_servers_settings_changed(cx);
         this
@@ -621,6 +672,7 @@ impl AgentServerStore {
                 worktree_store,
             },
             external_agents: HashMap::default(),
+            update_approvals: AgentUpdateApprovals::default(),
         }
     }
 
@@ -628,6 +680,7 @@ impl AgentServerStore {
         Self {
             state: AgentServerStoreState::Collab,
             external_agents: HashMap::default(),
+            update_approvals: AgentUpdateApprovals::default(),
         }
     }
 
@@ -708,6 +761,16 @@ impl AgentServerStore {
                     bail!("unexpected GetAgentServerCommand request in a non-local project");
                 };
                 let no_browser = this.no_browser();
+                // ADR-F99: the client's user agreed to update the agent this
+                // host installs, so this start installs the registry's
+                // version.
+                // The start below is on this host (`AgentLaunchTarget::Host`).
+                if envelope.payload.approve_update == Some(true) {
+                    this.update_approvals.approve(
+                        &AgentId::new(envelope.payload.name.clone()),
+                        AgentInstallPlace::Host,
+                    );
+                }
                 let agent = this
                     .external_agents
                     .get_mut(&*envelope.payload.name)
@@ -947,6 +1010,7 @@ impl AgentServerStore {
                         worktree_store: worktree_store.clone(),
                         name: agent_id.clone(),
                         source,
+                        update_approvals: this.update_approvals.clone(),
                         new_version_available_tx: new_version_available_txs.remove(&agent_id),
                         loading_status_tx: loading_status_txs.remove(&agent_id),
                     };
@@ -1130,36 +1194,25 @@ struct RemoteExternalAgentServer {
     /// ADR-F49: where the agent came from, which with its id decides its
     /// profile — on this side, never on the host's word.
     source: ExternalAgentSource,
+    update_approvals: AgentUpdateApprovals,
     new_version_available_tx: Option<watch::Sender<Option<String>>>,
     loading_status_tx: Option<watch::Sender<Option<String>>>,
 }
 
-impl ExternalAgentServer for RemoteExternalAgentServer {
-    fn take_new_version_available_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
-        self.new_version_available_tx.take()
-    }
-
-    fn set_new_version_available_tx(&mut self, tx: watch::Sender<Option<String>>) {
-        self.new_version_available_tx = Some(tx);
-    }
-
-    fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
-        self.loading_status_tx.take()
-    }
-
-    fn set_loading_status_tx(&mut self, tx: watch::Sender<Option<String>>) {
-        self.loading_status_tx = Some(tx);
-    }
-
-    fn get_command(
+impl RemoteExternalAgentServer {
+    fn command(
         &mut self,
         extra_args: Vec<String>,
         extra_env: HashMap<String, String>,
         _target: AgentLaunchTarget,
+        claim: UpdateApprovalClaim,
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>> {
         let project_id = self.project_id;
         let name = self.name.to_string();
+        // A remote host's store keeps the agreements for its installs as this
+        // host's ([`AgentInstallPlace::Host`]).
+        let approve_update = claim.take(&AgentInstallPlace::Host);
         let upstream_client = self.upstream_client.downgrade();
         let worktree_store = self.worktree_store.clone();
         // ADR-F49 MEDIUM-5: the agent's policy is this side's, from its id and
@@ -1186,6 +1239,7 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
                                 .iter()
                                 .map(|path| path.to_string_lossy().into_owned())
                                 .collect(),
+                            approve_update: approve_update.then_some(true),
                         })
                 })?
                 .await?;
@@ -1226,6 +1280,46 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
                 sandbox,
             })
         })
+    }
+}
+
+impl ExternalAgentServer for RemoteExternalAgentServer {
+    fn take_new_version_available_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
+        self.new_version_available_tx.take()
+    }
+
+    fn set_new_version_available_tx(&mut self, tx: watch::Sender<Option<String>>) {
+        self.new_version_available_tx = Some(tx);
+    }
+
+    fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
+        self.loading_status_tx.take()
+    }
+
+    fn set_loading_status_tx(&mut self, tx: watch::Sender<Option<String>>) {
+        self.loading_status_tx = Some(tx);
+    }
+
+    fn get_command(
+        &mut self,
+        extra_args: Vec<String>,
+        extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<AgentServerCommand>> {
+        let claim = UpdateApprovalClaim::for_start(&self.update_approvals, self.name.clone());
+        self.command(extra_args, extra_env, target, claim, cx)
+    }
+
+    fn get_command_without_update(
+        &mut self,
+        extra_args: Vec<String>,
+        extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<AgentServerCommand>> {
+        let claim = UpdateApprovalClaim::none(self.name.clone());
+        self.command(extra_args, extra_env, target, claim, cx)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -1348,7 +1442,7 @@ fn github_release_archive_from_url(archive_url: &str) -> Option<GithubReleaseArc
     })
 }
 
-fn sanitize_path_component(input: &str) -> String {
+pub(crate) fn sanitize_path_component(input: &str) -> String {
     let sanitized = input
         .chars()
         .map(|character| match character {
@@ -1471,7 +1565,7 @@ async fn remove_stale_versioned_archive_cache_dirs(
 }
 
 /// Where the host keeps the downloaded builds of the registry agent `registry_id`.
-fn registry_archive_installation_dir(registry_id: &str) -> PathBuf {
+pub(crate) fn registry_archive_installation_dir(registry_id: &str) -> PathBuf {
     paths::external_agents_dir()
         .join("registry")
         .join(sanitize_path_component(registry_id))
@@ -1586,6 +1680,173 @@ async fn registry_archive_sha256(
     })
 }
 
+/// ADR-F99: one build of a registry archive agent on this host, as a start
+/// launches it.
+#[derive(Clone, Debug, PartialEq)]
+struct HostArchiveLaunch {
+    archive_url: String,
+    sha256: Option<String>,
+    version_dir: PathBuf,
+    cmd: String,
+    args: Vec<String>,
+    env: HashMap<String, String>,
+}
+
+impl HostArchiveLaunch {
+    fn to_record(&self) -> InstalledAgentLaunch {
+        InstalledAgentLaunch::Archive {
+            archive_url: self.archive_url.clone(),
+            sha256: self.sha256.clone(),
+            directory: self.version_dir.to_string_lossy().into_owned(),
+            cmd: self.cmd.clone(),
+            args: self.args.clone(),
+            env: self.env.clone(),
+        }
+    }
+}
+
+/// The record at `record_path` and the build it describes, while its files
+/// are still there to launch.
+async fn usable_host_archive_record(
+    fs: &dyn Fs,
+    record_path: &Path,
+) -> Option<(InstalledAgentRecord, HostArchiveLaunch)> {
+    let record = read_installed_record(fs, record_path).await?;
+    let InstalledAgentLaunch::Archive {
+        archive_url,
+        sha256,
+        directory,
+        cmd,
+        args,
+        env,
+    } = record.launch.clone()
+    else {
+        return None;
+    };
+    let version_dir = PathBuf::from(directory);
+    // The record is a file anyone who can write there can rewrite: it only
+    // ever names one of the builds this installation directory holds, as the
+    // registry's own description would.
+    let is_a_build_here = version_dir.parent() == record_path.parent()
+        && version_dir.file_name().is_some_and(|name| {
+            name.to_string_lossy()
+                .starts_with(VERSIONED_ARCHIVE_CACHE_DIR_PREFIX)
+        });
+    if !is_a_build_here || !fs.is_dir(&version_dir).await {
+        return None;
+    }
+    if cmd != "node" {
+        let relative = cmd.strip_prefix("./").or_else(|| cmd.strip_prefix(".\\"))?;
+        if cmd.contains("..") || !fs.is_file(&version_dir.join(relative)).await {
+            return None;
+        }
+    }
+    Some((
+        record,
+        HostArchiveLaunch {
+            archive_url,
+            sha256,
+            version_dir,
+            cmd,
+            args,
+            env,
+        },
+    ))
+}
+
+/// Installs the registry's `version` of an archive agent on this host (a
+/// build already unpacked for it is kept), as every start did before
+/// ADR-F99.
+async fn install_host_registry_archive(
+    fs: &dyn Fs,
+    http_client: &Arc<dyn HttpClient>,
+    installation_dir: &Path,
+    version: &str,
+    targets: &HashMap<String, RegistryTargetConfig>,
+    mut loading_status_tx: Option<watch::Sender<Option<String>>>,
+) -> Result<HostArchiveLaunch> {
+    let os = if cfg!(target_os = "macos") {
+        "darwin"
+    } else if cfg!(target_os = "linux") {
+        "linux"
+    } else if cfg!(target_os = "windows") {
+        "windows"
+    } else {
+        anyhow::bail!("unsupported OS");
+    };
+
+    let arch = if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else if cfg!(target_arch = "x86_64") {
+        "x86_64"
+    } else {
+        anyhow::bail!("unsupported architecture");
+    };
+
+    let platform_key = format!("{}-{}", os, arch);
+    let target_config = targets.get(&platform_key).with_context(|| {
+        format!(
+            "no target specified for platform '{}'. Available platforms: {}",
+            platform_key,
+            targets
+                .keys()
+                .map(|k| k.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })?;
+
+    let archive_url = &target_config.archive;
+    let version_dir = versioned_archive_cache_dir(
+        installation_dir,
+        Some(version),
+        archive_url,
+        target_config.sha256.as_deref(),
+    );
+
+    let mut sha256 = target_config.sha256.clone();
+    if !fs.is_dir(&version_dir).await {
+        if let Some(tx) = loading_status_tx.as_mut() {
+            tx.send(Some(format!("Installing {version}…"))).ok();
+        }
+
+        sha256 =
+            registry_archive_sha256(http_client, archive_url, target_config.sha256.clone()).await;
+
+        match registry_archive_kind_for_url(archive_url)? {
+            RegistryArchiveKind::Archive(asset_kind) => {
+                ::http_client::github_download::download_server_binary(
+                    &**http_client,
+                    archive_url,
+                    sha256.as_deref(),
+                    &version_dir,
+                    asset_kind,
+                )
+                .await?;
+            }
+            RegistryArchiveKind::RawBinary { file_name } => {
+                ::http_client::github_download::download_server_raw_binary(
+                    &**http_client,
+                    archive_url,
+                    sha256.as_deref(),
+                    &version_dir,
+                    &file_name,
+                )
+                .await?;
+            }
+        }
+    }
+
+    Ok(HostArchiveLaunch {
+        archive_url: archive_url.clone(),
+        sha256,
+        version_dir,
+        cmd: target_config.cmd.clone(),
+        args: target_config.args.clone(),
+        env: target_config.env.clone(),
+    })
+}
+
 struct LocalRegistryArchiveAgent {
     fs: Arc<dyn Fs>,
     http_client: Arc<dyn HttpClient>,
@@ -1596,36 +1857,18 @@ struct LocalRegistryArchiveAgent {
     version: SharedString,
     targets: HashMap<String, RegistryTargetConfig>,
     env: HashMap<String, String>,
-    new_version_available_tx: Option<watch::Sender<Option<String>>>,
+    update_approvals: AgentUpdateApprovals,
+    new_version_available_tx: NewVersionSlot,
     loading_status_tx: Option<watch::Sender<Option<String>>>,
 }
 
-impl ExternalAgentServer for LocalRegistryArchiveAgent {
-    fn version(&self) -> Option<&SharedString> {
-        Some(&self.version)
-    }
-
-    fn take_new_version_available_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
-        self.new_version_available_tx.take()
-    }
-
-    fn set_new_version_available_tx(&mut self, tx: watch::Sender<Option<String>>) {
-        self.new_version_available_tx = Some(tx);
-    }
-
-    fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
-        self.loading_status_tx.take()
-    }
-
-    fn set_loading_status_tx(&mut self, tx: watch::Sender<Option<String>>) {
-        self.loading_status_tx = Some(tx);
-    }
-
-    fn get_command(
+impl LocalRegistryArchiveAgent {
+    fn command(
         &mut self,
         extra_args: Vec<String>,
         extra_env: HashMap<String, String>,
         target: AgentLaunchTarget,
+        claim: UpdateApprovalClaim,
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>> {
         let fs = self.fs.clone();
@@ -1637,6 +1880,11 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
         let targets = self.targets.clone();
         let settings_env = self.env.clone();
         let version = self.version.clone();
+        // ADR-F99: an update the user agreed to for the place this start
+        // installs in is installed by it.
+        let place = AgentInstallPlace::for_launch_target(&target);
+        let update_approved = claim.take(&place);
+        let new_version_available = self.new_version_available_tx.clone();
         // Only the WSL path reports progress step by step; the host path uses
         // it once, below.
         #[cfg_attr(not(target_os = "windows"), expect(unused_mut))]
@@ -1661,6 +1909,8 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
                     extra_env.clone(),
                     settings_env.clone(),
                     extra_args.clone(),
+                    update_approved,
+                    &new_version_available,
                     &mut loading_status_tx,
                 )
                 .await
@@ -1690,89 +1940,65 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
             let dir = installation_dir;
             fs.create_dir(&dir).await?;
 
-            let os = if cfg!(target_os = "macos") {
-                "darwin"
-            } else if cfg!(target_os = "linux") {
-                "linux"
-            } else if cfg!(target_os = "windows") {
-                "windows"
+            // ADR-F99: what is installed is launched as it is, without asking
+            // the network anything, unless the user agreed to the registry's
+            // newer version; a newer one is only reported. A start for the
+            // sandbox that ends up here (the WSL distro could not take it)
+            // installs on this host, so it is this host's agreement it takes.
+            let update_approved = if place == AgentInstallPlace::Host {
+                update_approved
             } else {
-                anyhow::bail!("unsupported OS");
+                claim.take(&AgentInstallPlace::Host)
             };
-
-            let arch = if cfg!(target_arch = "aarch64") {
-                "aarch64"
-            } else if cfg!(target_arch = "x86_64") {
-                "x86_64"
-            } else {
-                anyhow::bail!("unsupported architecture");
+            let record_path = dir.join(INSTALLED_RECORD_FILE_NAME);
+            let recorded = usable_host_archive_record(fs.as_ref(), &record_path).await;
+            let decision = launch_decision(
+                recorded
+                    .as_ref()
+                    .map(|(record, _)| record.registry_version.as_str()),
+                version.as_ref(),
+                update_approved,
+            );
+            let launch = match (decision, recorded) {
+                (LaunchDecision::Recorded { newer }, Some((record, launch))) => {
+                    if let Some(newer) = newer {
+                        report_new_version(&new_version_available, newer);
+                    }
+                    record_start(fs.as_ref(), &record_path, record).await;
+                    launch
+                }
+                _ => {
+                    let launch = install_host_registry_archive(
+                        fs.as_ref(),
+                        &http_client,
+                        &dir,
+                        version.as_ref(),
+                        &targets,
+                        loading_status_tx,
+                    )
+                    .await?;
+                    let record =
+                        InstalledAgentRecord::started_now(version.to_string(), launch.to_record());
+                    write_installed_record(fs.as_ref(), &record_path, &record)
+                        .await
+                        .log_err();
+                    launch
+                }
             };
-
-            let platform_key = format!("{}-{}", os, arch);
-            let target_config = targets.get(&platform_key).with_context(|| {
-                format!(
-                    "no target specified for platform '{}'. Available platforms: {}",
-                    platform_key,
-                    targets
-                        .keys()
-                        .map(|k| k.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            })?;
+            let HostArchiveLaunch {
+                version_dir,
+                cmd,
+                args: launch_args,
+                env: distribution_env,
+                ..
+            } = launch;
 
             // ADR-F49: the sandbox takes the agent's own environment only, not
             // the host's it is layered over here.
-            let agent_env = agent_environment(target_config.env.clone(), extra_env, settings_env);
+            let agent_env = agent_environment(distribution_env, extra_env, settings_env);
             env.extend(agent_env.clone());
 
-            let archive_url = &target_config.archive;
-            let version_dir = versioned_archive_cache_dir(
-                &dir,
-                Some(version.as_ref()),
-                archive_url,
-                target_config.sha256.as_deref(),
-            );
-
-            if !fs.is_dir(&version_dir).await {
-                let mut loading_status_tx = loading_status_tx;
-                if let Some(tx) = loading_status_tx.as_mut() {
-                    tx.send(Some(format!("Installing {}…", version.as_ref())))
-                        .ok();
-                }
-
-                let sha256 = registry_archive_sha256(
-                    &http_client,
-                    archive_url,
-                    target_config.sha256.clone(),
-                )
-                .await;
-
-                match registry_archive_kind_for_url(archive_url)? {
-                    RegistryArchiveKind::Archive(asset_kind) => {
-                        ::http_client::github_download::download_server_binary(
-                            &*http_client,
-                            archive_url,
-                            sha256.as_deref(),
-                            &version_dir,
-                            asset_kind,
-                        )
-                        .await?;
-                    }
-                    RegistryArchiveKind::RawBinary { file_name } => {
-                        ::http_client::github_download::download_server_raw_binary(
-                            &*http_client,
-                            archive_url,
-                            sha256.as_deref(),
-                            &version_dir,
-                            &file_name,
-                        )
-                        .await?;
-                    }
-                }
-            }
-
-            let cmd = &target_config.cmd;
+            let cmd = &cmd;
 
             let cmd_path = if cmd == "node" {
                 node_runtime.binary_path().await?
@@ -1806,7 +2032,7 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
             })
             .detach();
 
-            let mut args = target_config.args.clone();
+            let mut args = launch_args;
             args.extend(extra_args);
 
             let mut runs_from = vec![dir.clone()];
@@ -1831,6 +2057,53 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
             Ok(command)
         })
     }
+}
+
+impl ExternalAgentServer for LocalRegistryArchiveAgent {
+    fn version(&self) -> Option<&SharedString> {
+        Some(&self.version)
+    }
+
+    fn take_new_version_available_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
+        self.new_version_available_tx.lock().take()
+    }
+
+    fn set_new_version_available_tx(&mut self, tx: watch::Sender<Option<String>>) {
+        *self.new_version_available_tx.lock() = Some(tx);
+    }
+
+    fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
+        self.loading_status_tx.take()
+    }
+
+    fn set_loading_status_tx(&mut self, tx: watch::Sender<Option<String>>) {
+        self.loading_status_tx = Some(tx);
+    }
+
+    fn get_command(
+        &mut self,
+        extra_args: Vec<String>,
+        extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<AgentServerCommand>> {
+        let claim = UpdateApprovalClaim::for_start(
+            &self.update_approvals,
+            AgentId::new(self.registry_id.to_string()),
+        );
+        self.command(extra_args, extra_env, target, claim, cx)
+    }
+
+    fn get_command_without_update(
+        &mut self,
+        extra_args: Vec<String>,
+        extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<AgentServerCommand>> {
+        let claim = UpdateApprovalClaim::none(AgentId::new(self.registry_id.to_string()));
+        self.command(extra_args, extra_env, target, claim, cx)
+    }
 
     fn as_any(&self) -> &dyn Any {
         self
@@ -1852,36 +2125,18 @@ struct LocalRegistryNpxAgent {
     args: Vec<String>,
     distribution_env: HashMap<String, String>,
     settings_env: HashMap<String, String>,
-    new_version_available_tx: Option<watch::Sender<Option<String>>>,
+    update_approvals: AgentUpdateApprovals,
+    new_version_available_tx: NewVersionSlot,
     loading_status_tx: Option<watch::Sender<Option<String>>>,
 }
 
-impl ExternalAgentServer for LocalRegistryNpxAgent {
-    fn version(&self) -> Option<&SharedString> {
-        Some(&self.version)
-    }
-
-    fn take_new_version_available_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
-        self.new_version_available_tx.take()
-    }
-
-    fn set_new_version_available_tx(&mut self, tx: watch::Sender<Option<String>>) {
-        self.new_version_available_tx = Some(tx);
-    }
-
-    fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
-        self.loading_status_tx.take()
-    }
-
-    fn set_loading_status_tx(&mut self, tx: watch::Sender<Option<String>>) {
-        self.loading_status_tx = Some(tx);
-    }
-
-    fn get_command(
+impl LocalRegistryNpxAgent {
+    fn command(
         &mut self,
         extra_args: Vec<String>,
         extra_env: HashMap<String, String>,
         target: AgentLaunchTarget,
+        claim: UpdateApprovalClaim,
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>> {
         let fs = self.fs.clone();
@@ -1896,6 +2151,12 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
         let args = self.args.clone();
         let distribution_env = self.distribution_env.clone();
         let settings_env = self.settings_env.clone();
+        let version = self.version.clone();
+        // ADR-F99: an update the user agreed to for the place this start
+        // installs in is installed by it.
+        let place = AgentInstallPlace::for_launch_target(&target);
+        let update_approved = claim.take(&place);
+        let new_version_available = self.new_version_available_tx.clone();
         #[cfg_attr(not(target_os = "windows"), expect(unused_mut, unused_variables))]
         let mut loading_status_tx = self.loading_status_tx.take();
 
@@ -1912,22 +2173,22 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
             if let AgentLaunchTarget::Sandbox { wsl_distro } = &target {
                 let editor_network_allowlist =
                     cx.update(|cx| wsl_runtime::editor_network_allowlist(cx));
-                let agent_env = agent_environment(
-                    distribution_env.clone(),
-                    extra_env.clone(),
-                    settings_env.clone(),
-                );
                 match npx_agent_command_in_wsl(
                     wsl_distro.clone(),
                     cx.background_executor().clone(),
                     http_client.clone(),
                     fs.clone(),
                     &registry_id,
+                    version.as_ref(),
                     &package,
                     args.clone(),
                     extra_args.clone(),
-                    agent_env,
+                    distribution_env.clone(),
+                    extra_env.clone(),
+                    settings_env.clone(),
                     editor_network_allowlist,
+                    update_approved,
+                    &new_version_available,
                     &mut loading_status_tx,
                 )
                 .await
@@ -1954,25 +2215,47 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
                 .await
                 .unwrap_or_default();
 
-            let install_dir = paths::external_agents_dir()
-                .join("registry")
-                .join("npx")
-                .join(sanitize_path_component(&registry_id));
-            fs.create_dir(&install_dir).await?;
-
-            let (package_name, package_spec) = bounded_npm_package_spec(&package);
-            node_runtime
-                .run_npm_subcommand_through_egress_proxy(
-                    Some(&install_dir),
-                    "install",
-                    &[package_spec.as_str(), "--save-exact"],
-                )
-                .await?;
-            let executable = node_runtime::read_package_executable(
-                install_dir.join("node_modules"),
-                package_name,
+            // A start for the sandbox that ends up here (the WSL distro could
+            // not take it) installs on this host, so it is this host's
+            // agreement it takes.
+            let update_approved = if place == AgentInstallPlace::Host {
+                update_approved
+            } else {
+                claim.take(&AgentInstallPlace::Host)
+            };
+            let install_dir = host_npx_install_dir(&registry_id);
+            let (launch, newer) = resolve_host_npx_install(
+                fs.as_ref(),
+                &install_dir,
+                version.as_ref(),
+                &package,
+                &args,
+                &distribution_env,
+                update_approved,
+                async |package_spec: String, package_name: String| {
+                    node_runtime
+                        .run_npm_subcommand_through_egress_proxy(
+                            Some(&install_dir),
+                            "install",
+                            &[package_spec.as_str(), "--save-exact"],
+                        )
+                        .await?;
+                    node_runtime::read_package_executable(
+                        install_dir.join("node_modules"),
+                        &package_name,
+                    )
+                    .await
+                },
             )
             .await?;
+            if let Some(newer) = newer {
+                report_new_version(&new_version_available, newer);
+            }
+            let HostNpxLaunch {
+                executable,
+                args,
+                env: distribution_env,
+            } = launch;
 
             let node_binary = node_runtime.binary_path().await?;
             // ADR-F49: in the sandbox the agent reaches the network through the
@@ -2018,6 +2301,53 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
             Ok(command)
         })
     }
+}
+
+impl ExternalAgentServer for LocalRegistryNpxAgent {
+    fn version(&self) -> Option<&SharedString> {
+        Some(&self.version)
+    }
+
+    fn take_new_version_available_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
+        self.new_version_available_tx.lock().take()
+    }
+
+    fn set_new_version_available_tx(&mut self, tx: watch::Sender<Option<String>>) {
+        *self.new_version_available_tx.lock() = Some(tx);
+    }
+
+    fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
+        self.loading_status_tx.take()
+    }
+
+    fn set_loading_status_tx(&mut self, tx: watch::Sender<Option<String>>) {
+        self.loading_status_tx = Some(tx);
+    }
+
+    fn get_command(
+        &mut self,
+        extra_args: Vec<String>,
+        extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<AgentServerCommand>> {
+        let claim = UpdateApprovalClaim::for_start(
+            &self.update_approvals,
+            AgentId::new(self.registry_id.to_string()),
+        );
+        self.command(extra_args, extra_env, target, claim, cx)
+    }
+
+    fn get_command_without_update(
+        &mut self,
+        extra_args: Vec<String>,
+        extra_env: HashMap<String, String>,
+        target: AgentLaunchTarget,
+        cx: &mut AsyncApp,
+    ) -> Task<Result<AgentServerCommand>> {
+        let claim = UpdateApprovalClaim::none(AgentId::new(self.registry_id.to_string()));
+        self.command(extra_args, extra_env, target, claim, cx)
+    }
 
     fn as_any(&self) -> &dyn Any {
         self
@@ -2026,6 +2356,114 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+}
+
+/// ADR-F99: the npm package of a registry agent as this host launches it.
+#[derive(Clone, Debug, PartialEq)]
+struct HostNpxLaunch {
+    executable: PathBuf,
+    args: Vec<String>,
+    env: HashMap<String, String>,
+}
+
+/// ADR-F99: whether a recorded executable is one `npm install` put in
+/// `install_dir`. The record is a file anyone who can write there can
+/// rewrite, so it never names a program from anywhere else.
+fn is_installed_npm_file(install_dir: &Path, executable: &Path) -> bool {
+    // Lexically, because a package's `bin` may climb out of its own directory
+    // (into another package of the same install), but not out of the install.
+    let mut normalized = PathBuf::new();
+    for component in executable.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    return false;
+                }
+            }
+            component => normalized.push(component),
+        }
+    }
+    normalized.starts_with(install_dir.join("node_modules"))
+}
+
+/// ADR-F99: what a start of an npx agent launches on this host, and the
+/// registry's version when it is newer than that and the user has not agreed
+/// to it yet. `npm install` (`install`, given the bounded package
+/// specification and the package's name, answering with its executable) only
+/// runs when there is no usable record or the update was agreed to: every
+/// other start asks the network nothing.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one registry entry's npm distribution, and how to install it"
+)]
+async fn resolve_host_npx_install(
+    fs: &dyn Fs,
+    install_dir: &Path,
+    registry_version: &str,
+    package: &str,
+    args: &[String],
+    distribution_env: &HashMap<String, String>,
+    update_approved: bool,
+    install: impl AsyncFnOnce(String, String) -> Result<PathBuf>,
+) -> Result<(HostNpxLaunch, Option<String>)> {
+    let record_path = install_dir.join(INSTALLED_RECORD_FILE_NAME);
+    let recorded = match read_installed_record(fs, &record_path).await {
+        Some(record) => match record.launch.clone() {
+            InstalledAgentLaunch::Npx {
+                executable,
+                args,
+                env,
+                ..
+            } if is_installed_npm_file(install_dir, Path::new(&executable))
+                && fs.is_file(Path::new(&executable)).await =>
+            {
+                Some((
+                    record,
+                    HostNpxLaunch {
+                        executable: PathBuf::from(executable),
+                        args,
+                        env,
+                    },
+                ))
+            }
+            _ => None,
+        },
+        None => None,
+    };
+    let decision = launch_decision(
+        recorded
+            .as_ref()
+            .map(|(record, _)| record.registry_version.as_str()),
+        registry_version,
+        update_approved,
+    );
+    if let (LaunchDecision::Recorded { newer }, Some((record, launch))) = (decision, recorded) {
+        record_start(fs, &record_path, record).await;
+        return Ok((launch, newer));
+    }
+
+    fs.create_dir(install_dir).await?;
+    let (package_name, package_spec) = bounded_npm_package_spec(package);
+    let executable = install(package_spec, package_name.to_string()).await?;
+    let launch = HostNpxLaunch {
+        executable,
+        args: args.to_vec(),
+        env: distribution_env.clone(),
+    };
+    let record = InstalledAgentRecord::started_now(
+        registry_version.to_string(),
+        InstalledAgentLaunch::Npx {
+            package: package.to_string(),
+            executable: launch.executable.to_string_lossy().into_owned(),
+            args: launch.args.clone(),
+            env: launch.env.clone(),
+        },
+    );
+    write_installed_record(fs, &record_path, &record)
+        .await
+        .log_err();
+    Ok((launch, None))
 }
 
 /// People are using min-release-age more frequently. Which means a fresh registry will likely have
@@ -2767,7 +3205,8 @@ mod tests {
                 version: "1.0.0".into(),
                 targets,
                 env: HashMap::default(),
-                new_version_available_tx: None,
+                update_approvals: AgentUpdateApprovals::default(),
+                new_version_available_tx: NewVersionSlot::default(),
                 loading_status_tx: None,
             }
         })
@@ -3756,6 +4195,510 @@ mod tests {
             );
         });
     }
+
+    const NPX_INSTALL_DIR: &str = "/agents/npx/test-agent";
+
+    /// Runs [`resolve_host_npx_install`] with a stand-in for `npm install`
+    /// that counts its runs and puts the package's executable in place.
+    async fn resolve_npx(
+        fs: &Arc<fs::FakeFs>,
+        installs: &Arc<std::sync::atomic::AtomicUsize>,
+        registry_version: &str,
+        update_approved: bool,
+    ) -> (HostNpxLaunch, Option<String>) {
+        let install_dir = PathBuf::from(NPX_INSTALL_DIR);
+        resolve_host_npx_install(
+            fs.as_ref(),
+            &install_dir,
+            registry_version,
+            &format!("test-agent@{registry_version}"),
+            &[format!("--from-{registry_version}")],
+            &HashMap::default(),
+            update_approved,
+            async |package_spec: String, package_name: String| {
+                assert_eq!(package_name, "test-agent");
+                installs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let version = package_spec
+                    .rsplit(' ')
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
+                let package_dir = install_dir.join("node_modules").join("test-agent");
+                fs.create_dir(&package_dir).await?;
+                let executable = package_dir.join(format!("{version}.js"));
+                fs.insert_file(&executable, Vec::new()).await;
+                Ok(executable)
+            },
+        )
+        .await
+        .expect("resolves")
+    }
+
+    fn npx_installs(installs: &Arc<std::sync::atomic::AtomicUsize>) -> usize {
+        installs.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    async fn recorded_version(fs: &Arc<fs::FakeFs>, record_path: &Path) -> Option<String> {
+        read_installed_record(fs.as_ref(), record_path)
+            .await
+            .map(|record| record.registry_version)
+    }
+
+    /// ADR-F99: the first start installs and records; every later start with
+    /// that record launches it without running `npm install` again.
+    #[gpui::test]
+    async fn an_npx_agent_with_a_record_starts_without_npm_install(cx: &mut TestAppContext) {
+        let fs = fs::FakeFs::new(cx.executor());
+        let installs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let (first, newer) = resolve_npx(&fs, &installs, "1.0.0", false).await;
+        assert_eq!(npx_installs(&installs), 1);
+        assert_eq!(newer, None);
+        assert_eq!(
+            recorded_version(
+                &fs,
+                &Path::new(NPX_INSTALL_DIR).join(INSTALLED_RECORD_FILE_NAME)
+            )
+            .await
+            .as_deref(),
+            Some("1.0.0")
+        );
+
+        // ADR-F99: a start that launches the recorded install says when.
+        let record_path = Path::new(NPX_INSTALL_DIR).join(INSTALLED_RECORD_FILE_NAME);
+        let mut record = read_installed_record(fs.as_ref(), &record_path)
+            .await
+            .expect("recorded");
+        assert!(record.last_started.is_some(), "the install says when");
+        record.last_started = Some(1);
+        write_installed_record(fs.as_ref(), &record_path, &record)
+            .await
+            .unwrap();
+
+        let (second, newer) = resolve_npx(&fs, &installs, "1.0.0", false).await;
+        assert!(
+            read_installed_record(fs.as_ref(), &record_path)
+                .await
+                .and_then(|record| record.last_started)
+                .is_some_and(|started| started > 1),
+            "the start that launched the recorded install wrote when"
+        );
+        assert_eq!(
+            npx_installs(&installs),
+            1,
+            "no npm install on the second start"
+        );
+        assert_eq!(newer, None);
+        assert_eq!(second, first, "the recorded install, as it was");
+    }
+
+    /// ADR-F99: a record whose executable is gone is no record.
+    #[gpui::test]
+    async fn an_npx_agent_whose_executable_is_gone_is_installed_again(cx: &mut TestAppContext) {
+        let fs = fs::FakeFs::new(cx.executor());
+        let installs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (first, _) = resolve_npx(&fs, &installs, "1.0.0", false).await;
+        fs.remove_file(&first.executable, Default::default())
+            .await
+            .unwrap();
+
+        let (second, _) = resolve_npx(&fs, &installs, "1.0.0", false).await;
+        assert_eq!(npx_installs(&installs), 2);
+        assert!(fs.is_file(&second.executable).await);
+    }
+
+    async fn put_file(fs: &Arc<fs::FakeFs>, path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs.create_dir(parent).await.unwrap();
+        }
+        fs.insert_file(path, Vec::new()).await;
+    }
+
+    /// ADR-F99: a record is a file on disk, so one that names a program
+    /// outside the install it describes is no record: the start installs
+    /// and launches what npm put there.
+    #[gpui::test]
+    async fn an_npx_record_naming_a_program_elsewhere_is_no_record(cx: &mut TestAppContext) {
+        let fs = fs::FakeFs::new(cx.executor());
+        let installs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let record_path = Path::new(NPX_INSTALL_DIR).join(INSTALLED_RECORD_FILE_NAME);
+        for elsewhere in [
+            "/elsewhere/payload.js".to_string(),
+            format!("{NPX_INSTALL_DIR}/node_modules/../../payload.js"),
+        ] {
+            put_file(&fs, Path::new("/elsewhere/payload.js")).await;
+            put_file(&fs, Path::new("/agents/npx/payload.js")).await;
+            let record = InstalledAgentRecord {
+                registry_version: "1.0.0".to_string(),
+                launch: InstalledAgentLaunch::Npx {
+                    package: "test-agent@1.0.0".to_string(),
+                    executable: elsewhere.clone(),
+                    args: Vec::new(),
+                    env: HashMap::default(),
+                },
+                last_started: None,
+            };
+            write_installed_record(fs.as_ref(), &record_path, &record)
+                .await
+                .unwrap();
+            let installs_before = npx_installs(&installs);
+
+            let (launched, _) = resolve_npx(&fs, &installs, "1.0.0", false).await;
+            assert_eq!(npx_installs(&installs), installs_before + 1, "{elsewhere}");
+            assert!(launched.executable.starts_with(NPX_INSTALL_DIR));
+        }
+
+        // A `bin` that climbs into another package of the same install is
+        // still a record.
+        let sibling = format!("{NPX_INSTALL_DIR}/node_modules/test-agent/../other/cli.js");
+        put_file(
+            &fs,
+            Path::new(&format!("{NPX_INSTALL_DIR}/node_modules/other/cli.js")),
+        )
+        .await;
+        let record = InstalledAgentRecord {
+            registry_version: "1.0.0".to_string(),
+            launch: InstalledAgentLaunch::Npx {
+                package: "test-agent@1.0.0".to_string(),
+                executable: sibling.clone(),
+                args: Vec::new(),
+                env: HashMap::default(),
+            },
+            last_started: None,
+        };
+        write_installed_record(fs.as_ref(), &record_path, &record)
+            .await
+            .unwrap();
+        let installs_before = npx_installs(&installs);
+        let (launched, _) = resolve_npx(&fs, &installs, "1.0.0", false).await;
+        assert_eq!(npx_installs(&installs), installs_before);
+        assert_eq!(launched.executable, PathBuf::from(sibling));
+    }
+
+    /// ADR-F99: a binary agent's record only ever names one of the builds in
+    /// the installation directory it sits in.
+    #[gpui::test]
+    async fn a_binary_record_naming_a_directory_elsewhere_is_no_record(cx: &mut TestAppContext) {
+        let fs = fs::FakeFs::new(cx.executor());
+        let installation_dir = Path::new("/agents/registry/test-agent");
+        let record_path = installation_dir.join(INSTALLED_RECORD_FILE_NAME);
+        let build =
+            versioned_archive_cache_dir(installation_dir, Some("1.0.0"), TEST_ARCHIVE_URL, None);
+        let record = |directory: &Path| InstalledAgentRecord {
+            registry_version: "1.0.0".to_string(),
+            launch: InstalledAgentLaunch::Archive {
+                archive_url: TEST_ARCHIVE_URL.to_string(),
+                sha256: None,
+                directory: directory.to_string_lossy().into_owned(),
+                cmd: "./agent".to_string(),
+                args: Vec::new(),
+                env: HashMap::default(),
+            },
+            last_started: None,
+        };
+        for directory in [
+            build.clone(),
+            PathBuf::from("/elsewhere/v_1"),
+            installation_dir.join("not-a-build"),
+        ] {
+            put_file(&fs, &directory.join("agent")).await;
+        }
+
+        write_installed_record(fs.as_ref(), &record_path, &record(&build))
+            .await
+            .unwrap();
+        assert!(
+            usable_host_archive_record(fs.as_ref(), &record_path)
+                .await
+                .is_some()
+        );
+        for elsewhere in [
+            PathBuf::from("/elsewhere/v_1"),
+            installation_dir.join("not-a-build"),
+        ] {
+            write_installed_record(fs.as_ref(), &record_path, &record(&elsewhere))
+                .await
+                .unwrap();
+            assert_eq!(
+                usable_host_archive_record(fs.as_ref(), &record_path).await,
+                None,
+                "{}",
+                elsewhere.display()
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_wsl_archive_record_only_names_this_agents_builds() {
+        let own = wsl_runtime::archive_relative("test-agent", "1.0.0", TEST_ARCHIVE_URL, None);
+        assert!(wsl_runtime::is_archive_relative_of("test-agent", &own));
+        let other = wsl_runtime::archive_relative("other-agent", "1.0.0", TEST_ARCHIVE_URL, None);
+        assert!(!wsl_runtime::is_archive_relative_of("test-agent", &other));
+        let parent = own.rsplit_once('/').map(|(parent, _)| parent).unwrap();
+        assert!(!wsl_runtime::is_archive_relative_of("test-agent", parent));
+        assert!(!wsl_runtime::is_archive_relative_of(
+            "test-agent",
+            &format!("{own}/nested")
+        ));
+        assert!(!wsl_runtime::is_archive_relative_of(
+            "test-agent",
+            &format!("{parent}/not-a-build")
+        ));
+    }
+
+    /// ADR-F99: a newer registry version is reported, never installed unasked;
+    /// the start the user agreed to installs it and records it, once.
+    #[gpui::test]
+    async fn an_npx_agent_is_only_updated_once_agreed_to(cx: &mut TestAppContext) {
+        let fs = fs::FakeFs::new(cx.executor());
+        let installs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let record_path = Path::new(NPX_INSTALL_DIR).join(INSTALLED_RECORD_FILE_NAME);
+        let (old, _) = resolve_npx(&fs, &installs, "1.0.0", false).await;
+
+        let (launched, newer) = resolve_npx(&fs, &installs, "2.0.0", false).await;
+        assert_eq!(npx_installs(&installs), 1, "nothing installed unasked");
+        assert_eq!(launched, old, "the recorded version still launches");
+        assert_eq!(launched.args, vec!["--from-1.0.0".to_string()]);
+        assert_eq!(newer.as_deref(), Some("2.0.0"));
+        assert_eq!(
+            recorded_version(&fs, &record_path).await.as_deref(),
+            Some("1.0.0")
+        );
+
+        let (updated, newer) = resolve_npx(&fs, &installs, "2.0.0", true).await;
+        assert_eq!(npx_installs(&installs), 2);
+        assert_eq!(newer, None);
+        assert_ne!(updated.executable, old.executable);
+        assert_eq!(updated.args, vec!["--from-2.0.0".to_string()]);
+        assert_eq!(
+            recorded_version(&fs, &record_path).await.as_deref(),
+            Some("2.0.0")
+        );
+
+        let (_, newer) = resolve_npx(&fs, &installs, "2.0.0", false).await;
+        assert_eq!(npx_installs(&installs), 2);
+        assert_eq!(newer, None);
+    }
+
+    /// ADR-F99: the agreement for the place a start installs in is taken by
+    /// that start, so the start after it is an ordinary one again; the
+    /// agreement for another place stays for that place's start, and a
+    /// command for a terminal sign-in takes none.
+    #[gpui::test]
+    async fn a_start_takes_the_agreement_for_its_place(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        let fs: Arc<dyn Fs> = fs::FakeFs::new(cx.executor());
+        let approvals = AgentUpdateApprovals::default();
+        let agent_id = AgentId::new("test-agent");
+        let host = AgentInstallPlace::Host;
+        let distro = AgentInstallPlace::wsl(Some("Ubuntu"));
+        approvals.approve(&agent_id, host.clone());
+        approvals.approve(&agent_id, distro.clone());
+        let mut agent = cx.update(|cx| {
+            let worktree_store =
+                cx.new(|cx| WorktreeStore::local(false, fs.clone(), WorktreeIdCounter::get(cx)));
+            let project_environment = cx.new(|cx| {
+                crate::ProjectEnvironment::new(None, worktree_store.downgrade(), None, false, cx)
+            });
+            LocalRegistryNpxAgent {
+                fs: fs.clone(),
+                http_client: http_client::FakeHttpClient::with_404_response(),
+                node_runtime: NodeRuntime::unavailable(),
+                project_environment,
+                registry_id: Arc::from("test-agent"),
+                version: "2.0.0".into(),
+                package: "test-agent@2.0.0".into(),
+                args: Vec::new(),
+                distribution_env: HashMap::default(),
+                settings_env: HashMap::default(),
+                update_approvals: approvals.clone(),
+                new_version_available_tx: NewVersionSlot::default(),
+                loading_status_tx: None,
+            }
+        });
+        // No Node.js in a test: the install itself fails, which is beside the
+        // point here.
+        let sign_in = cx.update(|cx| {
+            agent.get_command_without_update(
+                Vec::new(),
+                HashMap::default(),
+                AgentLaunchTarget::Host,
+                &mut cx.to_async(),
+            )
+        });
+        sign_in.await.ok();
+        assert!(
+            approvals.is_approved(&agent_id, &host),
+            "a sign-in is not the agent's start"
+        );
+
+        let start = cx.update(|cx| {
+            agent.get_command(
+                Vec::new(),
+                HashMap::default(),
+                AgentLaunchTarget::Host,
+                &mut cx.to_async(),
+            )
+        });
+        start.await.ok();
+        assert!(
+            !approvals.is_approved(&agent_id, &host),
+            "the start took the agreement"
+        );
+        assert!(
+            approvals.is_approved(&agent_id, &distro),
+            "the distro's agreement waits for a start there"
+        );
+    }
+
+    #[cfg(feature = "test-support")]
+    fn counting_http_client(
+        body: Vec<u8>,
+    ) -> (Arc<dyn HttpClient>, Arc<std::sync::atomic::AtomicUsize>) {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |_| {
+                requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let body = body.clone();
+                async move {
+                    Ok(Response::builder()
+                        .status(200)
+                        .body(AsyncBody::from(body))?)
+                }
+            }
+        });
+        (client, requests)
+    }
+
+    #[cfg(feature = "test-support")]
+    async fn start_archive_agent(
+        agent: &mut LocalRegistryArchiveAgent,
+        cx: &mut TestAppContext,
+    ) -> AgentServerCommand {
+        let command = cx
+            .update(|cx| {
+                agent.get_command(
+                    Vec::new(),
+                    HashMap::default(),
+                    AgentLaunchTarget::Host,
+                    &mut cx.to_async(),
+                )
+            })
+            .await
+            .expect("the agent starts");
+        cx.run_until_parked();
+        command
+    }
+
+    /// ADR-F99: a build that is recorded starts as it is, even where the
+    /// registry now describes the same version differently (another digest,
+    /// which before this would have been downloaded into a directory of its
+    /// own) — and a build cached before the records existed is recorded on
+    /// its first start, without a download.
+    #[cfg(feature = "test-support")]
+    #[gpui::test]
+    async fn a_recorded_binary_agent_starts_without_a_download(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let installation_dir = temp_dir.path().join("agent");
+        let cached_dir =
+            versioned_archive_cache_dir(&installation_dir, Some("1.0.0"), TEST_ARCHIVE_URL, None);
+        std::fs::create_dir_all(&cached_dir).unwrap();
+        std::fs::write(cached_dir.join("agent"), b"cached agent").unwrap();
+
+        let (http_client, requests) = counting_http_client(b"downloaded agent".to_vec());
+        let mut agent =
+            make_registry_archive_agent(cx, installation_dir.clone(), http_client.clone(), None);
+        let command = start_archive_agent(&mut agent, cx).await;
+        assert_eq!(command.path, cached_dir.join("agent"));
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(
+            installation_dir.join(INSTALLED_RECORD_FILE_NAME).exists(),
+            "the cached build is recorded"
+        );
+
+        let republished_sha256 = format!("{:x}", Sha256::digest(b"downloaded agent"));
+        let mut agent = make_registry_archive_agent(
+            cx,
+            installation_dir.clone(),
+            http_client,
+            Some(republished_sha256),
+        );
+        let command = start_archive_agent(&mut agent, cx).await;
+        assert_eq!(command.path, cached_dir.join("agent"));
+        assert_eq!(
+            requests.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "nothing is asked of the network while the record stands"
+        );
+    }
+
+    /// ADR-F99: a newer version in the registry is reported at start, and the
+    /// recorded build keeps starting until the user agrees; the start they
+    /// agreed to downloads the new one, records it and takes the agreement.
+    #[cfg(feature = "test-support")]
+    #[gpui::test]
+    async fn a_binary_agent_is_only_updated_once_agreed_to(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let installation_dir = temp_dir.path().join("agent");
+        let record_path = installation_dir.join(INSTALLED_RECORD_FILE_NAME);
+        let (http_client, requests) = counting_http_client(b"agent".to_vec());
+        let mut agent =
+            make_registry_archive_agent(cx, installation_dir.clone(), http_client.clone(), None);
+        let old = start_archive_agent(&mut agent, cx).await;
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let mut agent =
+            make_registry_archive_agent(cx, installation_dir.clone(), http_client.clone(), None);
+        agent.version = "2.0.0".into();
+        let (tx, mut rx) = watch::channel::<Option<String>>(None);
+        agent.set_new_version_available_tx(tx);
+        let launched = start_archive_agent(&mut agent, cx).await;
+        assert_eq!(launched.path, old.path, "the recorded build still starts");
+        assert_eq!(
+            requests.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "no download unasked"
+        );
+        assert_eq!(
+            rx.borrow().as_deref(),
+            Some("2.0.0"),
+            "the start reports it"
+        );
+
+        agent
+            .update_approvals
+            .approve(&AgentId::new("test-agent"), AgentInstallPlace::Host);
+        let updated = start_archive_agent(&mut agent, cx).await;
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(
+            updated.path,
+            versioned_archive_cache_dir(&installation_dir, Some("2.0.0"), TEST_ARCHIVE_URL, None)
+                .join("agent")
+        );
+        assert!(
+            !agent
+                .update_approvals
+                .is_approved(&AgentId::new("test-agent"), &AgentInstallPlace::Host)
+        );
+        let fs = fs::RealFs::new(None, cx.executor());
+        assert_eq!(
+            read_installed_record(fs.as_ref(), &record_path)
+                .await
+                .map(|record| record.registry_version)
+                .as_deref(),
+            Some("2.0.0")
+        );
+
+        let again = start_archive_agent(&mut agent, cx).await;
+        assert_eq!(again.path, updated.path);
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
 }
 
 /// ADR-F49 決定 19: an agent this host could not put in its sandbox is
@@ -3787,27 +4730,48 @@ async fn npx_agent_command_in_wsl(
     http_client: Arc<dyn HttpClient>,
     fs: Arc<dyn Fs>,
     registry_id: &str,
+    registry_version: &str,
     package: &str,
     args: Vec<String>,
     extra_args: Vec<String>,
-    agent_env: HashMap<String, String>,
+    distribution_env: HashMap<String, String>,
+    extra_env: HashMap<String, String>,
+    settings_env: HashMap<String, String>,
     editor_network_allowlist: Option<Vec<String>>,
+    update_approved: bool,
+    new_version_available: &NewVersionSlot,
     loading_status_tx: &mut Option<watch::Sender<Option<String>>>,
 ) -> Result<AgentServerCommand> {
     let distro = wsl_distro.as_deref();
     let node_directory =
         wsl_runtime::node_directory(distro, &executor, &http_client, &fs, loading_status_tx)
             .await?;
-    let (install_directory, executable) = wsl_runtime::npm_package(
+    let package = wsl_runtime::npm_package(
         distro,
         &executor,
+        &fs,
         &node_directory,
         registry_id,
+        registry_version,
         package,
+        args,
+        distribution_env,
+        update_approved,
         editor_network_allowlist,
         loading_status_tx,
     )
     .await?;
+    if let Some(newer) = package.newer {
+        report_new_version(new_version_available, newer);
+    }
+    let wsl_runtime::WslNpmPackage {
+        install_directory,
+        executable,
+        args,
+        env: distribution_env,
+        ..
+    } = package;
+    let agent_env = agent_environment(distribution_env, extra_env, settings_env);
 
     // The agent's environment is the one written for the distro: the staged
     // Node.js first on `PATH`, then what the entry and the user's settings
@@ -3859,53 +4823,130 @@ async fn registry_archive_command_in_wsl(
     extra_env: HashMap<String, String>,
     settings_env: HashMap<String, String>,
     extra_args: Vec<String>,
+    update_approved: bool,
+    new_version_available: &NewVersionSlot,
     loading_status_tx: &mut Option<watch::Sender<Option<String>>>,
 ) -> Result<AgentServerCommand> {
     let distro = wsl_distro.as_deref();
-    let machine = wsl_runtime::machine_architecture(distro, &executor).await?;
-    let architecture = match machine.as_str() {
-        "x86_64" | "amd64" => "x86_64",
-        "aarch64" | "arm64" => "aarch64",
-        other => bail!(i18n::t!(
-            "Distributions for the WSL architecture `{other}` are not supported, so the agent \
-             cannot start inside the sandbox."
-        )),
-    };
-    let platform_key = format!("linux-{architecture}");
-    let target_config = targets.get(&platform_key).with_context(|| {
-        i18n::t!(
-            "This agent has no distribution for {platform_key}, so it cannot start inside the \
-             WSL sandbox (available: {available}).",
-            available = targets
-                .keys()
-                .map(String::as_str)
-                .collect::<Vec<_>>()
-                .join(i18n::tc!("list separator", ", "))
-        )
-    })?;
 
-    let sha256 = registry_archive_sha256(
-        &http_client,
-        &target_config.archive,
-        target_config.sha256.clone(),
-    )
-    .await;
-    let runtime_directory = wsl_runtime::registry_archive(
-        distro,
-        &executor,
-        &http_client,
-        &fs,
-        registry_id,
+    // ADR-F99: the build this distro has is launched as it is — no digest is
+    // asked of GitHub and nothing is downloaded — unless the user agreed to
+    // the registry's newer version.
+    let record_path = crate::agent_update::wsl_record_path(distro, registry_id);
+    let recorded = match read_installed_record(fs.as_ref(), &record_path).await {
+        Some(record) => match record.launch.clone() {
+            // The runtime directory becomes readable inside the sandbox, so a
+            // record (a file on this host) only ever names one of this agent's
+            // own builds.
+            InstalledAgentLaunch::Archive {
+                sha256,
+                directory,
+                cmd,
+                args,
+                env,
+                ..
+            } if wsl_runtime::is_archive_relative_of(registry_id, &directory) => {
+                wsl_runtime::bounded(
+                    &executor,
+                    wsl_runtime::STEP_TIMEOUT,
+                    i18n::tc!("wsl sandbox step", "Checking the agent's runtime in WSL"),
+                    sandbox::staged_wsl_runtime(distro, &directory, sha256.as_deref()),
+                )
+                .await?
+                .map(|runtime_directory| (record, runtime_directory, cmd, args, env))
+            }
+            _ => None,
+        },
+        None => None,
+    };
+    let decision = launch_decision(
+        recorded
+            .as_ref()
+            .map(|(record, ..)| record.registry_version.as_str()),
         version,
-        &target_config.archive,
-        sha256,
-        loading_status_tx,
-    )
-    .await?;
+        update_approved,
+    );
+    let (runtime_directory, cmd, target_args, target_env) = match (decision, recorded) {
+        (LaunchDecision::Recorded { newer }, Some((record, runtime_directory, cmd, args, env))) => {
+            if let Some(newer) = newer {
+                report_new_version(new_version_available, newer);
+            }
+            record_start(fs.as_ref(), &record_path, record).await;
+            (runtime_directory, cmd, args, env)
+        }
+        _ => {
+            let machine = wsl_runtime::machine_architecture(distro, &executor).await?;
+            let architecture = match machine.as_str() {
+                "x86_64" | "amd64" => "x86_64",
+                "aarch64" | "arm64" => "aarch64",
+                other => bail!(i18n::t!(
+                    "Distributions for the WSL architecture `{other}` are not supported, so the agent \
+                     cannot start inside the sandbox."
+                )),
+            };
+            let platform_key = format!("linux-{architecture}");
+            let target_config = targets.get(&platform_key).with_context(|| {
+                i18n::t!(
+                    "This agent has no distribution for {platform_key}, so it cannot start inside the \
+                     WSL sandbox (available: {available}).",
+                    available = targets
+                        .keys()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>()
+                        .join(i18n::tc!("list separator", ", "))
+                )
+            })?;
+
+            let sha256 = registry_archive_sha256(
+                &http_client,
+                &target_config.archive,
+                target_config.sha256.clone(),
+            )
+            .await;
+            let relative = wsl_runtime::archive_relative(
+                registry_id,
+                version,
+                &target_config.archive,
+                sha256.as_deref(),
+            );
+            let runtime_directory = wsl_runtime::registry_archive(
+                distro,
+                &executor,
+                &http_client,
+                &fs,
+                registry_id,
+                version,
+                &target_config.archive,
+                sha256.clone(),
+                loading_status_tx,
+            )
+            .await?;
+            let record = InstalledAgentRecord::started_now(
+                version.to_string(),
+                InstalledAgentLaunch::Archive {
+                    archive_url: target_config.archive.clone(),
+                    sha256,
+                    directory: relative,
+                    cmd: target_config.cmd.clone(),
+                    args: target_config.args.clone(),
+                    env: target_config.env.clone(),
+                },
+            );
+            write_installed_record(fs.as_ref(), &record_path, &record)
+                .await
+                .log_err();
+            (
+                runtime_directory,
+                target_config.cmd.clone(),
+                target_config.args.clone(),
+                target_config.env.clone(),
+            )
+        }
+    };
 
     let mut readable_paths = vec![PathBuf::from(runtime_directory.clone())];
     let mut env = HashMap::default();
-    let program = if target_config.cmd == "node" {
+    let program = if cmd == "node" {
         let node_directory =
             wsl_runtime::node_directory(distro, &executor, &http_client, &fs, loading_status_tx)
                 .await?;
@@ -3914,14 +4955,13 @@ async fn registry_archive_command_in_wsl(
         readable_paths.push(PathBuf::from(node_directory));
         program
     } else {
-        let relative = target_config
-            .cmd
+        let relative = cmd
             .strip_prefix("./")
-            .or_else(|| target_config.cmd.strip_prefix(".\\"))
+            .or_else(|| cmd.strip_prefix(".\\"))
             .with_context(|| {
                 i18n::t!(
                     "The agent's executable `{command}` has to be a relative path starting with `./`.",
-                    command = target_config.cmd
+                    command = cmd
                 )
             })?;
         wsl_runtime::bounded(
@@ -3933,13 +4973,9 @@ async fn registry_archive_command_in_wsl(
         .await?
     };
 
-    env.extend(agent_environment(
-        target_config.env.clone(),
-        extra_env,
-        settings_env,
-    ));
+    env.extend(agent_environment(target_env, extra_env, settings_env));
 
-    let mut args = target_config.args.clone();
+    let mut args = target_args;
     args.extend(extra_args);
 
     Ok(AgentServerCommand {
@@ -3975,11 +5011,16 @@ mod wsl_runtime {
     use std::time::Duration;
 
     use anyhow::{Context as _, Result, anyhow, bail};
+    use collections::HashMap;
     use fs::{Fs, RemoveOptions};
     use gpui::{App, BackgroundExecutor, FutureExt as _};
     use http_client::{HttpClient, github::AssetKind};
     use semver::Version;
     use util::ResultExt as _;
+
+    use crate::agent_update::{
+        InstalledAgentLaunch, InstalledAgentRecord, read_installed_record, write_installed_record,
+    };
 
     use super::{
         RegistryArchiveKind, archive_version_component, registry_archive_kind_for_url,
@@ -4145,10 +5186,24 @@ mod wsl_runtime {
         staged
     }
 
+    /// ADR-F99: an npm package in a distro, as a start launches it.
+    pub(super) struct WslNpmPackage {
+        pub(super) install_directory: String,
+        pub(super) executable: String,
+        pub(super) args: Vec<String>,
+        pub(super) env: HashMap<String, String>,
+        /// The registry's version, when it is newer than the one launched and
+        /// the user has not agreed to it yet.
+        pub(super) newer: Option<String>,
+    }
+
     /// ADR-F49 決定 22: the npm package `package` installed in `distro` for
-    /// the registry entry `registry_id`, installed (inside the sandbox) if the
-    /// version there does not already satisfy what the registry asks for.
-    /// Returns its install directory and the executable to run with Node.js.
+    /// the registry entry `registry_id`, installed (inside the sandbox) when
+    /// there is none yet. ADR-F99: once this host has a record of what it
+    /// installed there, that is launched as it is until the user agrees to the
+    /// registry's newer version ([`crate::agent_update::wsl_npm_plan`]).
+    /// Returns its install directory, the executable to run with Node.js, and
+    /// the arguments and environment the install was made with.
     #[allow(
         clippy::too_many_arguments,
         reason = "one registry entry's npm install, end to end"
@@ -4156,13 +5211,17 @@ mod wsl_runtime {
     pub(super) async fn npm_package(
         distro: Option<&str>,
         executor: &BackgroundExecutor,
+        fs: &Arc<dyn Fs>,
         node_directory: &str,
         registry_id: &str,
+        registry_version: &str,
         package: &str,
+        args: Vec<String>,
+        distribution_env: HashMap<String, String>,
+        update_approved: bool,
         editor_network_allowlist: Option<Vec<String>>,
         status: &mut Option<watch::Sender<Option<String>>>,
-    ) -> Result<(String, String)> {
-        let (package_name, package_spec) = super::bounded_npm_package_spec(package);
+    ) -> Result<WslNpmPackage> {
         let relative = format!("{NPX_RELATIVE}/{}", sanitize_path_component(registry_id));
         let data_directory = bounded(
             executor,
@@ -4173,19 +5232,57 @@ mod wsl_runtime {
         .await?;
         let install_directory = format!("{data_directory}/{relative}");
 
-        // The same rule `should_install_npm_package` applies locally: what is
-        // installed is kept while it is at least the version the registry
-        // bounds the package at (npm resolves the newest version within that
-        // bound, so a newer one is fine).
-        let installed =
-            installed_npm_version(distro, executor, &install_directory, package_name).await;
-        let wanted = pinned_package_version(package);
-        let install = match (&installed, &wanted) {
-            (None, _) => true,
-            (Some(_), None) => false,
-            (Some(installed), Some(wanted)) => installed < wanted,
+        let record_path = crate::agent_update::wsl_record_path(distro, registry_id);
+        let recorded = match read_installed_record(fs.as_ref(), &record_path).await {
+            Some(InstalledAgentRecord {
+                registry_version,
+                launch:
+                    InstalledAgentLaunch::Npx {
+                        package, args, env, ..
+                    },
+                ..
+            }) => Some((registry_version, package, args, env)),
+            _ => None,
         };
-        if install {
+        // What is installed is read under the name the record gives it, which
+        // is the package launched while the record stands.
+        let installed_package = recorded
+            .as_ref()
+            .map(|(_, package, ..)| package.as_str())
+            .unwrap_or(package);
+        let (installed_name, _) = super::bounded_npm_package_spec(installed_package);
+        let installed =
+            installed_npm_version(distro, executor, &install_directory, installed_name).await;
+        let plan = crate::agent_update::wsl_npm_plan(
+            recorded
+                .as_ref()
+                .map(|(registry_version, ..)| registry_version.as_str()),
+            installed.as_ref(),
+            pinned_package_version(package).as_ref(),
+            registry_version,
+            update_approved,
+        );
+        let keeps_record = !plan.install && recorded.is_some();
+        let (recorded_for, package, args, distribution_env) = match recorded {
+            Some((recorded_version, recorded_package, recorded_args, recorded_env))
+                if keeps_record =>
+            {
+                (
+                    recorded_version,
+                    recorded_package,
+                    recorded_args,
+                    recorded_env,
+                )
+            }
+            _ => (
+                registry_version.to_string(),
+                package.to_string(),
+                args,
+                distribution_env,
+            ),
+        };
+        let (package_name, package_spec) = super::bounded_npm_package_spec(&package);
+        if plan.install {
             report(status, i18n::t!("Running npm install inside the sandbox…"));
             bounded(
                 executor,
@@ -4231,7 +5328,28 @@ mod wsl_runtime {
             ),
         )
         .await?;
-        Ok((install_directory, executable))
+
+        // Written by every start, the one that keeps the record too, for the
+        // time it says this distro last started the agent.
+        let record = InstalledAgentRecord::started_now(
+            recorded_for,
+            InstalledAgentLaunch::Npx {
+                package: package.clone(),
+                executable: executable.clone(),
+                args: args.clone(),
+                env: distribution_env.clone(),
+            },
+        );
+        write_installed_record(fs.as_ref(), &record_path, &record)
+            .await
+            .log_err();
+        Ok(WslNpmPackage {
+            install_directory,
+            executable,
+            args,
+            env: distribution_env,
+            newer: plan.newer,
+        })
     }
 
     /// The version of `package_name` installed in the distro, or `None` when
@@ -4319,11 +5437,7 @@ mod wsl_runtime {
                 (sandbox::WslArchiveKind::TarGz, Some(file_name.clone()))
             }
         };
-        let relative = format!(
-            "{ARCHIVE_RELATIVE}/{}/{}",
-            sanitize_path_component(registry_id),
-            archive_version_component(version, archive_url, sha256.as_deref())
-        );
+        let relative = archive_relative(registry_id, version, archive_url, sha256.as_deref());
         // A build already staged is reused: under the digest the registry
         // names where there is one, and otherwise simply for being complete
         // where this version at this URL puts it — the same identity the local
@@ -4397,6 +5511,34 @@ mod wsl_runtime {
         };
         remove_download(fs, &local).await;
         staged
+    }
+
+    /// Where one build of a registry archive is staged, below the distro's
+    /// data directory.
+    pub(super) fn archive_relative(
+        registry_id: &str,
+        version: &str,
+        archive_url: &str,
+        sha256: Option<&str>,
+    ) -> String {
+        format!(
+            "{ARCHIVE_RELATIVE}/{}/{}",
+            sanitize_path_component(registry_id),
+            archive_version_component(version, archive_url, sha256)
+        )
+    }
+
+    /// Whether `directory` is one of the places [`archive_relative`] stages a
+    /// build of `registry_id` at.
+    pub(super) fn is_archive_relative_of(registry_id: &str, directory: &str) -> bool {
+        let prefix = format!(
+            "{ARCHIVE_RELATIVE}/{}/",
+            sanitize_path_component(registry_id)
+        );
+        directory.strip_prefix(&prefix).is_some_and(|build| {
+            build.starts_with(super::VERSIONED_ARCHIVE_CACHE_DIR_PREFIX)
+                && !build.contains(['/', '\\'])
+        })
     }
 
     async fn remove_download(fs: &Arc<dyn Fs>, path: &PathBuf) {

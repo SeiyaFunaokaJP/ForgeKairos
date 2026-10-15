@@ -20,6 +20,14 @@ msgctxt "ActivateOnClose"
 msgid "Neighbour"
 msgstr "相鄰分頁"
 
+msgctxt "AgentServersUpdateCheck"
+msgid "Manual"
+msgstr "手動"
+
+msgctxt "AgentServersUpdateCheck"
+msgid "On Startup"
+msgstr "啟動時"
+
 msgctxt "AlternateScroll"
 msgid "Off"
 msgstr "關閉"
@@ -1395,6 +1403,10 @@ msgstr "代理面板字型"
 msgctxt "settings"
 msgid "Agent Review"
 msgstr "代理檢閱"
+
+msgctxt "settings"
+msgid "Agent Update Check"
+msgstr "代理更新檢查"
 
 msgctxt "settings"
 msgid "Allow Rewrap"
@@ -5267,6 +5279,10 @@ msgstr "自動儲存緩衝區變更的時機。"
 msgctxt "settings"
 msgid "When to hide the mouse cursor."
 msgstr "隱藏滑鼠游標的時機。"
+
+msgctxt "settings"
+msgid "When to look for newer versions of the external agents installed from the ACP registry. An agent keeps starting the installed version until you agree to an update. Manual only checks when you run \"agent: check for agent updates\" or click Check for Updates on the ACP registry page."
+msgstr "何時檢查從 ACP 登錄庫安裝的外部代理的新版本。在你同意更新之前，代理會一直以已安裝的版本啟動。設為手動時，只會在執行 \"agent: check for agent updates\" 或在 ACP 登錄庫頁面按一下「檢查更新」時檢查。"
 
 msgctxt "settings"
 msgid "When to play a sound when the agent has either completed its response, or needs user input."

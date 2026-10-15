@@ -197,6 +197,9 @@ msgstr "Metadatos de todas las conversaciones de la barra lateral"
 msgid "All domains (unrestricted)"
 msgstr "Todos los dominios (sin restricciones)"
 
+msgid "All external agents are up to date."
+msgstr "Todos los agentes externos están actualizados."
+
 msgid "All paths except protected Git metadata"
 msgstr "Todas las rutas excepto los metadatos protegidos de Git"
 
@@ -232,6 +235,11 @@ msgstr "Todavía hay una clave de API escrita en texto sin cifrar en settings.js
 
 msgid "An Error Happened"
 msgstr "Se produjo un error"
+
+msgid "An update is available for {count} external agent: {list}"
+msgid_plural "Updates are available for {count} external agents: {list}"
+msgstr[0] "Hay una actualización disponible para {count} agente externo: {list}"
+msgstr[1] "Hay actualizaciones disponibles para {count} agentes externos: {list}"
 
 msgid "Answer the tool call waiting for confirmation before switching."
 msgstr "Responde a la llamada de herramienta que espera confirmación antes de cambiar."
@@ -377,6 +385,9 @@ msgstr "Chatee sobre su base de código."
 msgid "Check for Claude Code Updates"
 msgstr "Buscar actualizaciones de Claude Code"
 
+msgid "Check for Updates"
+msgstr "Buscar actualizaciones"
+
 msgid "Check the server docs for required arguments and environment variables."
 msgstr "Consulte la documentación del servidor para conocer los argumentos y las variables de entorno necesarios."
 
@@ -431,8 +442,8 @@ msgstr "Haga clic para obtener una vista previa"
 msgid "Click to copy rating ID"
 msgstr "Haga clic para copiar el ID de la valoración"
 
-msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
-msgstr "Haga clic para abrir una conversación con este agente. Desde aquí no se actualiza nada y las sesiones en ejecución no se detienen. Las conversaciones que se conecten a partir de ahora inician la versión más reciente, y las conversaciones en ejecución muestran un banner de actualización."
+msgid "Click to update. Running sessions are not stopped: the agent's next start installs the new version, and running threads show an update banner."
+msgstr "Haz clic para actualizar. Las sesiones en curso no se detienen: el próximo inicio del agente instala la nueva versión y los hilos en curso muestran un aviso de actualización."
 
 msgid "Clipboard does not contain text"
 msgstr "El portapapeles no contiene texto"
@@ -565,6 +576,9 @@ msgstr "Costo: {}"
 
 msgid "Could not authenticate with {provider}."
 msgstr "No se pudo autenticar con {provider}."
+
+msgid "Could not check for agent updates: {error}"
+msgstr "No se pudieron buscar actualizaciones de los agentes: {error}"
 
 msgid "Could not check the Claude Code already placed in WSL."
 msgstr "No se pudo comprobar el Claude Code ya colocado en WSL."
@@ -1096,6 +1110,9 @@ msgstr "Mantener"
 
 msgid "Keep All"
 msgstr "Mantener todo"
+
+msgid "Later"
+msgstr "Más tarde"
 
 msgid "Latest"
 msgstr "Más reciente"
@@ -2015,6 +2032,9 @@ msgstr "Error del asistente en línea del terminal: {}"
 msgid "Thanks for your feedback!"
 msgstr "¡Gracias por sus comentarios!"
 
+msgid "The ACP registry is not available, so agent updates cannot be checked."
+msgstr "El registro de ACP no está disponible, así que no se pueden buscar actualizaciones de los agentes."
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "No se encontró el Claude Code enviado al host remoto. Inténtelo de nuevo."
 
@@ -2404,6 +2424,9 @@ msgstr "Quitar modelo de favoritos"
 msgid "Unknown"
 msgstr "Desconocido"
 
+msgid "Update"
+msgstr "Actualizar"
+
 msgid "Update Claude Code to v{to}"
 msgstr "Actualizar Claude Code a v{to}"
 
@@ -2418,6 +2441,9 @@ msgstr "Actualización disponible: v{latest}"
 
 msgid "Update to v{}"
 msgstr "Actualizar a v{}"
+
+msgid "Updates when it next starts"
+msgstr "Se actualiza en el próximo inicio"
 
 msgid "Upgrade"
 msgstr "Actualizar"
@@ -2640,6 +2666,9 @@ msgstr "{keybinding} para chatear"
 
 msgid "{minutes} minutes ago"
 msgstr "hace {minutes} minutos"
+
+msgid "{name} {installed} → {available}"
+msgstr "{name} {installed} → {available}"
 
 msgid "{notice}. Starts `{program}` on this PC in the project folder."
 msgstr "{notice}. Inicia `{program}` en este equipo, en la carpeta del proyecto."

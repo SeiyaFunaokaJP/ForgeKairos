@@ -59,6 +59,11 @@ msgctxt "action documentation"
 msgid "agent::ChatWithFollow"
 msgstr "따라가기가 활성화된 상태로 채팅 대화를 시작합니다."
 
+#. Checks the ACP registry for newer versions of the installed external agents, and asks before updating them.
+msgctxt "action documentation"
+msgid "agent::CheckForAgentUpdates"
+msgstr "ACP 레지스트리에서 설치된 외부 에이전트의 새 버전을 확인하고, 업데이트하기 전에 묻습니다."
+
 #. Clears all messages from the queue.
 msgctxt "action documentation"
 msgid "agent::ClearMessageQueue"

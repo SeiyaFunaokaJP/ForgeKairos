@@ -1060,17 +1060,19 @@ p12.i47[agent.system_prompt_repo_map_bytes].placeholder	0
 p12.i48[agent.idle_disconnect_minutes].title	使わなくなったエージェントを止めるまでの分数
 p12.i48[agent.idle_disconnect_minutes].description	外部エージェントのスレッドが 1 つも開かれていない状態がこの分数だけ続いたら、そのエージェントとの接続を終了します (エージェントとそのサンドボックスも止まります)。スレッドを開き直すと接続し直します。0 でウィンドウを閉じるまで接続を保ちます。
 p12.i48[agent.idle_disconnect_minutes].placeholder	5
-p12.i49.header	編集予測
-p12.i50[edit_predictions.providers].link	プロバイダーの設定
-p12.i50[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
-p12.i51[edit_predictions.allow_data_collection].title	データの収集
-p12.i51[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
-p12.i52[languages.$(language).show_edit_predictions].title	編集予測を表示
-p12.i52[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
-p12.i53[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
-p12.i53[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。
-p12.i54[edit_prediction.display_mode].title	表示モード
-p12.i54[edit_prediction.display_mode].description	バッファーで編集予測のプレビューを表示するタイミングです。eager モードはインラインで表示し、subtle モードは修飾キーを押している間だけ表示します。
+p12.i49[agent.agent_servers_update_check].title	エージェントの更新確認
+p12.i49[agent.agent_servers_update_check].description	ACP レジストリからインストールした外部エージェントの新しいバージョンを確認するタイミングです。更新に同意するまでは、インストール済みのバージョンで起動し続けます。手動にすると、"agent: check for agent updates" を実行するか、ACP レジストリのページで「更新を確認」をクリックしたときだけ確認します。
+p12.i50.header	編集予測
+p12.i51[edit_predictions.providers].link	プロバイダーの設定
+p12.i51[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
+p12.i52[edit_predictions.allow_data_collection].title	データの収集
+p12.i52[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
+p12.i53[languages.$(language).show_edit_predictions].title	編集予測を表示
+p12.i53[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
+p12.i54[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
+p12.i54[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。
+p12.i55[edit_prediction.display_mode].title	表示モード
+p12.i55[edit_prediction.display_mode].description	バッファーで編集予測のプレビューを表示するタイミングです。eager モードはインラインで表示し、subtle モードは修飾キーを押している間だけ表示します。
 p13.title	ネットワーク
 p13.i0.header	ネットワーク
 p13.i1[proxy].title	プロキシ

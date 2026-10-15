@@ -197,6 +197,9 @@ msgstr "側邊欄所有會話的中繼資料"
 msgid "All domains (unrestricted)"
 msgstr "所有網域（不受限制）"
 
+msgid "All external agents are up to date."
+msgstr "所有外部代理皆為最新版本。"
+
 msgid "All paths except protected Git metadata"
 msgstr "所有路徑（受保護的 Git 中繼資料除外）"
 
@@ -232,6 +235,10 @@ msgstr "settings.json 中的 `agent_servers` → `{}` → `env` → `{variable}`
 
 msgid "An Error Happened"
 msgstr "發生錯誤"
+
+msgid "An update is available for {count} external agent: {list}"
+msgid_plural "Updates are available for {count} external agents: {list}"
+msgstr[0] "{count} 個外部代理有可用的更新：{list}"
 
 msgid "Answer the tool call waiting for confirmation before switching."
 msgstr "請先回應等待確認的工具呼叫，再進行切換。"
@@ -377,6 +384,9 @@ msgstr "討論程式碼庫。"
 msgid "Check for Claude Code Updates"
 msgstr "檢查 Claude Code 更新"
 
+msgid "Check for Updates"
+msgstr "檢查更新"
+
 msgid "Check the server docs for required arguments and environment variables."
 msgstr "請查看伺服器文件以了解必要的引數與環境變數。"
 
@@ -431,8 +441,8 @@ msgstr "按一下以預覽"
 msgid "Click to copy rating ID"
 msgstr "按一下以複製評分 ID"
 
-msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
-msgstr "按一下以開啟與此代理的會話。這裡不會更新任何項目，也不會停止執行中的工作階段。新連線的會話會啟動最新版本，執行中的會話則會顯示更新橫幅。"
+msgid "Click to update. Running sessions are not stopped: the agent's next start installs the new version, and running threads show an update banner."
+msgstr "按一下即可更新。不會停止執行中的工作階段：代理下次啟動時會安裝新版本，執行中的對話串會顯示更新橫幅。"
 
 msgid "Clipboard does not contain text"
 msgstr "剪貼簿不含文字內容"
@@ -565,6 +575,9 @@ msgstr "費用：{}"
 
 msgid "Could not authenticate with {provider}."
 msgstr "無法向 {provider} 進行驗證。"
+
+msgid "Could not check for agent updates: {error}"
+msgstr "無法檢查代理的更新：{error}"
 
 msgid "Could not check the Claude Code already placed in WSL."
 msgstr "無法檢查已放置在 WSL 中的 Claude Code。"
@@ -1093,6 +1106,9 @@ msgstr "保留"
 
 msgid "Keep All"
 msgstr "全部保留"
+
+msgid "Later"
+msgstr "稍後"
 
 msgid "Latest"
 msgstr "最新"
@@ -2012,6 +2028,9 @@ msgstr "終端機內嵌助理錯誤：{}"
 msgid "Thanks for your feedback!"
 msgstr "感謝您的意見回饋！"
 
+msgid "The ACP registry is not available, so agent updates cannot be checked."
+msgstr "無法使用 ACP 登錄庫，因此無法檢查代理的更新。"
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "找不到已傳送至遠端主機的 Claude Code。請再試一次。"
 
@@ -2400,6 +2419,9 @@ msgstr "將模型從最愛移除"
 msgid "Unknown"
 msgstr "未知"
 
+msgid "Update"
+msgstr "更新"
+
 msgid "Update Claude Code to v{to}"
 msgstr "將 Claude Code 更新至 v{to}"
 
@@ -2414,6 +2436,9 @@ msgstr "有可用的更新：v{latest}"
 
 msgid "Update to v{}"
 msgstr "更新至 v{}"
+
+msgid "Updates when it next starts"
+msgstr "下次啟動時更新"
 
 msgid "Upgrade"
 msgstr "升級"
@@ -2630,6 +2655,9 @@ msgstr "{keybinding} 開啟聊天"
 
 msgid "{minutes} minutes ago"
 msgstr "{minutes} 分鐘前"
+
+msgid "{name} {installed} → {available}"
+msgstr "{name} {installed} → {available}"
 
 msgid "{notice}. Starts `{program}` on this PC in the project folder."
 msgstr "{notice}。在專案資料夾中啟動這台電腦上的 `{program}`。"

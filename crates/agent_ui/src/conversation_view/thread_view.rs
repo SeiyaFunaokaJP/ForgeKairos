@@ -13774,10 +13774,13 @@ impl ThreadView {
         }));
     }
 
+    /// ADR-F99: the user agreed to the update, so the start this makes
+    /// installs it; without that, a start launches the version installed.
     fn reset_agent_server(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.update_consent = None;
+        self.new_server_version_available = None;
         self.server_view
-            .update(cx, |view, cx| view.reset(window, cx))
+            .update(cx, |view, cx| view.update_agent(window, cx))
             .log_err();
     }
 
