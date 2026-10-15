@@ -8,7 +8,7 @@ message GetAgentServerCommand {
   // ADR-F49: every folder of the project, which names the agent's
   // configuration folder on the host.
   repeated string project_roots = 10000;
-  // ADR-F99: the user agreed to update the agent, so this start installs the
+  // ADR-F101: the user agreed to update the agent, so this start installs the
   // registry's version instead of launching the one installed.
   optional bool approve_update = 10001;
   uint64 project_id = 1;

@@ -130,7 +130,7 @@ pub struct AgentRegistryStore {
     fetch_error: Option<SharedString>,
     pending_refresh: Option<Shared<Task<()>>>,
     last_refresh: Option<Instant>,
-    /// ADR-F99: whether the cached registry has been read (or found missing).
+    /// ADR-F101: whether the cached registry has been read (or found missing).
     cached_registry_loaded: bool,
 }
 
@@ -153,7 +153,7 @@ impl AgentRegistryStore {
         let store = cx.new(|cx| Self::new(fs, http_client, cx));
         cx.set_global(GlobalAgentRegistryStore(store.clone()));
 
-        // ADR-F99: with `agent.agent_servers_update_check` set to `manual`,
+        // ADR-F101: with `agent.agent_servers_update_check` set to `manual`,
         // the registry is only fetched when nothing of it is known yet (see
         // `load_cached_registry`) or when the user asks.
         store.update(cx, |store, cx| {
@@ -272,7 +272,7 @@ impl AgentRegistryStore {
         self.pending_refresh = Some(futures::FutureExt::shared(refresh));
     }
 
-    /// ADR-F99: a task that finishes once the registry has been fetched, for
+    /// ADR-F101: a task that finishes once the registry has been fetched, for
     /// the update check to compare against. `force` fetches it again even if
     /// it already was in this session (the user asked); otherwise a fetch
     /// that is under way or already happened is enough (the check at
@@ -292,7 +292,7 @@ impl AgentRegistryStore {
     /// updates without making too many network requests. The refresh is
     /// throttled to at most once per hour.
     pub fn refresh_if_stale(&mut self, cx: &mut Context<Self>) {
-        // ADR-F99: `manual` fetches only when asked, unless nothing is known
+        // ADR-F101: `manual` fetches only when asked, unless nothing is known
         // of the registry: the cache it is about to read (or has found
         // missing, in which case it fetches) says what the agents are.
         if (!self.agents.is_empty() || !self.cached_registry_loaded)
@@ -363,7 +363,7 @@ impl AgentRegistryStore {
                     this.agents = agents;
                     cx.notify();
                 }
-                // ADR-F99: nothing is known of the registry, so it is fetched
+                // ADR-F101: nothing is known of the registry, so it is fetched
                 // whatever `agent.agent_servers_update_check` says (with
                 // `on_startup` that fetch is already under way).
                 if this.agents.is_empty() && this.last_refresh.is_none() {
@@ -797,7 +797,7 @@ mod tests {
         (store, fetches)
     }
 
-    /// ADR-F99: `on_startup` fetches the registry once when the IDE starts,
+    /// ADR-F101: `on_startup` fetches the registry once when the IDE starts,
     /// and the startup check waits for that fetch rather than making another.
     #[gpui::test]
     async fn the_registry_is_fetched_once_at_startup(cx: &mut TestAppContext) {
@@ -815,7 +815,7 @@ mod tests {
         assert_eq!(fetches.load(Ordering::SeqCst), 2, "asking fetches again");
     }
 
-    /// ADR-F99: `manual` leaves the network alone at startup while the cached
+    /// ADR-F101: `manual` leaves the network alone at startup while the cached
     /// registry says what the agents are, also when an agent starts, until
     /// the user asks.
     #[gpui::test]

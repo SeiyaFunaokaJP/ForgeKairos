@@ -928,6 +928,9 @@ msgstr "終了"
 msgid "Finished running tools"
 msgstr "ツールの実行が完了しました"
 
+msgid "Fixed for this thread once the agent has started. Start a new thread to pick again. Right-click to set the default for this project."
+msgstr "エージェントが起動した後は、このスレッドでは変更できません。選び直すには新しいスレッドを開始してください。右クリックで、このプロジェクトの既定を設定します。"
+
 msgid "Follow the Settings"
 msgstr "設定に従う"
 
@@ -1122,17 +1125,11 @@ msgstr "公式の Claude Code CLI をこのパネルのタブで起動します�
 msgid "Learn More"
 msgstr "詳細"
 
-msgid "Let the Agent Reach Any Host?"
-msgstr "エージェントがすべてのホストに接続できるようにしますか？"
-
 msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "このスレッドのエージェントとそのコマンドが、ネットワークの許可リストの範囲ですべてのホストに接続できるようにするには、「スレッドごとのネットワーク制限の解除を許可する」(設定 > AI > サンドボックス) が必要ですが、オフになっています。オンにしますか？ 設定でオフにするまでオンのままです。"
 
 msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
 msgstr "このスレッドのターミナルのコマンドと fetch がすべてのホストに接続できるようにするには、「スレッドごとのネットワーク制限の解除を許可する」(設定 > AI > サンドボックス) が必要ですが、オフになっています。オンにしますか？ 設定でオフにするまでオンのままです。ネットワークの許可リストは引き続き適用されます。"
-
-msgid "Lifting the network restriction is not available for this agent."
-msgstr "このエージェントでは、ネットワーク制限の解除は使えません。"
 
 msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
 msgstr "ネットワーク制限の解除には接続先のホストのサンドボックスが必要ですが、この接続にはありません。"
@@ -1647,9 +1644,6 @@ msgstr "チェックポイントを復元"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "プロジェクト内のすべてのファイルを、会話のこの時点の内容に復元します。"
 
-msgid "Restrict the Agent's Network Again?"
-msgstr "エージェントのネットワークを再び制限しますか？"
-
 msgid "Restrict the Network"
 msgstr "ネットワークを制限する"
 
@@ -1887,15 +1881,6 @@ msgstr "起動 (このスレッドのみ)"
 msgid "Start (This Time Only)"
 msgstr "起動 (今回のみ)"
 
-msgid "Start Again Restricted"
-msgstr "制限ありで起動し直す"
-
-msgid "Start Again Without Host Limits"
-msgstr "ホストの制限なしで起動し直す"
-
-msgid "Start Again in the Sandbox"
-msgstr "サンドボックスの中で起動し直す"
-
 msgid "Start Claude Code outside the sandbox?"
 msgstr "Claude Code をサンドボックスの外で起動しますか？"
 
@@ -1913,9 +1898,6 @@ msgstr "サンドボックスの外で起動…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "`{program}` をサンドボックスの外で起動しますか？"
-
-msgid "Start the Agent Again in the Sandbox?"
-msgstr "エージェントをサンドボックスの中で起動し直しますか？"
 
 msgid "Started (status unknown)"
 msgstr "起動済み (状態は不明)"
@@ -2043,11 +2025,11 @@ msgstr "接続先のホストの ForgeKairos サーバーがまだ用意され�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "接続先のホストの ForgeKairos サーバーがまだ用意されていません。接続が終わるまで待ってからもう一度お試しください。"
 
-msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
-msgstr "エージェントとそのコマンドは、ネットワークの許可リストの範囲ですべてのホストに接続できます。クリックで、自身のホストだけに接続できる状態でエージェントを起動し直します。右クリックでこのプロジェクトの既定を設定します。"
+msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
+msgstr "エージェントとそのコマンドは、ネットワークの許可リストの範囲ですべてのホストに接続できます。クリックすると、エージェント自身のホストだけに限ります。右クリックで、このプロジェクトの既定を設定します。"
 
-msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
-msgstr "エージェントとそのコマンドは、エージェント自身のホストだけに接続できます。クリックで、ネットワークの許可リストの範囲ですべてのホストに接続できるようにエージェントを起動し直します。右クリックでこのプロジェクトの既定を設定します。"
+msgid "The agent and the commands it runs will reach only the agent's own hosts. Click to let them reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "エージェントとそのコマンドは、エージェント自身のホストだけに接続できます。クリックすると、ネットワークの許可リストの範囲ですべてのホストに接続できるようにします。右クリックで、このプロジェクトの既定を設定します。"
 
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "エージェントはリポジトリを読めますが、変更はできません。クリックすると、このスレッドで Git 操作をオンにします。"
@@ -2058,29 +2040,20 @@ msgstr "エージェントはステージ・コミット・ブランチの切り
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"
 
-msgid "The agent is starting. Try again once it has started."
-msgstr "エージェントを起動しています。起動してからもう一度お試しください。"
-
-msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
-msgstr "エージェントはサンドボックスの中で動いています。クリックすると、サンドボックスの外で新しいセッションとして起動し直します。右クリックで、このプロジェクトの既定を設定します。"
-
-msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
-msgstr "エージェントはサンドボックスの外で動いていて、自分のツールを確認なしで使うことがあります。クリックすると、サンドボックスの中で新しいセッションとして起動し直します。右クリックで、このプロジェクトの既定を設定します。"
-
-msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
-msgstr "エージェントを止めて、このスレッドだけサンドボックスの中で起動し直します。エージェントとそのコマンドは、エージェント自身のホストだけでなく、ネットワークの許可リストが許すすべてのホストに接続できるようになります。エージェントが対応していれば会話を読み戻し、対応していなければ新しいセッションで続けます。"
-
-msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
-msgstr "エージェントを止めて、サンドボックスの中で、自身のホストだけに接続できる状態で起動し直します。エージェントが対応していれば会話を読み戻し、対応していなければ新しいセッションで続けます。"
-
-msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
-msgstr "エージェントを止めて、サンドボックスの中で起動し直します。会話は新しいセッションで続きます。今のセッションはサンドボックスの外に残り、サンドボックスの中のエージェントからは読めません。"
+msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
+msgstr "エージェントは最初のメッセージを送信したときに起動します。サンドボックスとネットワークは先に選んでください。起動後はこのスレッドではそのままになります。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "エージェントを settings.json に追加しましたが、まだ読み込まれていません。後で + メニューから開いてください。"
 
 msgid "The agent was stopped because it wasn't in use. Sending a message reconnects it"
 msgstr "使われていないのでエージェントを止めています。送信すると再接続します"
+
+msgid "The agent will start in the sandbox. Click to start it outside the sandbox instead. Right-click to set the default for this project."
+msgstr "エージェントはサンドボックスの中で起動します。クリックすると、代わりにサンドボックスの外で起動します。右クリックで、このプロジェクトの既定を設定します。"
+
+msgid "The agent will start outside the sandbox and may use its own tools without asking. Click to start it in the sandbox instead. Right-click to set the default for this project."
+msgstr "エージェントはサンドボックスの外で起動し、確認なしで自身のツールを使えます。クリックすると、代わりにサンドボックスの中で起動します。右クリックで、このプロジェクトの既定を設定します。"
 
 msgid "The agent's network access needs hosts added to the allowlist"
 msgstr "エージェントの通信に許可リストへの追加が必要です"
@@ -2236,9 +2209,6 @@ msgstr "このエージェントには自身のホストの一覧がなく、ネ
 msgid "This agent is installed via npx (npm)"
 msgstr "このエージェントは npx (npm) 経由でインストールされます"
 
-msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
-msgstr "これで「スレッドごとのネットワーク制限の解除を許可する」(設定 > AI > サンドボックス) もオンになります (今はオフです)。設定でオフにするまでオンのままです。"
-
 msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
 msgstr "これで「サンドボックスの外での実行を許可する」(設定 > AI > サンドボックス) もオンになります (今はオフです)。設定でオフにするまでオンのままです。"
 
@@ -2376,9 +2346,6 @@ msgstr "エージェントの再起動を試みます"
 
 msgid "Turn On and Continue"
 msgstr "オンにして続ける"
-
-msgid "Turn On and Start Again"
-msgstr "オンにして起動し直す"
 
 msgid "Turn On and Start Outside"
 msgstr "オンにして外で起動"

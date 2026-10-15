@@ -310,7 +310,7 @@ enum UpdateStatus {
     Unknown,
     UpToDate,
     /// npm resolves an `npx` agent's version range at launch, so without a
-    /// record (ADR-F99) there is no one installed version to compare against.
+    /// record (ADR-F101) there is no one installed version to compare against.
     UnknownForNpx,
     Available {
         installed: Option<SharedString>,
@@ -319,7 +319,7 @@ enum UpdateStatus {
 }
 
 /// `recorded` is the registry versions the installs on this host (and in
-/// its WSL distros) were recorded at (ADR-F99,
+/// its WSL distros) were recorded at (ADR-F101,
 /// [`project::agent_update::recorded_agent_versions`]), which decide where
 /// there are any; `cached_on_disk` is the host's archive cache, most recently
 /// written first
@@ -380,7 +380,7 @@ fn update_badge_label(installed: Option<&SharedString>, latest: &SharedString) -
     }
 }
 
-/// Marks an installed agent that has a newer version. ADR-F99: a click agrees
+/// Marks an installed agent that has a newer version. ADR-F101: a click agrees
 /// to the update, after the same allowlist consent as an install where the
 /// download needs a host that is not allowed yet. Nothing is replaced
 /// underneath a live session: the agent's next start installs it, and the
@@ -673,10 +673,10 @@ pub struct AgentRegistryPage {
     /// [`project::agent_server_store::installed_registry_archive_versions`]
     /// lists them.
     installed_archive_versions: HashMap<String, Vec<String>>,
-    /// ADR-F99: registry id -> the registry versions its installs were
+    /// ADR-F101: registry id -> the registry versions its installs were
     /// recorded at ([`project::agent_update::recorded_agent_versions`]).
     recorded_versions: HashMap<String, Vec<RecordedAgentVersion>>,
-    /// ADR-F99: updates waiting for the allowlist consent their download
+    /// ADR-F101: updates waiting for the allowlist consent their download
     /// needs, by agent id.
     pending_update_consent: HashMap<String, PendingInstallConsent>,
     _installed_archive_versions_scan: Task<()>,
@@ -833,7 +833,7 @@ impl AgentRegistryPage {
         )
     }
 
-    /// Reads what each installed registry agent was recorded at (ADR-F99),
+    /// Reads what each installed registry agent was recorded at (ADR-F101),
     /// and which version of each archive agent the host has cached, for
     /// [`Self::update_status`]. Nothing is fetched: the registry's latest
     /// version is already in memory.
@@ -882,7 +882,7 @@ impl AgentRegistryPage {
         });
     }
 
-    /// ADR-F99: the update badge's click, or the update check's "Update" for
+    /// ADR-F101: the update badge's click, or the update check's "Update" for
     /// an agent whose download needs hosts the allowlist does not have yet.
     /// Agrees to the update at once when nothing needs adding; otherwise
     /// shows the consent banner first.
@@ -1977,7 +1977,7 @@ mod tests {
         );
     }
 
-    /// ADR-F99: what an install was recorded at decides, for npx agents too,
+    /// ADR-F101: what an install was recorded at decides, for npx agents too,
     /// and over the cache and the connection's report.
     #[test]
     fn update_badge_follows_the_record() {

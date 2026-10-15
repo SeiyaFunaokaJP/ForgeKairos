@@ -153,7 +153,7 @@ pub trait ExternalAgentServer {
         cx: &mut AsyncApp,
     ) -> Task<Result<AgentServerCommand>>;
 
-    /// ADR-F99: the command for something other than the agent's own start (a
+    /// ADR-F101: the command for something other than the agent's own start (a
     /// terminal sign-in), which never installs an update the user agreed to:
     /// that is the agent's next real start's to do.
     fn get_command_without_update(
@@ -230,12 +230,12 @@ impl ExternalAgentEntry {
 pub struct AgentServerStore {
     state: AgentServerStoreState,
     pub external_agents: HashMap<AgentId, ExternalAgentEntry>,
-    /// ADR-F99: the agents whose update the user agreed to, which the next
+    /// ADR-F101: the agents whose update the user agreed to, which the next
     /// start of each installs.
     update_approvals: AgentUpdateApprovals,
 }
 
-/// ADR-F99: where a start reports a registry version newer than the one it
+/// ADR-F101: where a start reports a registry version newer than the one it
 /// launched. Shared with the start's task, which only knows once it has read
 /// the install's record, while the store keeps the sender for the registry
 /// changes it sees itself.
@@ -317,7 +317,7 @@ impl AgentServerStore {
         self.external_agents.get(name).map(|entry| entry.source)
     }
 
-    /// ADR-F99: the user agreed to update `agent_id` where `place` installs
+    /// ADR-F101: the user agreed to update `agent_id` where `place` installs
     /// it. Its next start there installs the registry's version instead of
     /// launching the one installed; a remote host's store keeps its agreements
     /// as [`AgentInstallPlace::Host`], and tells the host with that start's
@@ -761,7 +761,7 @@ impl AgentServerStore {
                     bail!("unexpected GetAgentServerCommand request in a non-local project");
                 };
                 let no_browser = this.no_browser();
-                // ADR-F99: the client's user agreed to update the agent this
+                // ADR-F101: the client's user agreed to update the agent this
                 // host installs, so this start installs the registry's
                 // version.
                 // The start below is on this host (`AgentLaunchTarget::Host`).
@@ -1680,7 +1680,7 @@ async fn registry_archive_sha256(
     })
 }
 
-/// ADR-F99: one build of a registry archive agent on this host, as a start
+/// ADR-F101: one build of a registry archive agent on this host, as a start
 /// launches it.
 #[derive(Clone, Debug, PartialEq)]
 struct HostArchiveLaunch {
@@ -1756,7 +1756,7 @@ async fn usable_host_archive_record(
 
 /// Installs the registry's `version` of an archive agent on this host (a
 /// build already unpacked for it is kept), as every start did before
-/// ADR-F99.
+/// ADR-F101.
 async fn install_host_registry_archive(
     fs: &dyn Fs,
     http_client: &Arc<dyn HttpClient>,
@@ -1880,7 +1880,7 @@ impl LocalRegistryArchiveAgent {
         let targets = self.targets.clone();
         let settings_env = self.env.clone();
         let version = self.version.clone();
-        // ADR-F99: an update the user agreed to for the place this start
+        // ADR-F101: an update the user agreed to for the place this start
         // installs in is installed by it.
         let place = AgentInstallPlace::for_launch_target(&target);
         let update_approved = claim.take(&place);
@@ -1940,7 +1940,7 @@ impl LocalRegistryArchiveAgent {
             let dir = installation_dir;
             fs.create_dir(&dir).await?;
 
-            // ADR-F99: what is installed is launched as it is, without asking
+            // ADR-F101: what is installed is launched as it is, without asking
             // the network anything, unless the user agreed to the registry's
             // newer version; a newer one is only reported. A start for the
             // sandbox that ends up here (the WSL distro could not take it)
@@ -2152,7 +2152,7 @@ impl LocalRegistryNpxAgent {
         let distribution_env = self.distribution_env.clone();
         let settings_env = self.settings_env.clone();
         let version = self.version.clone();
-        // ADR-F99: an update the user agreed to for the place this start
+        // ADR-F101: an update the user agreed to for the place this start
         // installs in is installed by it.
         let place = AgentInstallPlace::for_launch_target(&target);
         let update_approved = claim.take(&place);
@@ -2358,7 +2358,7 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
     }
 }
 
-/// ADR-F99: the npm package of a registry agent as this host launches it.
+/// ADR-F101: the npm package of a registry agent as this host launches it.
 #[derive(Clone, Debug, PartialEq)]
 struct HostNpxLaunch {
     executable: PathBuf,
@@ -2366,7 +2366,7 @@ struct HostNpxLaunch {
     env: HashMap<String, String>,
 }
 
-/// ADR-F99: whether a recorded executable is one `npm install` put in
+/// ADR-F101: whether a recorded executable is one `npm install` put in
 /// `install_dir`. The record is a file anyone who can write there can
 /// rewrite, so it never names a program from anywhere else.
 fn is_installed_npm_file(install_dir: &Path, executable: &Path) -> bool {
@@ -2387,7 +2387,7 @@ fn is_installed_npm_file(install_dir: &Path, executable: &Path) -> bool {
     normalized.starts_with(install_dir.join("node_modules"))
 }
 
-/// ADR-F99: what a start of an npx agent launches on this host, and the
+/// ADR-F101: what a start of an npx agent launches on this host, and the
 /// registry's version when it is newer than that and the user has not agreed
 /// to it yet. `npm install` (`install`, given the bounded package
 /// specification and the package's name, answering with its executable) only
@@ -4244,7 +4244,7 @@ mod tests {
             .map(|record| record.registry_version)
     }
 
-    /// ADR-F99: the first start installs and records; every later start with
+    /// ADR-F101: the first start installs and records; every later start with
     /// that record launches it without running `npm install` again.
     #[gpui::test]
     async fn an_npx_agent_with_a_record_starts_without_npm_install(cx: &mut TestAppContext) {
@@ -4264,7 +4264,7 @@ mod tests {
             Some("1.0.0")
         );
 
-        // ADR-F99: a start that launches the recorded install says when.
+        // ADR-F101: a start that launches the recorded install says when.
         let record_path = Path::new(NPX_INSTALL_DIR).join(INSTALLED_RECORD_FILE_NAME);
         let mut record = read_installed_record(fs.as_ref(), &record_path)
             .await
@@ -4292,7 +4292,7 @@ mod tests {
         assert_eq!(second, first, "the recorded install, as it was");
     }
 
-    /// ADR-F99: a record whose executable is gone is no record.
+    /// ADR-F101: a record whose executable is gone is no record.
     #[gpui::test]
     async fn an_npx_agent_whose_executable_is_gone_is_installed_again(cx: &mut TestAppContext) {
         let fs = fs::FakeFs::new(cx.executor());
@@ -4314,7 +4314,7 @@ mod tests {
         fs.insert_file(path, Vec::new()).await;
     }
 
-    /// ADR-F99: a record is a file on disk, so one that names a program
+    /// ADR-F101: a record is a file on disk, so one that names a program
     /// outside the install it describes is no record: the start installs
     /// and launches what npm put there.
     #[gpui::test]
@@ -4375,7 +4375,7 @@ mod tests {
         assert_eq!(launched.executable, PathBuf::from(sibling));
     }
 
-    /// ADR-F99: a binary agent's record only ever names one of the builds in
+    /// ADR-F101: a binary agent's record only ever names one of the builds in
     /// the installation directory it sits in.
     #[gpui::test]
     async fn a_binary_record_naming_a_directory_elsewhere_is_no_record(cx: &mut TestAppContext) {
@@ -4447,7 +4447,7 @@ mod tests {
         ));
     }
 
-    /// ADR-F99: a newer registry version is reported, never installed unasked;
+    /// ADR-F101: a newer registry version is reported, never installed unasked;
     /// the start the user agreed to installs it and records it, once.
     #[gpui::test]
     async fn an_npx_agent_is_only_updated_once_agreed_to(cx: &mut TestAppContext) {
@@ -4481,7 +4481,7 @@ mod tests {
         assert_eq!(newer, None);
     }
 
-    /// ADR-F99: the agreement for the place a start installs in is taken by
+    /// ADR-F101: the agreement for the place a start installs in is taken by
     /// that start, so the start after it is an ordinary one again; the
     /// agreement for another place stays for that place's start, and a
     /// command for a terminal sign-in takes none.
@@ -4592,7 +4592,7 @@ mod tests {
         command
     }
 
-    /// ADR-F99: a build that is recorded starts as it is, even where the
+    /// ADR-F101: a build that is recorded starts as it is, even where the
     /// registry now describes the same version differently (another digest,
     /// which before this would have been downloaded into a directory of its
     /// own) — and a build cached before the records existed is recorded on
@@ -4636,7 +4636,7 @@ mod tests {
         );
     }
 
-    /// ADR-F99: a newer version in the registry is reported at start, and the
+    /// ADR-F101: a newer version in the registry is reported at start, and the
     /// recorded build keeps starting until the user agrees; the start they
     /// agreed to downloads the new one, records it and takes the agreement.
     #[cfg(feature = "test-support")]
@@ -4829,7 +4829,7 @@ async fn registry_archive_command_in_wsl(
 ) -> Result<AgentServerCommand> {
     let distro = wsl_distro.as_deref();
 
-    // ADR-F99: the build this distro has is launched as it is — no digest is
+    // ADR-F101: the build this distro has is launched as it is — no digest is
     // asked of GitHub and nothing is downloaded — unless the user agreed to
     // the registry's newer version.
     let record_path = crate::agent_update::wsl_record_path(distro, registry_id);
@@ -5186,7 +5186,7 @@ mod wsl_runtime {
         staged
     }
 
-    /// ADR-F99: an npm package in a distro, as a start launches it.
+    /// ADR-F101: an npm package in a distro, as a start launches it.
     pub(super) struct WslNpmPackage {
         pub(super) install_directory: String,
         pub(super) executable: String,
@@ -5199,7 +5199,7 @@ mod wsl_runtime {
 
     /// ADR-F49 決定 22: the npm package `package` installed in `distro` for
     /// the registry entry `registry_id`, installed (inside the sandbox) when
-    /// there is none yet. ADR-F99: once this host has a record of what it
+    /// there is none yet. ADR-F101: once this host has a record of what it
     /// installed there, that is launched as it is until the user agrees to the
     /// registry's newer version ([`crate::agent_update::wsl_npm_plan`]).
     /// Returns its install directory, the executable to run with Node.js, and

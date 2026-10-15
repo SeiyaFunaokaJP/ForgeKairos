@@ -933,6 +933,9 @@ msgstr "Terminé"
 msgid "Finished running tools"
 msgstr "Exécution des outils terminée"
 
+msgid "Fixed for this thread once the agent has started. Start a new thread to pick again. Right-click to set the default for this project."
+msgstr "Fixé pour cette conversation une fois l'agent démarré. Démarrez une nouvelle conversation pour choisir à nouveau. Clic droit pour définir la valeur par défaut de ce projet."
+
 msgid "Follow the Settings"
 msgstr "Suivre les paramètres"
 
@@ -1129,17 +1132,11 @@ msgstr "Lance la CLI officielle de Claude Code dans un onglet de ce panneau. Vou
 msgid "Learn More"
 msgstr "En savoir plus"
 
-msgid "Let the Agent Reach Any Host?"
-msgstr "Laisser l'agent atteindre n'importe quel hôte ?"
-
 msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "Pour que l'agent de cette conversation et les commandes qu'il exécute atteignent n'importe quel hôte dans les limites de la liste d'autorisation réseau, il faut \"Autoriser la levée de la restriction réseau pour une conversation\" (Paramètres > IA > Bac à sable), qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
 
 msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
 msgstr "Pour que les commandes de terminal et les récupérations (fetch) de cette conversation atteignent n'importe quel hôte, il faut \"Autoriser la levée de la restriction réseau pour une conversation\" (Paramètres > IA > Bac à sable), qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez à cet endroit. La liste d'autorisation réseau s'applique toujours."
-
-msgid "Lifting the network restriction is not available for this agent."
-msgstr "La levée de la restriction réseau n'est pas disponible pour cet agent."
 
 msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
 msgstr "La levée de la restriction réseau nécessite un bac à sable sur l'hôte distant, ce que cette connexion n'a pas."
@@ -1654,9 +1651,6 @@ msgstr "Restaurer le point de contrôle"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "Restaure tous les fichiers du projet à l'état qu'ils avaient à ce point de la conversation."
 
-msgid "Restrict the Agent's Network Again?"
-msgstr "Restreindre de nouveau le réseau de l'agent ?"
-
 msgid "Restrict the Network"
 msgstr "Restreindre le réseau"
 
@@ -1894,15 +1888,6 @@ msgstr "Démarrer (cette conversation uniquement)"
 msgid "Start (This Time Only)"
 msgstr "Démarrer (cette fois uniquement)"
 
-msgid "Start Again Restricted"
-msgstr "Redémarrer avec restriction"
-
-msgid "Start Again Without Host Limits"
-msgstr "Redémarrer sans limite d'hôtes"
-
-msgid "Start Again in the Sandbox"
-msgstr "Redémarrer dans le bac à sable"
-
 msgid "Start Claude Code outside the sandbox?"
 msgstr "Démarrer Claude Code hors du bac à sable ?"
 
@@ -1920,9 +1905,6 @@ msgstr "Démarrer hors du bac à sable…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "Démarrer `{program}` hors du bac à sable ?"
-
-msgid "Start the Agent Again in the Sandbox?"
-msgstr "Redémarrer l'agent dans le bac à sable ?"
 
 msgid "Started (status unknown)"
 msgstr "Démarrée (état inconnu)"
@@ -2050,11 +2032,11 @@ msgstr "Le serveur ForgeKairos de l'hôte distant n'est pas encore prêt (erreur
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "Le serveur ForgeKairos de l'hôte distant n'est pas encore prêt. Attendez la fin de la connexion et réessayez."
 
-msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
-msgstr "L'agent et les commandes qu'il exécute peuvent atteindre n'importe quel hôte dans les limites de la liste d'autorisation réseau. Cliquez pour redémarrer l'agent avec ses seuls hôtes. Clic droit pour définir la valeur par défaut de ce projet."
+msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
+msgstr "L'agent et les commandes qu'il exécute pourront joindre tout hôte de la liste d'autorisation réseau. Cliquez pour les limiter aux hôtes propres de l'agent. Clic droit pour définir la valeur par défaut de ce projet."
 
-msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
-msgstr "L'agent et les commandes qu'il exécute n'atteignent que les hôtes propres à l'agent. Cliquez pour redémarrer l'agent afin qu'il puisse atteindre n'importe quel hôte dans les limites de la liste d'autorisation réseau. Clic droit pour définir la valeur par défaut de ce projet."
+msgid "The agent and the commands it runs will reach only the agent's own hosts. Click to let them reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "L'agent et les commandes qu'il exécute ne joindront que les hôtes propres de l'agent. Cliquez pour leur permettre de joindre tout hôte de la liste d'autorisation réseau. Clic droit pour définir la valeur par défaut de ce projet."
 
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "L'agent peut lire le dépôt, mais pas le modifier. Cliquez pour activer les opérations Git pour cette conversation."
@@ -2065,29 +2047,20 @@ msgstr "L'agent peut indexer, valider, changer de branche, etc., avec les hooks 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "L'agent ne peut pas utiliser `getDiagnostics` : il ne voit donc pas les erreurs et avertissements affichés par l'éditeur. {reason}"
 
-msgid "The agent is starting. Try again once it has started."
-msgstr "L'agent est en cours de démarrage. Réessayez une fois qu'il a démarré."
-
-msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
-msgstr "L'agent s'exécute dans le bac à sable. Cliquez pour le redémarrer hors du bac à sable, dans une nouvelle session. Clic droit pour définir la valeur par défaut de ce projet."
-
-msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
-msgstr "L'agent s'exécute hors du bac à sable et peut utiliser ses propres outils sans demander. Cliquez pour le redémarrer dans le bac à sable, dans une nouvelle session. Clic droit pour définir la valeur par défaut de ce projet."
-
-msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
-msgstr "L'agent s'arrête et redémarre dans le bac à sable, pour cette conversation uniquement. L'agent et les commandes qu'il exécute peuvent alors atteindre n'importe quel hôte autorisé par la liste d'autorisation réseau, et pas seulement les hôtes propres à l'agent. La conversation est relue si l'agent le permet, et se poursuit sinon dans une nouvelle session."
-
-msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
-msgstr "L'agent s'arrête et redémarre dans le bac à sable, en n'atteignant que ses propres hôtes. La conversation est relue si l'agent le permet, et se poursuit sinon dans une nouvelle session."
-
-msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
-msgstr "L'agent s'arrête et redémarre dans le bac à sable. La conversation se poursuit dans une nouvelle session : la session actuelle est conservée hors du bac à sable, où l'agent du bac à sable ne peut pas la lire."
+msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
+msgstr "L'agent démarre lorsque vous envoyez votre premier message. Choisissez d'abord son bac à sable et son réseau : une fois démarré, ils restent tels quels pour cette conversation."
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "L'agent a été ajouté à settings.json, mais il n'a pas encore été chargé. Ouvrez-le plus tard depuis le menu +."
 
 msgid "The agent was stopped because it wasn't in use. Sending a message reconnects it"
 msgstr "L'agent a été arrêté, car il n'était pas utilisé. L'envoi d'un message le reconnecte"
+
+msgid "The agent will start in the sandbox. Click to start it outside the sandbox instead. Right-click to set the default for this project."
+msgstr "L'agent démarrera dans le bac à sable. Cliquez pour le démarrer plutôt hors du bac à sable. Clic droit pour définir la valeur par défaut de ce projet."
+
+msgid "The agent will start outside the sandbox and may use its own tools without asking. Click to start it in the sandbox instead. Right-click to set the default for this project."
+msgstr "L'agent démarrera hors du bac à sable et pourra utiliser ses propres outils sans demander. Cliquez pour le démarrer plutôt dans le bac à sable. Clic droit pour définir la valeur par défaut de ce projet."
 
 msgid "The agent's network access needs hosts added to the allowlist"
 msgstr "L'accès réseau de l'agent nécessite l'ajout d'hôtes à la liste d'autorisation"
@@ -2244,9 +2217,6 @@ msgstr "Cet agent n'a pas d'hôtes propres : seule la liste d'autorisation rése
 msgid "This agent is installed via npx (npm)"
 msgstr "Cet agent est installé via npx (npm)"
 
-msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
-msgstr "Cela active aussi \"Autoriser la levée de la restriction réseau pour une conversation\" (Paramètres > IA > Bac à sable), qui est désactivé. Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
-
 msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
 msgstr "Cela active aussi \"Autoriser l'exécution hors du bac à sable\" (Paramètres > IA > Bac à sable), qui est désactivé. Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
 
@@ -2384,9 +2354,6 @@ msgstr "Essayer de redémarrer l'agent"
 
 msgid "Turn On and Continue"
 msgstr "Activer et continuer"
-
-msgid "Turn On and Start Again"
-msgstr "Activer et redémarrer"
 
 msgid "Turn On and Start Outside"
 msgstr "Activer et démarrer hors du bac à sable"

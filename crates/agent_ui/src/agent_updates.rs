@@ -1,4 +1,4 @@
-//! ADR-F99: looking for newer versions of the external agents installed from
+//! ADR-F101: looking for newer versions of the external agents installed from
 //! the ACP registry — once when the IDE starts, or when the user asks — and
 //! asking before any of them is updated. An agent's start launches what is
 //! installed (its record) and never updates it unasked.
@@ -312,7 +312,7 @@ fn agree_to_agent_updates(
     }
 }
 
-/// ADR-F99: the user agreed to these updates. Each agent's next start on this
+/// ADR-F101: the user agreed to these updates. Each agent's next start on this
 /// host (or in a WSL distro) installs the registry's version, and the threads
 /// on its running connections show the update banner, which restarts them on
 /// it.
@@ -495,7 +495,7 @@ mod tests {
         )
     }
 
-    /// ADR-F99: at startup the registry is fetched once, and the user is asked
+    /// ADR-F101: at startup the registry is fetched once, and the user is asked
     /// when an installed agent's record is behind it.
     #[gpui::test]
     async fn the_startup_check_asks_when_an_agent_is_behind(cx: &mut TestAppContext) {
@@ -505,7 +505,7 @@ mod tests {
         assert!(asks_to_update(&workspace, &mut cx));
     }
 
-    /// ADR-F99: a startup check with nothing to update says nothing.
+    /// ADR-F101: a startup check with nothing to update says nothing.
     #[gpui::test]
     async fn the_startup_check_is_silent_when_nothing_is_behind(cx: &mut TestAppContext) {
         let (workspace, mut cx, _) =
@@ -514,7 +514,7 @@ mod tests {
         assert!(!says_nothing_to_update(&workspace, &mut cx));
     }
 
-    /// ADR-F99: `manual` neither fetches nor asks at startup; asking reports
+    /// ADR-F101: `manual` neither fetches nor asks at startup; asking reports
     /// what it found, "up to date" included.
     #[gpui::test]
     async fn manual_checks_only_when_asked(cx: &mut TestAppContext) {
@@ -533,7 +533,7 @@ mod tests {
         assert!(!asks_to_update(&workspace, &mut cx));
     }
 
-    /// ADR-F99: "Update" agrees to an update whose hosts are allowed — for
+    /// ADR-F101: "Update" agrees to an update whose hosts are allowed — for
     /// the places that are behind, and only those — and sends one that needs
     /// hosts to the registry page's consent instead.
     #[gpui::test]
@@ -639,7 +639,7 @@ mod tests {
         }
     }
 
-    /// ADR-F99: an update is one where what a place still in use recorded is
+    /// ADR-F101: an update is one where what a place still in use recorded is
     /// not the registry's version, and it is for exactly those places. An
     /// agent recorded at that version, with no record at all, recorded only
     /// for another distribution kind than the registry's, or recorded only in

@@ -36,7 +36,7 @@ pub enum SidebarDockPosition {
     Right,
 }
 
-/// ADR-F99: when the IDE looks for newer versions of the external agents
+/// ADR-F101: when the IDE looks for newer versions of the external agents
 /// installed from the ACP registry.
 #[derive(
     Clone,

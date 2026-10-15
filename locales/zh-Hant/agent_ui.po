@@ -931,6 +931,9 @@ msgstr "已完成"
 msgid "Finished running tools"
 msgstr "工具執行完成"
 
+msgid "Fixed for this thread once the agent has started. Start a new thread to pick again. Right-click to set the default for this project."
+msgstr "代理啟動後，此會話中的設定即固定。要重新選擇，請建立新的會話。按右鍵可設定此專案的預設值。"
+
 msgid "Follow the Settings"
 msgstr "依循設定"
 
@@ -1125,17 +1128,11 @@ msgstr "在此面板的分頁中啟動官方 Claude Code CLI。請在 CLI 的畫
 msgid "Learn More"
 msgstr "深入了解"
 
-msgid "Let the Agent Reach Any Host?"
-msgstr "允許代理連線到任何主機？"
-
 msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "若要讓此會話的代理程式及其執行的命令連線到網路允許清單範圍內的任何主機，需要開啟「允許為單一會話解除網路限制」（設定 > AI > 沙箱），但目前為關閉。要開啟嗎？在設定中關閉之前會一直保持開啟。"
 
 msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
 msgstr "若要讓此會話的終端機命令和 fetch 連線到任何主機，需要開啟「允許為單一會話解除網路限制」（設定 > AI > 沙箱），但目前為關閉。要開啟嗎？在設定中關閉之前會一直保持開啟。網路允許清單仍然適用。"
-
-msgid "Lifting the network restriction is not available for this agent."
-msgstr "此代理不支援解除網路限制。"
 
 msgid "Lifting the network restriction needs a sandbox on the remote host, which this connection does not have."
 msgstr "解除網路限制需要遠端主機上的沙箱，而此連線沒有。"
@@ -1650,9 +1647,6 @@ msgstr "還原檢查點"
 msgid "Restores all files in the project to the content they had at this point in the conversation."
 msgstr "將專案中的所有檔案還原至對話中此時間點的內容。"
 
-msgid "Restrict the Agent's Network Again?"
-msgstr "再次限制代理的網路？"
-
 msgid "Restrict the Network"
 msgstr "限制網路"
 
@@ -1890,15 +1884,6 @@ msgstr "啟動（僅限此會話）"
 msgid "Start (This Time Only)"
 msgstr "啟動（僅此次）"
 
-msgid "Start Again Restricted"
-msgstr "受限重新啟動"
-
-msgid "Start Again Without Host Limits"
-msgstr "不限主機重新啟動"
-
-msgid "Start Again in the Sandbox"
-msgstr "在沙箱內重新啟動"
-
 msgid "Start Claude Code outside the sandbox?"
 msgstr "要在沙箱外啟動 Claude Code 嗎？"
 
@@ -1916,9 +1901,6 @@ msgstr "在沙箱外啟動…"
 
 msgid "Start `{program}` outside the sandbox?"
 msgstr "要在沙箱外啟動 `{program}` 嗎？"
-
-msgid "Start the Agent Again in the Sandbox?"
-msgstr "在沙箱內重新啟動代理？"
 
 msgid "Started (status unknown)"
 msgstr "已啟動（狀態不明）"
@@ -2046,11 +2028,11 @@ msgstr "遠端主機上的 ForgeKairos 伺服器尚未就緒（內部錯誤）�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "遠端主機上的 ForgeKairos 伺服器尚未就緒。請等待連線完成後再試一次。"
 
-msgid "The agent and the commands it runs may reach any host within the network allowlist. Click to start the agent again with only its own hosts. Right-click to set the default for this project."
-msgstr "代理及其執行的命令可在網路允許清單的範圍內連線到任何主機。按一下可重新啟動代理，使其只能連線到自己的主機。按右鍵可設定此專案的預設值。"
+msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
+msgstr "代理及其執行的命令將可在網路允許清單範圍內存取任何主機。按一下可限制為只存取代理自己的主機。按右鍵可設定此專案的預設值。"
 
-msgid "The agent and the commands it runs reach only the agent's own hosts. Click to start the agent again so that it may reach any host within the network allowlist. Right-click to set the default for this project."
-msgstr "代理及其執行的命令只能連線到代理自己的主機。按一下可重新啟動代理，使其可在網路允許清單的範圍內連線到任何主機。按右鍵可設定此專案的預設值。"
+msgid "The agent and the commands it runs will reach only the agent's own hosts. Click to let them reach any host within the network allowlist. Right-click to set the default for this project."
+msgstr "代理及其執行的命令將只能存取代理自己的主機。按一下可讓它們在網路允許清單範圍內存取任何主機。按右鍵可設定此專案的預設值。"
 
 msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
 msgstr "代理可以讀取儲存庫，但無法變更。按一下以為此會話開啟 Git 操作。"
@@ -2061,29 +2043,20 @@ msgstr "代理可以暫存、提交、切換分支等（Hook 已停用，且無�
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "代理無法使用 `getDiagnostics`，因此看不到編輯器所顯示的錯誤與警告。{reason}"
 
-msgid "The agent is starting. Try again once it has started."
-msgstr "代理程式正在啟動。請在啟動完成後再試一次。"
-
-msgid "The agent runs in the sandbox. Click to start it again outside the sandbox, in a new session. Right-click to set the default for this project."
-msgstr "代理在沙箱內執行。按一下以在沙箱外以新的工作階段重新啟動。按右鍵以設定此專案的預設值。"
-
-msgid "The agent runs outside the sandbox and may use its own tools without asking. Click to start it again in the sandbox, in a new session. Right-click to set the default for this project."
-msgstr "代理在沙箱外執行，可能會不經詢問就使用自己的工具。按一下以在沙箱內以新的工作階段重新啟動。按右鍵以設定此專案的預設值。"
-
-msgid "The agent stops and starts again in the sandbox, for this thread only. It and the commands it runs may then reach any host the network allowlist permits, not only the agent's own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
-msgstr "代理會停止，然後僅為此會話在沙箱內重新啟動。之後，代理及其執行的命令不只能連線到代理自己的主機，還能連線到網路允許清單所允許的任何主機。如果代理支援，對話會被讀回；否則會在新的工作階段中繼續。"
-
-msgid "The agent stops and starts again in the sandbox, reaching only its own hosts. The conversation is read back if the agent supports that, and goes on in a new session otherwise."
-msgstr "代理會停止，然後在沙箱內重新啟動，只能連線到它自己的主機。如果代理支援，對話會被讀回；否則會在新的工作階段中繼續。"
-
-msgid "The agent stops and starts again in the sandbox. The conversation goes on in a new session: the current one is kept outside the sandbox, where the agent in the sandbox cannot read it."
-msgstr "代理會停止，然後在沙箱內重新啟動。對話會在新的工作階段中繼續：目前的工作階段保留在沙箱外，沙箱內的代理無法讀取。"
+msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
+msgstr "傳送第一則訊息時代理才會啟動。請先選擇它的沙箱與網路：啟動後，此會話中會維持不變。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "代理已新增至 settings.json，但尚未載入。請稍後從 + 選單開啟。"
 
 msgid "The agent was stopped because it wasn't in use. Sending a message reconnects it"
 msgstr "由於代理未在使用中，已將其停止。傳送訊息即可重新連線"
+
+msgid "The agent will start in the sandbox. Click to start it outside the sandbox instead. Right-click to set the default for this project."
+msgstr "代理將在沙箱內啟動。按一下可改為在沙箱外啟動。按右鍵可設定此專案的預設值。"
+
+msgid "The agent will start outside the sandbox and may use its own tools without asking. Click to start it in the sandbox instead. Right-click to set the default for this project."
+msgstr "代理將在沙箱外啟動，並可不經詢問使用自己的工具。按一下可改為在沙箱內啟動。按右鍵可設定此專案的預設值。"
 
 msgid "The agent's network access needs hosts added to the allowlist"
 msgstr "代理的網路存取需要將主機加入允許清單"
@@ -2239,9 +2212,6 @@ msgstr "此代理沒有自己的主機清單：只受網路允許清單限制，
 msgid "This agent is installed via npx (npm)"
 msgstr "此代理是透過 npx（npm）安裝的"
 
-msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
-msgstr "這也會開啟「允許為單一會話解除網路限制」（設定 > AI > 沙箱），它目前已關閉。在設定中關閉之前，它會一直保持開啟。"
-
 msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
 msgstr "這也會開啟「允許在沙箱外執行」（設定 > AI > 沙箱），它目前已關閉。在設定中關閉之前，它會一直保持開啟。"
 
@@ -2379,9 +2349,6 @@ msgstr "嘗試重新啟動代理"
 
 msgid "Turn On and Continue"
 msgstr "開啟並繼續"
-
-msgid "Turn On and Start Again"
-msgstr "開啟並重新啟動"
 
 msgid "Turn On and Start Outside"
 msgstr "開啟並在沙箱外啟動"

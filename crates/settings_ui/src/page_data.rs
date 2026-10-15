@@ -10409,7 +10409,7 @@ fn ai_page(cx: &App) -> SettingsPage {
                 })),
                 files: USER,
             }),
-            // ADR-F99.
+            // ADR-F101.
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Agent Update Check",
                 description: "When to look for newer versions of the external agents installed from the ACP registry. An agent keeps starting the installed version until you agree to an update. Manual only checks when you run \"agent: check for agent updates\" or click Check for Updates on the ACP registry page.",

@@ -2673,8 +2673,30 @@ impl AgentPanel {
         self.activate_draft(focus, source, window, cx);
     }
 
+    /// Lets go of the empty draft in the slot, and of its metadata, so that it
+    /// does not linger as a ghost entry in the sidebar.
+    fn discard_draft(&mut self, cx: &mut Context<Self>) {
+        let Some(draft) = self.draft_thread.take() else {
+            return;
+        };
+        self._draft_editor_observation = None;
+        let draft_id = draft.read(cx).thread_id;
+        ThreadMetadataStore::global(cx).update(cx, |store, cx| {
+            store.delete(draft_id, cx);
+        });
+    }
+
     fn draft_has_content(&self, draft: &Entity<ConversationView>, cx: &App) -> bool {
         let cv = draft.read(cx);
+        // A draft whose agent could not start has no editor; the text it was
+        // sent with was written to the draft store before the start
+        // ([`ConversationView::unpark`]).
+        if cv.is_load_error()
+            && crate::draft_prompt_store::read(cv.thread_id, cx)
+                .is_some_and(|blocks| !blocks.is_empty())
+        {
+            return true;
+        }
         // ADR-F49 (new decision): a parked draft keeps its editor outside the
         // thread, so this has to ask the view rather than the thread view.
         if let Some(message_editor) = cv.draft_message_editor(cx) {
@@ -3956,19 +3978,16 @@ impl AgentPanel {
                     if conversation_view.entity_id() == draft_entity
             );
 
-            if agent_matches || has_editor_content || !draft_is_active {
+            // A draft whose agent could not start is not handed out again: a
+            // new thread asked for after that starts over.
+            let failed_to_start =
+                draft.read(cx).is_load_error() && !self.draft_has_content(draft, cx);
+
+            if !failed_to_start && (agent_matches || has_editor_content || !draft_is_active) {
                 return draft.clone();
             }
 
-            // Clean up the old empty draft's metadata so it doesn't
-            // linger as a ghost entry in the sidebar.
-            let old_draft_id = draft.read(cx).thread_id;
-            ThreadMetadataStore::global(cx).update(cx, |store, cx| {
-                store.delete(old_draft_id, cx);
-            });
-
-            self.draft_thread = None;
-            self._draft_editor_observation = None;
+            self.discard_draft(cx);
         }
 
         let thread = self.create_agent_thread_with_server(
@@ -5434,6 +5453,11 @@ impl AgentPanel {
                 self._draft_editor_observation = None;
                 self.insert_retained_thread(thread_id, conversation_view, cx);
                 self.cleanup_retained_threads(cx);
+            } else if conversation_view.read(cx).is_load_error() {
+                // A draft whose agent could not start stays out of the slot
+                // once its tab is closed: handed back as the next draft, it
+                // would reopen the tab the user just closed, card and all.
+                self.discard_draft(cx);
             }
             return;
         }
@@ -7467,6 +7491,15 @@ impl AgentPanel {
                     return true;
                 }
 
+                // A draft with no agent behind it yet keeps its box outside
+                // any thread view.
+                if conversation_view.read(cx).root_thread_view().is_none() {
+                    return conversation_view
+                        .read(cx)
+                        .draft_message_editor(cx)
+                        .is_some_and(|editor| !editor.read(cx).text(cx).trim().is_empty());
+                }
+
                 conversation_view
                     .read(cx)
                     .root_thread_view()
@@ -7489,7 +7522,20 @@ impl AgentPanel {
     }
 
     fn active_initial_content(&self, cx: &App) -> Option<AgentInitialContent> {
-        let thread_view = self.active_thread_view(cx)?;
+        let Some(thread_view) = self.active_thread_view(cx) else {
+            // A draft with no agent behind it yet keeps its box outside any
+            // thread view.
+            let blocks = self
+                .active_conversation_view()?
+                .read(cx)
+                .draft_message_editor(cx)?
+                .read(cx)
+                .draft_content_blocks_snapshot(cx);
+            return (!blocks.is_empty()).then_some(AgentInitialContent::ContentBlock {
+                blocks,
+                auto_submit: false,
+            });
+        };
         let thread_view = thread_view.read(cx);
         let saved = thread_view
             .thread
@@ -12585,6 +12631,59 @@ mod tests {
             "a draft for an external agent connects to it"
         );
         (panel, thread_id, cx)
+    }
+
+    /// A draft whose agent could not start used to stay in the panel's draft
+    /// slot when its tab was closed, so the panel handed it straight back as
+    /// the next draft and the tab reappeared at once: it could not be closed.
+    #[gpui::test]
+    async fn test_closing_the_tab_of_a_draft_that_failed_to_start(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        cx.run_until_parked();
+        crate::test_support::set_stub_agent_connection(StubAgentConnection::new());
+        crate::test_support::fail_next_stub_connect("the agent is missing");
+        panel.update_in(&mut cx, |panel, window, cx| {
+            for thread_id in panel.tabbed_threads.keys().copied().collect::<Vec<_>>() {
+                panel.test_close_thread_tab(thread_id, window, cx);
+                ThreadMetadataStore::global(cx).update(cx, |store, cx| {
+                    store.delete(thread_id, cx);
+                });
+            }
+            panel.selected_agent = Agent::Stub;
+            panel.activate_draft(true, AgentThreadSource::AgentPanel, window, cx);
+        });
+        cx.run_until_parked();
+        let failed = draft_view(&panel, &cx);
+        assert!(failed.read_with(&cx, |view, _cx| view.is_load_error()));
+
+        let (pane, item_id) = panel
+            .read_with(&cx, |panel, cx| panel.active_thread_item(cx))
+            .expect("the failed draft has a tab");
+        pane.update_in(&mut cx, |pane, window, cx| {
+            pane.close_item_by_id(item_id, pane::SaveIntent::Close, window, cx)
+        })
+        .await
+        .expect("the tab closes");
+        cx.run_until_parked();
+
+        let views_in_tabs = panel.read_with(&cx, |panel, cx| {
+            panel
+                .thread_items(cx)
+                .into_iter()
+                .map(|item| item.read(cx).conversation_view().entity_id())
+                .collect::<Vec<_>>()
+        });
+        assert!(
+            !views_in_tabs.contains(&failed.entity_id()),
+            "the closed tab does not come back"
+        );
+        assert!(
+            panel.read_with(&cx, |panel, _cx| panel
+                .draft_thread
+                .as_ref()
+                .is_none_or(|draft| draft.entity_id() != failed.entity_id())),
+            "nor is the failed draft handed out as the next one"
+        );
     }
 
     fn draft_view(panel: &Entity<AgentPanel>, cx: &VisualTestContext) -> Entity<ConversationView> {

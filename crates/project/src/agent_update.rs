@@ -1,4 +1,4 @@
-//! ADR-F99: what each place an external agent from the ACP registry is
+//! ADR-F101: what each place an external agent from the ACP registry is
 //! installed in remembers about that install, so that a start launches it as
 //! it is — with no `npm install`, download or version query — and a newer
 //! registry version is only installed once the user has agreed to it.
@@ -639,7 +639,7 @@ mod tests {
         }
     }
 
-    /// ADR-F99: the update check asks about every place this host keeps a
+    /// ADR-F101: the update check asks about every place this host keeps a
     /// record for, and only those: not a record of another distribution kind
     /// than the registry's (no start makes that install any more), and not a
     /// place that has not started the agent for 30 days. A record from before

@@ -210,7 +210,7 @@ pub struct AgentConnectionStore {
     /// were still starting, to close once they have started if no view has
     /// come onto them by then.
     left_while_starting: HashSet<ConnectionSlot>,
-    /// ADR-F99: where each connection's start installed its agent, which an
+    /// ADR-F101: where each connection's start installed its agent, which an
     /// update agreed to from its thread replaces.
     install_places: HashMap<ConnectionSlot, AgentInstallPlace>,
     idle_watch: Task<()>,
@@ -258,7 +258,7 @@ impl AgentConnectionStore {
         &self.project
     }
 
-    /// ADR-F99: the user agreed, from a thread's update banner, to update
+    /// ADR-F101: the user agreed, from a thread's update banner, to update
     /// `agent` where the connection at `place` installed it. The next start
     /// there installs the registry's version, so no start is handed one of
     /// the agent's connections any more: the views that use one keep it until
@@ -285,7 +285,7 @@ impl AgentConnectionStore {
         self.supersede_connections_of(agent, cx);
     }
 
-    /// ADR-F99: where a start for `slot` installs its agent: this host when it
+    /// ADR-F101: where a start for `slot` installs its agent: this host when it
     /// starts outside the sandbox (or on a remote host, whose store keeps its
     /// own agreements), and on Windows the WSL distro of the project's folders
     /// when it starts in the sandbox — as `CustomAgentServer::connect` decides
@@ -319,7 +319,7 @@ impl AgentConnectionStore {
         }
     }
 
-    /// ADR-F99: the update check found `version` of `agent` and the user
+    /// ADR-F101: the update check found `version` of `agent` and the user
     /// agreed to it for the places that were behind
     /// ([`crate::agent_updates::approve_agent_updates`]). The threads on its
     /// connections show the update banner, which restarts them on the new
@@ -707,7 +707,7 @@ impl AgentConnectionStore {
         server: Rc<dyn AgentServer>,
         cx: &mut Context<Self>,
     ) -> Entity<AgentConnectionEntry> {
-        // ADR-F99: a start that still launches an older version than the
+        // ADR-F101: a start that still launches an older version than the
         // registry's says so again itself.
         self.new_versions.remove(slot.agent());
         let install_place = self.install_place(&slot, cx);
@@ -787,7 +787,7 @@ impl AgentConnectionStore {
                             return;
                         }
 
-                        // ADR-F99: the connection stays. A start without the
+                        // ADR-F101: the connection stays. A start without the
                         // user's agreement launches the version installed
                         // and reports the newer one again, so dropping it
                         // here would only start that same version once more
@@ -1656,7 +1656,7 @@ mod tests {
             store.read_with(cx, |store, _cx| store
                 .outside_sandbox_connection(id)
                 .is_some()),
-            "ADR-F99: a report alone replaces nothing; the next start launches the \
+            "ADR-F101: a report alone replaces nothing; the next start launches the \
              installed version anyway"
         );
         // What agreeing to the update does.
@@ -1695,7 +1695,7 @@ mod tests {
         drop(sender);
     }
 
-    /// ADR-F99: agreeing to an update from a thread is told to the store that
+    /// ADR-F101: agreeing to an update from a thread is told to the store that
     /// starts the agent, for the place that thread's connection installed it
     /// in: this host for a start outside the sandbox, and on Windows the WSL
     /// distro for one in it. The other place's install is left alone.

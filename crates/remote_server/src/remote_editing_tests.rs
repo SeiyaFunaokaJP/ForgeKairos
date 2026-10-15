@@ -6838,7 +6838,7 @@ async fn test_remote_external_agent_server(
     );
 }
 
-/// ADR-F99: an update the client's user agreed to reaches the host with the
+/// ADR-F101: an update the client's user agreed to reaches the host with the
 /// start it is for, so that the host — whose install it is — installs the
 /// registry's version; a start without one asks the host for nothing of the
 /// kind.

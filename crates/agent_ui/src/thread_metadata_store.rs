@@ -92,6 +92,8 @@ pub fn init(cx: &mut App) {
     migrate_thread_ids(cx);
     load_threads_started_outside_sandbox(cx);
     load_outside_sandbox_consents(cx);
+    load_threads_started_with_network_lifted(cx);
+    load_last_launch_choices(cx);
     register_revoke_outside_sandbox_consents(cx);
 }
 
@@ -241,20 +243,16 @@ pub fn record_outside_sandbox_consent(thread_id: ThreadId, agent_id: AgentId, cx
 /// outside every time are not touched.
 pub fn revoke_outside_sandbox_consents(cx: &mut App) -> Task<anyhow::Result<()>> {
     cx.default_global::<OutsideSandboxConsents>().0.clear();
+    // ADR-F99: what the last threads were started with goes too, so that no
+    // new thread offers to start outside on its own.
+    cx.default_global::<LastLaunchChoices>().0.clear();
     let kvp = KeyValueStore::global(cx);
     cx.background_spawn(async move {
         kvp.scoped(OUTSIDE_SANDBOX_CONSENTS_NAMESPACE)
             .delete_all()
-            .await
+            .await?;
+        kvp.scoped(LAST_LAUNCH_CHOICES_NAMESPACE).delete_all().await
     })
-}
-
-/// ADR-F96: takes back the start outside the sandbox the user confirmed for
-/// `thread_id`, and that it was started there, once the user has started its
-/// agent again in the sandbox: its next session is in the sandbox's folder.
-pub fn forget_outside_sandbox_start(thread_id: ThreadId, cx: &mut App) {
-    forget_outside_sandbox_consents_of_thread(thread_id, cx);
-    forget_thread_started_outside_sandbox(thread_id, cx);
 }
 
 fn forget_outside_sandbox_consents_of_thread(thread_id: ThreadId, cx: &mut App) {
@@ -279,6 +277,168 @@ fn forget_outside_sandbox_consents_of_thread(thread_id: ThreadId, cx: &mut App) 
             scoped.delete(key).await?;
         }
         anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
+}
+
+/// ADR-F99: where the threads whose external agent was started with its own
+/// hosts lifted are written down. The choice is the thread's from its first
+/// start on, so the thread is read back the same way.
+const THREADS_STARTED_WITH_NETWORK_LIFTED_NAMESPACE: &str =
+    "agent_threads_started_with_network_lifted";
+
+#[derive(Default)]
+struct ThreadsStartedWithNetworkLifted(HashSet<ThreadId>);
+
+impl Global for ThreadsStartedWithNetworkLifted {}
+
+fn load_threads_started_with_network_lifted(cx: &mut App) {
+    let threads = KeyValueStore::global(cx)
+        .scoped(THREADS_STARTED_WITH_NETWORK_LIFTED_NAMESPACE)
+        .read_all()
+        .log_err()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(key, _)| uuid::Uuid::parse_str(&key).log_err().map(ThreadId))
+        .collect();
+    cx.set_global(ThreadsStartedWithNetworkLifted(threads));
+}
+
+/// Whether the external agent of `thread_id` was started with its own hosts
+/// lifted.
+pub fn thread_started_with_network_lifted(thread_id: ThreadId, cx: &App) -> bool {
+    cx.try_global::<ThreadsStartedWithNetworkLifted>()
+        .is_some_and(|threads| threads.0.contains(&thread_id))
+}
+
+/// Writes down that the external agent of `thread_id` runs with its own hosts
+/// lifted.
+pub fn record_thread_started_with_network_lifted(thread_id: ThreadId, cx: &mut App) {
+    if !cx
+        .default_global::<ThreadsStartedWithNetworkLifted>()
+        .0
+        .insert(thread_id)
+    {
+        return;
+    }
+    let kvp = KeyValueStore::global(cx);
+    let key = thread_id.to_key_string();
+    cx.background_spawn(async move {
+        kvp.scoped(THREADS_STARTED_WITH_NETWORK_LIFTED_NAMESPACE)
+            .write(key, "1".to_string())
+            .await
+    })
+    .detach_and_log_err(cx);
+}
+
+/// Takes back that `thread_id` was started with its agent's hosts lifted, once
+/// it runs with them again (turning `allow_unrestricted_network` off started
+/// it again so), so that turning the setting back on does not lift it again.
+pub fn forget_thread_started_with_network_lifted(thread_id: ThreadId, cx: &mut App) {
+    if !cx
+        .default_global::<ThreadsStartedWithNetworkLifted>()
+        .0
+        .remove(&thread_id)
+    {
+        return;
+    }
+    let kvp = KeyValueStore::global(cx);
+    let key = thread_id.to_key_string();
+    cx.background_spawn(async move {
+        kvp.scoped(THREADS_STARTED_WITH_NETWORK_LIFTED_NAMESPACE)
+            .delete(key)
+            .await
+    })
+    .detach_and_log_err(cx);
+}
+
+/// ADR-F99: the sandbox and network an external agent's thread was last
+/// started with, by agent. A new thread of that agent offers the same until
+/// the user picks otherwise. Written when an agent starts, never when the
+/// switches are only clicked, so that a click nobody followed with a message
+/// leaves nothing behind.
+const LAST_LAUNCH_CHOICES_NAMESPACE: &str = "agent_last_launch_choices";
+
+/// What an external agent's thread starts with (ADR-F99).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LaunchChoice {
+    pub sandboxed: bool,
+    pub network_lifted: bool,
+}
+
+impl LaunchChoice {
+    fn to_stored(self) -> String {
+        format!(
+            "{}{}",
+            u8::from(self.sandboxed),
+            u8::from(self.network_lifted)
+        )
+    }
+
+    fn from_stored(value: &str) -> Option<Self> {
+        let flag = |character: char| match character {
+            '0' => Some(false),
+            '1' => Some(true),
+            _ => None,
+        };
+        let mut characters = value.chars();
+        let sandboxed = flag(characters.next()?)?;
+        let network_lifted = flag(characters.next()?)?;
+        if characters.next().is_some() {
+            return None;
+        }
+        Some(Self {
+            sandboxed,
+            network_lifted,
+        })
+    }
+}
+
+#[derive(Default)]
+struct LastLaunchChoices(HashMap<AgentId, LaunchChoice>);
+
+impl Global for LastLaunchChoices {}
+
+fn load_last_launch_choices(cx: &mut App) {
+    let choices = KeyValueStore::global(cx)
+        .scoped(LAST_LAUNCH_CHOICES_NAMESPACE)
+        .read_all()
+        .log_err()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(agent_id, value)| {
+            let choice = LaunchChoice::from_stored(&value);
+            if choice.is_none() {
+                log::warn!("ignoring the unreadable last launch choice of {agent_id}: {value:?}");
+            }
+            Some((AgentId(agent_id.into()), choice?))
+        })
+        .collect();
+    cx.set_global(LastLaunchChoices(choices));
+}
+
+/// What the last thread of `agent_id` was started with, if one was.
+pub fn last_launch_choice(agent_id: &AgentId, cx: &App) -> Option<LaunchChoice> {
+    cx.try_global::<LastLaunchChoices>()
+        .and_then(|choices| choices.0.get(agent_id).copied())
+}
+
+/// Writes down what a thread of `agent_id` was just started with.
+pub fn record_last_launch_choice(agent_id: AgentId, choice: LaunchChoice, cx: &mut App) {
+    let key = agent_id.0.to_string();
+    if cx
+        .default_global::<LastLaunchChoices>()
+        .0
+        .insert(agent_id, choice)
+        == Some(choice)
+    {
+        return;
+    }
+    let kvp = KeyValueStore::global(cx);
+    cx.background_spawn(async move {
+        kvp.scoped(LAST_LAUNCH_CHOICES_NAMESPACE)
+            .write(key, choice.to_stored())
+            .await
     })
     .detach_and_log_err(cx);
 }
@@ -1352,6 +1512,7 @@ impl ThreadMetadataStore {
         crate::draft_prompt_store::delete(thread_id, cx).detach_and_log_err(cx);
         forget_thread_started_outside_sandbox(thread_id, cx);
         forget_outside_sandbox_consents_of_thread(thread_id, cx);
+        forget_thread_started_with_network_lifted(thread_id, cx);
         cx.notify();
     }
 
