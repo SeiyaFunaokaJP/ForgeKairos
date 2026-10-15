@@ -285,7 +285,7 @@ fn show_notification(
     cx: &mut Context<Workspace>,
 ) {
     let message = i18n::t!(
-        "clangd found no compile_commands.json or compile_flags.txt for {file_name}, so it may not find definitions in libraries or in other files. Generate one in the project's folder or its `build` folder, for example with `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- make`. With a cross compiler, also add `--query-driver=<path to the compiler>` to `lsp.clangd.binary.arguments`."
+        "clangd found no compile_commands.json or compile_flags.txt for {file_name}, so it may not find definitions in libraries or in other files. Generate one, for example with `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- make`. To keep it out of the project, generate it in another folder, such as one under your home folder, and add `--compile-commands-dir=<that folder>` to `lsp.clangd.binary.arguments`. In the project's folder or its `build` folder, clangd finds it without that, and `.git/info/exclude` keeps it out of git. With a cross compiler, also add `--query-driver=<path to the compiler>` to `lsp.clangd.binary.arguments`."
     );
     workspace.show_notification(notification_id(worktree_id), cx, move |cx| {
         cx.new(|cx| {

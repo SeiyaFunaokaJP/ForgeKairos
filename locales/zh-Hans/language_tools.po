@@ -323,8 +323,8 @@ msgstr "在智能体响应结束之前无法恢复。如果响应没有结束，
 msgid "You can't resume until the running sessions and commands end."
 msgstr "在正在运行的会话和命令结束之前无法恢复。"
 
-msgid "clangd found no compile_commands.json or compile_flags.txt for {file_name}, so it may not find definitions in libraries or in other files. Generate one in the project's folder or its `build` folder, for example with `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- make`. With a cross compiler, also add `--query-driver=<path to the compiler>` to `lsp.clangd.binary.arguments`."
-msgstr "clangd 找不到 {file_name} 对应的 compile_commands.json 或 compile_flags.txt，因此可能找不到库或其他文件中的定义。请在项目文件夹或其 `build` 文件夹中生成一个，例如使用 `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` 或 `bear -- make`。如果使用交叉编译器，还需在 `lsp.clangd.binary.arguments` 中添加 `--query-driver=<编译器路径>`。"
+msgid "clangd found no compile_commands.json or compile_flags.txt for {file_name}, so it may not find definitions in libraries or in other files. Generate one, for example with `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- make`. To keep it out of the project, generate it in another folder, such as one under your home folder, and add `--compile-commands-dir=<that folder>` to `lsp.clangd.binary.arguments`. In the project's folder or its `build` folder, clangd finds it without that, and `.git/info/exclude` keeps it out of git. With a cross compiler, also add `--query-driver=<path to the compiler>` to `lsp.clangd.binary.arguments`."
+msgstr "clangd 找不到 {file_name} 对应的 compile_commands.json 或 compile_flags.txt，因此可能找不到库或其他文件中的定义。请生成一个，例如使用 `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` 或 `bear -- make`。若不想放在项目中，请在其他文件夹（例如主文件夹下）生成，并在 `lsp.clangd.binary.arguments` 中添加 `--compile-commands-dir=<该文件夹>`。放在项目文件夹或其 `build` 文件夹中时，clangd 无需此设置即可找到，并可用 `.git/info/exclude` 将其排除在 git 管理之外。如果使用交叉编译器，还需在 `lsp.clangd.binary.arguments` 中添加 `--query-driver=<编译器路径>`。"
 
 msgid "clangd is using {used} of memory, over its limit of {limit}. It was restarted less than 10 minutes ago, so it is left running."
 msgstr "clangd 正在使用 {used} 内存，超过了 {limit} 的上限。由于它在不到 10 分钟前刚重启过，因此让它继续运行。"
