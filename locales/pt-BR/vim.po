@@ -23,14 +23,23 @@ msgstr "Cancelar"
 msgid "Cannot save buffer with absolute path"
 msgstr "Não é possível salvar o buffer com caminho absoluto"
 
+msgid "Choose Normal, Vim, Helix or Emacs. The shortcut turns Helix mode on or off."
+msgstr "Escolha Normal, Vim, Helix ou Emacs. O atalho ativa ou desativa o modo Helix."
+
+msgid "Choose Normal, Vim, Helix or Emacs. The shortcut turns Vim mode on or off."
+msgstr "Escolha Normal, Vim, Helix ou Emacs. O atalho ativa ou desativa o modo Vim."
+
 msgid "Default Vim Bindings"
 msgstr "Associações de teclas padrão do Vim"
 
 msgid "Disable Vim Mode"
 msgstr "Desabilitar modo Vim"
 
-msgid "Enable Vim Mode"
-msgstr "Habilitar modo Vim"
+msgid "Editing Mode"
+msgstr "Modo de edição"
+
+msgid "Editing Mode: {mode}"
+msgstr "Modo de edição: {mode}"
 
 msgid "Failed to :w"
 msgstr "Falha ao executar :w"
@@ -47,6 +56,9 @@ msgstr "Argumento inválido: {}"
 msgid "No file name"
 msgstr "Sem nome de arquivo"
 
+msgid "Normal"
+msgstr "Normal"
+
 msgid "Nothing in register {}"
 msgstr "Nada no registrador {}"
 
@@ -62,17 +74,8 @@ msgstr "Substituir"
 msgid "Use ! to write partial buffer"
 msgstr "Use ! para gravar parte do buffer"
 
-msgid "Vim: Off"
-msgstr "Vim: Desativado"
-
-msgid "Vim: On"
-msgstr "Vim: Ativado"
-
 msgid "When disabled, you can type as soon as you open a file, just like in VSCode."
 msgstr "Quando desabilitado, você pode digitar assim que abrir um arquivo, como no VSCode."
-
-msgid "When enabled, you edit with Vim key bindings."
-msgstr "Quando habilitado, você edita com as associações de teclas do Vim."
 
 msgid "[No Name]"
 msgstr "[Sem nome]"

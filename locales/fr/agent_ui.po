@@ -11,6 +11,9 @@ msgstr ""
 msgid " (Outside Sandbox)"
 msgstr " (hors du bac à sable)"
 
+msgid "\"Allow Lifting the Network Restriction for a Thread\" was turned off, so an agent that had lifted its network restriction started again with only its own hosts. The answer it was giving was stopped; send your message again to go on."
+msgstr "\"Autoriser la levée de la restriction réseau pour une conversation\" a été désactivé : un agent qui avait levé sa restriction réseau a donc redémarré avec ses seuls hôtes. La réponse qu'il donnait a été interrompue ; renvoyez votre message pour continuer."
+
 msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
 msgstr "\"Autoriser l'exécution hors du bac à sable\" est désactivé dans Paramètres > IA > Bac à sable : rien ne démarre donc hors du bac à sable, et les paramètres qui démarrent toujours un agent ou Claude Code hors de celui-ci sont ignorés. Pour l'autoriser, activez ce paramètre."
 
@@ -1112,14 +1115,11 @@ msgstr "En savoir plus"
 msgid "Let the Agent Reach Any Host?"
 msgstr "Laisser l'agent atteindre n'importe quel hôte ?"
 
-msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
-msgstr "Pour que l'agent de cette conversation et les commandes qu'il exécute atteignent n'importe quel hôte dans les limites de la liste d'autorisation réseau, il faut `allow_unrestricted_network` dans les paramètres du bac à sable de l'agent, qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez dans votre fichier de paramètres."
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "Pour que l'agent de cette conversation et les commandes qu'il exécute atteignent n'importe quel hôte dans les limites de la liste d'autorisation réseau, il faut \"Autoriser la levée de la restriction réseau pour une conversation\" (Paramètres > IA > Bac à sable), qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
 
-msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
-msgstr "Pour que les commandes de terminal et les récupérations (fetch) de cette conversation atteignent n'importe quel hôte, il faut `allow_unrestricted_network` dans les paramètres du bac à sable de l'agent, qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez dans votre fichier de paramètres. La liste d'autorisation réseau s'applique toujours."
-
-msgid "Lifting the network restriction is not available for projects on a remote host yet."
-msgstr "La levée de la restriction réseau n'est pas encore disponible pour les projets sur un hôte distant."
+msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
+msgstr "Pour que les commandes de terminal et les récupérations (fetch) de cette conversation atteignent n'importe quel hôte, il faut \"Autoriser la levée de la restriction réseau pour une conversation\" (Paramètres > IA > Bac à sable), qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez à cet endroit. La liste d'autorisation réseau s'applique toujours."
 
 msgid "Lifting the network restriction is not available for this agent."
 msgstr "La levée de la restriction réseau n'est pas disponible pour cet agent."
@@ -2224,6 +2224,12 @@ msgstr "Cet agent n'a pas d'hôtes propres : seule la liste d'autorisation rése
 msgid "This agent is installed via npx (npm)"
 msgstr "Cet agent est installé via npx (npm)"
 
+msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "Cela active aussi \"Autoriser la levée de la restriction réseau pour une conversation\" (Paramètres > IA > Bac à sable), qui est désactivé. Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
+
+msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "Cela active aussi \"Autoriser l'exécution hors du bac à sable\" (Paramètres > IA > Bac à sable), qui est désactivé. Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
+
 msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
 msgstr "Ceci ne s'applique qu'à ce démarrage. Pour toujours démarrer hors du bac à sable, activez l'option dans la page IA des paramètres."
 
@@ -2358,6 +2364,12 @@ msgstr "Essayer de redémarrer l'agent"
 
 msgid "Turn On and Continue"
 msgstr "Activer et continuer"
+
+msgid "Turn On and Start Again"
+msgstr "Activer et redémarrer"
+
+msgid "Turn On and Start Outside"
+msgstr "Activer et démarrer hors du bac à sable"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "Désactiver le bac à sable nécessite \"Autoriser l'exécution hors du bac à sable\" (Paramètres > IA > Bac à sable), qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."

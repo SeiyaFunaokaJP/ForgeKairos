@@ -46,6 +46,23 @@ fn installs_stay_on_the_thread_while_the_guard_lives() {
         assert_eq!(tr("Open"), "開く");
         assert_eq!(on_another_thread(), ("en", "Open", initial_generation));
 
+        // What another thread installs is not shown here, so it does not make what
+        // this thread cached stale either.
+        std::thread::spawn(|| install(None))
+            .join()
+            .expect("the other thread should install");
+        assert_eq!(generation(), initial_generation + 1);
+        assert_eq!(current_locale(), "ja");
+
+        // A guard inside this one must not let that install through either, or
+        // the generation would go back when it ends.
+        {
+            let _inner_installs = ThreadLocalInstalls::new();
+            assert_eq!(generation(), initial_generation + 1);
+        }
+        assert_eq!(generation(), initial_generation + 1);
+        assert_eq!(current_locale(), "ja");
+
         {
             let _override = LocaleOverride::new(None);
             assert_eq!(tr("Open"), "Open");
@@ -58,10 +75,10 @@ fn installs_stay_on_the_thread_while_the_guard_lives() {
     }
     assert_eq!(current_locale(), "en");
     assert_eq!(tr("Open"), "Open");
-    assert_eq!(generation(), initial_generation + 3);
+    assert_eq!(generation(), initial_generation + 4);
 
     install(Some(&CATALOG));
-    assert_eq!(generation(), initial_generation + 4);
-    assert_eq!(on_another_thread(), ("ja", "開く", initial_generation + 1));
+    assert_eq!(generation(), initial_generation + 5);
+    assert_eq!(on_another_thread(), ("ja", "開く", initial_generation + 2));
     install(None);
 }

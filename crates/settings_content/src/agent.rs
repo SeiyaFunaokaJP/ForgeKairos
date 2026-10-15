@@ -1185,12 +1185,14 @@ pub struct ProjectThreadDefaultsContent {
     /// them outside it, which needs `sandbox_permissions.allow_outside_sandbox`;
     /// external agents then start outside it without asking.
     pub sandbox: Option<bool>,
-    /// Whether the built-in agent's network access stays limited to the
-    /// allowed hosts. `false` lets its terminal commands and fetches reach any
-    /// host without asking, which needs
-    /// `sandbox_permissions.allow_unrestricted_network`; the editor's network
-    /// allowlist still applies, and fetches still refuse local and private
-    /// addresses. Not applied to projects on a remote host yet.
+    /// Whether the agent's network access stays limited to the allowed hosts.
+    /// `false` lets the built-in agent's terminal commands and fetches reach any
+    /// host without asking, and starts an external agent without its own list of
+    /// hosts; either needs `sandbox_permissions.allow_unrestricted_network`
+    /// (for the built-in agent, `allow_all_hosts` is enough), and turning that
+    /// off restricts such threads again at once. The editor's network allowlist
+    /// still applies, and fetches still refuse local and private addresses. On
+    /// a remote host, applied only where the host has a sandbox.
     pub network: Option<bool>,
 }
 
@@ -1210,12 +1212,17 @@ pub struct SandboxPermissionsContent {
     /// Default: false
     pub allow_outside_sandbox: Option<bool>,
 
-    /// Whether a thread of the built-in agent may lift its network restriction
-    /// (the network button next to the chat input): its sandboxed terminal
-    /// commands and fetches then reach any host without asking. While this is
-    /// off, that button asks to turn it on first. The editor's network
-    /// allowlist still applies. Only the user settings file is read: neither a
-    /// project's settings nor an agent can turn it on.
+    /// Whether a thread may lift its network restriction (the network button
+    /// next to the chat input). The built-in agent's sandboxed terminal commands
+    /// and fetches then reach any host without asking; an external agent starts
+    /// again without its own list of hosts. While this is off, the button asks
+    /// to turn it on first, except for the built-in agent while `allow_all_hosts`
+    /// is on, which already lets its threads reach any host. Turning it off
+    /// restricts the threads that lifted it again at once (an external agent
+    /// starts again). The editor's network allowlist still applies. On a remote
+    /// host, a thread can lift it only where the host has a sandbox. Only the
+    /// user settings file is read: neither a project's settings nor an agent can
+    /// turn it on.
     /// Default: false
     pub allow_unrestricted_network: Option<bool>,
 

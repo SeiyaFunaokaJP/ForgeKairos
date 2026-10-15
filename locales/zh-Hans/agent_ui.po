@@ -11,6 +11,9 @@ msgstr ""
 msgid " (Outside Sandbox)"
 msgstr "（沙盒外）"
 
+msgid "\"Allow Lifting the Network Restriction for a Thread\" was turned off, so an agent that had lifted its network restriction started again with only its own hosts. The answer it was giving was stopped; send your message again to go on."
+msgstr "“允许为单个会话解除网络限制”已关闭，因此一个曾解除网络限制的智能体已仅使用其自身主机重新启动。它正在给出的回答已停止；请再次发送消息以继续。"
+
 msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
 msgstr "“设置 > AI > 沙盒”中的“允许在沙盒外运行”已关闭，因此不会在沙盒外启动任何内容，始终在沙盒外启动智能体或 Claude Code 的设置也会被忽略。要允许，请打开该设置。"
 
@@ -1109,14 +1112,11 @@ msgstr "了解详情"
 msgid "Let the Agent Reach Any Host?"
 msgstr "允许智能体访问任意主机？"
 
-msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
-msgstr "要让此会话的智能体及其运行的命令访问网络允许列表范围内的任意主机，需要开启智能体沙盒设置中的 `allow_unrestricted_network`，但它目前处于关闭状态。是否开启？在设置文件中关闭之前它会一直保持开启。"
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "要让此会话的智能体及其运行的命令访问网络允许列表范围内的任意主机，需要开启“允许为单个会话解除网络限制”（设置 > AI > 沙盒），但它目前处于关闭状态。是否开启？在设置中关闭之前它会一直保持开启。"
 
-msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
-msgstr "要让此会话的终端命令和 fetch 访问任意主机，需要开启智能体沙盒设置中的 `allow_unrestricted_network`，但它目前处于关闭状态。是否开启？在设置文件中关闭之前它会一直保持开启。网络允许列表仍然适用。"
-
-msgid "Lifting the network restriction is not available for projects on a remote host yet."
-msgstr "远程主机上的项目暂不支持解除网络限制。"
+msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
+msgstr "要让此会话的终端命令和 fetch 访问任意主机，需要开启“允许为单个会话解除网络限制”（设置 > AI > 沙盒），但它目前处于关闭状态。是否开启？在设置中关闭之前它会一直保持开启。网络允许列表仍然适用。"
 
 msgid "Lifting the network restriction is not available for this agent."
 msgstr "此智能体不支持解除网络限制。"
@@ -2220,6 +2220,12 @@ msgstr "此智能体没有自己的主机列表：只受网络允许列表限制
 msgid "This agent is installed via npx (npm)"
 msgstr "此智能体通过 npx（npm）安装"
 
+msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "这也会开启“允许为单个会话解除网络限制”（设置 > AI > 沙盒），它目前已关闭。在设置中关闭之前，它会一直保持开启。"
+
+msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "这也会开启“允许在沙盒外运行”（设置 > AI > 沙盒），它目前已关闭。在设置中关闭之前，它会一直保持开启。"
+
 msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
 msgstr "仅适用于本次启动。要始终在沙盒外启动，请在“设置”的“AI”页面中切换。"
 
@@ -2354,6 +2360,12 @@ msgstr "尝试重启智能体"
 
 msgid "Turn On and Continue"
 msgstr "开启并继续"
+
+msgid "Turn On and Start Again"
+msgstr "开启并重新启动"
+
+msgid "Turn On and Start Outside"
+msgstr "开启并在沙盒外启动"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "关闭沙盒需要开启“允许在沙盒外运行”（设置 > AI > 沙盒），但它目前已关闭。要开启吗？在设置中关闭之前，它会一直保持开启。"

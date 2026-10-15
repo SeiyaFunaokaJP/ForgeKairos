@@ -20,14 +20,23 @@ msgstr "キャンセル"
 msgid "Cannot save buffer with absolute path"
 msgstr "絶対パスではバッファーを保存できません"
 
+msgid "Choose Normal, Vim, Helix or Emacs. The shortcut turns Helix mode on or off."
+msgstr "通常 / Vim / Helix / Emacs から選びます。ショートカットで Helix モードのオンとオフを切り替えます。"
+
+msgid "Choose Normal, Vim, Helix or Emacs. The shortcut turns Vim mode on or off."
+msgstr "通常 / Vim / Helix / Emacs から選びます。ショートカットで Vim モードのオンとオフを切り替えます。"
+
 msgid "Default Vim Bindings"
 msgstr "既定の Vim キーバインド"
 
 msgid "Disable Vim Mode"
 msgstr "Vim モードを無効にします"
 
-msgid "Enable Vim Mode"
-msgstr "Vim モードを有効にします"
+msgid "Editing Mode"
+msgstr "編集モード"
+
+msgid "Editing Mode: {mode}"
+msgstr "編集モード: {mode}"
 
 msgid "Failed to :w"
 msgstr ":w を実行できませんでした"
@@ -44,6 +53,9 @@ msgstr "引数が不正です: {}"
 msgid "No file name"
 msgstr "ファイル名がありません"
 
+msgid "Normal"
+msgstr "通常"
+
 msgid "Nothing in register {}"
 msgstr "レジスタ {} は空です"
 
@@ -59,17 +71,8 @@ msgstr "置き換える"
 msgid "Use ! to write partial buffer"
 msgstr "バッファーの一部を書き出すには ! が必要です"
 
-msgid "Vim: Off"
-msgstr "Vim: オフ"
-
-msgid "Vim: On"
-msgstr "Vim: オン"
-
 msgid "When disabled, you can type as soon as you open a file, just like in VSCode."
 msgstr "無効にすると VSCode と同じように、ファイルを開いた直後からそのまま文字を入力できます。"
-
-msgid "When enabled, you edit with Vim key bindings."
-msgstr "有効にすると Vim のキーバインドで操作します。"
 
 msgid "[No Name]"
 msgstr "[無名]"

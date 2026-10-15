@@ -11,6 +11,9 @@ msgstr ""
 msgid " (Outside Sandbox)"
 msgstr " (fora do sandbox)"
 
+msgid "\"Allow Lifting the Network Restriction for a Thread\" was turned off, so an agent that had lifted its network restriction started again with only its own hosts. The answer it was giving was stopped; send your message again to go on."
+msgstr "\"Permitir remover a restrição de rede de uma conversa\" foi desativado, então um agente que tinha removido sua restrição de rede reiniciou só com seus próprios hosts. A resposta que ele estava dando foi interrompida; envie sua mensagem de novo para continuar."
+
 msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
 msgstr "\"Permitir execução fora do sandbox\" está desativado em Configurações > IA > Sandbox, então nada é iniciado fora do sandbox, e as configurações que sempre iniciam um agente ou o Claude Code fora dele são ignoradas. Para permitir, ative essa configuração."
 
@@ -1112,14 +1115,11 @@ msgstr "Saiba mais"
 msgid "Let the Agent Reach Any Host?"
 msgstr "Permitir que o agente alcance qualquer host?"
 
-msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
-msgstr "Para que o agente desta conversa e os comandos que ele executa alcancem qualquer host dentro da lista de permissões de rede, é necessário `allow_unrestricted_network` nas configurações do sandbox do agente, que está desativado. Ativar? Ele continua ativado até você desativá-lo no seu arquivo de configurações."
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "Para que o agente desta conversa e os comandos que ele executa alcancem qualquer host dentro da lista de permissões de rede, é necessário \"Permitir remover a restrição de rede de uma conversa\" (Configurações > IA > Sandbox), que está desativado. Ativar? Ele continua ativado até você desativá-lo lá."
 
-msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
-msgstr "Para que os comandos de terminal e as buscas (fetch) desta conversa alcancem qualquer host, é necessário `allow_unrestricted_network` nas configurações do sandbox do agente, que está desativado. Ativar? Ele continua ativado até você desativá-lo no seu arquivo de configurações. A lista de permissões de rede continua valendo."
-
-msgid "Lifting the network restriction is not available for projects on a remote host yet."
-msgstr "Remover a restrição de rede ainda não está disponível para projetos em um host remoto."
+msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
+msgstr "Para que os comandos de terminal e as buscas (fetch) desta conversa alcancem qualquer host, é necessário \"Permitir remover a restrição de rede de uma conversa\" (Configurações > IA > Sandbox), que está desativado. Ativar? Ele continua ativado até você desativá-lo lá. A lista de permissões de rede continua valendo."
 
 msgid "Lifting the network restriction is not available for this agent."
 msgstr "Remover a restrição de rede não está disponível para este agente."
@@ -2224,6 +2224,12 @@ msgstr "Este agente não tem hosts próprios: só a lista de permissões de rede
 msgid "This agent is installed via npx (npm)"
 msgstr "Este agente é instalado via npx (npm)"
 
+msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "Isto também ativa \"Permitir remover a restrição de rede de uma conversa\" (Configurações > IA > Sandbox), que está desativado. Ele permanece ativado até que você o desative lá."
+
+msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "Isto também ativa \"Permitir execução fora do sandbox\" (Configurações > IA > Sandbox), que está desativado. Ele permanece ativado até que você o desative lá."
+
 msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
 msgstr "Isto vale somente para esta inicialização. Para sempre iniciar fora do sandbox, altere a opção na página IA das configurações."
 
@@ -2358,6 +2364,12 @@ msgstr "Tentar reiniciar o agente"
 
 msgid "Turn On and Continue"
 msgstr "Ativar e continuar"
+
+msgid "Turn On and Start Again"
+msgstr "Ativar e reiniciar"
+
+msgid "Turn On and Start Outside"
+msgstr "Ativar e iniciar fora do sandbox"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "Desativar o sandbox requer \"Permitir execução fora do sandbox\" (Configurações > IA > Sandbox), que está desativado. Ativá-lo? Ele permanece ativado até que você o desative lá."

@@ -184,14 +184,15 @@ impl AcpThread {
     }
 
     /// Applies what the agent reported about a child of this session. The
-    /// first report of a child makes its thread (or takes `existing_thread`,
-    /// one already open under that session); that thread is returned so the
-    /// connection can route the child's session to it. A child reported again,
-    /// as a reloaded session does, keeps its one thread.
+    /// first report of a child makes its thread, which is returned so the
+    /// connection can route the child's session to it; a child reported again
+    /// keeps its one thread. A reloaded session is a new thread that is sent
+    /// its children's whole history again, so it makes new threads for them
+    /// rather than taking ones a previous thread of the session made: those
+    /// already show that history, and would show it twice.
     pub fn apply_external_subagent_report(
         &mut self,
         report: ExternalSubagentReport,
-        existing_thread: Option<Entity<AcpThread>>,
         cx: &mut Context<Self>,
     ) -> Option<Entity<AcpThread>> {
         let now = Instant::now();
@@ -236,32 +237,27 @@ impl AcpThread {
             return None;
         }
 
-        let thread = match existing_thread {
-            Some(thread) => thread,
-            None => {
-                let project = self.project.clone();
-                let action_log = cx.new(|_| ActionLog::new(project.clone()));
-                let parent_session_id = self.session_id.clone();
-                let work_dirs = self.work_dirs.clone();
-                let connection = self.connection.clone();
-                let prompt_capabilities = self.prompt_capabilities.clone();
-                let session_id = report.session_id.clone();
-                let thread_title = title.clone().or_else(|| description.clone());
-                cx.new(|cx| {
-                    AcpThread::new(
-                        Some(parent_session_id),
-                        thread_title,
-                        work_dirs,
-                        connection,
-                        project,
-                        action_log,
-                        session_id,
-                        watch::Receiver::constant(prompt_capabilities),
-                        cx,
-                    )
-                })
-            }
-        };
+        let project = self.project.clone();
+        let action_log = cx.new(|_| ActionLog::new(project.clone()));
+        let parent_session_id = self.session_id.clone();
+        let work_dirs = self.work_dirs.clone();
+        let connection = self.connection.clone();
+        let prompt_capabilities = self.prompt_capabilities.clone();
+        let session_id = report.session_id.clone();
+        let thread_title = title.clone().or_else(|| description.clone());
+        let thread = cx.new(|cx| {
+            AcpThread::new(
+                Some(parent_session_id),
+                thread_title,
+                work_dirs,
+                connection,
+                project,
+                action_log,
+                session_id,
+                watch::Receiver::constant(prompt_capabilities),
+                cx,
+            )
+        });
         self.external_subagents.children.push(ExternalSubagent {
             session_id: report.session_id.clone(),
             title,
@@ -306,18 +302,17 @@ impl AcpThread {
         Ok(true)
     }
 
-    /// Ties a child to the parent's call whose id its first message carries,
-    /// so that the call's card shows the child. A later message (SendMessage)
-    /// does not move it, and an id that is no call of this thread is ignored.
+    /// Ties a child to the parent's call whose id the first message this
+    /// thread sent it carries, so that the call's card shows the child. A
+    /// later message (SendMessage) does not move it. The message can come
+    /// before the call itself: the card then shows the child once the call is
+    /// there.
     pub fn link_external_subagent_tool_call(
         &mut self,
         session_id: &acp_v1::SessionId,
         tool_call_id: acp_v1::ToolCallId,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.tool_call(&tool_call_id).is_none() {
-            return false;
-        }
         let Some(child) = self
             .external_subagents
             .children
@@ -330,14 +325,14 @@ impl AcpThread {
             return false;
         }
         child.parent_tool_call_id = Some(tool_call_id.clone());
-        self.restore_external_subagent_link(&tool_call_id, cx);
+        self.show_external_subagent_on_card(&tool_call_id, cx);
         cx.notify();
         true
     }
 
-    /// Puts a child back on its call's card after the agent updated the call:
-    /// a full `tool_call` for the same id would build the call anew.
-    pub fn restore_external_subagent_link(
+    /// Shows a child on the card of the call that launched it, once both the
+    /// child's link and the call are there: called when either arrives.
+    pub fn show_external_subagent_on_card(
         &mut self,
         tool_call_id: &acp_v1::ToolCallId,
         cx: &mut Context<Self>,

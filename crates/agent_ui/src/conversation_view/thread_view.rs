@@ -6606,8 +6606,8 @@ impl ThreadView {
     /// The built-in agent's terminal commands and fetches keep to the allowed hosts, or reach any
     /// host from the next one on, on a remote host too where its own sandbox helper confines them;
     /// an external agent starts again with or without its own hosts (see
-    /// [`Self::external_agent_network`]). It is disabled, with the reason, where the choice cannot
-    /// be kept (a remote host without such a helper, an external agent on a remote host) and while
+    /// [`Self::external_agent_network`]), on a remote host by that same helper. It is disabled, with
+    /// the reason, where the choice cannot be kept (a remote host without such a helper) and while
     /// the sandbox is off (nothing left to restrict). A right click picks what new threads in this
     /// project start with.
     fn render_network_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -6684,7 +6684,7 @@ impl ThreadView {
             }));
         let default_applies = match &native_thread {
             Some(thread) => thread.read(cx).network_choice_applies(cx),
-            None => project.read(cx).is_local(),
+            None => project::agent_sandbox::thread_network_choice_applies(project.read(cx), cx),
         };
         if !default_applies {
             return Some(button.into_any_element());
@@ -6803,8 +6803,8 @@ impl ThreadView {
         .detach();
     }
 
-    /// The network switch's state for an external agent (ADR-F96 stage 3): whether its sandbox
-    /// lets it reach any host within the network allowlist, and why the switch is disabled.
+    /// The network switch's state for an external agent (ADR-F96 stages 3 and 4), see
+    /// [`external_agent_network_state`].
     pub(super) fn external_agent_network(&self, cx: &App) -> (bool, Option<&'static str>) {
         let Some(server_view) = self.server_view.upgrade() else {
             return (
@@ -6815,53 +6815,18 @@ impl ThreadView {
             );
         };
         let server_view = server_view.read(cx);
-        if server_view.runs_outside_sandbox(cx) {
-            return (
-                true,
-                Some(i18n::t!(
-                    "The sandbox is off, so the network is not restricted either."
-                )),
-            );
-        }
-        if !self.thread.read(cx).project().read(cx).is_local() {
-            return (
-                false,
-                Some(i18n::t!(
-                    "Lifting the network restriction is not available for projects on a \
-                     remote host yet."
-                )),
-            );
-        }
-        if server_view.is_loading() {
-            return (
-                false,
-                Some(i18n::t!(
-                    "The agent is starting. Try again once it has started."
-                )),
-            );
-        }
-        match server_view.agent_sandbox_network() {
-            Some(acp_thread::AgentSandboxNetwork::AgentHosts) => (false, None),
-            Some(acp_thread::AgentSandboxNetwork::AgentHostsLifted) => (true, None),
-            Some(acp_thread::AgentSandboxNetwork::EditorAllowlist) => (
-                false,
-                Some(i18n::t!(
-                    "This agent has no hosts of its own: only the network allowlist limits it, \
-                     so there is nothing to lift."
-                )),
-            ),
-            None => (
-                false,
-                Some(i18n::t!(
-                    "Lifting the network restriction is not available for this agent."
-                )),
-            ),
-        }
+        let project = self.thread.read(cx).project().read(cx);
+        external_agent_network_state(
+            server_view.runs_outside_sandbox(cx),
+            project::agent_sandbox::thread_network_choice_applies(project, cx),
+            server_view.is_loading(),
+            server_view.agent_sandbox_network(),
+        )
     }
 
     /// Starts this thread's external agent again with its own hosts lifted, or back on them
-    /// (ADR-F96 stage 3), after asking. Lifting them first makes sure the user allows that at
-    /// all (`allow_unrestricted_network`), as the built-in agent's switch does.
+    /// (ADR-F96 stage 3), after asking. Where the user does not allow lifting them at all yet
+    /// (`allow_unrestricted_network`), the same question asks to allow it.
     pub(super) fn toggle_external_agent_network(
         &mut self,
         unrestricted: bool,
@@ -6884,30 +6849,25 @@ impl ThreadView {
             });
             return;
         }
-        let fs = self.thread.read(cx).project().read(cx).fs().clone();
-        let allowed =
-            crate::sandboxed_claude_code::allow_unrestricted_network_first_for_external_agent(
-                fs, window, cx,
-            );
-        let server_view = server_view.downgrade();
-        cx.spawn_in(window, async move |_this, cx| {
-            if !allowed.await {
-                return;
+        // Where `allow_unrestricted_network` is off, the restart's own question
+        // also turns it on, so that one click asks once; the switch being
+        // enabled is what says the restart can be offered at all.
+        if self.external_agent_network(cx).1.is_some() {
+            return;
+        }
+        server_view.update(cx, |server_view, cx| {
+            if server_view.can_restart_with_network(true, cx)
+                || !project::agent_sandbox::unrestricted_network_allowed(cx)
+            {
+                server_view.restart_with_network(true, window, cx);
             }
-            server_view
-                .update_in(cx, |server_view, window, cx| {
-                    if server_view.can_restart_with_network(true, cx) {
-                        server_view.restart_with_network(true, window, cx);
-                    }
-                })
-                .log_err();
-        })
-        .detach();
+        });
     }
 
-    /// Turns the sandbox on or off for this thread (ADR-F96). Turning it off first makes sure
-    /// running outside the sandbox is allowed at all (ADR-F92).
-    fn toggle_thread_sandbox(
+    /// Turns the sandbox on or off for this thread (ADR-F96). Turning it off needs running outside
+    /// the sandbox allowed at all (ADR-F92): the built-in agent asks for that first, and an
+    /// external agent's restart asks for it in its own question.
+    pub(super) fn toggle_thread_sandbox(
         &mut self,
         sandboxed: bool,
         window: &mut Window,
@@ -6916,13 +6876,13 @@ impl ThreadView {
         if self.tool_call_awaiting_confirmation(cx) {
             return;
         }
-        let fs = self.thread.read(cx).project().read(cx).fs().clone();
         if let Some(thread) = self.as_native_thread(cx) {
             if !sandboxed {
                 thread.update(cx, |thread, cx| thread.set_sandbox_choice(Some(true), cx));
                 cx.notify();
                 return;
             }
+            let fs = self.thread.read(cx).project().read(cx).fs().clone();
             let allowed = crate::sandboxed_claude_code::allow_outside_sandbox_first(fs, window, cx);
             cx.spawn(async move |this, cx| {
                 if !allowed.await {
@@ -6957,21 +6917,68 @@ impl ThreadView {
             });
             return;
         }
-        let allowed = crate::sandboxed_claude_code::allow_outside_sandbox_first(fs, window, cx);
-        let server_view = server_view.downgrade();
-        cx.spawn_in(window, async move |_this, cx| {
-            if !allowed.await {
-                return;
+        // Where running outside the sandbox is off, the restart's own question
+        // also turns it on, so that one click asks once.
+        server_view.update(cx, |server_view, cx| {
+            if server_view.can_restart_outside_sandbox_once_allowed(cx) {
+                server_view.restart_outside_sandbox_allowing_it(window, cx);
             }
-            server_view
-                .update_in(cx, |server_view, window, cx| {
-                    if server_view.can_restart_outside_sandbox(cx) {
-                        server_view.restart_outside_sandbox(window, cx);
-                    }
-                })
-                .log_err();
-        })
-        .detach();
+        });
+    }
+}
+
+/// The network switch's state for an external agent (ADR-F96 stages 3 and 4), out of what its
+/// view knows: whether its sandbox lets it reach any host within the network allowlist, and why
+/// the switch is disabled. A remote host's agent is started by the host's sandbox helper, under
+/// the editor-wide allowlist as its ceiling, so the switch works there as on this machine; where
+/// the project has no such sandbox (`network_choice_applies`), there is nothing to start it in.
+pub(super) fn external_agent_network_state(
+    runs_outside_sandbox: bool,
+    network_choice_applies: bool,
+    loading: bool,
+    sandbox_network: Option<acp_thread::AgentSandboxNetwork>,
+) -> (bool, Option<&'static str>) {
+    if runs_outside_sandbox {
+        return (
+            true,
+            Some(i18n::t!(
+                "The sandbox is off, so the network is not restricted either."
+            )),
+        );
+    }
+    if !network_choice_applies {
+        return (
+            false,
+            Some(i18n::t!(
+                "Lifting the network restriction needs a sandbox on the remote host, \
+                 which this connection does not have."
+            )),
+        );
+    }
+    if loading {
+        return (
+            false,
+            Some(i18n::t!(
+                "The agent is starting. Try again once it has started."
+            )),
+        );
+    }
+    match sandbox_network {
+        Some(acp_thread::AgentSandboxNetwork::AgentHosts) => (false, None),
+        Some(acp_thread::AgentSandboxNetwork::AgentHostsLifted) => (true, None),
+        Some(acp_thread::AgentSandboxNetwork::EditorAllowlist) => (
+            false,
+            Some(i18n::t!(
+                "This agent has no hosts of its own: only the network allowlist limits it, \
+                 so there is nothing to lift."
+            )),
+        ),
+        None => (
+            false,
+            Some(i18n::t!(
+                "Lifting the network restriction is not available for this agent."
+            )),
+        ),
     }
 }
 

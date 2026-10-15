@@ -8,6 +8,9 @@ msgstr ""
 msgid " (Outside Sandbox)"
 msgstr " (サンドボックスの外)"
 
+msgid "\"Allow Lifting the Network Restriction for a Thread\" was turned off, so an agent that had lifted its network restriction started again with only its own hosts. The answer it was giving was stopped; send your message again to go on."
+msgstr "「スレッドごとのネットワーク制限の解除を許可する」がオフにされたため、ネットワーク制限を解除していたエージェントが自身のホストだけで起動し直しました。生成中だった返答は止まりました。続けるにはメッセージをもう一度送信してください。"
+
 msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
 msgstr "設定 > AI > サンドボックスの「サンドボックスの外での実行を許可する」がオフのため、サンドボックスの外では何も起動しません。エージェントや Claude Code を常にサンドボックスの外で起動する設定も無視されます。許可するには、この設定をオンにしてください。"
 
@@ -1106,14 +1109,11 @@ msgstr "詳細"
 msgid "Let the Agent Reach Any Host?"
 msgstr "エージェントがすべてのホストに接続できるようにしますか？"
 
-msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file."
-msgstr "このスレッドのエージェントとそのコマンドが、ネットワークの許可リストの範囲ですべてのホストに接続できるようにするには、エージェントのサンドボックス設定の `allow_unrestricted_network` が必要ですが、オフになっています。オンにしますか？ 設定ファイルでオフにするまでオンのままです。"
+msgid "Letting this thread's agent and the commands it runs reach any host within the network allowlist needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
+msgstr "このスレッドのエージェントとそのコマンドが、ネットワークの許可リストの範囲ですべてのホストに接続できるようにするには、「スレッドごとのネットワーク制限の解除を許可する」(設定 > AI > サンドボックス) が必要ですが、オフになっています。オンにしますか？ 設定でオフにするまでオンのままです。"
 
-msgid "Letting this thread's terminal commands and fetches reach any host needs `allow_unrestricted_network` in the agent's sandbox settings, which is off. Turn it on? It stays on until you turn it off in your settings file. The network allowlist still applies."
-msgstr "このスレッドのターミナルのコマンドと fetch がすべてのホストに接続できるようにするには、エージェントのサンドボックス設定の `allow_unrestricted_network` が必要ですが、オフになっています。オンにしますか？ 設定ファイルでオフにするまでオンのままです。ネットワークの許可リストは引き続き適用されます。"
-
-msgid "Lifting the network restriction is not available for projects on a remote host yet."
-msgstr "リモートホスト上のプロジェクトでは、ネットワーク制限の解除はまだ使えません。"
+msgid "Letting this thread's terminal commands and fetches reach any host needs \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there. The network allowlist still applies."
+msgstr "このスレッドのターミナルのコマンドと fetch がすべてのホストに接続できるようにするには、「スレッドごとのネットワーク制限の解除を許可する」(設定 > AI > サンドボックス) が必要ですが、オフになっています。オンにしますか？ 設定でオフにするまでオンのままです。ネットワークの許可リストは引き続き適用されます。"
 
 msgid "Lifting the network restriction is not available for this agent."
 msgstr "このエージェントでは、ネットワーク制限の解除は使えません。"
@@ -2217,6 +2217,12 @@ msgstr "このエージェントには自身のホストの一覧がなく、ネ
 msgid "This agent is installed via npx (npm)"
 msgstr "このエージェントは npx (npm) 経由でインストールされます"
 
+msgid "This also turns on \"Allow Lifting the Network Restriction for a Thread\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "これで「スレッドごとのネットワーク制限の解除を許可する」(設定 > AI > サンドボックス) もオンになります (今はオフです)。設定でオフにするまでオンのままです。"
+
+msgid "This also turns on \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. It stays on until you turn it off there."
+msgstr "これで「サンドボックスの外での実行を許可する」(設定 > AI > サンドボックス) もオンになります (今はオフです)。設定でオフにするまでオンのままです。"
+
 msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
 msgstr "今回の起動だけです。常に外で起動するには、設定の「AI」ページで切り替えます。"
 
@@ -2351,6 +2357,12 @@ msgstr "エージェントの再起動を試みます"
 
 msgid "Turn On and Continue"
 msgstr "オンにして続ける"
+
+msgid "Turn On and Start Again"
+msgstr "オンにして起動し直す"
+
+msgid "Turn On and Start Outside"
+msgstr "オンにして外で起動"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "サンドボックスをオフにするには「サンドボックスの外での実行を許可する」(設定 > AI > サンドボックス) が必要ですが、オフになっています。オンにしますか？ 設定でオフにするまでオンのままです。"

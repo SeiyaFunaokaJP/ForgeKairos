@@ -224,6 +224,41 @@ fn network_restriction_lifted(
     }
 }
 
+/// ADR-F96 stage 2: whether a thread's network restriction is lifted by its
+/// own choice rather than by the settings alone, so that a sandboxed
+/// command's confirmation card can say "for this thread". Read like
+/// [`network_restriction_turned_off`].
+pub(crate) fn network_restriction_turned_off_by_thread_choice(
+    thread_choice: Option<bool>,
+    project: &Project,
+    cx: &App,
+) -> bool {
+    network_restriction_lifted_by_thread_choice(
+        thread_choice,
+        project::agent_sandbox::thread_network_choice_applies(project, cx),
+        project::agent_sandbox::unrestricted_network_allowed(cx),
+        AgentSettings::get_global(cx)
+            .sandbox_permissions
+            .allow_all_hosts,
+    )
+}
+
+fn network_restriction_lifted_by_thread_choice(
+    thread_choice: Option<bool>,
+    choice_applies: bool,
+    unrestricted_network_allowed: bool,
+    all_hosts_in_settings: bool,
+) -> bool {
+    thread_choice == Some(false)
+        && choice_applies
+        && network_restriction_lifted(
+            thread_choice,
+            choice_applies,
+            unrestricted_network_allowed,
+            all_hosts_in_settings,
+        )
+}
+
 /// The sandbox permissions a thread's commands and fetches run under: the
 /// persistent ones, with "any host" as [`network_restriction_turned_off`]
 /// says. Lifting the restriction is the sandbox's own unrestricted network
@@ -1283,5 +1318,56 @@ mod tests {
             &request(NetworkRequest::None, false, &["/tmp/build/cache"]),
         );
         assert_eq!(effective.write_paths, granted(&["/tmp/build"]));
+    }
+}
+
+#[cfg(test)]
+mod network_switch_tests {
+    use super::*;
+
+    /// ADR-F96 stage 2: a sandboxed command's confirmation card says the thread lifted its
+    /// network restriction only where the thread's own choice to lift it is what counts: not
+    /// where the settings alone lift it (no choice, or a choice that does not apply on a remote
+    /// host without its own sandbox helper), and not where the choice to lift it is not allowed.
+    #[test]
+    fn the_card_says_the_thread_lifted_it_only_where_its_choice_counts() {
+        for allowed in [false, true] {
+            for all_hosts in [false, true] {
+                for choice_applies in [false, true] {
+                    for choice in [None, Some(true)] {
+                        assert!(
+                            !network_restriction_lifted_by_thread_choice(
+                                choice,
+                                choice_applies,
+                                allowed,
+                                all_hosts
+                            ),
+                            "no choice to lift: {choice:?}, applies {choice_applies}, \
+                             allowed {allowed}, all hosts {all_hosts}"
+                        );
+                    }
+                }
+                assert!(
+                    !network_restriction_lifted_by_thread_choice(
+                        Some(false),
+                        false,
+                        allowed,
+                        all_hosts
+                    ),
+                    "the settings decide where the choice does not apply: allowed {allowed}, \
+                     all hosts {all_hosts}"
+                );
+                assert_eq!(
+                    network_restriction_lifted_by_thread_choice(
+                        Some(false),
+                        true,
+                        allowed,
+                        all_hosts
+                    ),
+                    allowed || all_hosts,
+                    "the choice lifts it where it may: allowed {allowed}, all hosts {all_hosts}"
+                );
+            }
+        }
     }
 }

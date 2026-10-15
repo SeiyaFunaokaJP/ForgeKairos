@@ -3948,8 +3948,8 @@ msgid "Whether a terminal opened over SSH runs its shell inside a session the\nr
 msgstr "SSH で開いたターミナルが、リモートのサーバーが生かし続けるセッションの中でシェルを動かすかどうか。接続が切れても実行中のコマンドは止まらず出力も失われず、接続し直すとすべて表示して続きから使えます。Windows ではない SSH のホストだけが対象です。\n\n既定値: true"
 
 msgctxt "settings schema"
-msgid "Whether a thread of the built-in agent may lift its network restriction\n(the network button next to the chat input): its sandboxed terminal\ncommands and fetches then reach any host without asking. While this is\noff, that button asks to turn it on first. The editor's network\nallowlist still applies. Only the user settings file is read: neither a\nproject's settings nor an agent can turn it on.\nDefault: false"
-msgstr "組み込みエージェントのスレッドがネットワーク制限を解除できるかどうか (チャット入力欄のネットワークのボタン)。解除すると、サンドボックス内のターミナルのコマンドと fetch が確認なしにすべてのホストに接続します。オフの間は、そのボタンがまずこの設定をオンにするか確認します。エディターのネットワークの許可リストは引き続き適用されます。ユーザー設定ファイルからのみ読み込まれます (プロジェクトの設定やエージェントからはオンにできません)。\n既定値: false"
+msgid "Whether a thread may lift its network restriction (the network button\nnext to the chat input). The built-in agent's sandboxed terminal commands\nand fetches then reach any host without asking; an external agent starts\nagain without its own list of hosts. While this is off, the button asks\nto turn it on first, except for the built-in agent while `allow_all_hosts`\nis on, which already lets its threads reach any host. Turning it off\nrestricts the threads that lifted it again at once (an external agent\nstarts again). The editor's network allowlist still applies. On a remote\nhost, a thread can lift it only where the host has a sandbox. Only the\nuser settings file is read: neither a project's settings nor an agent can\nturn it on.\nDefault: false"
+msgstr "スレッドがネットワーク制限を解除できるかどうか (チャット入力欄のネットワークのボタン)。組み込みエージェントでは、サンドボックス内のターミナルのコマンドと fetch が確認なしにすべてのホストに接続します。外部エージェントは、エージェント自身のホストの一覧なしで起動し直します。オフの間は、ボタンがまずこの設定をオンにするか確認します。ただし組み込みエージェントでは、`allow_all_hosts` がオンの間は確認しません (その設定でスレッドはすでにすべてのホストに接続できます)。オフにすると、解除していたスレッドはその時点で制限ありに戻ります (外部エージェントは起動し直します)。エディターのネットワークの許可リストは引き続き適用されます。リモートホストでは、そのホストにサンドボックスがある場合にだけスレッドは制限を解除できます。ユーザー設定ファイルからのみ読み込まれます (プロジェクトの設定やエージェントからはオンにできません)。\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
@@ -4148,6 +4148,10 @@ msgid "Whether the agent panel should use flexible (proportional) sizing when do
 msgstr "エージェントパネルを左右にドックしたときに、可変 (比例) サイズを使用するかどうかを設定します。\n\n有効にすると、`default_width` はパネルの幅を制御しなくなり、パネルをリセットすると既定の比率に戻ります。\n\n既定値: true"
 
 msgctxt "settings schema"
+msgid "Whether the agent's network access stays limited to the allowed hosts.\n`false` lets the built-in agent's terminal commands and fetches reach any\nhost without asking, and starts an external agent without its own list of\nhosts; either needs `sandbox_permissions.allow_unrestricted_network`\n(for the built-in agent, `allow_all_hosts` is enough), and turning that\noff restricts such threads again at once. The editor's network allowlist\nstill applies, and fetches still refuse local and private addresses. On\na remote host, applied only where the host has a sandbox."
+msgstr "エージェントのネットワークアクセスを許可されたホストに限るかどうか。`false` にすると、組み込みエージェントのターミナルのコマンドと fetch が確認なしにすべてのホストに接続し、外部エージェントは自身のホストの一覧なしで起動します (どちらも `sandbox_permissions.allow_unrestricted_network` が必要。組み込みエージェントでは `allow_all_hosts` でも足ります)。その設定をオフにすると、そうしたスレッドはその時点で制限ありに戻ります。エディターのネットワークの許可リストは引き続き適用され、fetch はローカルやプライベートのアドレスを引き続き拒否します。リモートホスト上のプロジェクトでは、そのホストにサンドボックスがある場合にだけ適用されます。"
+
+msgctxt "settings schema"
 msgid "Whether the agent's terminal commands run in the sandbox. `false` runs\nthem outside it, which needs `sandbox_permissions.allow_outside_sandbox`;\nexternal agents then start outside it without asking."
 msgstr "エージェントのターミナルのコマンドをサンドボックスの中で実行するかどうか。`false` にするとサンドボックスの外で実行します (`sandbox_permissions.allow_outside_sandbox` が必要)。外部エージェントは確認なしでサンドボックスの外で起動します。"
 
@@ -4158,10 +4162,6 @@ msgstr "ブレークポイントを ForgeKairos セッション間で再利用�
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
 msgstr "前回ドックを閉じていても、起動時にブラウザーパネルを開くかどうか。\n\n既定値: false"
-
-msgctxt "settings schema"
-msgid "Whether the built-in agent's network access stays limited to the\nallowed hosts. `false` lets its terminal commands and fetches reach any\nhost without asking, which needs\n`sandbox_permissions.allow_unrestricted_network`; the editor's network\nallowlist still applies, and fetches still refuse local and private\naddresses. Not applied to projects on a remote host yet."
-msgstr "組み込みエージェントのネットワークアクセスを許可されたホストに限るかどうか。`false` にすると、ターミナルのコマンドと fetch が確認なしにすべてのホストに接続します (`sandbox_permissions.allow_unrestricted_network` が必要)。エディターのネットワークの許可リストは引き続き適用され、fetch はローカルやプライベートのアドレスを引き続き拒否します。リモートホスト上のプロジェクトにはまだ適用されません。"
 
 msgctxt "settings schema"
 msgid "Whether the built-in browser goes through the egress allowlist proxy.\n\nThe browser is human-driven, so like the terminal it is outside egress\ncontrol by default.\n\nDefault: false"

@@ -451,6 +451,9 @@ pub struct NativeAgent {
     /// Handler installed by the UI for `create_thread` / `list_agents_and_models` tools.
     sibling_thread_host: Option<Rc<dyn SiblingThreadHost>>,
     fs: Arc<dyn Fs>,
+    /// ADR-F96: whether `allow_unrestricted_network` was on when the settings
+    /// last changed, so that turning it off can be told from other changes.
+    unrestricted_network_allowed: bool,
     _subscriptions: Vec<Subscription>,
     /// Tracks the lifecycle of global skills directory observation. We
     /// don't eagerly watch (or even check for) `~/.agents/skills/` at
@@ -609,6 +612,9 @@ impl NativeAgent {
                 // Flush thread content on quit so an in-flight async save
                 // can't leave a thread orphaned ("no thread found with ID").
                 cx.on_app_quit(Self::flush_threads_on_quit),
+                cx.observe_global::<settings::SettingsStore>(
+                    Self::handle_unrestricted_network_setting,
+                ),
             ];
 
             if !cx.has_global::<SkillIndex>() {
@@ -624,6 +630,9 @@ impl NativeAgent {
                 models: LanguageModels::new(cx),
                 sibling_thread_host: None,
                 fs,
+                unrestricted_network_allowed: project::agent_sandbox::unrestricted_network_allowed(
+                    cx,
+                ),
                 _subscriptions: subscriptions,
                 skills_state: SkillsState::default(),
             }
@@ -1434,6 +1443,22 @@ impl NativeAgent {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// ADR-F96: turning `allow_unrestricted_network` off restricts every thread that lifted its
+    /// network restriction again at once, rather than leaving the lift to come back the next time
+    /// the setting is on.
+    fn handle_unrestricted_network_setting(&mut self, cx: &mut Context<Self>) {
+        let allowed = project::agent_sandbox::unrestricted_network_allowed(cx);
+        let was_allowed = std::mem::replace(&mut self.unrestricted_network_allowed, allowed);
+        if !was_allowed || allowed {
+            return;
+        }
+        for session in self.sessions.values() {
+            session
+                .thread
+                .update(cx, |thread, cx| thread.drop_network_lift(cx));
         }
     }
 
@@ -8074,5 +8099,147 @@ fn mcp_message_content_to_acp_content_block(
             }
             acp_v1::ContentBlock::ResourceLink(link)
         }
+    }
+}
+
+#[cfg(test)]
+mod network_switch_tests {
+    use super::*;
+    use acp_thread::AgentConnection as _;
+    use fs::FakeFs;
+    use gpui::{TestAppContext, UpdateGlobal as _};
+    use serde_json::json;
+    use settings::SettingsStore;
+    use std::path::Path;
+    use util::path;
+
+    fn set_user_settings(json: &str, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(json, cx)
+                    .result()
+                    .expect("valid user settings");
+            });
+        });
+    }
+
+    /// The threads of `count` sessions of a native agent, made with `settings` as the user's, and
+    /// the sessions' threads on the protocol's side, which keep the sessions open.
+    async fn threads_of_new_sessions(
+        count: usize,
+        settings: &str,
+        cx: &mut TestAppContext,
+    ) -> (Vec<Entity<acp_thread::AcpThread>>, Vec<Entity<Thread>>) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+        });
+        set_user_settings(settings, cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/test"), json!({})).await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let thread_store = cx.new(|cx| ThreadStore::new(cx));
+        let agent = cx.update(|cx| NativeAgent::new(thread_store, Templates::new(), fs, cx));
+        let connection = Rc::new(NativeAgentConnection(agent.clone()));
+        let mut threads = Vec::new();
+        let mut sessions = Vec::new();
+        for _ in 0..count {
+            let acp_thread = cx
+                .update(|cx| {
+                    connection.clone().new_session(
+                        project.clone(),
+                        PathList::new(&[Path::new(path!("/test"))]),
+                        cx,
+                    )
+                })
+                .await
+                .expect("a session");
+            let session_id = acp_thread.read_with(cx, |thread, _| thread.session_id().clone());
+            threads.push(agent.read_with(cx, |agent, _| {
+                agent
+                    .sessions
+                    .get(&session_id)
+                    .map(|session| session.thread.clone())
+                    .expect("the session's thread")
+            }));
+            sessions.push(acp_thread);
+        }
+        (sessions, threads)
+    }
+
+    const ON: &str =
+        r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": true } } }"#;
+    const OFF: &str =
+        r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": false } } }"#;
+
+    /// ADR-F96: turning `allow_unrestricted_network` off restricts the threads that lifted their
+    /// network restriction at once, so that turning it on again does not lift them unasked.
+    /// Other changes of the settings leave the choice alone, and so does a choice to keep the
+    /// restriction.
+    #[gpui::test]
+    async fn test_turning_the_setting_off_drops_the_threads_network_lift(cx: &mut TestAppContext) {
+        const ON_WITH_MORE: &str = r#"{ "agent": { "sandbox_permissions": { "allow_unrestricted_network": true, "allow_fs_write_all": false } } }"#;
+        let (_sessions, threads) = threads_of_new_sessions(2, ON, cx).await;
+        let (lifted, kept) = (threads[0].clone(), threads[1].clone());
+        cx.update(|cx| {
+            lifted.update(cx, |thread, cx| thread.set_network_choice(Some(false), cx));
+            kept.update(cx, |thread, cx| thread.set_network_choice(Some(true), cx));
+        });
+        let unrestricted = |cx: &mut TestAppContext| {
+            cx.update(|cx| lifted.read(cx).network_restriction_turned_off(cx))
+        };
+        assert!(unrestricted(cx));
+
+        set_user_settings(ON_WITH_MORE, cx);
+        assert_eq!(
+            lifted.read_with(cx, |thread, _| thread.network_choice()),
+            Some(false),
+            "a change that keeps the setting on leaves the choice alone"
+        );
+
+        set_user_settings(OFF, cx);
+        assert!(!unrestricted(cx));
+        assert_eq!(
+            lifted.read_with(cx, |thread, _| thread.network_choice()),
+            None
+        );
+        assert_eq!(
+            kept.read_with(cx, |thread, _| thread.network_choice()),
+            Some(true),
+            "a choice to keep the restriction stays"
+        );
+
+        set_user_settings(ON, cx);
+        assert!(
+            !unrestricted(cx),
+            "turning the setting on again does not lift the thread unasked"
+        );
+    }
+
+    /// ADR-F96 stage 2: a sandboxed command's card says "this thread" only where the thread's
+    /// own choice lifted its network restriction, not where the settings' "any host" did.
+    #[gpui::test]
+    async fn test_the_card_tells_a_lift_by_the_thread_from_one_by_the_settings(
+        cx: &mut TestAppContext,
+    ) {
+        const ALL_HOSTS: &str =
+            r#"{ "agent": { "sandbox_permissions": { "allow_all_hosts": true } } }"#;
+        let (_sessions, threads) = threads_of_new_sessions(1, ALL_HOSTS, cx).await;
+        let thread = threads[0].clone();
+        let lifted_by_thread = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let (event_stream, _receiver) = ToolCallEventStream::test_for_thread(&thread, cx);
+                assert!(
+                    thread.read(cx).network_restriction_turned_off(cx),
+                    "lifted either way"
+                );
+                event_stream.network_restriction_turned_off_by_thread(cx)
+            })
+        };
+        assert!(!lifted_by_thread(cx), "the settings lift it");
+        cx.update(|cx| thread.update(cx, |thread, cx| thread.set_network_choice(Some(false), cx)));
+        assert!(lifted_by_thread(cx), "the thread's choice lifts it");
     }
 }

@@ -23,14 +23,23 @@ msgstr "取消"
 msgid "Cannot save buffer with absolute path"
 msgstr "無法以絕對路徑儲存緩衝區"
 
+msgid "Choose Normal, Vim, Helix or Emacs. The shortcut turns Helix mode on or off."
+msgstr "選擇一般、Vim、Helix 或 Emacs。快速鍵可開啟或關閉 Helix 模式。"
+
+msgid "Choose Normal, Vim, Helix or Emacs. The shortcut turns Vim mode on or off."
+msgstr "選擇一般、Vim、Helix 或 Emacs。快速鍵可開啟或關閉 Vim 模式。"
+
 msgid "Default Vim Bindings"
 msgstr "預設 Vim 按鍵繫結"
 
 msgid "Disable Vim Mode"
 msgstr "停用 Vim 模式"
 
-msgid "Enable Vim Mode"
-msgstr "啟用 Vim 模式"
+msgid "Editing Mode"
+msgstr "編輯模式"
+
+msgid "Editing Mode: {mode}"
+msgstr "編輯模式：{mode}"
 
 msgid "Failed to :w"
 msgstr "執行 :w 失敗"
@@ -47,6 +56,9 @@ msgstr "無效的引數：{}"
 msgid "No file name"
 msgstr "沒有檔案名稱"
 
+msgid "Normal"
+msgstr "一般"
+
 msgid "Nothing in register {}"
 msgstr "暫存器 {} 中沒有內容"
 
@@ -62,17 +74,8 @@ msgstr "取代"
 msgid "Use ! to write partial buffer"
 msgstr "使用 ! 寫入部分緩衝區"
 
-msgid "Vim: Off"
-msgstr "Vim：關閉"
-
-msgid "Vim: On"
-msgstr "Vim：開啟"
-
 msgid "When disabled, you can type as soon as you open a file, just like in VSCode."
 msgstr "停用時，開啟檔案後即可直接輸入，就像在 VS Code 中一樣。"
-
-msgid "When enabled, you edit with Vim key bindings."
-msgstr "啟用時，使用 Vim 按鍵繫結進行編輯。"
 
 msgid "[No Name]"
 msgstr "[未命名]"

@@ -336,6 +336,9 @@ mod tests {
 
     #[test]
     fn invalid_arguments_exit_with_2() {
+        // `run` installs the display language, which would otherwise replace the
+        // catalog of every test running beside this one.
+        let _installs = i18n::test_support::ThreadLocalInstalls::new();
         let command = TerminalSessionCommand::Kill {
             id: "no/slashes".to_string(),
         };

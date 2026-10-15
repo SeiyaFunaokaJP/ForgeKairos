@@ -152,6 +152,168 @@ fn consent_to_outside_sandbox(thread_id: ThreadId, agent_id: AgentId, cx: &mut A
     crate::thread_metadata_store::record_outside_sandbox_consent(thread_id, agent_id, cx);
 }
 
+/// ADR-F96 stage 3: the notice that turning `allow_unrestricted_network` off
+/// started an agent again in the middle of an answer.
+pub(crate) struct AnswerStoppedByNetworkRestriction;
+
+/// ADR-F96 stages 3 and 4: whether an external agent's start can be redone
+/// with its own hosts lifted (`lift`) or back on them. A remote host's agent
+/// is started by the host's helper with the editor-wide allowlist as its
+/// ceiling, as its commands are, so the judgement that lets a thread's
+/// network choice count there (`network_choice_applies`) lets this count.
+fn network_restart_possible(
+    lift: bool,
+    network_choice_applies: bool,
+    runs_outside_sandbox: bool,
+    sandbox_network: Option<AgentSandboxNetwork>,
+    unrestricted_network_allowed: bool,
+) -> bool {
+    network_choice_applies
+        && !runs_outside_sandbox
+        && match sandbox_network {
+            Some(AgentSandboxNetwork::AgentHosts) => lift && unrestricted_network_allowed,
+            Some(AgentSandboxNetwork::AgentHostsLifted) => !lift,
+            Some(AgentSandboxNetwork::EditorAllowlist) | None => false,
+        }
+}
+
+/// ADR-F96 stages 3 and 4: the network button of an external agent, on this
+/// machine and on a remote host.
+#[cfg(test)]
+mod external_agent_network_button_tests {
+    use super::network_restart_possible;
+    use super::thread_view::external_agent_network_state;
+    use acp_thread::AgentSandboxNetwork;
+
+    /// A remote host's helper takes the thread's network choice as this
+    /// machine's sandbox does, so the button restarts the agent there; where
+    /// the project has no such sandbox (no helper on the host, or one too old
+    /// to have placed the agent), it never does.
+    #[test]
+    fn the_network_restart_follows_whether_the_choice_applies() {
+        for (lift, network) in [
+            (true, AgentSandboxNetwork::AgentHosts),
+            (false, AgentSandboxNetwork::AgentHostsLifted),
+        ] {
+            assert!(network_restart_possible(
+                lift,
+                true,
+                false,
+                Some(network),
+                true
+            ));
+            assert!(!network_restart_possible(
+                lift,
+                false,
+                false,
+                Some(network),
+                true
+            ));
+            assert!(!network_restart_possible(
+                lift,
+                true,
+                true,
+                Some(network),
+                true
+            ));
+            assert!(!network_restart_possible(
+                !lift,
+                true,
+                false,
+                Some(network),
+                true
+            ));
+        }
+        assert!(
+            !network_restart_possible(
+                true,
+                true,
+                false,
+                Some(AgentSandboxNetwork::AgentHosts),
+                false
+            ),
+            "lifting needs `allow_unrestricted_network`"
+        );
+        assert!(
+            network_restart_possible(
+                false,
+                true,
+                false,
+                Some(AgentSandboxNetwork::AgentHostsLifted),
+                false
+            ),
+            "restricting again does not"
+        );
+        for lift in [false, true] {
+            assert!(!network_restart_possible(
+                lift,
+                true,
+                false,
+                Some(AgentSandboxNetwork::EditorAllowlist),
+                true
+            ));
+            assert!(!network_restart_possible(lift, true, false, None, true));
+        }
+    }
+
+    #[test]
+    fn the_network_switch_is_enabled_where_the_choice_applies() {
+        assert_eq!(
+            external_agent_network_state(false, true, false, Some(AgentSandboxNetwork::AgentHosts)),
+            (false, None)
+        );
+        assert_eq!(
+            external_agent_network_state(
+                false,
+                true,
+                false,
+                Some(AgentSandboxNetwork::AgentHostsLifted)
+            ),
+            (true, None)
+        );
+        let (unrestricted, reason) = external_agent_network_state(
+            false,
+            false,
+            false,
+            Some(AgentSandboxNetwork::AgentHosts),
+        );
+        assert!(!unrestricted);
+        assert_eq!(
+            reason,
+            Some(
+                "Lifting the network restriction needs a sandbox on the remote host, which this \
+                 connection does not have."
+            ),
+            "the reason the built-in agent's switch gives on such a host, translated as one"
+        );
+        let (unrestricted, reason) =
+            external_agent_network_state(true, false, false, Some(AgentSandboxNetwork::AgentHosts));
+        assert!(unrestricted, "outside the sandbox nothing is restricted");
+        assert!(reason.is_some());
+        assert!(
+            external_agent_network_state(false, true, true, Some(AgentSandboxNetwork::AgentHosts))
+                .1
+                .is_some(),
+            "not while the agent is starting"
+        );
+        assert!(
+            external_agent_network_state(
+                false,
+                true,
+                false,
+                Some(AgentSandboxNetwork::EditorAllowlist)
+            )
+            .1
+            .is_some()
+        );
+        assert!(
+            external_agent_network_state(false, true, false, None)
+                .1
+                .is_some()
+        );
+    }
+}
+
 /// ADR-F92: on a card whose start outside the sandbox is not allowed.
 fn open_sandbox_settings_button(id: &'static str) -> AnyElement {
     Button::new(
@@ -1267,6 +1429,10 @@ impl ConversationView {
         let mut subscriptions = vec![
             cx.observe_global_in::<SettingsStore>(window, Self::agent_ui_font_size_changed),
             cx.observe_global_in::<SettingsStore>(window, Self::invalidate_mermaid_caches),
+            cx.observe_global_in::<SettingsStore>(
+                window,
+                Self::restrict_network_once_lifting_is_not_allowed,
+            ),
             cx.observe_global_in::<AgentUiFontSize>(window, Self::agent_ui_font_size_changed),
             cx.observe_global_in::<AgentBufferFontSize>(window, Self::agent_ui_font_size_changed),
             cx.subscribe_in(
@@ -1302,6 +1468,16 @@ impl ConversationView {
                     })
                     .ok();
             }
+        })
+        .detach();
+
+        // ADR-F96: a connection that let this thread past a limit goes with
+        // the thread's view when no other view is on it, rather than waiting
+        // for an idle disconnect that may be turned off.
+        let view_id = cx.entity_id();
+        cx.on_release(move |this, cx| {
+            this.connection_store
+                .update(cx, |store, cx| store.release_connection_holder(view_id, cx));
         })
         .detach();
 
@@ -1885,6 +2061,10 @@ impl ConversationView {
                             }),
                             cx,
                         );
+                        // ADR-F96 stage 3: `allow_unrestricted_network` may have
+                        // been turned off while this start was on its way, when
+                        // there was no running agent to restrict yet.
+                        cx.defer_in(window, Self::restrict_network_once_lifting_is_not_allowed);
                     }
                     Err(err) => {
                         this.handle_load_error(
@@ -5362,7 +5542,14 @@ impl ConversationView {
     /// Never while running outside the sandbox is not allowed (ADR-F92).
     fn can_offer_start_outside_sandbox(&self, cx: &App) -> bool {
         project::agent_sandbox::outside_sandbox_allowed(cx)
-            && self.outside_sandbox.is_none()
+            && self.could_offer_start_outside_sandbox_once_allowed(cx)
+    }
+
+    /// [`Self::can_offer_start_outside_sandbox`] but for running outside the
+    /// sandbox being allowed, which the chat input's sandbox button asks to
+    /// turn on in the same question as the start (ADR-F96).
+    fn could_offer_start_outside_sandbox_once_allowed(&self, cx: &App) -> bool {
+        self.outside_sandbox.is_none()
             && self.is_external_agent()
             && !self.project.read(cx).is_via_collab()
             && (self.resumed_in_sandbox_despite_choice
@@ -5379,6 +5566,15 @@ impl ConversationView {
         matches!(self.server_state, ServerState::Connected(_))
             && !self.runs_outside_sandbox(cx)
             && self.can_offer_start_outside_sandbox(cx)
+    }
+
+    /// ADR-F96: whether the chat input's sandbox button can start this
+    /// connected thread's agent again outside its sandbox, once running
+    /// outside it is allowed (which the button asks for in the same question).
+    pub(crate) fn can_restart_outside_sandbox_once_allowed(&self, cx: &App) -> bool {
+        matches!(self.server_state, ServerState::Connected(_))
+            && !self.runs_outside_sandbox(cx)
+            && self.could_offer_start_outside_sandbox_once_allowed(cx)
     }
 
     /// ADR-F96: whether the project's default starts this external agent
@@ -5537,6 +5733,45 @@ impl ConversationView {
         self.start_agent_outside_sandbox(OutsideSandboxStart::RestartingThread, window, cx);
     }
 
+    /// ADR-F96: [`Self::restart_outside_sandbox`] for the chat input's sandbox
+    /// button, whose one question also turns on running outside the sandbox
+    /// where that is off (ADR-F92).
+    pub(crate) fn restart_outside_sandbox_allowing_it(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let on_remote_host = self.project.read(cx).is_via_remote_server();
+        let program = self.agent.agent_id().to_string();
+        let fs = self.project.read(cx).fs().clone();
+        let confirmed = crate::sandboxed_claude_code::confirm_starting_outside_sandbox_allowing_it(
+            &program,
+            on_remote_host,
+            OutsideSandboxStart::RestartingThread,
+            fs,
+            window,
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if !confirmed.await {
+                return;
+            }
+            this.update_in(cx, |this, window, cx| {
+                // The settings that had to be turned on may have changed what
+                // this thread can do, and the agent may have stopped meanwhile.
+                if this.can_restart_outside_sandbox(cx) {
+                    this.start_confirmed_agent_outside_sandbox(
+                        OutsideSandboxStart::RestartingThread,
+                        window,
+                        cx,
+                    );
+                }
+            })
+            .log_err();
+        })
+        .detach();
+    }
+
     /// ADR-F96: whether the chat input's sandbox button can start this
     /// connected thread's agent again in its sandbox.
     pub(crate) fn can_restart_in_sandbox(&self, cx: &App) -> bool {
@@ -5596,27 +5831,29 @@ impl ConversationView {
 
     /// ADR-F96 stage 3: whether the chat input's network button can start this
     /// connected external agent again with its own hosts lifted (`lift`) or
-    /// back on them. Only in the sandbox of a project on this machine, and
-    /// only for an agent that has hosts of its own to lift.
+    /// back on them. Only in a sandbox that takes a thread's network choice —
+    /// this machine's, or a remote host's helper (stage 4) — and only for an
+    /// agent that has hosts of its own to lift.
     pub(crate) fn can_restart_with_network(&self, lift: bool, cx: &App) -> bool {
         self.is_external_agent()
-            && self.project.read(cx).is_local()
-            && !self.runs_outside_sandbox(cx)
-            && match self.agent_sandbox_network() {
-                Some(AgentSandboxNetwork::AgentHosts) => {
-                    lift && project::agent_sandbox::unrestricted_network_allowed(cx)
-                }
-                Some(AgentSandboxNetwork::AgentHostsLifted) => !lift,
-                Some(AgentSandboxNetwork::EditorAllowlist) | None => false,
-            }
+            && network_restart_possible(
+                lift,
+                project::agent_sandbox::thread_network_choice_applies(self.project.read(cx), cx),
+                self.runs_outside_sandbox(cx),
+                self.agent_sandbox_network(),
+                project::agent_sandbox::unrestricted_network_allowed(cx),
+            )
     }
 
     /// ADR-F96 stage 3: starts this connected external agent again, after
-    /// asking, on a connection of this view's own that lets it reach any host
-    /// the editor-wide allowlist permits (`lift`), or back on the connection
+    /// asking, on a connection that lets it reach any host the editor-wide
+    /// allowlist permits (`lift`, shared only with the threads that lifted
+    /// their restriction too), or back on the connection
     /// that keeps it to its own hosts. Its sandbox keeps the same
     /// configuration folder, so the conversation is read back where the agent
-    /// can do that, and goes on in a new session where it cannot.
+    /// can do that, and goes on in a new session where it cannot. Where lifting
+    /// is not allowed yet (`allow_unrestricted_network`), the same question
+    /// turns that on, and the agent starts again once the settings have it.
     pub(crate) fn restart_with_network(
         &mut self,
         lift: bool,
@@ -5645,19 +5882,49 @@ impl ConversationView {
                 i18n::t!("Start Again Restricted"),
             )
         };
+        // ADR-F96: where lifting is not allowed yet, this same question also
+        // turns that on, rather than a dialog for the setting before this one.
+        let turn_on_setting = lift && !project::agent_sandbox::unrestricted_network_allowed(cx);
+        let (detail, confirm): (SharedString, &'static str) = if turn_on_setting {
+            (
+                format!(
+                    "{detail}\n\n{}",
+                    i18n::t!(
+                        "This also turns on \"Allow Lifting the Network Restriction for a \
+                         Thread\" (Settings > AI > Sandbox), which is off. It stays on until you \
+                         turn it off there."
+                    )
+                )
+                .into(),
+                i18n::t!("Turn On and Start Again"),
+            )
+        } else {
+            (detail.into(), confirm)
+        };
         let answer = window.prompt(
             PromptLevel::Info,
             title,
-            Some(detail),
+            Some(&detail),
             &[
                 PromptButton::ok(confirm),
                 PromptButton::cancel(i18n::t!("Cancel")),
             ],
             cx,
         );
+        let fs = self.project.read(cx).fs().clone();
         cx.spawn_in(window, async move |this, cx| {
             if !answer.await.is_ok_and(|index| index == 0) {
                 return;
+            }
+            if turn_on_setting {
+                let Ok(turned_on) = cx.update(|window, cx| {
+                    crate::sandboxed_claude_code::turn_on_unrestricted_network(fs, window, cx)
+                }) else {
+                    return;
+                };
+                if !turned_on.await {
+                    return;
+                }
             }
             this.update_in(cx, |this, window, cx| {
                 if !this.can_restart_with_network(lift, cx) {
@@ -5692,12 +5959,76 @@ impl ConversationView {
         .detach();
     }
 
+    /// ADR-F96 stage 3: once `allow_unrestricted_network` is turned off, an
+    /// agent running without its own hosts for this thread is restricted then,
+    /// not at its next start: it starts again on the connection that keeps it
+    /// to them, reading the conversation back where it can, as the network
+    /// button does. A view whose agent is not running starts restricted anyway
+    /// ([`Self::unrestricted_network_for_start`]).
+    fn restrict_network_once_lifting_is_not_allowed(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.unrestricted_network.is_none()
+            || project::agent_sandbox::unrestricted_network_allowed(cx)
+        {
+            return;
+        }
+        let Some(connected) = self.as_connected() else {
+            return;
+        };
+        if connected.connection.sandbox_network() != Some(AgentSandboxNetwork::AgentHostsLifted) {
+            return;
+        }
+        let session = if connected.connection.supports_load_session()
+            || connected.connection.supports_resume_session()
+        {
+            ResetSession::Resume
+        } else {
+            ResetSession::Fresh
+        };
+        let answer_stopped = connected.threads.values().any(|thread_view| {
+            thread_view.read(cx).thread.read(cx).status() == ThreadStatus::Generating
+        });
+        log::info!(
+            "{}: allow_unrestricted_network was turned off, so the agent starts again with only \
+             its own hosts",
+            self.agent.agent_id()
+        );
+        self.unrestricted_network = None;
+        self.reset_with(session, window, cx);
+        // Nobody clicked anything in this thread, so an answer cut off here
+        // would otherwise just stop without a word.
+        if answer_stopped {
+            self.workspace
+                .update(cx, |workspace, cx| {
+                    workspace.show_toast(
+                        workspace::Toast::new(
+                            workspace::notifications::NotificationId::unique::<
+                                AnswerStoppedByNetworkRestriction,
+                            >(),
+                            i18n::t!(
+                                "\"Allow Lifting the Network Restriction for a Thread\" was \
+                                 turned off, so an agent that had lifted its network restriction \
+                                 started again with only its own hosts. The answer it was giving \
+                                 was stopped; send your message again to go on."
+                            ),
+                        ),
+                        cx,
+                    );
+                })
+                .log_err();
+        }
+    }
+
     /// ADR-F96 stage 3: whether the project's default lifts this external
     /// agent's own hosts without asking
     /// (`agent.project_thread_defaults.<folder>.network` is false), as the
     /// default to start outside the sandbox does. Never while
     /// `allow_unrestricted_network` is off, nor after the network button
-    /// restricted the view again.
+    /// restricted the view again, nor on a remote host without a sandbox to
+    /// lift them in.
     fn project_default_lifts_agent_hosts(
         agent: &Rc<dyn AgentServer>,
         project: &Entity<Project>,
@@ -5707,6 +6038,7 @@ impl ConversationView {
         !kept_network_restricted
             && agent.clone().downcast::<NativeAgentServer>().is_none()
             && project::agent_sandbox::unrestricted_network_allowed(cx)
+            && project::agent_sandbox::thread_network_choice_applies(project.read(cx), cx)
             && project::agent_sandbox::project_default_network(project.read(cx), cx) == Some(false)
     }
 
@@ -5773,25 +6105,34 @@ impl ConversationView {
                 return;
             }
             this.update_in(cx, |this, window, cx| {
-                consent_to_outside_sandbox(this.thread_id, this.agent.agent_id(), cx);
-                this.kept_in_sandbox = false;
-                let key = this.connection_key.clone();
-                let agent = this.agent.clone();
-                // Kept apart from the connections other views share: the user
-                // confirmed this start here, for this thread.
-                let id = this.connection_store.update(cx, |store, cx| {
-                    store.connect_outside_sandbox(key, agent, cx)
-                });
-                this.outside_sandbox = Some(id);
-                let session = match start {
-                    OutsideSandboxStart::Once | OutsideSandboxStart::Thread => ResetSession::Resume,
-                    OutsideSandboxStart::RestartingThread => ResetSession::Fresh,
-                };
-                this.reset_with(session, window, cx);
+                this.start_confirmed_agent_outside_sandbox(start, window, cx);
             })
             .log_err();
         })
         .detach();
+    }
+
+    fn start_confirmed_agent_outside_sandbox(
+        &mut self,
+        start: OutsideSandboxStart,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        consent_to_outside_sandbox(self.thread_id, self.agent.agent_id(), cx);
+        self.kept_in_sandbox = false;
+        let key = self.connection_key.clone();
+        let agent = self.agent.clone();
+        // Kept apart from the connections other views share: the user
+        // confirmed this start here, for this thread.
+        let id = self.connection_store.update(cx, |store, cx| {
+            store.connect_outside_sandbox(key, agent, cx)
+        });
+        self.outside_sandbox = Some(id);
+        let session = match start {
+            OutsideSandboxStart::Once | OutsideSandboxStart::Thread => ResetSession::Resume,
+            OutsideSandboxStart::RestartingThread => ResetSession::Fresh,
+        };
+        self.reset_with(session, window, cx);
     }
 
     /// ADR-F49 decision 13: the consent the sandboxed Claude Code CLI asks
@@ -9783,7 +10124,6 @@ pub(crate) mod tests {
                     status: acp_thread::ExternalSubagentStatus::Running,
                     error: None,
                 },
-                None,
                 cx,
             );
             assert!(child.is_some(), "the first report makes the child's thread");
@@ -9818,6 +10158,93 @@ pub(crate) mod tests {
         active_thread(&conversation_view, cx).read_with(cx, |view, cx| {
             assert_eq!(view.thread.read(cx).session_id(), &child_session_id);
         });
+    }
+
+    /// ADR-F97: with many subagents and background tasks, the summary of the
+    /// closed list stays one line in a narrow panel, cut where the panel
+    /// ends, rather than wrapping each count onto lines of its own.
+    #[gpui::test]
+    async fn test_background_work_summary_stays_one_line_when_narrow(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (conversation_view, cx) =
+            setup_conversation_view(StubAgentServer::new(StubAgentConnection::new()), cx).await;
+        add_to_workspace_with_size(conversation_view.clone(), true, cx);
+        let thread_view = active_thread(&conversation_view, cx);
+        let thread = thread_view.read_with(cx, |view, _| view.thread.clone());
+
+        // One entry at a time, as an agent sends them: the view takes in
+        // each new entry before the next.
+        for index in 0..3 {
+            thread.update(cx, |thread, cx| {
+                let mut meta = acp_v1::Meta::new();
+                meta.insert(
+                    "claudeCode".into(),
+                    serde_json::json!({ "toolName": "Bash" }),
+                );
+                thread
+                    .handle_session_update(
+                        acp_v1::SessionUpdate::ToolCall(
+                            acp_v1::ToolCall::new(format!("bg-{index}"), "Terminal")
+                                .status(acp_v1::ToolCallStatus::Completed)
+                                .raw_input(serde_json::json!({
+                                    "command": format!("npm run watch-{index}"),
+                                    "run_in_background": true,
+                                }))
+                                .meta(meta),
+                        ),
+                        cx,
+                    )
+                    .expect("the tool call is accepted");
+            });
+            cx.run_until_parked();
+        }
+        thread.update(cx, |thread, cx| {
+            for index in 0..12 {
+                thread.apply_external_subagent_report(
+                    acp_thread::ExternalSubagentReport {
+                        session_id: acp_v1::SessionId::new(format!("external-child-{index}")),
+                        title: Some(format!("Explore {index}")),
+                        description: None,
+                        status: if index % 3 == 0 {
+                            acp_thread::ExternalSubagentStatus::Running
+                        } else {
+                            acp_thread::ExternalSubagentStatus::Idle
+                        },
+                        error: None,
+                    },
+                    cx,
+                );
+            }
+        });
+        cx.run_until_parked();
+
+        cx.simulate_resize(gpui::size(px(1200.), px(600.)));
+        cx.run_until_parked();
+        let wide = cx
+            .debug_bounds("background_work_summary_text")
+            .expect("the summary is shown");
+
+        cx.simulate_resize(gpui::size(px(200.), px(600.)));
+        cx.run_until_parked();
+        let narrow = cx
+            .debug_bounds("background_work_summary_text")
+            .expect("the summary is shown in a narrow panel");
+        let row = cx
+            .debug_bounds("background_work_summary")
+            .expect("the summary's row is shown");
+
+        assert!(
+            narrow.size.width < wide.size.width,
+            "the panel is narrower: {narrow:?} against {wide:?}"
+        );
+        assert_eq!(
+            narrow.size.height, wide.size.height,
+            "the summary stays one line: {narrow:?} against {wide:?}"
+        );
+        assert!(
+            narrow.right() <= row.right(),
+            "the summary ends inside its row: {narrow:?} in {row:?}"
+        );
     }
 
     #[gpui::test]
@@ -10630,6 +11057,9 @@ pub(crate) mod tests {
         }
     }
 
+    /// ADR-F96: the network and sandbox switches' follow-ups (TODO F57).
+    mod network_switch_tests;
+
     fn failed_to_start() -> LoadError {
         LoadError::Other("エージェントの起動に失敗しました".into())
     }
@@ -11235,6 +11665,99 @@ pub(crate) mod tests {
             session,
             "the conversation is read back there too"
         );
+    }
+
+    /// A project on a mock remote host whose installed server (and so its
+    /// sandbox helper) is `server_binary`, `None` for a host without one.
+    async fn remote_project_with_helper(
+        server_binary: Option<Arc<util::rel_path::RelPath>>,
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) -> (Entity<Project>, Entity<()>) {
+        server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+        let (options, server_session, connect_guard) = match server_binary {
+            Some(server_binary) => {
+                remote::RemoteClient::fake_server_with_server_binary(server_binary, cx, server_cx)
+            }
+            None => remote::RemoteClient::fake_server(cx, server_cx),
+        };
+        // Connecting pings the server, which a headless project would answer.
+        let ping_responder = server_cx.update(|cx| cx.new(|_| ()));
+        server_session.add_request_handler(
+            ping_responder.downgrade(),
+            |_, _: rpc::TypedEnvelope<rpc::proto::Ping>, _| async { Ok(rpc::proto::Ack {}) },
+        );
+        drop(connect_guard);
+        let remote_client = remote::RemoteClient::connect_mock(options, cx).await;
+        let project = cx.update(|cx| {
+            let client = client::Client::new(
+                Arc::new(clock::FakeSystemClock::new()),
+                http_client::FakeHttpClient::with_404_response(),
+                cx,
+            );
+            let user_store = cx.new(|cx| client::UserStore::new(client.clone(), cx));
+            Project::remote(
+                remote_client,
+                client,
+                node_runtime::NodeRuntime::unavailable(),
+                user_store,
+                Arc::new(language::LanguageRegistry::test(
+                    cx.background_executor().clone(),
+                )),
+                FakeFs::new(cx.background_executor().clone()),
+                false,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        (project, ping_responder)
+    }
+
+    /// ADR-F96 stage 4: on a remote host whose sandbox helper starts the agent,
+    /// the network button of an external agent restarts it as on this machine;
+    /// on a host without one, it stays disabled and says why.
+    #[gpui::test]
+    async fn test_the_network_button_of_an_external_agent_on_a_remote_host(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        allow_lifting_the_network(true, serde_json::json!({}), cx);
+        let helper = util::rel_path::RelPath::from_unix_str(
+            ".zed_server/forgekairos-remote-server-dev-0.0.0",
+        )
+        .expect("a valid relative path")
+        .into_arc();
+        for (server_binary, applies) in [(Some(helper), true), (None, false)] {
+            let (project, _ping_responder) =
+                remote_project_with_helper(server_binary, cx, server_cx).await;
+            assert_eq!(
+                cx.update(|cx| project::agent_sandbox::thread_network_choice_applies(
+                    project.read(cx),
+                    cx
+                )),
+                applies
+            );
+            let server = Rc::new(OutsideCapableAgentServer::new(None));
+            let (view, cx) =
+                open_outside_capable_view_on(server.clone(), None, None, project, cx).await;
+            assert_eq!(
+                sandbox_network_of(&view, cx),
+                Some(AgentSandboxNetwork::AgentHosts)
+            );
+            assert_eq!(
+                view.read_with(cx, |view, cx| view.can_restart_with_network(true, cx)),
+                applies,
+                "helper: {applies}"
+            );
+            let thread_view = view
+                .read_with(cx, |view, _| view.root_thread_view())
+                .expect("a thread view");
+            let (unrestricted, reason) =
+                thread_view.read_with(cx, |thread_view, cx| thread_view.external_agent_network(cx));
+            assert!(!unrestricted);
+            assert_eq!(reason.is_none(), applies, "helper: {applies}: {reason:?}");
+        }
     }
 
     /// ADR-F96 stage 3: the chat input's network button of an external agent

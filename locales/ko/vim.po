@@ -23,14 +23,23 @@ msgstr "취소"
 msgid "Cannot save buffer with absolute path"
 msgstr "절대 경로로는 버퍼를 저장할 수 없습니다"
 
+msgid "Choose Normal, Vim, Helix or Emacs. The shortcut turns Helix mode on or off."
+msgstr "일반, Vim, Helix, Emacs 중에서 선택합니다. 단축키로 Helix 모드를 켜거나 끕니다."
+
+msgid "Choose Normal, Vim, Helix or Emacs. The shortcut turns Vim mode on or off."
+msgstr "일반, Vim, Helix, Emacs 중에서 선택합니다. 단축키로 Vim 모드를 켜거나 끕니다."
+
 msgid "Default Vim Bindings"
 msgstr "기본 Vim 바인딩"
 
 msgid "Disable Vim Mode"
 msgstr "Vim 모드 비활성화"
 
-msgid "Enable Vim Mode"
-msgstr "Vim 모드 활성화"
+msgid "Editing Mode"
+msgstr "편집 모드"
+
+msgid "Editing Mode: {mode}"
+msgstr "편집 모드: {mode}"
 
 msgid "Failed to :w"
 msgstr ":w를 실행하지 못했습니다"
@@ -47,6 +56,9 @@ msgstr "잘못된 인수: {}"
 msgid "No file name"
 msgstr "파일 이름 없음"
 
+msgid "Normal"
+msgstr "일반"
+
 msgid "Nothing in register {}"
 msgstr "레지스터 {}이(가) 비어 있습니다"
 
@@ -62,17 +74,8 @@ msgstr "바꾸기"
 msgid "Use ! to write partial buffer"
 msgstr "버퍼의 일부를 쓰려면 !를 사용하세요"
 
-msgid "Vim: Off"
-msgstr "Vim: 꺼짐"
-
-msgid "Vim: On"
-msgstr "Vim: 켜짐"
-
 msgid "When disabled, you can type as soon as you open a file, just like in VSCode."
 msgstr "비활성화하면 VSCode처럼 파일을 열자마자 바로 입력할 수 있습니다."
-
-msgid "When enabled, you edit with Vim key bindings."
-msgstr "활성화하면 Vim 키 바인딩으로 편집합니다."
 
 msgid "[No Name]"
 msgstr "[이름 없음]"

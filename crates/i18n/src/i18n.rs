@@ -121,6 +121,10 @@ thread_local! {
     // Installs made while they were thread-local; added to the process-wide
     // generation and never reset, so this thread's generation only grows.
     static THREAD_GENERATION: Cell<u64> = const { Cell::new(0) };
+    // While installs are thread-local, the process-wide generation as it was when they
+    // became so. Installs on other threads then change nothing this thread shows, so
+    // they must not change the generation it sees either.
+    static PROCESS_GENERATION_SEEN: Cell<Option<u64>> = const { Cell::new(None) };
     // Set by `in_english`. Kept apart from `THREAD_OVERRIDE` so that `Bilingual`
     // can step out of it to the language the user reads.
     static FORCED_ENGLISH: Cell<bool> = const { Cell::new(false) };
@@ -158,7 +162,10 @@ pub fn current_locale() -> &'static str {
 /// Increases every time `install` is called, so caches of translated text can tell
 /// when they are stale.
 pub fn generation() -> u64 {
-    GENERATION.load(Ordering::SeqCst) + THREAD_GENERATION.with(Cell::get)
+    let process_generation = PROCESS_GENERATION_SEEN
+        .with(Cell::get)
+        .unwrap_or_else(|| GENERATION.load(Ordering::SeqCst));
+    process_generation + THREAD_GENERATION.with(Cell::get)
 }
 
 fn lookup_in_current(context: Option<&str>, msgid: &str) -> Option<&'static str> {
@@ -340,8 +347,11 @@ impl std::fmt::Display for Bilingual {
 impl std::error::Error for Bilingual {}
 
 pub mod test_support {
-    use super::{Catalog, INSTALLS_ARE_THREAD_LOCAL, THREAD_OVERRIDE};
+    use super::{
+        Catalog, GENERATION, INSTALLS_ARE_THREAD_LOCAL, PROCESS_GENERATION_SEEN, THREAD_OVERRIDE,
+    };
     use std::marker::PhantomData;
+    use std::sync::atomic::Ordering;
 
     /// Overrides the catalog for the current thread until dropped.
     ///
@@ -381,15 +391,23 @@ pub mod test_support {
     pub struct ThreadLocalInstalls {
         previous_override: Option<Option<&'static dyn Catalog>>,
         previous_installs_are_thread_local: bool,
+        previous_process_generation_seen: Option<u64>,
         _not_send: PhantomData<*const ()>,
     }
 
     impl ThreadLocalInstalls {
         pub fn new() -> Self {
+            // A guard inside another keeps the outer one's value, so that the generation
+            // this thread sees never goes back.
+            let process_generation_seen = PROCESS_GENERATION_SEEN
+                .with(|cell| cell.get())
+                .unwrap_or_else(|| GENERATION.load(Ordering::SeqCst));
             Self {
                 previous_override: THREAD_OVERRIDE.with(|cell| cell.replace(Some(None))),
                 previous_installs_are_thread_local: INSTALLS_ARE_THREAD_LOCAL
                     .with(|cell| cell.replace(true)),
+                previous_process_generation_seen: PROCESS_GENERATION_SEEN
+                    .with(|cell| cell.replace(Some(process_generation_seen))),
                 _not_send: PhantomData,
             }
         }
@@ -406,6 +424,7 @@ pub mod test_support {
             INSTALLS_ARE_THREAD_LOCAL
                 .with(|cell| cell.set(self.previous_installs_are_thread_local));
             THREAD_OVERRIDE.with(|cell| cell.set(self.previous_override));
+            PROCESS_GENERATION_SEEN.with(|cell| cell.set(self.previous_process_generation_seen));
         }
     }
 }

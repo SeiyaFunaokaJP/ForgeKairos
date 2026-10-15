@@ -33,7 +33,7 @@ const ALLOW_OUTSIDE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
 /// button. Saying that the editor-wide allowlist still applies keeps it from
 /// reading as a way past that allowlist, as for "Allow All Domains" below.
 const ALLOW_UNRESTRICTED_NETWORK_DESCRIPTION: &str = i18n::msg!(
-    "When on, a thread of the built-in agent can lift its network restriction with the network button next to the message input: its sandboxed terminal commands and fetches then reach any host without asking. Commands still reach only the hosts within the editor-wide network allowlist, and fetches still never reach local or private addresses. When off (the default), that button asks to turn this on first. Each command still asks for confirmation as before."
+    "When on, a thread can lift its network restriction with the network button next to the message input. The built-in agent's sandboxed terminal commands and fetches then reach any host without asking; an external agent starts again without its own list of hosts. Commands still reach only the hosts within the editor-wide network allowlist, and fetches still never reach local or private addresses. When off (the default), the button asks to turn this on first, except for the built-in agent while \"Allow All Domains\" is on, which already lets its threads reach any host. Turning this off restricts the threads that lifted it again at once (external agents start again). Each command still asks for confirmation as before. On a remote host, a thread can lift its network restriction only where the host has a sandbox."
 );
 
 /// ADR-F96: the per-folder defaults are a map keyed by folder path, which this
