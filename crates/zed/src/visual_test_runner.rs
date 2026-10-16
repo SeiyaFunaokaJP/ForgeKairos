@@ -2737,6 +2737,7 @@ fn run_multi_workspace_sidebar_visual_tests(
                             thinking_enabled: false,
                             thinking_effort: None,
                             git_operations_enabled: None,
+                            mcp_selection: Default::default(),
                             ui_scroll_position: None,
                             draft_prompt: None,
                             sandboxed_terminal_temp_dir: None,

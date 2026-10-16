@@ -47,6 +47,9 @@ msgstr "已加载 1 个描述过长的技能"
 msgid "1 global rule"
 msgstr "1 条全局规则"
 
+msgid "A change opens the agent's session again with the new servers once it finishes its turn. The conversation stays."
+msgstr "更改后，智能体完成当前回复时会使用新的服务器重新打开其会话。对话内容会保留。"
+
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "无法通过同意将含通配符的主机（{pattern}）添加到允许列表。"
 
@@ -58,6 +61,9 @@ msgstr "ACP 智能体"
 
 msgid "ACP Registry"
 msgstr "ACP 注册表"
+
+msgid "AI Browser"
+msgstr "AI 浏览器"
 
 msgid "AI Judge (Auto-Run If Safe)"
 msgstr "AI 判定（安全时自动运行）"
@@ -197,6 +203,9 @@ msgstr "侧边栏所有会话的元数据"
 msgid "All domains (unrestricted)"
 msgstr "所有域名（不受限制）"
 
+msgid "All external agents are up to date."
+msgstr "所有外部智能体均为最新版本。"
+
 msgid "All paths except protected Git metadata"
 msgstr "除受保护的 Git 元数据外的所有路径"
 
@@ -232,6 +241,10 @@ msgstr "settings.json 中的 `agent_servers` → `{}` → `env` → `{variable}`
 
 msgid "An Error Happened"
 msgstr "发生了错误"
+
+msgid "An update is available for {count} external agent: {list}"
+msgid_plural "Updates are available for {count} external agents: {list}"
+msgstr[0] "{count} 个外部智能体有可用更新：{list}"
 
 msgid "Answer the tool call waiting for confirmation before switching."
 msgstr "请先回应等待确认的工具调用，再进行切换。"
@@ -377,6 +390,9 @@ msgstr "聊聊你的代码库。"
 msgid "Check for Claude Code Updates"
 msgstr "检查 Claude Code 更新"
 
+msgid "Check for Updates"
+msgstr "检查更新"
+
 msgid "Check the server docs for required arguments and environment variables."
 msgstr "查看服务器文档，了解所需的参数和环境变量。"
 
@@ -431,8 +447,8 @@ msgstr "点击预览"
 msgid "Click to copy rating ID"
 msgstr "点击以复制评价 ID"
 
-msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
-msgstr "点击以打开与此智能体的会话。不会从此处进行任何更新，也不会停止正在运行的会话。新连接的会话会启动最新版本，正在运行的会话会显示更新横幅。"
+msgid "Click to update. Running sessions are not stopped: the agent's next start installs the new version, and running threads show an update banner."
+msgstr "点击以更新。不会停止正在运行的会话：智能体下次启动时会安装新版本，正在运行的线程会显示更新横幅。"
 
 msgid "Clipboard does not contain text"
 msgstr "剪贴板中没有文本"
@@ -565,6 +581,9 @@ msgstr "费用：{}"
 
 msgid "Could not authenticate with {provider}."
 msgstr "无法向 {provider} 认证。"
+
+msgid "Could not check for agent updates: {error}"
+msgstr "无法检查智能体更新：{error}"
 
 msgid "Could not check the Claude Code already placed in WSL."
 msgstr "无法检查已放置在 WSL 中的 Claude Code。"
@@ -1100,6 +1119,9 @@ msgstr "保留"
 msgid "Keep All"
 msgstr "全部保留"
 
+msgid "Later"
+msgstr "稍后"
+
 msgid "Latest"
 msgstr "最新"
 
@@ -1154,11 +1176,17 @@ msgstr "使用 Claude Code 登录（订阅）"
 msgid "Log Out"
 msgstr "退出登录"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "MCP Server Commands"
 msgstr "MCP 服务器命令"
 
 msgid "MCP Servers"
 msgstr "MCP 服务器"
+
+msgid "MCP {on}/{total}"
+msgstr "MCP {on}/{total}"
 
 msgid "Make Subagent Full Screen"
 msgstr "将子智能体全屏显示"
@@ -2000,6 +2028,12 @@ msgstr "终端内联助手错误：{}"
 msgid "Thanks for your feedback!"
 msgstr "感谢你的反馈！"
 
+msgid "The ACP registry is not available, so agent updates cannot be checked."
+msgstr "ACP 注册表不可用，因此无法检查智能体更新。"
+
+msgid "The AI browser is not given to an agent in the sandbox."
+msgstr "沙盒中的智能体不会获得 AI 浏览器。"
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "找不到发送到远程主机的 Claude Code。请重试。"
 
@@ -2032,6 +2066,12 @@ msgstr "智能体无法使用 `getDiagnostics`，因此看不到编辑器显示�
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "发送第一条消息时智能体才会启动。请先选择它的沙盒和网络：启动后，此会话中会保持不变。"
+
+msgid "The agent starts with the servers checked here. You can change them after it starts too."
+msgstr "智能体将使用此处勾选的服务器启动。启动后也可以更改。"
+
+msgid "The agent stops getting the tools of what you turn off from its next tool call on."
+msgstr "关闭的项目从下一次工具调用起不再向智能体提供其工具。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "智能体已添加到 settings.json，但尚未加载。请稍后从 + 菜单中打开它。"
@@ -2190,6 +2230,9 @@ msgstr "当前窗口"
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
 msgstr "此智能体可以使用 ForgeKairos 的 IDE 工具：高亮、注释、导览、悬停、定义、引用和符号搜索"
 
+msgid "This agent can't open its session again, so its MCP servers stay as it started with them. Start a new thread to change them."
+msgstr "此智能体无法重新打开其会话，因此其 MCP 服务器保持启动时的状态。要更改，请新建一个会话。"
+
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "此智能体不支持查看之前的消息，但会话将从上次中断的地方继续。"
 
@@ -2346,6 +2389,9 @@ msgstr "开启并继续"
 msgid "Turn On and Start Outside"
 msgstr "开启并在沙盒外启动"
 
+msgid "Turn this thread's MCP servers on or off. Each thread keeps its own choice."
+msgstr "开启或关闭此会话的 MCP 服务器。每个会话各自保留选择。"
+
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "关闭沙盒需要开启“允许在沙盒外运行”（设置 > AI > 沙盒），但它目前已关闭。要开启吗？在设置中关闭之前，它会一直保持开启。"
 
@@ -2379,6 +2425,9 @@ msgstr "取消收藏模型"
 msgid "Unknown"
 msgstr "未知"
 
+msgid "Update"
+msgstr "更新"
+
 msgid "Update Claude Code to v{to}"
 msgstr "将 Claude Code 更新到 v{to}"
 
@@ -2393,6 +2442,9 @@ msgstr "有可用更新：v{latest}"
 
 msgid "Update to v{}"
 msgstr "更新至 v{}"
+
+msgid "Updates when it next starts"
+msgstr "下次启动时更新"
 
 msgid "Upgrade"
 msgstr "升级"
@@ -2498,6 +2550,9 @@ msgstr "你已被自动重置为免费套餐。"
 
 msgid "Your Zed Pro Trial has expired"
 msgstr "你的 Zed Pro 试用期已到期"
+
+msgid "Your change is applied when the agent finishes its turn: its session is opened again with the new servers."
+msgstr "更改将在智能体完成当前回复时生效：会使用新的服务器重新打开其会话。"
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "按原样使用你平时的设置和登录。"
@@ -2609,6 +2664,9 @@ msgstr "{keybinding} 打开聊天"
 
 msgid "{minutes} minutes ago"
 msgstr "{minutes} 分钟前"
+
+msgid "{name} {installed} → {available}"
+msgstr "{name} {installed} → {available}"
 
 msgid "{notice}. Starts `{program}` on this PC in the project folder."
 msgstr "{notice}。在本机的项目文件夹中启动 `{program}`。"

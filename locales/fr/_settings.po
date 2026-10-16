@@ -20,6 +20,14 @@ msgctxt "ActivateOnClose"
 msgid "Neighbour"
 msgstr "Voisin"
 
+msgctxt "AgentServersUpdateCheck"
+msgid "Manual"
+msgstr "Manuel"
+
+msgctxt "AgentServersUpdateCheck"
+msgid "On Startup"
+msgstr "Au démarrage"
+
 msgctxt "AlternateScroll"
 msgid "Off"
 msgstr "Désactivé"
@@ -1395,6 +1403,10 @@ msgstr "Police du panneau de l'agent"
 msgctxt "settings"
 msgid "Agent Review"
 msgstr "Révision de l'agent"
+
+msgctxt "settings"
+msgid "Agent Update Check"
+msgstr "Recherche de mises à jour des agents"
 
 msgctxt "settings"
 msgid "Allow Rewrap"
@@ -5267,6 +5279,10 @@ msgstr "Quand enregistrer automatiquement les modifications du tampon."
 msgctxt "settings"
 msgid "When to hide the mouse cursor."
 msgstr "Quand masquer le curseur de la souris."
+
+msgctxt "settings"
+msgid "When to look for newer versions of the external agents installed from the ACP registry. An agent keeps starting the installed version until you agree to an update. Manual only checks when you run \"agent: check for agent updates\" or click Check for Updates on the ACP registry page."
+msgstr "Quand rechercher de nouvelles versions des agents externes installés depuis le registre ACP. Un agent continue de démarrer la version installée tant que vous n'avez pas accepté une mise à jour. En mode manuel, la recherche n'a lieu que lorsque vous exécutez \"agent: check for agent updates\" ou cliquez sur « Rechercher des mises à jour » dans la page du registre ACP."
 
 msgctxt "settings"
 msgid "When to play a sound when the agent has either completed its response, or needs user input."

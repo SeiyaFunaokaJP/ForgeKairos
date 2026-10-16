@@ -12,7 +12,7 @@ use agent_client_protocol::schema::{v1 as acp_v1, v2 as acp_v2};
 #[cfg(test)]
 use agent_servers::AgentServerDelegate;
 use agent_servers::{AcpConnection, AgentServer, GEMINI_TERMINAL_AUTH_METHOD_ID};
-use agent_settings::{AgentProfileId, AgentSettings};
+use agent_settings::{AgentProfileId, AgentSettings, McpSelection};
 use anyhow::{Result, anyhow};
 #[cfg(feature = "audio")]
 use audio::{Audio, Sound};
@@ -1010,6 +1010,19 @@ pub struct ConversationView {
     /// ADR-F103: the Add Context menu of the row of a thread whose agent is
     /// not running.
     prelaunch_add_context_menu_handle: PopoverMenuHandle<ContextMenu>,
+    /// ADR-F102: the MCP servers this external agent's thread has on (its
+    /// chat input's MCP menu). Its session is opened with them, and opened
+    /// again when they change.
+    mcp_selection: McpSelection,
+    /// ADR-F102: [`Self::mcp_selection`] changed while the agent was busy, so
+    /// the session is opened again once the turn is over.
+    mcp_reopen_pending: bool,
+    /// ADR-F102: the box a session opened again for its MCP servers was
+    /// written in, until a session takes it. A reopen that fails leaves only
+    /// the error card, and the session it reloads afterwards has no draft of
+    /// its own to fill the box from (the draft store holds drafts, not the
+    /// boxes of threads that have a session).
+    mcp_reopen_draft: Option<Entity<MessageEditor>>,
     agent_server_store: Entity<AgentServerStore>,
     workspace: WeakEntity<Workspace>,
     project: Entity<Project>,
@@ -1783,6 +1796,7 @@ impl ConversationView {
         let api_key_status_task = api_key_editor
             .is_some()
             .then(|| Self::load_api_key_status(agent.agent_id(), cx));
+        let mcp_selection = crate::thread_metadata_store::thread_mcp_selection(thread_id, cx);
 
         let server_state = if new_thread_launch.is_some() && !starts_now {
             let message_editor = Self::new_draft_editor(
@@ -1812,6 +1826,7 @@ impl ConversationView {
                 project.clone(),
                 initial_content,
                 None,
+                mcp_selection.clone(),
                 source,
                 window,
                 cx,
@@ -1834,6 +1849,9 @@ impl ConversationView {
             prelaunch_options_read: PrelaunchOptionsRead::NotAsked,
             follow_on_start: false,
             prelaunch_add_context_menu_handle: PopoverMenuHandle::default(),
+            mcp_selection,
+            mcp_reopen_pending: false,
+            mcp_reopen_draft: None,
             agent_server_store,
             workspace,
             project: project.clone(),
@@ -1974,31 +1992,84 @@ impl ConversationView {
         if self.pending_launch_choice(cx).is_some() {
             return;
         }
-        let place = match (self.outside_sandbox, self.unrestricted_network) {
-            (Some(id), _) => ConnectionPlace::OutsideSandbox(id),
-            (None, Some(id)) => ConnectionPlace::UnrestrictedNetwork(id),
-            (None, None) if self.resumed_in_sandbox_despite_choice || self.kept_in_sandbox => {
-                ConnectionPlace::InSandbox
-            }
-            (None, None) => ConnectionPlace::AsTheSettingsSay,
-        };
+        let place = self.connection_place();
         self.connection_store.update(cx, |store, cx| {
             store.restart_connection_at(self.connection_key.clone(), place, self.agent.clone(), cx);
         });
         self.reset(window, cx);
     }
 
+    /// Where this view's connection is, among the agent's connections.
+    fn connection_place(&self) -> ConnectionPlace {
+        match (self.outside_sandbox, self.unrestricted_network) {
+            (Some(id), _) => ConnectionPlace::OutsideSandbox(id),
+            (None, Some(id)) => ConnectionPlace::UnrestrictedNetwork(id),
+            (None, None) if self.resumed_in_sandbox_despite_choice || self.kept_in_sandbox => {
+                ConnectionPlace::InSandbox
+            }
+            (None, None) => ConnectionPlace::AsTheSettingsSay,
+        }
+    }
+
     fn reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.reset_with(ResetSession::Resume, window, cx);
     }
 
+    /// ADR-F101: a start that launched the installed version reports the
+    /// registry's newer one before there is a thread to show it on.
+    fn show_new_version_reported_at_start(&self, cx: &mut Context<Self>) {
+        if let Some(version) = self
+            .connection_store
+            .read(cx)
+            .new_version_available(&self.connection_key)
+            .cloned()
+            && let Some(thread) = self.root_thread_view()
+        {
+            thread.update(cx, |thread, cx| {
+                thread.new_server_version_available = Some(version);
+                cx.notify();
+            });
+        }
+    }
+
+    /// ADR-F101: the user agreed to update the agent (its update banner) where
+    /// this view's connection installed it. The start this makes installs the
+    /// registry's version there.
+    pub(crate) fn update_agent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let place = self.connection_place();
+        self.connection_store.update(cx, |store, cx| {
+            store.begin_agent_update(&self.connection_key, place, cx)
+        });
+        self.reset(window, cx);
+    }
+
     fn reset_with(&mut self, session: ResetSession, window: &mut Window, cx: &mut Context<Self>) {
+        self.reset_with_adopting(session, None, window, cx);
+    }
+
+    /// [`Self::reset_with`], building the thread around `adopted_draft`'s box
+    /// (ADR-F102: what the user was writing stays where it was).
+    fn reset_with_adopting(
+        &mut self,
+        session: ResetSession,
+        adopted_draft: Option<AdoptedDraft>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // ADR-F99: nothing may start a draft's agent but its first message
         // (a saved API key or a reload would otherwise start it, unasked and
         // past its switches), and the box keeps what was typed in it.
         if self.pending_launch_choice(cx).is_some() {
             return;
         }
+        let adopted_draft = adopted_draft.or_else(|| {
+            let editor = self.mcp_reopen_draft.clone()?;
+            (session == ResetSession::Resume).then_some(AdoptedDraft {
+                editor,
+                auto_submit: false,
+                follow: self.follow_on_start,
+            })
+        });
         let (resume_session_id, work_dirs, title) = self
             .root_thread_view()
             .map(|thread_view| {
@@ -2162,7 +2233,8 @@ impl ConversationView {
             title,
             self.project.clone(),
             initial_content,
-            None,
+            adopted_draft,
+            self.mcp_selection.clone(),
             AgentThreadSource::AgentPanel,
             window,
             cx,
@@ -2193,6 +2265,7 @@ impl ConversationView {
         project: Entity<Project>,
         initial_content: Option<AgentInitialContent>,
         adopted_draft: Option<AdoptedDraft>,
+        mcp_selection: McpSelection,
         source: AgentThreadSource,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -2318,25 +2391,48 @@ impl ConversationView {
             );
 
             let mut resumed_without_history = false;
+            // ADR-F102: an external agent's session gets the MCP servers its
+            // thread has on.
+            let acp_connection = connection.clone().downcast::<AcpConnection>();
             let result = if let Some(session_id) = resume_session_id.clone() {
                 cx.update(|_, cx| {
                     if connection.supports_load_session() {
-                        connection.clone().load_session(
-                            session_id,
-                            project.clone(),
-                            session_work_dirs,
-                            title,
-                            cx,
-                        )
+                        match acp_connection {
+                            Some(acp_connection) => acp_connection.load_session_with_mcp(
+                                session_id,
+                                project.clone(),
+                                session_work_dirs,
+                                title,
+                                mcp_selection,
+                                cx,
+                            ),
+                            None => connection.clone().load_session(
+                                session_id,
+                                project.clone(),
+                                session_work_dirs,
+                                title,
+                                cx,
+                            ),
+                        }
                     } else if connection.supports_resume_session() {
                         resumed_without_history = true;
-                        connection.clone().resume_session(
-                            session_id,
-                            project.clone(),
-                            session_work_dirs,
-                            title,
-                            cx,
-                        )
+                        match acp_connection {
+                            Some(acp_connection) => acp_connection.resume_session_with_mcp(
+                                session_id,
+                                project.clone(),
+                                session_work_dirs,
+                                title,
+                                mcp_selection,
+                                cx,
+                            ),
+                            None => connection.clone().resume_session(
+                                session_id,
+                                project.clone(),
+                                session_work_dirs,
+                                title,
+                                cx,
+                            ),
+                        }
                     } else {
                         Task::ready(Err(anyhow!(LoadError::Other(
                             i18n::t!(
@@ -2348,10 +2444,16 @@ impl ConversationView {
                 })
                 .log_err()
             } else {
-                cx.update(|_, cx| {
-                    connection
+                cx.update(|_, cx| match acp_connection {
+                    Some(acp_connection) => acp_connection.new_session_with_mcp(
+                        project.clone(),
+                        session_work_dirs,
+                        mcp_selection,
+                        cx,
+                    ),
+                    None => connection
                         .clone()
-                        .new_session(project.clone(), session_work_dirs, cx)
+                        .new_session(project.clone(), session_work_dirs, cx),
                 })
                 .log_err()
             };
@@ -2378,6 +2480,7 @@ impl ConversationView {
                 match result {
                     Ok(thread) => {
                         this.clear_resolved_request_elicitations_for_connection(&connection, cx);
+                        this.mcp_reopen_draft = None;
                         let root_session_id = thread.read(cx).session_id().clone();
 
                         let conversation = cx.new(|cx| {
@@ -2444,6 +2547,7 @@ impl ConversationView {
                             }),
                             cx,
                         );
+                        this.show_new_version_reported_at_start(cx);
                         // ADR-F96 stage 3: `allow_unrestricted_network` may have
                         // been turned off while this start was on its way, when
                         // there was no running agent to restrict yet.
@@ -2893,6 +2997,164 @@ impl ConversationView {
         matches!(self.server_state, ServerState::Parked(_))
     }
 
+    /// ADR-F102: the chat input's MCP menu switched this external agent's
+    /// thread's MCP servers. Before the agent starts, the start takes them;
+    /// after, its session is opened again with them as soon as it is idle.
+    pub(crate) fn set_mcp_selection(
+        &mut self,
+        selection: McpSelection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if selection == self.mcp_selection {
+            return;
+        }
+        crate::thread_metadata_store::record_thread_mcp_selection(
+            self.thread_id,
+            selection.clone(),
+            cx,
+        );
+        self.mcp_selection = selection;
+        self.apply_mcp_selection(window, cx);
+        cx.notify();
+    }
+
+    /// ADR-F102: opens the running session again with the view's MCP selection
+    /// when it has other servers, keeping the conversation (read back from the
+    /// agent) and the box the user is writing in. A busy agent — a turn
+    /// running, or messages queued to follow it — keeps its session until it
+    /// is done.
+    fn apply_mcp_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.mcp_reopen_pending = false;
+        let Some(connected) = self.as_connected() else {
+            return;
+        };
+        let Some(connection) = connected.connection.clone().downcast::<AcpConnection>() else {
+            return;
+        };
+        let Some(root) = self.root_thread_view() else {
+            return;
+        };
+        let session_id = root.read(cx).thread.read(cx).session_id().clone();
+        if connection
+            .session_mcp(&session_id)
+            .is_none_or(|session| session.selection == self.mcp_selection)
+            || !connection.can_reopen_sessions()
+        {
+            return;
+        }
+        // A message on its way (a queued one the turn's end took off the
+        // queue, sent once the cancel settles) is not generating yet, and
+        // reopening would drop it with the thread view.
+        let busy = matches!(
+            root.read(cx).thread.read(cx).status(),
+            ThreadStatus::Generating
+        ) || !root.read(cx).message_queue.is_empty()
+            || root.read(cx).is_loading_contents;
+        if busy {
+            self.mcp_reopen_pending = true;
+            cx.notify();
+            return;
+        }
+        let editor = root.read(cx).message_editor.clone();
+        self.mcp_reopen_draft = Some(editor.clone());
+        // ADR-F103: the reopened thread follows the agent as this one did,
+        // including on a retry after a failed reopen (`reset_with_adopting`).
+        self.follow_on_start = root.read(cx).should_be_following;
+        connection.release_session_for_reopen(&session_id, cx);
+        log::info!(
+            "opening the session of {} again for its new MCP servers",
+            self.agent.agent_id()
+        );
+        self.reset_with_adopting(
+            ResetSession::Resume,
+            Some(AdoptedDraft {
+                editor,
+                auto_submit: false,
+                follow: self.follow_on_start,
+            }),
+            window,
+            cx,
+        );
+    }
+
+    /// ADR-F102: what the chat input's MCP menu shows for this external
+    /// agent's thread: what its session was offered once it runs, what the
+    /// settings would give it before then. `None` for the built-in agent (its
+    /// thread has its own) and while there is nothing to show.
+    pub(crate) fn external_mcp_menu(&self, cx: &App) -> Option<thread_view::McpMenu> {
+        let root_session_id = self
+            .root_thread_view()
+            .map(|root| root.read(cx).thread.read(cx).session_id().clone());
+        self.external_mcp_menu_for(root_session_id.as_ref(), cx)
+    }
+
+    /// [`Self::external_mcp_menu`] for the root thread's session, which the
+    /// root thread's view passes in: it renders the menu while it is being
+    /// updated, so it cannot be read here.
+    pub(crate) fn external_mcp_menu_for(
+        &self,
+        root_session_id: Option<&acp_v1::SessionId>,
+        cx: &App,
+    ) -> Option<thread_view::McpMenu> {
+        if !self.is_external_agent() {
+            return None;
+        }
+        if self.is_parked() {
+            let sandboxed = self
+                .pending_launch_choice(cx)
+                .map_or(true, |choice| choice.sandboxed);
+            let offer = agent_servers::prelaunch_mcp_offer(&self.project, sandboxed, cx);
+            // In the sandbox the browser is never given (ADR-F89); the row
+            // says so rather than going missing.
+            let browser_in_sandbox = sandboxed
+                && ide_server::agent_endpoint_enabled(cx)
+                && ide_server::browser_tools_enabled(cx);
+            let mut rows = thread_view::mcp_menu_rows(&offer);
+            if browser_in_sandbox {
+                rows.insert(
+                    usize::from(offer.ide_tools),
+                    thread_view::McpMenuRow::Browser,
+                );
+            }
+            return Some(thread_view::McpMenu {
+                rows,
+                selection: self.mcp_selection.clone(),
+                locked_reason: None,
+                browser_reason: browser_in_sandbox.then(|| {
+                    i18n::t!("The AI browser is not given to an agent in the sandbox.").into()
+                }),
+                note: i18n::t!(
+                    "The agent starts with the servers checked here. You can change them after \
+                     it starts too."
+                )
+                .into(),
+                pending: false,
+            });
+        }
+        let connected = self.as_connected()?;
+        let connection = connected.connection.clone().downcast::<AcpConnection>()?;
+        let session = connection.session_mcp(root_session_id?)?;
+        Some(thread_view::McpMenu {
+            rows: thread_view::mcp_menu_rows(&session.offer),
+            selection: self.mcp_selection.clone(),
+            locked_reason: (!connection.can_reopen_sessions()).then(|| {
+                i18n::t!(
+                    "This agent can't open its session again, so its MCP servers stay as it \
+                     started with them. Start a new thread to change them."
+                )
+                .into()
+            }),
+            browser_reason: None,
+            note: i18n::t!(
+                "A change opens the agent's session again with the new servers once it finishes \
+                 its turn. The conversation stays."
+            )
+            .into(),
+            pending: self.mcp_reopen_pending,
+        })
+    }
+
     /// Whether this view shows why its agent could not start, with no thread
     /// behind it.
     pub(crate) fn is_load_error(&self) -> bool {
@@ -3136,6 +3398,7 @@ impl ConversationView {
             self.project.clone(),
             None,
             Some(adopted),
+            self.mcp_selection.clone(),
             AgentThreadSource::AgentPanel,
             window,
             cx,
@@ -3325,6 +3588,11 @@ impl ConversationView {
                         active.sync_reported_activity(cx);
                         active.sync_generating_indicator(cx);
                     });
+                }
+                if !is_subagent && self.mcp_reopen_pending {
+                    // After the other handlers of this change (a queued
+                    // message may be sent now), not in the middle of them.
+                    cx.defer_in(window, Self::apply_mcp_selection);
                 }
             }
             AcpThreadEvent::SubmissionUpdated(submission_id) => {
@@ -3938,13 +4206,23 @@ impl ConversationView {
             .cloned()
             .unwrap_or_else(|| self.project.read(cx).default_path_list(cx));
 
-        let subagent_thread_task = connected.connection.clone().load_session(
-            subagent_id,
-            self.project.clone(),
-            work_dirs,
-            None,
-            cx,
-        );
+        let subagent_thread_task = match connected.connection.clone().downcast::<AcpConnection>() {
+            Some(acp_connection) => acp_connection.load_session_with_mcp(
+                subagent_id,
+                self.project.clone(),
+                work_dirs,
+                None,
+                self.mcp_selection.clone(),
+                cx,
+            ),
+            None => connected.connection.clone().load_session(
+                subagent_id,
+                self.project.clone(),
+                work_dirs,
+                None,
+                cx,
+            ),
+        };
 
         cx.spawn_in(window, async move |this, cx| {
             let subagent_thread = subagent_thread_task.await?;
@@ -7135,6 +7413,7 @@ impl ConversationView {
                     .child(self.render_prelaunch_context_buttons(message_editor, cx))
                     .child(div().flex_1())
                     .children(self.render_launch_switches(cx))
+                    .children(self.render_prelaunch_mcp_menu(cx))
                     .children(pickers)
                     .children(self.render_prelaunch_options_read(not_started, prelaunch.is_some()))
                     .child(send_button),
@@ -7245,6 +7524,20 @@ impl ConversationView {
             PrelaunchOptionsRead::NotAsked | PrelaunchOptionsRead::Over => return None,
         };
         Some(Label::new(label).size(LabelSize::Small).color(Color::Muted))
+    }
+
+    /// ADR-F102: the MCP menu of a draft whose agent has not started.
+    fn render_prelaunch_mcp_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let menu = self.external_mcp_menu(cx)?;
+        let this = cx.weak_entity();
+        thread_view::render_mcp_menu(
+            "prelaunch-mcp",
+            menu,
+            Rc::new(move |selection, window, cx| {
+                this.update(cx, |this, cx| this.set_mcp_selection(selection, window, cx))
+                    .log_err();
+            }),
+        )
     }
 
     fn render_launch_switches(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
@@ -9151,6 +9444,375 @@ pub(crate) mod tests {
             cx.windows()
                 .iter()
                 .any(|window| window.downcast::<AgentNotification>().is_some())
+        );
+    }
+
+    fn acp_connection_of(
+        view: &Entity<ConversationView>,
+        cx: &mut VisualTestContext,
+    ) -> Rc<AcpConnection> {
+        view.read_with(cx, |view, _| {
+            view.as_connected()
+                .expect("the agent runs")
+                .connection
+                .clone()
+                .downcast::<AcpConnection>()
+                .expect("the fake hands out its ACP connection")
+        })
+    }
+
+    fn root_session_mcp_of(
+        view: &Entity<ConversationView>,
+        cx: &mut VisualTestContext,
+    ) -> Option<agent_servers::SessionMcp> {
+        let connection = acp_connection_of(view, cx);
+        let session_id = view.read_with(cx, |view, cx| {
+            view.root_thread(cx)
+                .expect("a root thread")
+                .read(cx)
+                .session_id()
+                .clone()
+        });
+        connection.session_mcp(&session_id)
+    }
+
+    /// ADR-F102: switching an external agent's MCP servers while its turn runs
+    /// waits for the turn to end, then opens the session again with the new
+    /// list, keeping what the user was writing; the thread remembers the list.
+    /// Once the agent is idle, a switch opens the session again at once.
+    #[gpui::test]
+    async fn test_mcp_menu_reopens_the_session_once_the_turn_is_over(cx: &mut TestAppContext) {
+        init_test(cx);
+        let server = FakeAcpAgentServer::exposing_acp_connection();
+        let loads = server.load_session_count();
+        let (view, cx) = setup_conversation_view(server.clone(), cx).await;
+        cx.run_until_parked();
+        assert!(
+            root_session_mcp_of(&view, cx).is_some_and(|session| session.selection.is_all_on()),
+            "a thread starts with everything on"
+        );
+
+        let release = server.hold_next_prompt();
+        let editor = message_editor(&view, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text("Hello", window, cx)
+        });
+        active_thread(&view, cx).update_in(cx, |thread, window, cx| thread.send(window, cx));
+        cx.run_until_parked();
+        assert!(view.read_with(cx, |view, cx| {
+            matches!(
+                view.root_thread(cx)
+                    .expect("a root thread")
+                    .read(cx)
+                    .status(),
+                ThreadStatus::Generating
+            )
+        }));
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_text("Next question", window, cx)
+        });
+
+        let mut github_off = McpSelection::default();
+        github_off.set_server_enabled("github", false);
+        view.update_in(cx, |view, window, cx| {
+            view.set_mcp_selection(github_off.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(loads.load(Ordering::SeqCst), 0, "the turn is not cut short");
+        assert!(view.read_with(cx, |view, _| view.mcp_reopen_pending));
+        assert!(
+            view.read_with(cx, |view, cx| view.external_mcp_menu(cx))
+                .is_some_and(|menu| menu.pending && menu.selection == github_off)
+        );
+
+        release.send(()).await.expect("the turn is held");
+        cx.run_until_parked();
+        assert_eq!(
+            loads.load(Ordering::SeqCst),
+            1,
+            "opened again after the turn"
+        );
+        assert!(!view.read_with(cx, |view, _| view.mcp_reopen_pending));
+        assert_eq!(
+            root_session_mcp_of(&view, cx).map(|session| session.selection),
+            Some(github_off.clone())
+        );
+        assert_eq!(
+            message_editor(&view, cx).read_with(cx, |editor, cx| editor.text(cx)),
+            "Next question",
+            "the box the user was writing in comes along"
+        );
+        let thread_id = view.read_with(cx, |view, _| view.thread_id);
+        assert_eq!(
+            cx.update(|_, cx| crate::thread_metadata_store::thread_mcp_selection(thread_id, cx)),
+            github_off
+        );
+
+        view.update_in(cx, |view, window, cx| {
+            view.set_mcp_selection(McpSelection::default(), window, cx)
+        });
+        cx.run_until_parked();
+        // The fake replays no history, so the thread now reads as a draft and
+        // is opened afresh (ADR-F99 decision 7) rather than loaded; either way
+        // its session has the new list at once.
+        assert!(!view.read_with(cx, |view, _| view.mcp_reopen_pending));
+        assert!(
+            root_session_mcp_of(&view, cx).is_some_and(|session| session.selection.is_all_on()),
+            "an idle agent is asked at once"
+        );
+    }
+
+    /// ADR-F102: a message queued behind the running turn is sent when the
+    /// turn ends, before the session is opened again for a switch made
+    /// meanwhile: the turn's end takes it off the queue a moment before it is
+    /// sent, and opening the session again in between would drop it.
+    #[gpui::test]
+    async fn test_mcp_menu_waits_for_a_queued_message(cx: &mut TestAppContext) {
+        init_test(cx);
+        let server = FakeAcpAgentServer::exposing_acp_connection();
+        let loads = server.load_session_count();
+        let prompts = server.prompt_count();
+        let (view, cx) = setup_conversation_view(server.clone(), cx).await;
+        cx.run_until_parked();
+
+        let release = server.hold_next_prompt();
+        message_editor(&view, cx).update_in(cx, |editor, window, cx| {
+            editor.set_text("Hello", window, cx)
+        });
+        active_thread(&view, cx).update_in(cx, |thread, window, cx| thread.send(window, cx));
+        cx.run_until_parked();
+        active_thread(&view, cx).update_in(cx, |thread, window, cx| {
+            thread.add_to_queue(vec!["Queued".into()], vec![], window, cx)
+        });
+        let mut github_off = McpSelection::default();
+        github_off.set_server_enabled("github", false);
+        view.update_in(cx, |view, window, cx| {
+            view.set_mcp_selection(github_off.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        assert!(view.read_with(cx, |view, _| view.mcp_reopen_pending));
+
+        release.send(()).await.expect("the turn is held");
+        cx.run_until_parked();
+        assert_eq!(
+            prompts.load(Ordering::SeqCst),
+            2,
+            "the queued message reached the agent"
+        );
+        assert_eq!(
+            loads.load(Ordering::SeqCst),
+            1,
+            "then the session opened again"
+        );
+        assert!(!view.read_with(cx, |view, _| view.mcp_reopen_pending));
+        assert_eq!(
+            root_session_mcp_of(&view, cx).map(|session| session.selection),
+            Some(github_off)
+        );
+    }
+
+    /// ADR-F102: the chat input of a running external agent's thread draws its
+    /// MCP menu from the conversation view while the thread's view is being
+    /// rendered, so the menu must not read the thread's view back.
+    #[gpui::test]
+    async fn test_mcp_menu_renders_in_a_running_external_thread(cx: &mut TestAppContext) {
+        init_test(cx);
+        let server = FakeAcpAgentServer::exposing_acp_connection();
+        let (view, cx) = setup_conversation_view(server, cx).await;
+        add_to_workspace(view.clone(), cx);
+        cx.run_until_parked();
+        assert!(root_session_mcp_of(&view, cx).is_some(), "the agent runs");
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+    }
+
+    /// ADR-F102: a session opened again for its MCP servers that fails to load
+    /// leaves the error card; the session its Retry loads keeps the box the
+    /// user was writing in.
+    #[gpui::test]
+    async fn test_mcp_menu_reopen_that_fails_keeps_the_box_for_retry(cx: &mut TestAppContext) {
+        init_test(cx);
+        let server = FakeAcpAgentServer::exposing_acp_connection();
+        let loads = server.load_session_count();
+        // The session a view without a thread reloads is on the folders the
+        // thread metadata recorded, and a session needs one.
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), json!({ "main.rs": "" }))
+            .await;
+        let project = Project::test(fs, [Path::new(util::path!("/project"))], cx).await;
+        let (view, cx) = setup_conversation_view_in_project(server.clone(), None, project, cx);
+        cx.run_until_parked();
+
+        message_editor(&view, cx).update_in(cx, |editor, window, cx| {
+            editor.set_text("Hello", window, cx)
+        });
+        active_thread(&view, cx).update_in(cx, |thread, window, cx| thread.send(window, cx));
+        cx.run_until_parked();
+        message_editor(&view, cx).update_in(cx, |editor, window, cx| {
+            editor.set_text("Next question", window, cx)
+        });
+
+        server.fail_next_load();
+        let mut github_off = McpSelection::default();
+        github_off.set_server_enabled("github", false);
+        view.update_in(cx, |view, window, cx| {
+            view.set_mcp_selection(github_off.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(loads.load(Ordering::SeqCst), 1);
+        assert!(
+            view.read_with(cx, |view, _| matches!(
+                view.server_state,
+                ServerState::LoadError { .. }
+            )),
+            "the reopen failed"
+        );
+
+        view.update_in(cx, |view, window, cx| view.retry_connection(window, cx));
+        cx.run_until_parked();
+        assert_eq!(loads.load(Ordering::SeqCst), 2, "Retry loads the session");
+        assert_eq!(
+            root_session_mcp_of(&view, cx).map(|session| session.selection),
+            Some(github_off)
+        );
+        assert_eq!(
+            message_editor(&view, cx).read_with(cx, |editor, cx| editor.text(cx)),
+            "Next question",
+            "the box survives the failed reopen"
+        );
+        assert!(
+            view.read_with(cx, |view, _| view.mcp_reopen_draft.is_none()),
+            "the loaded session took the box"
+        );
+    }
+
+    /// ADR-F102: the menu lists Zed's IDE tools and the browser first, then the
+    /// configured servers by name, and each row switches its own part of the
+    /// selection.
+    #[test]
+    fn test_mcp_menu_rows_follow_the_offer() {
+        use thread_view::McpMenuRow;
+        let offer = agent_servers::McpOffer {
+            ide_tools: true,
+            browser: false,
+            servers: vec!["zeta".into(), "alpha".into()],
+        };
+        assert_eq!(
+            thread_view::mcp_menu_rows(&offer),
+            vec![
+                McpMenuRow::IdeTools,
+                McpMenuRow::Server("alpha".into()),
+                McpMenuRow::Server("zeta".into()),
+            ]
+        );
+
+        let mut selection = McpSelection::default();
+        McpMenuRow::IdeTools.switch(&mut selection, false);
+        McpMenuRow::Browser.switch(&mut selection, false);
+        McpMenuRow::Server("alpha".into()).switch(&mut selection, false);
+        assert!(!selection.ide_tools_enabled());
+        assert!(!selection.browser_enabled());
+        assert!(!selection.server_enabled("alpha"));
+        assert!(selection.server_enabled("zeta"));
+        McpMenuRow::IdeTools.switch(&mut selection, true);
+        McpMenuRow::Browser.switch(&mut selection, true);
+        McpMenuRow::Server("alpha".into()).switch(&mut selection, true);
+        assert!(selection.is_all_on());
+    }
+
+    /// ADR-F102: before an external agent starts, its thread's MCP menu picks
+    /// what the first session is given; nothing starts until the message.
+    #[gpui::test]
+    async fn test_mcp_menu_before_the_first_message_applies_at_start(cx: &mut TestAppContext) {
+        init_test(cx);
+        let server = FakeAcpAgentServer::exposing_acp_connection().starting_on_first_message();
+        let loads = server.load_session_count();
+        let (view, cx) = setup_conversation_view(server.clone(), cx).await;
+        cx.run_until_parked();
+        assert!(view.read_with(cx, |view, _| view.is_parked()));
+        assert!(
+            view.read_with(cx, |view, cx| view.external_mcp_menu(cx))
+                .is_some_and(|menu| !menu.pending && menu.locked_reason.is_none()),
+            "the menu is there before the agent starts"
+        );
+
+        let browser_off = McpSelection {
+            browser_off: true,
+            ..McpSelection::default()
+        };
+        view.update_in(cx, |view, window, cx| {
+            view.set_mcp_selection(browser_off.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        assert!(
+            view.read_with(cx, |view, _| view.is_parked()),
+            "nothing starts"
+        );
+
+        send_first_message(&view, "Hi", cx);
+        assert!(!view.read_with(cx, |view, _| view.is_parked()));
+        assert_eq!(
+            root_session_mcp_of(&view, cx).map(|session| session.selection),
+            Some(browser_off)
+        );
+        assert_eq!(loads.load(Ordering::SeqCst), 0, "the first session took it");
+    }
+
+    /// ADR-F102 with ADR-F103: following and the MCP servers picked before an
+    /// external agent starts both reach its first session.
+    #[gpui::test]
+    async fn test_follow_and_mcp_picked_before_the_start_both_apply(cx: &mut TestAppContext) {
+        init_test(cx);
+        let server = FakeAcpAgentServer::exposing_acp_connection().starting_on_first_message();
+        let (view, cx) = setup_conversation_view(server.clone(), cx).await;
+        cx.run_until_parked();
+        assert!(view.read_with(cx, |view, _| view.is_parked()));
+
+        let mut github_off = McpSelection::default();
+        github_off.set_server_enabled("github", false);
+        view.update_in(cx, |view, window, cx| {
+            view.follow_on_start = true;
+            view.set_mcp_selection(github_off.clone(), window, cx)
+        });
+        cx.run_until_parked();
+
+        send_first_message(&view, "Hi", cx);
+        assert_eq!(
+            root_session_mcp_of(&view, cx).map(|session| session.selection),
+            Some(github_off)
+        );
+        let thread_view = view
+            .read_with(cx, |view, _| view.root_thread_view())
+            .expect("a running thread");
+        assert!(thread_view.read_with(cx, |thread_view, _| thread_view.should_be_following));
+    }
+
+    /// ADR-F102 with ADR-F103: a session opened again for its MCP servers comes
+    /// back following the agent as the thread did.
+    #[gpui::test]
+    async fn test_mcp_reopen_keeps_following(cx: &mut TestAppContext) {
+        init_test(cx);
+        let server = FakeAcpAgentServer::exposing_acp_connection();
+        let loads = server.load_session_count();
+        let (view, cx) = setup_conversation_view(server.clone(), cx).await;
+        cx.run_until_parked();
+        message_editor(&view, cx).update_in(cx, |editor, window, cx| {
+            editor.set_text("Hello", window, cx)
+        });
+        active_thread(&view, cx).update_in(cx, |thread, window, cx| thread.send(window, cx));
+        cx.run_until_parked();
+        active_thread(&view, cx).update(cx, |thread, _| thread.should_be_following = true);
+
+        let mut github_off = McpSelection::default();
+        github_off.set_server_enabled("github", false);
+        view.update_in(cx, |view, window, cx| {
+            view.set_mcp_selection(github_off.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        assert_eq!(loads.load(Ordering::SeqCst), 1, "opened again");
+        assert!(
+            active_thread(&view, cx).read_with(cx, |thread, _| thread.should_be_following),
+            "the reopened thread still follows the agent"
         );
     }
 
@@ -13089,6 +13751,93 @@ pub(crate) mod tests {
         assert!(shows_outside_sandbox_banner(&view, cx));
     }
 
+    /// Reports a newer version as soon as it is started, the way a start that
+    /// launched the installed version does (ADR-F101), and counts its starts.
+    struct ReportsAtStartServer {
+        connects: Arc<std::sync::atomic::AtomicUsize>,
+        senders: Arc<Mutex<Vec<watch::Sender<Option<String>>>>>,
+    }
+
+    impl AgentServer for ReportsAtStartServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            "Test".into()
+        }
+
+        fn connect(
+            &self,
+            mut delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            _cx: &mut App,
+        ) -> Task<gpui::Result<Rc<dyn AgentConnection>>> {
+            self.connects
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if let Some(mut sender) = delegate.take_new_version_sender() {
+                sender.send(Some("2.0.0".to_string())).ok();
+                self.senders.lock().push(sender);
+            }
+            Task::ready(Ok(Rc::new(StubAgentConnection::new())))
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    /// ADR-F101: the version a start reports before its thread exists still
+    /// shows the update banner; restarting without agreeing to it keeps the
+    /// connection (its next start would launch the same version), and the
+    /// update restarts it.
+    #[gpui::test]
+    async fn test_a_version_reported_at_start_shows_the_banner(cx: &mut TestAppContext) {
+        init_test(cx);
+        let connects = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let server = ReportsAtStartServer {
+            connects: connects.clone(),
+            senders: Arc::default(),
+        };
+        let (view, cx) = setup_conversation_view(server, cx).await;
+        let banner = |view: &Entity<ConversationView>, cx: &mut VisualTestContext| {
+            view.read_with(cx, |view, cx| {
+                view.root_thread_view()
+                    .and_then(|thread| thread.read(cx).new_server_version_available.clone())
+            })
+        };
+        assert_eq!(banner(&view, cx).as_deref(), Some("2.0.0"));
+        assert_eq!(connects.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        // The agent starts with the thread's first message, so by the time a
+        // start reports a version the thread has messages; the banner shows
+        // there too.
+        let thread = view
+            .read_with(cx, |view, _| view.root_thread_view())
+            .expect("a thread");
+        thread.update(cx, |thread, _| thread.list_state.splice(0..0, 1));
+        thread.read_with(cx, |thread, _| {
+            assert!(thread.list_state.item_count() > 0);
+            assert_eq!(thread.new_version_callout().as_deref(), Some("2.0.0"));
+        });
+
+        view.update_in(cx, |view, window, cx| view.reset(window, cx));
+        cx.run_until_parked();
+        assert_eq!(
+            connects.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the report alone does not replace the connection"
+        );
+
+        view.update_in(cx, |view, window, cx| view.update_agent(window, cx));
+        cx.run_until_parked();
+        assert_eq!(
+            connects.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "the update starts anew"
+        );
+    }
+
     /// ADR-F49 決定 19 (8c): a newer version of an agent started outside its
     /// sandbox does not take the banner away while that agent still runs,
     /// and the update starts the new version outside again, unasked.
@@ -13120,7 +13869,7 @@ pub(crate) mod tests {
         );
 
         // What the update button does.
-        view.update_in(cx, |view, window, cx| view.reset(window, cx));
+        view.update_in(cx, |view, window, cx| view.update_agent(window, cx));
         cx.run_until_parked();
         assert!(!cx.has_pending_prompt());
         assert_eq!(server.starts(), (1, 2), "the new version, outside again");

@@ -77,9 +77,9 @@ pub use sandbox_client::{
     start_sandbox_session_for_tab,
 };
 pub use status_item::IdeServerStatusItem;
-pub use tools::RESTRICTED_TOOL_NAMES;
+pub use tools::{RESTRICTED_TOOL_NAMES, browser_tools_enabled};
 pub(crate) use tools::{SelectionSnapshot, ToolHost};
-pub use transport::{ASSIST_MCP_PATH, IDE_MCP_PATH};
+pub use transport::{ASSIST_MCP_PATH, BROWSER_MCP_PATH, IDE_MCP_PATH};
 pub use util::path_mapping::{IdentityPathMapper, PathMapper, WslPathMapper};
 
 /// Claude Code CLI が「どのインスタンスに繋げばよいか」を決めるための環境変数。
@@ -108,6 +108,11 @@ pub const MCP_SERVER_NAME: &str = "zed";
 /// (2.1.271 で確認)。名前を `ide` にしておけば、制限セッションの唯一のツールは
 /// `mcp__ide__getDiagnostics` として、CLI 本来の IDE 連携とまったく同じ名前でモデルに届く。
 pub const RESTRICTED_MCP_SERVER_NAME: &str = "ide";
+
+/// ADR-F102: the server name of the AI browser's tools (ADR-F89) in an external
+/// agent's session, apart from [`MCP_SERVER_NAME`] so that a thread can turn
+/// either off on its own. Its tools reach the model as `mcp__zed-browser__*`.
+pub const BROWSER_MCP_SERVER_NAME: &str = "zed-browser";
 
 /// 古いロックファイルの生存確認に使う接続待ち時間。loopback なので短くてよい。
 const STALE_LOCK_PROBE_TIMEOUT: Duration = Duration::from_millis(300);
@@ -166,6 +171,15 @@ fn resend_selection_after_connect<H: 'static>(
 /// プロセス (一部のテスト) では渡さない。
 pub fn assist_tools_enabled(cx: &App) -> bool {
     cx.has_global::<IdeServerRegistry>() && IdeServerSettings::get_global(cx).assist_tools
+}
+
+/// ADR-F102: whether an external agent outside a sandbox gets the `zed` server
+/// at all ([`HostAssistClient::agent_endpoint`]'s settings), before it starts.
+pub fn agent_endpoint_enabled(cx: &App) -> bool {
+    cx.has_global::<IdeServerRegistry>() && {
+        let settings = IdeServerSettings::get_global(cx);
+        settings.enabled || settings.assist_tools
+    }
 }
 
 pub fn init(cx: &mut App) {
@@ -345,11 +359,31 @@ pub fn host_assist_client(
     label: impl Into<SharedString>,
     cx: &mut App,
 ) -> Option<HostAssistClient> {
+    register_host_assist_client(project, label.into(), false, cx)
+}
+
+/// ADR-F102: [`host_assist_client`] for an external ACP agent. Its endpoints
+/// leave the AI browser's tools out: they come from
+/// [`HostAssistClient::browser_endpoint`], a server of their own in the
+/// session, so that a thread can turn the browser and the IDE tools off apart.
+pub fn host_agent_assist_client(
+    project: &Entity<Project>,
+    label: impl Into<SharedString>,
+    cx: &mut App,
+) -> Option<HostAssistClient> {
+    register_host_assist_client(project, label.into(), true, cx)
+}
+
+fn register_host_assist_client(
+    project: &Entity<Project>,
+    label: SharedString,
+    browser_separate: bool,
+    cx: &mut App,
+) -> Option<HostAssistClient> {
     let server = server_for_project(project, cx)?;
     let client_id = uuid::Uuid::new_v4().simple().to_string();
-    let label = label.into();
     server.update(cx, |server, cx| {
-        server.register_assist_client(client_id.clone(), label, cx)
+        server.register_assist_client(client_id.clone(), label, browser_separate, cx)
     });
     let weak_server = server.downgrade();
     let registration = cx.new(|cx| {
@@ -408,6 +442,19 @@ impl HostAssistClient {
         }
     }
 
+    /// ADR-F102: the AI browser's own endpoint (`/mcp/zed-browser`), for an
+    /// agent registered with [`host_agent_assist_client`]. Given only where
+    /// [`Self::agent_endpoint`] is (the browser came with the `zed` server
+    /// before it had one of its own) and while `browser.ai_control` is on.
+    pub fn browser_endpoint(&self, cx: &App) -> Option<McpEndpoint> {
+        let (server, client_id) = self.server_and_id(cx)?;
+        let settings = IdeServerSettings::get_global(cx);
+        if !(settings.enabled || settings.assist_tools) || !tools::browser_tools_enabled(cx) {
+            return None;
+        }
+        server.endpoint_for(transport::BROWSER_MCP_PATH, Some(&client_id))
+    }
+
     /// このクライアントが描く表示の出どころ。
     pub fn source(&self, cx: &App) -> Option<AssistSource> {
         let (server, client_id) = self.server_and_id(cx)?;
@@ -427,6 +474,8 @@ const UNKNOWN_ASSIST_CLIENT_LABEL: &str = i18n::msg!("External Agent");
 pub(crate) struct ConnectionGate {
     pub(crate) ide: EndpointGate,
     pub(crate) assist: EndpointGate,
+    /// ADR-F102: `/mcp/zed-browser`.
+    pub(crate) browser: EndpointGate,
 }
 
 #[derive(Clone)]
@@ -454,6 +503,7 @@ impl ConnectionGate {
         Self {
             ide: EndpointGate::unlimited(ide_limits),
             assist: EndpointGate::unlimited(assist_tools::ASSIST_MESSAGE_LIMITS),
+            browser: EndpointGate::unlimited(assist_tools::ASSIST_MESSAGE_LIMITS),
         }
     }
 
@@ -464,6 +514,7 @@ impl ConnectionGate {
         let gate = match route.endpoint {
             transport::Endpoint::Ide => &self.ide,
             transport::Endpoint::Assist => &self.assist,
+            transport::Endpoint::Browser => &self.browser,
         };
         if gate
             .open
@@ -496,6 +547,9 @@ struct RunningServer {
     ide_open: Arc<AtomicBool>,
     /// ADR-F56: アシストの口 (`/mcp/zed`) を開いているか (`ide_server.assist_tools`)。
     assist_open: Arc<AtomicBool>,
+    /// ADR-F102: the AI browser's endpoint (`/mcp/zed-browser`) is open while
+    /// either of the others is, as the browser's tools were served on those.
+    browser_open: Arc<AtomicBool>,
     _accept_task: Task<()>,
 }
 
@@ -531,6 +585,8 @@ struct AssistClient {
     /// 表示の枠に出す名前。
     label: SharedString,
     token: Arc<str>,
+    /// ADR-F102: the client takes the browser's tools from `/mcp/zed-browser`.
+    browser_separate: bool,
 }
 
 pub struct IdeServer {
@@ -678,6 +734,7 @@ impl IdeServer {
         &mut self,
         client_id: String,
         label: SharedString,
+        browser_separate: bool,
         cx: &mut gpui::Context<Self>,
     ) {
         let token: Arc<str> = uuid::Uuid::new_v4().to_string().into();
@@ -685,8 +742,14 @@ impl IdeServer {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(token.to_string(), client_id.clone());
-        self.assist_clients
-            .insert(client_id, AssistClient { label, token });
+        self.assist_clients.insert(
+            client_id,
+            AssistClient {
+                label,
+                token,
+                browser_separate,
+            },
+        );
         self.apply_settings(cx);
         cx.notify();
     }
@@ -865,6 +928,9 @@ impl IdeServer {
         running
             .assist_open
             .store(settings.assist_tools, Ordering::SeqCst);
+        running
+            .browser_open
+            .store(settings.enabled || settings.assist_tools, Ordering::SeqCst);
         let was_serving_ide = running.ide_open.swap(settings.enabled, Ordering::SeqCst);
         match (was_serving_ide, settings.enabled) {
             (false, true) => {
@@ -938,6 +1004,7 @@ impl IdeServer {
             connections: Vec::new(),
             ide_open: Arc::new(AtomicBool::new(false)),
             assist_open: Arc::new(AtomicBool::new(false)),
+            browser_open: Arc::new(AtomicBool::new(false)),
             _accept_task: accept_task,
         });
         log::info!("ide_server: listening on 127.0.0.1:{port}");
@@ -1204,12 +1271,13 @@ impl ToolHost for IdeServer {
     /// (相手はサンドボックスの外の、利用者自身の権限のプロセス)。
     fn connection_gate(&self) -> ConnectionGate {
         let closed = || Some(Arc::new(AtomicBool::new(false)));
-        let (ide_open, assist_open) = match self.running.as_ref() {
+        let (ide_open, assist_open, browser_open) = match self.running.as_ref() {
             Some(running) => (
                 Some(running.ide_open.clone()),
                 Some(running.assist_open.clone()),
+                Some(running.browser_open.clone()),
             ),
-            None => (closed(), closed()),
+            None => (closed(), closed(), closed()),
         };
         ConnectionGate {
             ide: EndpointGate {
@@ -1218,6 +1286,10 @@ impl ToolHost for IdeServer {
             },
             assist: EndpointGate {
                 open: assist_open,
+                ..EndpointGate::unlimited(assist_tools::ASSIST_MESSAGE_LIMITS)
+            },
+            browser: EndpointGate {
+                open: browser_open,
                 ..EndpointGate::unlimited(assist_tools::ASSIST_MESSAGE_LIMITS)
             },
         }
@@ -1231,6 +1303,11 @@ impl ToolHost for IdeServer {
         cx: &App,
     ) -> Result<tools::ConnectionScope, String> {
         let settings = IdeServerSettings::get_global(cx);
+        let browser_separate = route
+            .client
+            .as_deref()
+            .and_then(|client_id| self.assist_clients.get(client_id))
+            .is_some_and(|client| client.browser_separate);
         match (route.endpoint, route.kind) {
             (transport::Endpoint::Ide, _) if !settings.enabled => {
                 Err(assist_tools::IDE_SERVER_DISABLED_MESSAGE.to_string())
@@ -1244,16 +1321,24 @@ impl ToolHost for IdeServer {
                     assist: settings
                         .assist_tools
                         .then(|| self.assist_source(route.client.as_deref())),
+                    browser_separate,
                 })
             }
             (transport::Endpoint::Assist, _) if settings.assist_tools => {
                 Ok(tools::ConnectionScope {
                     tools: tools::ToolScope::Assist(None),
                     assist: Some(self.assist_source(route.client.as_deref())),
+                    browser_separate,
                 })
             }
             (transport::Endpoint::Assist, _) => {
                 Err(assist_tools::ASSIST_UNAVAILABLE_MESSAGE.to_string())
+            }
+            (transport::Endpoint::Browser, _) if settings.enabled || settings.assist_tools => Ok(
+                tools::ConnectionScope::without_assist(tools::ToolScope::Browser),
+            ),
+            (transport::Endpoint::Browser, _) => {
+                Err(assist_tools::IDE_SERVER_DISABLED_MESSAGE.to_string())
             }
         }
     }

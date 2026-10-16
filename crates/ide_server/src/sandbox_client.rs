@@ -25,7 +25,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use anyhow::Context as _;
 use editor::{Editor, EditorEvent};
@@ -841,6 +841,11 @@ impl ToolHost for SandboxIdeSession {
                 quota: Some((self.assist_transports.clone(), MAX_ASSIST_CONNECTIONS)),
                 ..EndpointGate::unlimited(ASSIST_MESSAGE_LIMITS)
             },
+            // ADR-F89 / ADR-F102: a sandbox never gets the AI browser.
+            browser: EndpointGate {
+                open: Some(Arc::new(AtomicBool::new(false))),
+                ..EndpointGate::unlimited(ASSIST_MESSAGE_LIMITS)
+            },
         }
     }
 
@@ -853,9 +858,10 @@ impl ToolHost for SandboxIdeSession {
                 Ok(ConnectionScope {
                     tools: ToolScope::Assist(Some(self.paths.clone())),
                     assist: Some(self.assist_source()),
+                    browser_separate: false,
                 })
             }
-            Endpoint::Assist => Err(ASSIST_UNAVAILABLE_MESSAGE.to_string()),
+            Endpoint::Assist | Endpoint::Browser => Err(ASSIST_UNAVAILABLE_MESSAGE.to_string()),
         }
     }
 }

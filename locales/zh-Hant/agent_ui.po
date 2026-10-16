@@ -47,6 +47,9 @@ msgstr "已載入 1 個含過長描述的技能"
 msgid "1 global rule"
 msgstr "1 條全域規則"
 
+msgid "A change opens the agent's session again with the new servers once it finishes its turn. The conversation stays."
+msgstr "變更後，代理完成目前的回覆時會以新的伺服器重新開啟其工作階段。對話內容會保留。"
+
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "含有萬用字元的主機（{pattern}）無法透過同意加入允許清單。"
 
@@ -58,6 +61,9 @@ msgstr "ACP 代理"
 
 msgid "ACP Registry"
 msgstr "ACP 登錄庫"
+
+msgid "AI Browser"
+msgstr "AI 瀏覽器"
 
 msgid "AI Judge (Auto-Run If Safe)"
 msgstr "由 AI 判斷（安全時自動執行）"
@@ -197,6 +203,9 @@ msgstr "側邊欄所有會話的中繼資料"
 msgid "All domains (unrestricted)"
 msgstr "所有網域（不受限制）"
 
+msgid "All external agents are up to date."
+msgstr "所有外部代理皆為最新版本。"
+
 msgid "All paths except protected Git metadata"
 msgstr "所有路徑（受保護的 Git 中繼資料除外）"
 
@@ -232,6 +241,10 @@ msgstr "settings.json 中的 `agent_servers` → `{}` → `env` → `{variable}`
 
 msgid "An Error Happened"
 msgstr "發生錯誤"
+
+msgid "An update is available for {count} external agent: {list}"
+msgid_plural "Updates are available for {count} external agents: {list}"
+msgstr[0] "{count} 個外部代理有可用的更新：{list}"
 
 msgid "Answer the tool call waiting for confirmation before switching."
 msgstr "請先回應等待確認的工具呼叫，再進行切換。"
@@ -377,6 +390,9 @@ msgstr "討論程式碼庫。"
 msgid "Check for Claude Code Updates"
 msgstr "檢查 Claude Code 更新"
 
+msgid "Check for Updates"
+msgstr "檢查更新"
+
 msgid "Check the server docs for required arguments and environment variables."
 msgstr "請查看伺服器文件以了解必要的引數與環境變數。"
 
@@ -431,8 +447,8 @@ msgstr "按一下以預覽"
 msgid "Click to copy rating ID"
 msgstr "按一下以複製評分 ID"
 
-msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
-msgstr "按一下以開啟與此代理的會話。這裡不會更新任何項目，也不會停止執行中的工作階段。新連線的會話會啟動最新版本，執行中的會話則會顯示更新橫幅。"
+msgid "Click to update. Running sessions are not stopped: the agent's next start installs the new version, and running threads show an update banner."
+msgstr "按一下即可更新。不會停止執行中的工作階段：代理下次啟動時會安裝新版本，執行中的對話串會顯示更新橫幅。"
 
 msgid "Clipboard does not contain text"
 msgstr "剪貼簿不含文字內容"
@@ -565,6 +581,9 @@ msgstr "費用：{}"
 
 msgid "Could not authenticate with {provider}."
 msgstr "無法向 {provider} 進行驗證。"
+
+msgid "Could not check for agent updates: {error}"
+msgstr "無法檢查代理的更新：{error}"
 
 msgid "Could not check the Claude Code already placed in WSL."
 msgstr "無法檢查已放置在 WSL 中的 Claude Code。"
@@ -1100,6 +1119,9 @@ msgstr "保留"
 msgid "Keep All"
 msgstr "全部保留"
 
+msgid "Later"
+msgstr "稍後"
+
 msgid "Latest"
 msgstr "最新"
 
@@ -1154,11 +1176,17 @@ msgstr "以 Claude Code 登入（訂閱）"
 msgid "Log Out"
 msgstr "登出"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "MCP Server Commands"
 msgstr "MCP 伺服器命令"
 
 msgid "MCP Servers"
 msgstr "MCP 伺服器"
+
+msgid "MCP {on}/{total}"
+msgstr "MCP {on}/{total}"
 
 msgid "Make Subagent Full Screen"
 msgstr "將子代理設為全螢幕"
@@ -2000,6 +2028,12 @@ msgstr "終端機內嵌助理錯誤：{}"
 msgid "Thanks for your feedback!"
 msgstr "感謝您的意見回饋！"
 
+msgid "The ACP registry is not available, so agent updates cannot be checked."
+msgstr "無法使用 ACP 登錄庫，因此無法檢查代理的更新。"
+
+msgid "The AI browser is not given to an agent in the sandbox."
+msgstr "沙箱中的代理不會取得 AI 瀏覽器。"
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "找不到已傳送至遠端主機的 Claude Code。請再試一次。"
 
@@ -2032,6 +2066,12 @@ msgstr "代理無法使用 `getDiagnostics`，因此看不到編輯器所顯示�
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "傳送第一則訊息時代理才會啟動。請先選擇它的沙箱與網路：啟動後，此會話中會維持不變。"
+
+msgid "The agent starts with the servers checked here. You can change them after it starts too."
+msgstr "代理會以此處勾選的伺服器啟動。啟動後也可以變更。"
+
+msgid "The agent stops getting the tools of what you turn off from its next tool call on."
+msgstr "關閉的項目從下一次工具呼叫起不再向代理提供其工具。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "代理已新增至 settings.json，但尚未載入。請稍後從 + 選單開啟。"
@@ -2190,6 +2230,9 @@ msgstr "此視窗"
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
 msgstr "此代理可以使用 ForgeKairos 的 IDE 工具：醒目提示、註記、導覽、暫留、定義、參考與符號搜尋"
 
+msgid "This agent can't open its session again, so its MCP servers stay as it started with them. Start a new thread to change them."
+msgstr "此代理無法重新開啟其工作階段，因此其 MCP 伺服器會維持啟動時的狀態。若要變更，請開始新的會話。"
+
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "此代理不支援檢視先前的訊息。不過，工作階段仍會從上次離開的位置繼續。"
 
@@ -2346,6 +2389,9 @@ msgstr "開啟並繼續"
 msgid "Turn On and Start Outside"
 msgstr "開啟並在沙箱外啟動"
 
+msgid "Turn this thread's MCP servers on or off. Each thread keeps its own choice."
+msgstr "開啟或關閉此會話的 MCP 伺服器。每個會話各自保留選擇。"
+
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "關閉沙箱需要開啟「允許在沙箱外執行」（設定 > AI > 沙箱），但它目前已關閉。要開啟嗎？在設定中關閉之前，它會一直保持開啟。"
 
@@ -2379,6 +2425,9 @@ msgstr "將模型從最愛移除"
 msgid "Unknown"
 msgstr "未知"
 
+msgid "Update"
+msgstr "更新"
+
 msgid "Update Claude Code to v{to}"
 msgstr "將 Claude Code 更新至 v{to}"
 
@@ -2393,6 +2442,9 @@ msgstr "有可用的更新：v{latest}"
 
 msgid "Update to v{}"
 msgstr "更新至 v{}"
+
+msgid "Updates when it next starts"
+msgstr "下次啟動時更新"
 
 msgid "Upgrade"
 msgstr "升級"
@@ -2498,6 +2550,9 @@ msgstr "已自動還原至免費方案。"
 
 msgid "Your Zed Pro Trial has expired"
 msgstr "Zed Pro 試用已到期"
+
+msgid "Your change is applied when the agent finishes its turn: its session is opened again with the new servers."
+msgstr "變更會在代理完成目前的回覆時生效：會以新的伺服器重新開啟其工作階段。"
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "會直接使用您平常的設定與登入狀態。"
@@ -2609,6 +2664,9 @@ msgstr "{keybinding} 開啟聊天"
 
 msgid "{minutes} minutes ago"
 msgstr "{minutes} 分鐘前"
+
+msgid "{name} {installed} → {available}"
+msgstr "{name} {installed} → {available}"
 
 msgid "{notice}. Starts `{program}` on this PC in the project folder."
 msgstr "{notice}。在專案資料夾中啟動這台電腦上的 `{program}`。"

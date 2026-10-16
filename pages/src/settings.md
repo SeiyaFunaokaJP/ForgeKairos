@@ -72,6 +72,7 @@ The outbound network allowlist is not a setting in `settings.json`; it is kept i
 | `agent.context_attachments.diagnostics_max_files` | `50` | Most files whose diagnostics are attached. |
 | `agent.system_prompt_repo_map_bytes` | `0` | Byte budget for a repository map in the agent's system prompt. `0` disables it; at most 32768. |
 | `agent.idle_disconnect_minutes` | `5` | Minutes an external agent stays connected after its last thread closes. `0` keeps it until the window closes. |
+| `agent.agent_servers_update_check` | `"on_startup"` | When to look for newer versions of the external agents installed from the ACP registry: `"on_startup"` checks once when the IDE starts, `"manual"` only when you run `agent: check for agent updates`. An agent keeps starting the installed version until you agree to an update. |
 | `agent.claude_code_run_outside_sandbox` | `false` | "Launch Claude Code" always starts the CLI outside the sandbox, without asking. Read only from the user settings file. |
 | `ide_server.enabled` | `false` | Expose ForgeKairos as a loopback IDE server for the Claude Code CLI. |
 | `ide_server.assist_tools` | `true` | Give agents the IDE tools (highlights, annotations, tours, definitions, references, symbol search) under the MCP server name `zed`. |

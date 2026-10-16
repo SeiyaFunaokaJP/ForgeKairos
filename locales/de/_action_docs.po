@@ -59,6 +59,11 @@ msgctxt "action documentation"
 msgid "agent::ChatWithFollow"
 msgstr "Startet eine Chat-Konversation mit aktivierter Nachverfolgung."
 
+#. Checks the ACP registry for newer versions of the installed external agents, and asks before updating them.
+msgctxt "action documentation"
+msgid "agent::CheckForAgentUpdates"
+msgstr "Sucht in der ACP-Registry nach neueren Versionen der installierten externen Agenten und fragt vor dem Aktualisieren nach."
+
 #. Clears all messages from the queue.
 msgctxt "action documentation"
 msgid "agent::ClearMessageQueue"

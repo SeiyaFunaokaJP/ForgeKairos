@@ -79,6 +79,10 @@ pub struct DbThread {
     /// existed, which then starts with `agent.git_operations` like a new one.
     #[serde(default)]
     pub git_operations_enabled: Option<bool>,
+    /// The thread's MCP menu (ADR-F102). Absent in a thread saved before it
+    /// existed, which then has everything on.
+    #[serde(default)]
+    pub mcp_selection: agent_settings::McpSelection,
     #[serde(default)]
     pub draft_prompt: Option<Vec<acp::ContentBlock>>,
     #[serde(default)]
@@ -214,6 +218,7 @@ impl SharedThread {
             thinking_enabled: false,
             thinking_effort: None,
             git_operations_enabled: None,
+            mcp_selection: Default::default(),
             draft_prompt: None,
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
@@ -402,6 +407,7 @@ impl DbThread {
             thinking_enabled: false,
             thinking_effort: None,
             git_operations_enabled: None,
+            mcp_selection: Default::default(),
             draft_prompt: None,
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
@@ -875,6 +881,7 @@ mod tests {
             thinking_enabled: false,
             thinking_effort: None,
             git_operations_enabled: None,
+            mcp_selection: Default::default(),
             draft_prompt: None,
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,

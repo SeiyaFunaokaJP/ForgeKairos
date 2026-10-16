@@ -975,6 +975,7 @@ macro_rules! dropdown_types {
 fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
     dropdown_types![
         ActivateOnClose,
+        AgentServersUpdateCheck,
         AlternateScroll,
         AutoIndentMode,
         AutosaveSettingDiscriminants,
@@ -1582,7 +1583,7 @@ async fn english_search_still_matches_the_start_of_words(cx: &mut TestAppContext
         ("vim", 20, "Vim"),
         ("mat", 21, "General"),
         ("ine", 0, "General"),
-        ("new", 25, "General"),
+        ("new", 27, "General"),
     ] {
         let (rows, best_match) = search_results(settings_window, query, cx);
         assert_eq!(

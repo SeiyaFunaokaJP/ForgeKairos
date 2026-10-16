@@ -4926,6 +4926,7 @@ impl ThreadView {
                                     .children(self.render_attachment_estimate(cx))
                                     .children(self.render_token_usage(cx))
                                     .children(self.render_tool_permission_control(cx))
+                                    .children(self.render_mcp_menu(cx))
                                     .children(self.render_git_operations_toggle(cx))
                                     .children(self.render_sandbox_toggle(cx))
                                     .children(self.render_network_toggle(cx))
@@ -6410,6 +6411,56 @@ impl ThreadView {
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.toggle_following(window, cx);
             }))
+    }
+
+    /// ADR-F102: the thread's MCP menu. The built-in agent's thread switches its MCP servers'
+    /// tools and the AI browser's from its next tool call on; an external agent's thread opens
+    /// its session again with the servers it keeps ([`ConversationView::set_mcp_selection`]).
+    fn render_mcp_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if let Some(thread) = self.as_native_thread(cx) {
+            let offer = agent_servers::McpOffer {
+                ide_tools: false,
+                browser: agent::browser_tools_enabled(cx),
+                servers: thread.read(cx).mcp_menu_servers(cx),
+            };
+            let menu = McpMenu {
+                rows: mcp_menu_rows(&offer),
+                selection: thread.read(cx).mcp_selection().clone(),
+                locked_reason: None,
+                browser_reason: None,
+                note: i18n::t!(
+                    "The agent stops getting the tools of what you turn off from its next tool \
+                     call on."
+                )
+                .into(),
+                pending: false,
+            };
+            return render_mcp_menu(
+                "thread-mcp",
+                menu,
+                Rc::new(move |selection, _window, cx| {
+                    thread.update(cx, |thread, cx| thread.set_mcp_selection(selection, cx));
+                }),
+            );
+        }
+        if self.thread.read(cx).parent_session_id().is_some() {
+            return None;
+        }
+        let server_view = self.server_view.upgrade()?;
+        let session_id = self.thread.read(cx).session_id().clone();
+        let menu = server_view
+            .read(cx)
+            .external_mcp_menu_for(Some(&session_id), cx)?;
+        let server_view = server_view.downgrade();
+        render_mcp_menu(
+            "thread-mcp",
+            menu,
+            Rc::new(move |selection, window, cx| {
+                server_view
+                    .update(cx, |view, cx| view.set_mcp_selection(selection, window, cx))
+                    .log_err();
+            }),
+        )
     }
 
     /// The native agent thread's Git switch (ADR-F90): whether the model gets the `git` tool
@@ -13441,14 +13492,15 @@ impl ThreadView {
     }
 
     /// ADR-F56: whether this thread's agent was given Zed's IDE tools (the
-    /// `zed` MCP server).
+    /// `zed` MCP server). ADR-F102: in this thread's session, which its MCP
+    /// menu may have left them out of.
     pub(crate) fn ide_tools_given(&self, cx: &App) -> bool {
-        self.thread
-            .read(cx)
+        let thread = self.thread.read(cx);
+        thread
             .connection()
             .clone()
             .downcast::<agent_servers::AcpConnection>()
-            .is_some_and(|connection| connection.ide_tools_given())
+            .is_some_and(|connection| connection.ide_tools_given(thread.session_id()))
     }
 
     /// ADR-F56: a small note that the agent has Zed's IDE tools, with the tools
@@ -13535,6 +13587,14 @@ impl ThreadView {
                         })),
                 ),
         )
+    }
+
+    /// ADR-F101: shown whether or not the thread has messages. An external
+    /// agent's thread starts the agent with its first message (ADR-F99), so
+    /// the version a start reports is only known once there are messages, and
+    /// the update reloads the conversation on the new version.
+    pub(crate) fn new_version_callout(&self) -> Option<SharedString> {
+        self.new_server_version_available.clone()
     }
 
     fn render_new_version_callout(&self, version: &SharedString, cx: &mut Context<Self>) -> Div {
@@ -13703,10 +13763,13 @@ impl ThreadView {
         }));
     }
 
+    /// ADR-F101: the user agreed to the update, so the start this makes
+    /// installs it; without that, a start launches the version installed.
     fn reset_agent_server(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.update_consent = None;
+        self.new_server_version_available = None;
         self.server_view
-            .update(cx, |view, cx| view.reset(window, cx))
+            .update(cx, |view, cx| view.update_agent(window, cx))
             .log_err();
     }
 
@@ -14402,13 +14465,9 @@ impl Render for ThreadView {
             .children(self.render_skill_loading_issues(cx))
             .children(self.render_thread_retry_status_callout(cx))
             .children(self.render_thread_error(window, cx))
-            .when_some(
-                match has_messages {
-                    true => None,
-                    false => self.new_server_version_available.clone(),
-                },
-                |this, version| this.child(self.render_new_version_callout(&version, cx)),
-            )
+            .when_some(self.new_version_callout(), |this, version| {
+                this.child(self.render_new_version_callout(&version, cx))
+            })
             .children(self.render_token_limit_callout(cx))
             .children(self.render_request_elicitations(cx))
             .child(self.render_message_editor(window, cx))
@@ -15036,4 +15095,187 @@ pub(crate) fn reset_fast_mode_warnings(cx: &mut App) {
             .log_err();
     })
     .detach();
+}
+
+/// ADR-F102: one row of the chat input's MCP menu.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum McpMenuRow {
+    /// Zed's own IDE servers of an external agent.
+    IdeTools,
+    /// The AI browser (ADR-F89).
+    Browser,
+    /// A configured MCP server, by its id.
+    Server(Arc<str>),
+}
+
+impl McpMenuRow {
+    fn label(&self) -> SharedString {
+        match self {
+            McpMenuRow::IdeTools => i18n::t!("IDE Tools").into(),
+            McpMenuRow::Browser => i18n::t!("AI Browser").into(),
+            McpMenuRow::Server(id) => SharedString::from(id.to_string()),
+        }
+    }
+
+    fn is_on(&self, selection: &McpSelection) -> bool {
+        match self {
+            McpMenuRow::IdeTools => selection.ide_tools_enabled(),
+            McpMenuRow::Browser => selection.browser_enabled(),
+            McpMenuRow::Server(id) => selection.server_enabled(id),
+        }
+    }
+
+    pub(crate) fn switch(&self, selection: &mut McpSelection, on: bool) {
+        match self {
+            McpMenuRow::IdeTools => selection.ide_tools_off = !on,
+            McpMenuRow::Browser => selection.browser_off = !on,
+            McpMenuRow::Server(id) => selection.set_server_enabled(id, on),
+        }
+    }
+}
+
+/// ADR-F102: the rows of the MCP menu for what a thread is offered: Zed's IDE
+/// tools, the AI browser, then the configured servers by name.
+pub(crate) fn mcp_menu_rows(offer: &agent_servers::McpOffer) -> Vec<McpMenuRow> {
+    let mut servers = offer.servers.clone();
+    servers.sort();
+    servers.dedup();
+    offer
+        .ide_tools
+        .then_some(McpMenuRow::IdeTools)
+        .into_iter()
+        .chain(offer.browser.then_some(McpMenuRow::Browser))
+        .chain(servers.into_iter().map(McpMenuRow::Server))
+        .collect()
+}
+
+/// ADR-F102: what the chat input's MCP menu shows.
+pub(crate) struct McpMenu {
+    pub(crate) rows: Vec<McpMenuRow>,
+    pub(crate) selection: McpSelection,
+    /// Why none of the rows can be switched now.
+    pub(crate) locked_reason: Option<SharedString>,
+    /// Why the browser's row cannot be switched (it is not given at all).
+    pub(crate) browser_reason: Option<SharedString>,
+    /// What a switch does.
+    pub(crate) note: SharedString,
+    /// A switch waits for the agent's turn to end.
+    pub(crate) pending: bool,
+}
+
+/// ADR-F102: the MCP menu's button: "MCP" while everything is on, how many are
+/// on otherwise; the menu has a checkbox row each. `on_change` gets the whole
+/// selection after one row is switched. `None` when there is nothing to switch.
+pub(crate) fn render_mcp_menu(
+    id: &'static str,
+    menu: McpMenu,
+    on_change: Rc<dyn Fn(McpSelection, &mut Window, &mut App)>,
+) -> Option<AnyElement> {
+    if menu.rows.is_empty() {
+        return None;
+    }
+    // A row that cannot be on (the browser in a sandbox) is not counted.
+    let available = menu
+        .rows
+        .iter()
+        .filter(|row| !is_browser_unavailable(row, &menu));
+    let total = available.clone().count();
+    let on = available.filter(|row| row.is_on(&menu.selection)).count();
+    let label = if on == total {
+        SharedString::from(i18n::t!("MCP"))
+    } else {
+        SharedString::from(i18n::t!("MCP {on}/{total}"))
+    };
+    let color = if menu.pending {
+        Color::Warning
+    } else if on == total {
+        Color::Muted
+    } else {
+        Color::Accent
+    };
+    let tooltip_meta = match (&menu.locked_reason, menu.pending) {
+        (Some(reason), _) => reason.clone(),
+        (None, true) => i18n::t!(
+            "Your change is applied when the agent finishes its turn: its session is opened \
+             again with the new servers."
+        )
+        .into(),
+        (None, false) => {
+            i18n::t!("Turn this thread's MCP servers on or off. Each thread keeps its own choice.")
+                .into()
+        }
+    };
+    let trigger = Button::new(id, label)
+        .label_size(LabelSize::Small)
+        .color(color)
+        .start_icon(
+            Icon::new(IconName::ToolHammer)
+                .size(IconSize::XSmall)
+                .color(color),
+        );
+    let menu = Rc::new(menu);
+    Some(
+        PopoverMenu::new(SharedString::from(format!("{id}-menu")))
+            .trigger_with_tooltip(trigger, move |_window, cx| {
+                Tooltip::with_meta(i18n::t!("MCP Servers"), None, tooltip_meta.clone(), cx)
+            })
+            .menu(move |window, cx| {
+                let menu = menu.clone();
+                let on_change = on_change.clone();
+                Some(ContextMenu::build(
+                    window,
+                    cx,
+                    move |mut context_menu, _window, _cx| {
+                        context_menu = context_menu.header(i18n::t!("MCP Servers"));
+                        for row in &menu.rows {
+                            let unavailable = is_browser_unavailable(row, &menu);
+                            let on = row.is_on(&menu.selection) && !unavailable;
+                            let disabled = menu.locked_reason.is_some() || unavailable;
+                            let row = row.clone();
+                            let selection = menu.selection.clone();
+                            let on_change = on_change.clone();
+                            context_menu = context_menu.toggleable_entry_disabled_when(
+                                row.label(),
+                                on,
+                                disabled,
+                                IconPosition::Start,
+                                None,
+                                move |window, cx| {
+                                    let mut selection = selection.clone();
+                                    row.switch(&mut selection, !on);
+                                    on_change(selection, window, cx);
+                                },
+                            );
+                        }
+                        let notes = menu
+                            .locked_reason
+                            .iter()
+                            .chain(&menu.browser_reason)
+                            .cloned()
+                            .chain(menu.locked_reason.is_none().then(|| menu.note.clone()))
+                            .collect::<Vec<_>>();
+                        context_menu = context_menu.separator();
+                        for note in notes {
+                            context_menu = context_menu.custom_row(move |_window, _cx| {
+                                div()
+                                    .max_w_72()
+                                    .child(
+                                        Label::new(note.clone())
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted),
+                                    )
+                                    .into_any_element()
+                            });
+                        }
+                        context_menu
+                    },
+                ))
+            })
+            .anchor(gpui::Anchor::BottomRight)
+            .into_any_element(),
+    )
+}
+
+fn is_browser_unavailable(row: &McpMenuRow, menu: &McpMenu) -> bool {
+    *row == McpMenuRow::Browser && menu.browser_reason.is_some()
 }

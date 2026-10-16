@@ -36,6 +36,31 @@ pub enum SidebarDockPosition {
     Right,
 }
 
+/// ADR-F101: when the IDE looks for newer versions of the external agents
+/// installed from the ACP registry.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentServersUpdateCheck {
+    /// Check once when the IDE starts, and ask before updating.
+    #[default]
+    OnStartup,
+    /// Check only when asked to (`agent: check for agent updates`).
+    Manual,
+}
+
 #[with_fallible_options]
 #[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, Default)]
 pub struct ThreadsSidebarSettingsContent {
@@ -477,6 +502,12 @@ pub struct AgentSettingsContent {
     ///
     /// Default: 5
     pub idle_disconnect_minutes: Option<u64>,
+    /// When to look for newer versions of the external agents installed from
+    /// the ACP registry. An agent always starts the version that is installed;
+    /// a newer one is only installed after you agree to it.
+    ///
+    /// Default: on_startup
+    pub agent_servers_update_check: Option<AgentServersUpdateCheck>,
     /// Whether to show thumb buttons for feedback in the agent panel.
     ///
     /// Default: true

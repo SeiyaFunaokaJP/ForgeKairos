@@ -16,6 +16,9 @@ use project::agent_server_store::{
     AllAgentServersSettings, CustomAgentServerSettings, installed_registry_archive_versions,
     registry_archive_version_matches,
 };
+use project::agent_update::{
+    RecordedAgentVersion, local_agent_update_approvals, recorded_agent_versions, unix_now,
+};
 use project::{AgentId, AgentRegistryStore, RegistryAgent};
 use settings::{Settings, SettingsStore, update_settings_file};
 use theme_settings::ThemeSettings;
@@ -306,8 +309,8 @@ fn fork_agent_note(agent_id: &str) -> Option<&'static str> {
 enum UpdateStatus {
     Unknown,
     UpToDate,
-    /// npm resolves an `npx` agent's version range at launch, so there is no
-    /// one installed version to compare against.
+    /// npm resolves an `npx` agent's version range at launch, so without a
+    /// record (ADR-F101) there is no one installed version to compare against.
     UnknownForNpx,
     Available {
         installed: Option<SharedString>,
@@ -315,16 +318,33 @@ enum UpdateStatus {
     },
 }
 
-/// `cached_on_disk` is the host's archive cache, most recently written first
+/// `recorded` is the registry versions the installs on this host (and in
+/// its WSL distros) were recorded at (ADR-F101,
+/// [`project::agent_update::recorded_agent_versions`]), which decide where
+/// there are any; `cached_on_disk` is the host's archive cache, most recently
+/// written first
 /// ([`project::agent_server_store::installed_registry_archive_versions`]);
 /// `reported_by_connection` is a newer version a running connection announced
 /// during this session.
 fn update_status(
     is_npx: bool,
     registry_version: &SharedString,
+    recorded: &[String],
     cached_on_disk: &[String],
     reported_by_connection: Option<&SharedString>,
 ) -> UpdateStatus {
+    if !recorded.is_empty() {
+        return match recorded
+            .iter()
+            .find(|version| version.as_str() != registry_version.as_ref())
+        {
+            Some(installed) => UpdateStatus::Available {
+                installed: Some(SharedString::from(installed.clone())),
+                latest: registry_version.clone(),
+            },
+            None => UpdateStatus::UpToDate,
+        };
+    }
     if is_npx {
         return UpdateStatus::UnknownForNpx;
     }
@@ -360,16 +380,33 @@ fn update_badge_label(installed: Option<&SharedString>, latest: &SharedString) -
     }
 }
 
-/// Marks an installed agent that has a newer version. It never updates
-/// anything itself: replacing an agent underneath a live session desyncs it,
-/// so a click only hands off to a thread with that agent ("受け渡し"), whose
-/// connection starts the newest version, or whose update banner does.
+/// Marks an installed agent that has a newer version. ADR-F101: a click agrees
+/// to the update, after the same allowlist consent as an install where the
+/// download needs a host that is not allowed yet. Nothing is replaced
+/// underneath a live session: the agent's next start installs it, and the
+/// threads that use it now show an update banner.
 fn update_available_badge(
     agent_id: &str,
     installed: Option<&SharedString>,
     latest: &SharedString,
+    agreed: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    let agent_id_for_click = agent_id.to_string();
+    if agreed {
+        return h_flex()
+            .id(SharedString::from(format!("agent-update-badge-{agent_id}")))
+            .gap_1()
+            .child(
+                Icon::new(IconName::Check)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .child(
+                Label::new(i18n::t!("Updates when it next starts"))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            );
+    }
     h_flex()
         .id(SharedString::from(format!("agent-update-badge-{agent_id}")))
         .gap_1()
@@ -385,16 +422,9 @@ fn update_available_badge(
                 .color(Color::Accent),
         )
         .tooltip(Tooltip::text(i18n::t!(
-            "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
+            "Click to update. Running sessions are not stopped: the agent's next start installs the new version, and running threads show an update banner."
         )))
-        .on_click(move |_, window, cx| {
-            window.dispatch_action(
-                Box::new(zed_actions::agent::SelectAgent {
-                    agent: agent_id_for_click.clone(),
-                }),
-                cx,
-            );
-        })
+        .on_click(on_click)
 }
 
 /// An install the user has to confirm before it proceeds (F2-5): the "Install"
@@ -643,6 +673,12 @@ pub struct AgentRegistryPage {
     /// [`project::agent_server_store::installed_registry_archive_versions`]
     /// lists them.
     installed_archive_versions: HashMap<String, Vec<String>>,
+    /// ADR-F101: registry id -> the registry versions its installs were
+    /// recorded at ([`project::agent_update::recorded_agent_versions`]).
+    recorded_versions: HashMap<String, Vec<RecordedAgentVersion>>,
+    /// ADR-F101: updates waiting for the allowlist consent their download
+    /// needs, by agent id.
+    pending_update_consent: HashMap<String, PendingInstallConsent>,
     _installed_archive_versions_scan: Task<()>,
     /// Not a `uniform_list`: a card grows when its install consent banner
     /// opens, and uniform rows would draw it over the cards below.
@@ -699,6 +735,8 @@ impl AgentRegistryPage {
                 registry_store,
                 connection_store,
                 installed_archive_versions: HashMap::default(),
+                recorded_versions: HashMap::default(),
+                pending_update_consent: HashMap::default(),
                 _installed_archive_versions_scan: Task::ready(()),
                 list: ListState::new(0, ListAlignment::Top, px(1000.)).measure_all(),
                 registry_agents: Vec::new(),
@@ -777,6 +815,16 @@ impl AgentRegistryPage {
         update_status(
             matches!(agent, RegistryAgent::Npx(_)),
             agent.version(),
+            &self
+                .recorded_versions
+                .get(id)
+                .map(|recorded| {
+                    recorded
+                        .iter()
+                        .map(|recorded| recorded.registry_version.clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
             self.installed_archive_versions
                 .get(id)
                 .map(Vec::as_slice)
@@ -785,37 +833,163 @@ impl AgentRegistryPage {
         )
     }
 
-    /// Reads which version of each installed archive agent the host has cached,
-    /// for [`Self::update_status`]. Nothing is fetched: the registry's latest
+    /// Reads what each installed registry agent was recorded at (ADR-F101),
+    /// and which version of each archive agent the host has cached, for
+    /// [`Self::update_status`]. Nothing is fetched: the registry's latest
     /// version is already in memory.
     fn scan_installed_archive_versions(&mut self, cx: &mut Context<Self>) {
-        let registry_ids = self
+        let registry_agents = self
             .registry_agents
             .iter()
             .filter(|agent| {
-                matches!(agent, RegistryAgent::Binary(_))
-                    && self.install_status(agent.id().as_ref())
-                        == RegistryInstallStatus::InstalledRegistry
+                self.install_status(agent.id().as_ref()) == RegistryInstallStatus::InstalledRegistry
             })
-            .map(|agent| agent.id().to_string())
+            .map(|agent| {
+                (
+                    agent.id().to_string(),
+                    crate::agent_updates::distribution_kind(agent),
+                )
+            })
             .collect::<Vec<_>>();
         let fs = <dyn Fs>::global(cx);
         self._installed_archive_versions_scan = cx.spawn(async move |this, cx| {
             let mut versions = HashMap::default();
-            for registry_id in registry_ids {
-                let cached = installed_registry_archive_versions(fs.as_ref(), &registry_id).await;
-                if !cached.is_empty() {
-                    versions.insert(registry_id, cached);
+            let mut recorded_versions = HashMap::default();
+            let now = unix_now();
+            for (registry_id, kind) in registry_agents {
+                let recorded = recorded_agent_versions(fs.as_ref(), &registry_id, kind, now).await;
+                if !recorded.is_empty() {
+                    recorded_versions.insert(registry_id.clone(), recorded);
+                }
+                if kind == project::agent_update::AgentDistributionKind::Archive {
+                    let cached =
+                        installed_registry_archive_versions(fs.as_ref(), &registry_id).await;
+                    if !cached.is_empty() {
+                        versions.insert(registry_id, cached);
+                    }
                 }
             }
             this.update(cx, |this, cx| {
-                if this.installed_archive_versions != versions {
+                if this.installed_archive_versions != versions
+                    || this.recorded_versions != recorded_versions
+                {
                     this.installed_archive_versions = versions;
+                    this.recorded_versions = recorded_versions;
                     cx.notify();
                 }
             })
             .log_err();
         });
+    }
+
+    /// ADR-F101: the update badge's click, or the update check's "Update" for
+    /// an agent whose download needs hosts the allowlist does not have yet.
+    /// Agrees to the update at once when nothing needs adding; otherwise
+    /// shows the consent banner first.
+    pub(crate) fn begin_update(&mut self, agent_id: &str, cx: &mut Context<Self>) {
+        let Some(agent) = self
+            .registry_agents
+            .iter()
+            .find(|agent| agent.id().as_ref() == agent_id)
+        else {
+            return;
+        };
+        let requirement = install_requirement(agent);
+        if missing_hosts(&requirement.hosts, cx).is_empty() {
+            self.agree_to_update(agent_id, cx);
+            return;
+        }
+        self.pending_update_consent.insert(
+            agent_id.to_string(),
+            PendingInstallConsent::new(requirement),
+        );
+        cx.notify();
+    }
+
+    /// Adds the hosts the pending update consent needs, then agrees to the
+    /// update, once the running egress policy has them (the download reads
+    /// that policy, not the file).
+    fn confirm_update(&mut self, agent_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(consent) = self.pending_update_consent.get_mut(agent_id) else {
+            return;
+        };
+        if consent.waiting {
+            return;
+        }
+        let hosts: Vec<String> = consent.hosts.iter().map(SharedString::to_string).collect();
+        if hosts.is_empty() {
+            self.pending_update_consent.remove(agent_id);
+            self.agree_to_update(agent_id, cx);
+            return;
+        }
+        consent.waiting = true;
+        consent.error = None;
+
+        let agent_id = agent_id.to_string();
+        let write_hosts = add_consented_hosts_and_await_pickup(hosts, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let result = write_hosts.await;
+            this.update(cx, |this, cx| {
+                if !this.pending_update_consent.contains_key(&agent_id) {
+                    return;
+                }
+                match result {
+                    Ok(()) => {
+                        this.pending_update_consent.remove(&agent_id);
+                        this.agree_to_update(&agent_id, cx);
+                    }
+                    Err(failure) => {
+                        if let Some(consent) = this.pending_update_consent.get_mut(&agent_id) {
+                            consent.waiting = false;
+                            consent.error = Some(failure.message());
+                        }
+                    }
+                }
+                cx.notify();
+            })
+            .log_err();
+        })
+        .detach();
+    }
+
+    fn agree_to_update(&mut self, agent_id: &str, cx: &mut Context<Self>) {
+        let Some(agent) = self
+            .registry_agents
+            .iter()
+            .find(|agent| agent.id().as_ref() == agent_id)
+        else {
+            return;
+        };
+        // Only the places whose install is behind are updated; without a
+        // record there is none to update here, and a thread's update banner
+        // (whose start knows where it installed) is what updates it.
+        let (installed, places) = self
+            .recorded_versions
+            .get(agent_id)
+            .and_then(|recorded| {
+                crate::agent_updates::places_behind(recorded, agent.version().as_ref())
+            })
+            .unwrap_or_default();
+        crate::agent_updates::approve_agent_updates(
+            &[crate::agent_updates::AgentUpdate {
+                id: agent.id().clone(),
+                name: agent.name().clone(),
+                installed,
+                available: agent.version().clone(),
+                places,
+            }],
+            cx,
+        );
+        cx.notify();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_pending_update_consent(&self, agent_id: &str) -> bool {
+        self.pending_update_consent.contains_key(agent_id)
+    }
+
+    fn update_agreed(agent_id: &str, cx: &mut App) -> bool {
+        local_agent_update_approvals(cx).is_approved_anywhere(&AgentId::new(agent_id.to_string()))
     }
 
     fn search_query(&self, cx: &mut App) -> Option<String> {
@@ -1146,10 +1320,15 @@ impl AgentRegistryPage {
                             )
                             .map(|this| match &update_status {
                                 UpdateStatus::Available { installed, latest } => {
+                                    let agent_id = agent.id().to_string();
                                     this.child(update_available_badge(
                                         agent.id().as_ref(),
                                         installed.as_ref(),
                                         latest,
+                                        Self::update_agreed(agent.id().as_ref(), cx),
+                                        cx.listener(move |this, _, _, cx| {
+                                            this.begin_update(&agent_id, cx);
+                                        }),
                                     ))
                                 }
                                 _ => this,
@@ -1195,12 +1374,49 @@ impl AgentRegistryPage {
                     ),
             );
 
-        match pending_consent {
+        let card = match pending_consent {
             Some(consent) => {
                 card.child(self.render_pending_consent(agent.id().as_ref(), consent, cx))
             }
             None => card,
+        };
+        match self.pending_update_consent.get(agent.id().as_ref()) {
+            Some(consent) => {
+                card.child(self.render_pending_update_consent(agent.id().as_ref(), consent, cx))
+            }
+            None => card,
         }
+    }
+
+    fn render_pending_update_consent(
+        &self,
+        agent_id: &str,
+        consent: &PendingInstallConsent,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let agent_id_for_confirm = agent_id.to_string();
+        let agent_id_for_cancel = agent_id.to_string();
+
+        InstallConsentBanner::new(
+            format!("update-{agent_id}"),
+            consent,
+            InstallConsentAction::Update,
+            cx.listener(move |this, _, window, cx| {
+                this.confirm_update(&agent_id_for_confirm, window, cx);
+            }),
+            cx.listener(move |this, _, _, cx| {
+                if this
+                    .pending_update_consent
+                    .get(&agent_id_for_cancel)
+                    .is_some_and(|consent| consent.waiting)
+                {
+                    return;
+                }
+                this.pending_update_consent.remove(&agent_id_for_cancel);
+                cx.notify();
+            }),
+        )
+        .into_any_element()
     }
 
     fn render_pending_consent(
@@ -1403,17 +1619,39 @@ impl Render for AgentRegistryPage {
                                 Headline::new(i18n::t!("ACP Registry")).size(HeadlineSize::Large),
                             )
                             .child(
-                                Button::new("learn-more", i18n::t!("Learn More"))
-                                    .style(ButtonStyle::Outlined)
-                                    .size(ButtonSize::Medium)
-                                    .end_icon(
-                                        Icon::new(IconName::ArrowUpRight)
-                                            .size(IconSize::Small)
-                                            .color(Color::Muted),
+                                h_flex()
+                                    .gap_1p5()
+                                    .child(
+                                        Button::new(
+                                            "check-for-agent-updates",
+                                            i18n::t!("Check for Updates"),
+                                        )
+                                        .style(ButtonStyle::Outlined)
+                                        .size(ButtonSize::Medium)
+                                        .on_click(
+                                            |_, window, cx| {
+                                                window.dispatch_action(
+                                                    Box::new(
+                                                        crate::agent_updates::CheckForAgentUpdates,
+                                                    ),
+                                                    cx,
+                                                )
+                                            },
+                                        ),
                                     )
-                                    .on_click(move |_, _, cx| {
-                                        cx.open_url(&zed_urls::acp_registry_blog(cx))
-                                    }),
+                                    .child(
+                                        Button::new("learn-more", i18n::t!("Learn More"))
+                                            .style(ButtonStyle::Outlined)
+                                            .size(ButtonSize::Medium)
+                                            .end_icon(
+                                                Icon::new(IconName::ArrowUpRight)
+                                                    .size(IconSize::Small)
+                                                    .color(Color::Muted),
+                                            )
+                                            .on_click(move |_, _, cx| {
+                                                cx.open_url(&zed_urls::acp_registry_blog(cx))
+                                            }),
+                                    ),
                             ),
                     )
                     .child(
@@ -1676,7 +1914,7 @@ mod tests {
         let latest = SharedString::from("1.3.0");
 
         assert_eq!(
-            update_status(false, &latest, &cached(&["1.2.3"]), None),
+            update_status(false, &latest, &[], &cached(&["1.2.3"]), None),
             UpdateStatus::Available {
                 installed: Some(SharedString::from("1.2.3")),
                 latest: latest.clone(),
@@ -1688,7 +1926,7 @@ mod tests {
         );
 
         assert_eq!(
-            update_status(false, &latest, &cached(&["1.3.0"]), None),
+            update_status(false, &latest, &[], &cached(&["1.3.0"]), None),
             UpdateStatus::UpToDate
         );
         // The cache spells a version the way a directory name can hold it.
@@ -1696,13 +1934,14 @@ mod tests {
             update_status(
                 false,
                 &SharedString::from("2.0.0+build_7"),
+                &[],
                 &cached(&["2.0.0-build_7"]),
                 None
             ),
             UpdateStatus::UpToDate
         );
         assert_eq!(
-            update_status(false, &latest, &[], None),
+            update_status(false, &latest, &[], &[], None),
             UpdateStatus::Unknown
         );
     }
@@ -1713,11 +1952,11 @@ mod tests {
     fn update_badge_is_not_shown_when_the_latest_is_cached_behind_an_older_one() {
         let latest = SharedString::from("1.3.0");
         assert_eq!(
-            update_status(false, &latest, &cached(&["1.2.3", "1.3.0"]), None),
+            update_status(false, &latest, &[], &cached(&["1.2.3", "1.3.0"]), None),
             UpdateStatus::UpToDate
         );
         assert_eq!(
-            update_status(false, &latest, &cached(&["1.2.3", "1.1.0"]), None),
+            update_status(false, &latest, &[], &cached(&["1.2.3", "1.1.0"]), None),
             UpdateStatus::Available {
                 installed: Some(SharedString::from("1.2.3")),
                 latest: latest.clone(),
@@ -1726,15 +1965,51 @@ mod tests {
     }
 
     #[test]
-    fn update_badge_is_never_shown_for_npx_agents() {
+    fn update_badge_is_not_shown_for_npx_agents_without_a_record() {
         let latest = SharedString::from("1.3.0");
         assert_eq!(
-            update_status(true, &latest, &cached(&["1.2.3"]), Some(&latest)),
+            update_status(true, &latest, &[], &cached(&["1.2.3"]), Some(&latest)),
             UpdateStatus::UnknownForNpx
         );
         assert_eq!(
-            update_status(true, &latest, &[], None),
+            update_status(true, &latest, &[], &[], None),
             UpdateStatus::UnknownForNpx
+        );
+    }
+
+    /// ADR-F101: what an install was recorded at decides, for npx agents too,
+    /// and over the cache and the connection's report.
+    #[test]
+    fn update_badge_follows_the_record() {
+        let latest = SharedString::from("0.6.0");
+        assert_eq!(
+            update_status(true, &latest, &cached(&["0.5.1"]), &[], None),
+            UpdateStatus::Available {
+                installed: Some(SharedString::from("0.5.1")),
+                latest: latest.clone(),
+            }
+        );
+        assert_eq!(
+            update_status(true, &latest, &cached(&["0.6.0"]), &[], Some(&latest)),
+            UpdateStatus::UpToDate
+        );
+        assert_eq!(
+            update_status(
+                false,
+                &latest,
+                &cached(&["0.6.0"]),
+                &cached(&["0.5.1"]),
+                None
+            ),
+            UpdateStatus::UpToDate
+        );
+        assert_eq!(
+            update_status(false, &latest, &cached(&["0.6.0", "0.5.1"]), &[], None),
+            UpdateStatus::Available {
+                installed: Some(SharedString::from("0.5.1")),
+                latest: latest.clone(),
+            },
+            "one place still on the old version is an update"
         );
     }
 
@@ -1745,7 +2020,7 @@ mod tests {
         let latest = SharedString::from("1.3.0");
         let reported = SharedString::from("1.4.0");
         assert_eq!(
-            update_status(false, &latest, &[], Some(&reported)),
+            update_status(false, &latest, &[], &[], Some(&reported)),
             UpdateStatus::Available {
                 installed: None,
                 latest: reported.clone(),
@@ -1756,7 +2031,7 @@ mod tests {
             "Update available: v1.4.0"
         );
         assert_eq!(
-            update_status(false, &latest, &cached(&["1.2.3"]), Some(&reported)),
+            update_status(false, &latest, &[], &cached(&["1.2.3"]), Some(&reported)),
             UpdateStatus::Available {
                 installed: Some(SharedString::from("1.2.3")),
                 latest: latest.clone(),
@@ -1770,7 +2045,7 @@ mod tests {
     fn update_badge_clears_once_the_reported_version_is_cached() {
         let latest = SharedString::from("1.3.0");
         assert_eq!(
-            update_status(false, &latest, &cached(&["1.3.0"]), Some(&latest)),
+            update_status(false, &latest, &[], &cached(&["1.3.0"]), Some(&latest)),
             UpdateStatus::UpToDate
         );
     }

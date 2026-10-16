@@ -165,6 +165,7 @@ mod tests {
             thinking_enabled: false,
             thinking_effort: None,
             git_operations_enabled: None,
+            mcp_selection: Default::default(),
             draft_prompt: None,
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
