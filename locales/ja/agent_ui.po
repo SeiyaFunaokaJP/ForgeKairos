@@ -194,6 +194,9 @@ msgstr "サイドバーの全スレッドのメタデータ"
 msgid "All domains (unrestricted)"
 msgstr "すべてのドメイン (制限なし)"
 
+msgid "All external agents are up to date."
+msgstr "すべての外部エージェントは最新です。"
+
 msgid "All paths except protected Git metadata"
 msgstr "保護された Git メタデータを除くすべてのパス"
 
@@ -229,6 +232,10 @@ msgstr "settings.json の `agent_servers` → `{}` → `env` → `{variable}` �
 
 msgid "An Error Happened"
 msgstr "エラーが発生しました"
+
+msgid "An update is available for {count} external agent: {list}"
+msgid_plural "Updates are available for {count} external agents: {list}"
+msgstr[0] "{count} 件の外部エージェントに更新があります: {list}"
 
 msgid "Answer the tool call waiting for confirmation before switching."
 msgstr "確認待ちのツール呼び出しに答えてから切り替えてください。"
@@ -374,6 +381,9 @@ msgstr "コードベースについて対話します。"
 msgid "Check for Claude Code Updates"
 msgstr "Claude Code の更新を確認します"
 
+msgid "Check for Updates"
+msgstr "更新を確認"
+
 msgid "Check the server docs for required arguments and environment variables."
 msgstr "必要な引数と環境変数についてはサーバーのドキュメントを確認してください。"
 
@@ -428,8 +438,8 @@ msgstr "クリックするとプレビューします"
 msgid "Click to copy rating ID"
 msgstr "クリックして評価 ID をコピー"
 
-msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
-msgstr "クリックするとこのエージェントのスレッドを開きます。ここからは更新せず、実行中のセッションも止めません。新しく接続したスレッドは最新版で起動し、実行中のスレッドには更新バナーが出ます。"
+msgid "Click to update. Running sessions are not stopped: the agent's next start installs the new version, and running threads show an update banner."
+msgstr "クリックすると更新します。実行中のセッションは止めません。エージェントの次回の起動時に新しいバージョンをインストールし、実行中のスレッドには更新バナーが出ます。"
 
 msgid "Clipboard does not contain text"
 msgstr "クリップボードにテキストが含まれていません。"
@@ -562,6 +572,9 @@ msgstr "コスト: {}"
 
 msgid "Could not authenticate with {provider}."
 msgstr "{provider} で認証できませんでした。"
+
+msgid "Could not check for agent updates: {error}"
+msgstr "エージェントの更新を確認できませんでした: {error}"
 
 msgid "Could not check the Claude Code already placed in WSL."
 msgstr "WSL に配置済みの Claude Code を確認できませんでした。"
@@ -1093,6 +1106,9 @@ msgstr "採用"
 
 msgid "Keep All"
 msgstr "すべて採用"
+
+msgid "Later"
+msgstr "後で"
 
 msgid "Latest"
 msgstr "最新"
@@ -1991,6 +2007,9 @@ msgstr "ターミナルインラインアシスタントのエラー: {}"
 msgid "Thanks for your feedback!"
 msgstr "フィードバックをありがとうございます。"
 
+msgid "The ACP registry is not available, so agent updates cannot be checked."
+msgstr "ACP レジストリを利用できないため、エージェントの更新を確認できません。"
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "接続先へ送った Claude Code が見つかりません。もう一度お試しください。"
 
@@ -2364,6 +2383,9 @@ msgstr "お気に入りから削除"
 msgid "Unknown"
 msgstr "不明"
 
+msgid "Update"
+msgstr "更新"
+
 msgid "Update Claude Code to v{to}"
 msgstr "Claude Code を v{to} に更新します"
 
@@ -2378,6 +2400,9 @@ msgstr "更新あり: v{latest}"
 
 msgid "Update to v{}"
 msgstr "v{} に更新"
+
+msgid "Updates when it next starts"
+msgstr "次回の起動時に更新"
 
 msgid "Upgrade"
 msgstr "アップグレード"
@@ -2594,6 +2619,9 @@ msgstr "{keybinding} でチャット"
 
 msgid "{minutes} minutes ago"
 msgstr "{minutes} 分前"
+
+msgid "{name} {installed} → {available}"
+msgstr "{name} {installed} → {available}"
 
 msgid "{notice}. Starts `{program}` on this PC in the project folder."
 msgstr "{notice}。この PC の `{program}` をプロジェクトのフォルダーで起動します。"

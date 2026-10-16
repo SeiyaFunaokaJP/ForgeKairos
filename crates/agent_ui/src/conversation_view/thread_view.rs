@@ -13517,6 +13517,14 @@ impl ThreadView {
         )
     }
 
+    /// ADR-F101: shown whether or not the thread has messages. An external
+    /// agent's thread starts the agent with its first message (ADR-F99), so
+    /// the version a start reports is only known once there are messages, and
+    /// the update reloads the conversation on the new version.
+    pub(crate) fn new_version_callout(&self) -> Option<SharedString> {
+        self.new_server_version_available.clone()
+    }
+
     fn render_new_version_callout(&self, version: &SharedString, cx: &mut Context<Self>) -> Div {
         let has_version = !version.is_empty();
         let title = if has_version {
@@ -13683,10 +13691,13 @@ impl ThreadView {
         }));
     }
 
+    /// ADR-F101: the user agreed to the update, so the start this makes
+    /// installs it; without that, a start launches the version installed.
     fn reset_agent_server(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.update_consent = None;
+        self.new_server_version_available = None;
         self.server_view
-            .update(cx, |view, cx| view.reset(window, cx))
+            .update(cx, |view, cx| view.update_agent(window, cx))
             .log_err();
     }
 
@@ -14382,13 +14393,9 @@ impl Render for ThreadView {
             .children(self.render_skill_loading_issues(cx))
             .children(self.render_thread_retry_status_callout(cx))
             .children(self.render_thread_error(window, cx))
-            .when_some(
-                match has_messages {
-                    true => None,
-                    false => self.new_server_version_available.clone(),
-                },
-                |this, version| this.child(self.render_new_version_callout(&version, cx)),
-            )
+            .when_some(self.new_version_callout(), |this, version| {
+                this.child(self.render_new_version_callout(&version, cx))
+            })
             .children(self.render_token_limit_callout(cx))
             .children(self.render_request_elicitations(cx))
             .child(self.render_message_editor(window, cx))

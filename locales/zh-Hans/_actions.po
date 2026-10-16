@@ -50,6 +50,10 @@ msgctxt "action"
 msgid "agent::ChatWithFollow"
 msgstr "智能体: 发送消息并跟随"
 
+msgctxt "action"
+msgid "agent::CheckForAgentUpdates"
+msgstr "智能体: 检查智能体更新"
+
 #. agent: clear message queue
 msgctxt "action"
 msgid "agent::ClearMessageQueue"

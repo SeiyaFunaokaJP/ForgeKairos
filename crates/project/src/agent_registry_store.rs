@@ -5,7 +5,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, Result, anyhow, bail};
 use collections::HashMap;
 use fs::Fs;
-use futures::{AsyncReadExt, future::join_all};
+use futures::{
+    AsyncReadExt,
+    future::{Shared, join_all},
+};
 use gpui::{
     App, AppContext as _, BackgroundExecutor, Context, Entity, FutureExt as _, Global,
     SharedString, Task, TaskExt,
@@ -15,6 +18,7 @@ use serde::Deserialize;
 use settings::Settings as _;
 use util::ResultExt;
 
+use crate::agent_update::AgentServersUpdateCheckSettings;
 use crate::{AgentId, DisableAiSettings};
 
 const REGISTRY_URL: &str = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
@@ -124,8 +128,10 @@ pub struct AgentRegistryStore {
     agents: Vec<RegistryAgent>,
     is_fetching: bool,
     fetch_error: Option<SharedString>,
-    pending_refresh: Option<Task<()>>,
+    pending_refresh: Option<Shared<Task<()>>>,
     last_refresh: Option<Instant>,
+    /// ADR-F101: whether the cached registry has been read (or found missing).
+    cached_registry_loaded: bool,
 }
 
 impl AgentRegistryStore {
@@ -147,8 +153,11 @@ impl AgentRegistryStore {
         let store = cx.new(|cx| Self::new(fs, http_client, cx));
         cx.set_global(GlobalAgentRegistryStore(store.clone()));
 
+        // ADR-F101: with `agent.agent_servers_update_check` set to `manual`,
+        // the registry is only fetched when nothing of it is known yet (see
+        // `load_cached_registry`) or when the user asks.
         store.update(cx, |store, cx| {
-            if store.agents.is_empty() {
+            if store.agents.is_empty() && AgentServersUpdateCheckSettings::checks_on_startup(cx) {
                 store.refresh(cx);
             }
         });
@@ -176,6 +185,7 @@ impl AgentRegistryStore {
             fetch_error: None,
             pending_refresh: None,
             last_refresh: None,
+            cached_registry_loaded: true,
         });
         cx.set_global(GlobalAgentRegistryStore(store.clone()));
         store
@@ -224,7 +234,7 @@ impl AgentRegistryStore {
         let http_client = self.http_client.clone();
         let executor = cx.background_executor().clone();
 
-        self.pending_refresh = Some(cx.spawn(async move |this, cx| {
+        let refresh = cx.spawn(async move |this, cx| {
             let result = match fetch_registry_index(http_client.clone(), &executor).await {
                 Ok(data) => {
                     build_registry_agents(
@@ -258,7 +268,22 @@ impl AgentRegistryStore {
                 cx.notify();
             })
             .ok();
-        }));
+        });
+        self.pending_refresh = Some(futures::FutureExt::shared(refresh));
+    }
+
+    /// ADR-F101: a task that finishes once the registry has been fetched, for
+    /// the update check to compare against. `force` fetches it again even if
+    /// it already was in this session (the user asked); otherwise a fetch
+    /// that is under way or already happened is enough (the check at
+    /// startup, which the fetch at startup serves).
+    pub fn refresh_and_wait(&mut self, force: bool, cx: &mut Context<Self>) -> Shared<Task<()>> {
+        if self.pending_refresh.is_none() && (force || self.last_refresh.is_none()) {
+            self.refresh(cx);
+        }
+        self.pending_refresh
+            .clone()
+            .unwrap_or_else(|| futures::FutureExt::shared(Task::ready(())))
     }
 
     /// Refresh the registry if it hasn't been refreshed recently.
@@ -267,6 +292,14 @@ impl AgentRegistryStore {
     /// updates without making too many network requests. The refresh is
     /// throttled to at most once per hour.
     pub fn refresh_if_stale(&mut self, cx: &mut Context<Self>) {
+        // ADR-F101: `manual` fetches only when asked, unless nothing is known
+        // of the registry: the cache it is about to read (or has found
+        // missing, in which case it fetches) says what the agents are.
+        if (!self.agents.is_empty() || !self.cached_registry_loaded)
+            && !AgentServersUpdateCheckSettings::checks_on_startup(cx)
+        {
+            return;
+        }
         let should_refresh = self
             .last_refresh
             .map(|last| last.elapsed() >= REFRESH_THROTTLE_DURATION)
@@ -286,6 +319,7 @@ impl AgentRegistryStore {
             fetch_error: None,
             pending_refresh: None,
             last_refresh: None,
+            cached_registry_loaded: false,
         };
 
         store.load_cached_registry(fs, store.http_client.clone(), cx);
@@ -305,24 +339,36 @@ impl AgentRegistryStore {
 
         cx.spawn(async move |this, cx| -> Result<()> {
             let cache_path = registry_cache_path();
-            if !fs.is_file(&cache_path).await {
-                return Ok(());
-            }
+            let cached = if fs.is_file(&cache_path).await {
+                async {
+                    let bytes = fs
+                        .load_bytes(&cache_path)
+                        .await
+                        .context("reading cached registry")?;
+                    let index: RegistryIndex =
+                        serde_json::from_slice(&bytes).context("parsing cached registry")?;
 
-            let bytes = fs
-                .load_bytes(&cache_path)
+                    let executor = cx.background_executor().clone();
+                    build_registry_agents(fs, http_client, index, bytes, false, &executor).await
+                }
                 .await
-                .context("reading cached registry")?;
-            let index: RegistryIndex =
-                serde_json::from_slice(&bytes).context("parsing cached registry")?;
-
-            let executor = cx.background_executor().clone();
-            let agents =
-                build_registry_agents(fs, http_client, index, bytes, false, &executor).await?;
+                .log_err()
+            } else {
+                None
+            };
 
             this.update(cx, |this, cx| {
-                this.agents = agents;
-                cx.notify();
+                this.cached_registry_loaded = true;
+                if let Some(agents) = cached {
+                    this.agents = agents;
+                    cx.notify();
+                }
+                // ADR-F101: nothing is known of the registry, so it is fetched
+                // whatever `agent.agent_servers_update_check` says (with
+                // `on_startup` that fetch is already under way).
+                if this.agents.is_empty() && this.last_refresh.is_none() {
+                    this.refresh(cx);
+                }
             })?;
 
             Ok(())
@@ -705,6 +751,92 @@ struct RegistryNpxDistribution {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent_update::AgentServersUpdateCheck;
+    use gpui::TestAppContext;
+    use settings::SettingsStore;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const REGISTRY_JSON: &str = r#"{"version":"1","agents":[{"id":"test-agent","name":"Test Agent","version":"1.0.0","description":"","distribution":{"npx":{"package":"test-agent@1.0.0"}}}]}"#;
+
+    /// Starts the registry the way the IDE does, with a cached registry on
+    /// disk and `check` set, and counts the fetches of the registry.
+    async fn start_registry(
+        check: AgentServersUpdateCheck,
+        cx: &mut TestAppContext,
+    ) -> (Entity<AgentRegistryStore>, Arc<AtomicUsize>) {
+        cx.update(|cx| {
+            let mut store = SettingsStore::test(cx);
+            store.update_user_settings(cx, |settings| {
+                settings
+                    .agent
+                    .get_or_insert_default()
+                    .agent_servers_update_check = Some(check);
+            });
+            cx.set_global(store);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.create_dir(&registry_cache_dir()).await.unwrap();
+        fs.insert_file(&registry_cache_path(), REGISTRY_JSON.as_bytes().to_vec())
+            .await;
+        let fetches = Arc::new(AtomicUsize::new(0));
+        let http_client = http_client::FakeHttpClient::create({
+            let fetches = fetches.clone();
+            move |request| {
+                if request.uri() == REGISTRY_URL {
+                    fetches.fetch_add(1, Ordering::SeqCst);
+                }
+                async move {
+                    Ok(http_client::Response::builder()
+                        .status(200)
+                        .body(AsyncBody::from(REGISTRY_JSON.as_bytes().to_vec()))?)
+                }
+            }
+        });
+        let store = cx.update(|cx| AgentRegistryStore::init_global(cx, fs, http_client));
+        cx.run_until_parked();
+        (store, fetches)
+    }
+
+    /// ADR-F101: `on_startup` fetches the registry once when the IDE starts,
+    /// and the startup check waits for that fetch rather than making another.
+    #[gpui::test]
+    async fn the_registry_is_fetched_once_at_startup(cx: &mut TestAppContext) {
+        let (store, fetches) = start_registry(AgentServersUpdateCheck::OnStartup, cx).await;
+        assert_eq!(fetches.load(Ordering::SeqCst), 1);
+
+        store
+            .update(cx, |store, cx| store.refresh_and_wait(false, cx))
+            .await;
+        assert_eq!(fetches.load(Ordering::SeqCst), 1, "the check waits for it");
+
+        store
+            .update(cx, |store, cx| store.refresh_and_wait(true, cx))
+            .await;
+        assert_eq!(fetches.load(Ordering::SeqCst), 2, "asking fetches again");
+    }
+
+    /// ADR-F101: `manual` leaves the network alone at startup while the cached
+    /// registry says what the agents are, also when an agent starts, until
+    /// the user asks.
+    #[gpui::test]
+    async fn the_registry_is_not_fetched_at_startup_when_manual(cx: &mut TestAppContext) {
+        let (store, fetches) = start_registry(AgentServersUpdateCheck::Manual, cx).await;
+        assert_eq!(fetches.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            store.read_with(cx, |store, _| store.agents().len()),
+            1,
+            "the cached registry is read"
+        );
+
+        store.update(cx, |store, cx| store.refresh_if_stale(cx));
+        cx.run_until_parked();
+        assert_eq!(fetches.load(Ordering::SeqCst), 0, "a start asks nothing");
+
+        store
+            .update(cx, |store, cx| store.refresh_and_wait(true, cx))
+            .await;
+        assert_eq!(fetches.load(Ordering::SeqCst), 1, "asking fetches it");
+    }
 
     #[test]
     fn registry_links_keep_only_web_addresses() {

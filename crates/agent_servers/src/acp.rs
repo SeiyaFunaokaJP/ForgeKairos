@@ -4143,7 +4143,9 @@ impl AgentConnection for AcpConnection {
                             } else {
                                 AgentLaunchTarget::Host
                             };
-                            anyhow::Ok(agent.get_command(
+                            // ADR-F101: a sign-in is not the agent's start, so
+                            // it installs no update the user agreed to.
+                            anyhow::Ok(agent.get_command_without_update(
                                 terminal.args.clone(),
                                 HashMap::from_iter(terminal.env.clone()),
                                 target,

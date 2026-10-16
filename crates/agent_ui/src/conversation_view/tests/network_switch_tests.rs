@@ -834,6 +834,18 @@ async fn test_a_superseded_lifted_connection_is_not_shared_with_the_next_thread(
         .send(Some("2.0.0".to_string()))
         .expect("the store listens");
     cx.run_until_parked();
+    assert!(
+        still_running(&first, id, cx),
+        "ADR-F101: a report alone replaces nothing"
+    );
+    // What agreeing to the update does.
+    first.update(cx, |view, cx| {
+        let key = view.connection_key.clone();
+        let place = view.connection_place();
+        view.connection_store
+            .update(cx, |store, cx| store.begin_agent_update(&key, place, cx));
+    });
+    cx.run_until_parked();
     assert!(!still_running(&first, id, cx), "no start is handed it");
 
     start_lifted(&second, cx);

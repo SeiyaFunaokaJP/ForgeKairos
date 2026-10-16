@@ -50,6 +50,10 @@ msgctxt "action"
 msgid "agent::ChatWithFollow"
 msgstr "代理: 傳送訊息並跟隨"
 
+msgctxt "action"
+msgid "agent::CheckForAgentUpdates"
+msgstr "代理: 檢查代理更新"
+
 #. agent: clear message queue
 msgctxt "action"
 msgid "agent::ClearMessageQueue"

@@ -71,6 +71,7 @@ ForgeKairos が Zed に足した設定と、既定値を変えた Zed の設定�
 | `agent.context_attachments.diagnostics_max_files` | `50` | 診断を添付するファイル数の上限。 |
 | `agent.system_prompt_repo_map_bytes` | `0` | エージェントのシステムプロンプトに入れるリポジトリの地図のバイト数。`0` で無効、上限 32768。 |
 | `agent.idle_disconnect_minutes` | `5` | 外部エージェントのスレッドが無くなってから接続を保つ分数。`0` はウィンドウを閉じるまで保つ。 |
+| `agent.agent_servers_update_check` | `"on_startup"` | ACP レジストリからインストールした外部エージェントの新しいバージョンを確認するタイミング。`"on_startup"` は IDE の起動時に 1 回、`"manual"` は `agent: check for agent updates` を実行したときだけ確認する。更新に同意するまでは、インストール済みのバージョンで起動する。 |
 | `agent.claude_code_run_outside_sandbox` | `false` | 「Claude Code を起動」で、確認せずに常にサンドボックスの外で起動する。ユーザー設定のファイルからだけ読む。 |
 | `ide_server.enabled` | `false` | ForgeKairos を Claude Code CLI 向けの loopback の IDE サーバーとして公開する。 |
 | `ide_server.assist_tools` | `true` | エージェントに IDE のツール (ハイライト、注釈、ツアー、定義、参照、シンボル検索) を MCP サーバー名 `zed` で渡す。 |

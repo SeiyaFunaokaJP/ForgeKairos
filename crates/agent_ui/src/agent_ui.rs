@@ -4,6 +4,7 @@ mod agent_diff;
 mod agent_model_selector;
 mod agent_panel;
 mod agent_registry_ui;
+mod agent_updates;
 mod ai_choice_install;
 mod ai_choices;
 mod buffer_codegen;
@@ -624,6 +625,32 @@ pub(crate) fn humanize_token_count(count: u64) -> String {
     }
 }
 
+/// Shows the ACP registry page in the active pane, opening it if it is not
+/// open there yet.
+pub(crate) fn open_agent_registry_page(
+    workspace: &mut Workspace,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> Entity<AgentRegistryPage> {
+    let existing = workspace
+        .active_pane()
+        .read(cx)
+        .items()
+        .find_map(|item| item.downcast::<AgentRegistryPage>());
+
+    if let Some(existing) = existing {
+        existing.update(cx, |_, cx| {
+            project::AgentRegistryStore::global(cx).update(cx, |store, cx| store.refresh(cx));
+        });
+        workspace.activate_item(&existing, true, true, window, cx);
+        existing
+    } else {
+        let registry_page = AgentRegistryPage::new(workspace, window, cx);
+        workspace.add_item_to_active_pane(Box::new(registry_page.clone()), None, true, window, cx);
+        registry_page
+    }
+}
+
 /// Initializes the `agent` crate.
 pub fn init(
     fs: Arc<dyn Fs>,
@@ -672,34 +699,14 @@ pub fn init(
     inline_assistant::init(fs.clone(), prompt_builder.clone(), cx);
     terminal_inline_assistant::init(fs.clone(), prompt_builder, cx);
     sandboxed_claude_code::init(cx);
+    agent_updates::init(cx);
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
         workspace.register_action(
             move |workspace: &mut Workspace,
                   _: &zed_actions::AcpRegistry,
                   window: &mut Window,
                   cx: &mut Context<Workspace>| {
-                let existing = workspace
-                    .active_pane()
-                    .read(cx)
-                    .items()
-                    .find_map(|item| item.downcast::<AgentRegistryPage>());
-
-                if let Some(existing) = existing {
-                    existing.update(cx, |_, cx| {
-                        project::AgentRegistryStore::global(cx)
-                            .update(cx, |store, cx| store.refresh(cx));
-                    });
-                    workspace.activate_item(&existing, true, true, window, cx);
-                } else {
-                    let registry_page = AgentRegistryPage::new(workspace, window, cx);
-                    workspace.add_item_to_active_pane(
-                        Box::new(registry_page),
-                        None,
-                        true,
-                        window,
-                        cx,
-                    );
-                }
+                open_agent_registry_page(workspace, window, cx);
             },
         );
     })
