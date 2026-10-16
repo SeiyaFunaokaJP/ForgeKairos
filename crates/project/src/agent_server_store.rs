@@ -176,6 +176,21 @@ pub trait ExternalAgentServer {
 
     fn set_new_version_available_tx(&mut self, _tx: watch::Sender<Option<String>>) {}
 
+    /// ADR-F101: the slot a start reports a newer version through, for the
+    /// agents whose start reports one only once it has read the record.
+    fn new_version_slot(&self) -> Option<NewVersionSlot> {
+        None
+    }
+
+    /// ADR-F101: takes over the slot of the entry this one replaces, so that a
+    /// start still under way when the agents are registered again reports to
+    /// the connection that asked for it.
+    fn adopt_new_version_slot(&mut self, slot: NewVersionSlot) {
+        if let Some(tx) = slot.lock().take() {
+            self.set_new_version_available_tx(tx);
+        }
+    }
+
     fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
         None
     }
@@ -470,17 +485,29 @@ impl AgentServerStore {
             AgentId,
             (
                 SharedString,
-                Option<watch::Sender<Option<String>>>,
+                Option<NewVersionSlot>,
                 Option<watch::Sender<Option<String>>>,
             ),
         > = HashMap::default();
         for (name, mut entry) in self.external_agents.drain() {
             if let Some(version) = entry.server.version().cloned() {
-                let new_version_available_tx = entry.server.take_new_version_available_tx();
+                // ADR-F101: the slot itself is kept, not the sender taken out
+                // of it: a start under way holds the same slot and reports
+                // through it once it has read its record.
+                let new_version_slot = entry.server.new_version_slot().or_else(|| {
+                    entry
+                        .server
+                        .take_new_version_available_tx()
+                        .map(|tx| Arc::new(parking_lot::Mutex::new(Some(tx))))
+                });
                 let loading_status_tx = entry.server.take_loading_status_tx();
-                if new_version_available_tx.is_some() || loading_status_tx.is_some() {
+                if new_version_slot
+                    .as_ref()
+                    .is_some_and(|slot| slot.lock().is_some())
+                    || loading_status_tx.is_some()
+                {
                     old_versioned_agents
-                        .insert(name, (version, new_version_available_tx, loading_status_tx));
+                        .insert(name, (version, new_version_slot, loading_status_tx));
                 }
             }
         }
@@ -581,7 +608,7 @@ impl AgentServerStore {
         // changed, notify the active connection to reconnect. Otherwise,
         // transfer the channel to the new entry so future updates can use it.
         for (name, entry) in &mut self.external_agents {
-            let Some((old_version, new_version_available_tx, loading_status_tx)) =
+            let Some((old_version, new_version_slot, loading_status_tx)) =
                 old_versioned_agents.remove(name)
             else {
                 continue;
@@ -591,12 +618,12 @@ impl AgentServerStore {
             };
 
             if new_version != &old_version {
-                if let Some(mut tx) = new_version_available_tx {
-                    tx.send(Some(new_version.to_string())).ok();
+                if let Some(slot) = new_version_slot {
+                    report_new_version(&slot, new_version.to_string());
                 }
             } else {
-                if let Some(tx) = new_version_available_tx {
-                    entry.server.set_new_version_available_tx(tx);
+                if let Some(slot) = new_version_slot {
+                    entry.server.adopt_new_version_slot(slot);
                 }
                 if let Some(tx) = loading_status_tx {
                     entry.server.set_loading_status_tx(tx);
@@ -2072,6 +2099,14 @@ impl ExternalAgentServer for LocalRegistryArchiveAgent {
         *self.new_version_available_tx.lock() = Some(tx);
     }
 
+    fn new_version_slot(&self) -> Option<NewVersionSlot> {
+        Some(self.new_version_available_tx.clone())
+    }
+
+    fn adopt_new_version_slot(&mut self, slot: NewVersionSlot) {
+        self.new_version_available_tx = slot;
+    }
+
     fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
         self.loading_status_tx.take()
     }
@@ -2314,6 +2349,14 @@ impl ExternalAgentServer for LocalRegistryNpxAgent {
 
     fn set_new_version_available_tx(&mut self, tx: watch::Sender<Option<String>>) {
         *self.new_version_available_tx.lock() = Some(tx);
+    }
+
+    fn new_version_slot(&self) -> Option<NewVersionSlot> {
+        Some(self.new_version_available_tx.clone())
+    }
+
+    fn adopt_new_version_slot(&mut self, slot: NewVersionSlot) {
+        self.new_version_available_tx = slot;
     }
 
     fn take_loading_status_tx(&mut self) -> Option<watch::Sender<Option<String>>> {
@@ -4078,6 +4121,39 @@ mod tests {
         cx.run_until_parked();
 
         // The watch channel should have received the new version.
+        assert_eq!(rx.borrow().as_deref(), Some("2.0.0"));
+    }
+
+    /// ADR-F101: a start reports the registry's newer version only once it
+    /// has read its record. When the agents are registered again meanwhile
+    /// (the registry fetched at startup, with the same version), that report
+    /// still reaches the connection that asked for the start.
+    #[gpui::test]
+    fn a_start_under_way_reports_after_the_agents_are_registered_again(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        let registry = init_registry(cx, vec![make_npx_agent("test-agent", "1.0.0")]);
+        set_registry_settings(cx, &["test-agent"]);
+        let store = create_agent_server_store(cx);
+
+        let (tx, mut rx) = watch::channel::<Option<String>>(None);
+        let slot_held_by_the_start = store.update(cx, |store, _| {
+            let entry = store
+                .external_agents
+                .get_mut(&AgentId::new("test-agent"))
+                .expect("agent should be registered");
+            entry.server.set_new_version_available_tx(tx);
+            entry
+                .server
+                .new_version_slot()
+                .expect("an npx agent reports through a slot")
+        });
+
+        registry.update(cx, |store, cx| {
+            store.set_agents(vec![make_npx_agent("test-agent", "1.0.0")], cx);
+        });
+        cx.run_until_parked();
+
+        report_new_version(&slot_held_by_the_start, "2.0.0".to_string());
         assert_eq!(rx.borrow().as_deref(), Some("2.0.0"));
     }
 
