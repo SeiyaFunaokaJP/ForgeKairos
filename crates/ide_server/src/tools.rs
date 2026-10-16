@@ -84,8 +84,43 @@ pub enum ToolScope {
     /// セッションの口で、パスの扱いは [`ToolScope::Sandboxed`] と同じ。
     Assist(Option<Arc<SandboxPaths>>),
     /// ADR-F102: the AI browser's endpoint (`/mcp/zed-browser`) on the host's
-    /// server. Its only tools are the browser's ([`offers_browser_tools`]).
-    Browser,
+    /// server, for one external agent's session. Its only tools are the
+    /// browser's ([`offers_browser_tools`]), and only while that session still
+    /// has them.
+    Browser(BrowserSession),
+}
+
+/// ADR-F102: the session a `/mcp/zed-browser` request came in for. Looked up
+/// again at each use, so that a session whose access is revoked after its
+/// request was let in (reopened without the browser, closed) gets neither the
+/// list nor the call.
+#[derive(Clone)]
+pub struct BrowserSession {
+    tokens: crate::transport::ClientTokens,
+    token: Arc<str>,
+    client_id: Arc<str>,
+}
+
+impl BrowserSession {
+    pub(crate) fn new(
+        tokens: crate::transport::ClientTokens,
+        token: &str,
+        client_id: &str,
+    ) -> Self {
+        Self {
+            tokens,
+            token: token.into(),
+            client_id: client_id.into(),
+        }
+    }
+
+    pub(crate) fn is_live(&self) -> bool {
+        self.tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&*self.token)
+            .is_some_and(|client_id| **client_id == *self.client_id)
+    }
 }
 
 impl ToolScope {
@@ -94,7 +129,7 @@ impl ToolScope {
             ToolScope::Full => true,
             ToolScope::Sandboxed(_) => SANDBOX_TOOL_NAMES.contains(&name),
             ToolScope::SandboxedReadOnly(_) => RESTRICTED_TOOL_NAMES.contains(&name),
-            ToolScope::Assist(_) | ToolScope::Browser => false,
+            ToolScope::Assist(_) | ToolScope::Browser(_) => false,
         }
     }
 
@@ -103,7 +138,7 @@ impl ToolScope {
     /// ホストのエラー文を見せない)。
     pub fn sandbox_paths(&self) -> Option<&Arc<SandboxPaths>> {
         match self {
-            ToolScope::Full | ToolScope::Assist(None) | ToolScope::Browser => None,
+            ToolScope::Full | ToolScope::Assist(None) | ToolScope::Browser(_) => None,
             ToolScope::Sandboxed(paths)
             | ToolScope::SandboxedReadOnly(paths)
             | ToolScope::Assist(Some(paths)) => Some(paths),
@@ -774,8 +809,8 @@ pub fn list_tools_result(scope: &ConnectionScope, cx: &App) -> Value {
 /// 外へ出る抜け道になる。
 pub(crate) fn offers_browser_tools(scope: &ConnectionScope) -> bool {
     // 口が増えたら、ここで出すかどうかを決めさせる (`matches!` だと黙って出さない側に倒れる)。
-    match scope.tools {
-        ToolScope::Browser => true,
+    match &scope.tools {
+        ToolScope::Browser(session) => session.is_live(),
         ToolScope::Full | ToolScope::Assist(None) => !scope.browser_separate,
         ToolScope::Sandboxed(_) | ToolScope::SandboxedReadOnly(_) | ToolScope::Assist(Some(_)) => {
             false

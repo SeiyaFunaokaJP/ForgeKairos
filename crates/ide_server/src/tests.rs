@@ -200,6 +200,7 @@ fn the_host_tells_a_client_by_the_token_it_presents() {
         let credentials = transport::Credentials::Host {
             server_token: "server-token".into(),
             client_tokens: client_tokens.clone(),
+            browser_session_tokens: transport::ClientTokens::default(),
         };
         let post = |token: &'static str| {
             let credentials = credentials.clone();
@@ -5480,6 +5481,7 @@ async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
         kind,
         endpoint,
         client: client_id.clone(),
+        browser_session: None,
     };
     let gate = server.read_with(cx, |server, _| server.connection_gate());
     assert!(
@@ -5651,10 +5653,7 @@ async fn each_host_assist_client_is_known_by_its_own_token(cx: &mut TestAppConte
     let (credentials, server_token) = server.read_with(cx, |server, _| {
         let running = server.running.as_ref().expect("running for the clients");
         (
-            transport::Credentials::Host {
-                server_token: running.auth_token.clone(),
-                client_tokens: server.client_tokens.clone(),
-            },
+            server.host_credentials(running.auth_token.clone()),
             running.auth_token.to_string(),
         )
     });
@@ -5666,7 +5665,9 @@ async fn each_host_assist_client_is_known_by_its_own_token(cx: &mut TestAppConte
             .to_string()
     };
     let label_for = |token: &str, cx: &mut TestAppContext| {
-        let client = credentials.authenticate(token).expect("a token it takes");
+        let client = credentials
+            .authenticate(token, transport::Endpoint::Assist)
+            .expect("a token it takes");
         server.read_with(cx, |server, cx| {
             server
                 .connection_scope(
@@ -5674,6 +5675,7 @@ async fn each_host_assist_client_is_known_by_its_own_token(cx: &mut TestAppConte
                         kind: transport::ConnectionKind::Http,
                         endpoint: transport::Endpoint::Assist,
                         client,
+                        browser_session: None,
                     },
                     cx,
                 )
@@ -5692,14 +5694,17 @@ async fn each_host_assist_client_is_known_by_its_own_token(cx: &mut TestAppConte
         "Gemini CLI"
     );
     assert_eq!(label_for(&server_token, cx).as_ref(), "External Agent");
-    assert_eq!(credentials.authenticate(&client_id_of(&first, cx)), None);
+    assert_eq!(
+        credentials.authenticate(&client_id_of(&first, cx), transport::Endpoint::Assist),
+        None
+    );
 
     drop(first);
     cx.run_until_parked();
     cx.update(|_| {});
     cx.run_until_parked();
     assert_eq!(
-        credentials.authenticate(&token_of(&first_endpoint)),
+        credentials.authenticate(&token_of(&first_endpoint), transport::Endpoint::Assist),
         None,
         "a client that went away takes its token with it"
     );
@@ -5889,6 +5894,7 @@ async fn the_frame_label_is_never_what_the_client_claims(cx: &mut TestAppContext
                     kind: transport::ConnectionKind::Http,
                     endpoint: transport::Endpoint::Assist,
                     client: forged.clone(),
+                    browser_session: None,
                 },
                 cx,
             )

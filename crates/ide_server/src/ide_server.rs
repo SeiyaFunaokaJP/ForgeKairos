@@ -277,6 +277,39 @@ fn server_for_project_id(project_id: EntityId, cx: &App) -> Option<Entity<IdeSer
     registry.servers.get(workspace_id).cloned()
 }
 
+/// ADR-F102: whether the project's server lets `authorization` (as an
+/// [`McpEndpoint`] carries it) in on `/mcp/zed-browser`.
+#[cfg(any(test, feature = "test-support"))]
+pub fn browser_endpoint_takes(project: &Entity<Project>, authorization: &str, cx: &App) -> bool {
+    let Some(server) = server_for_project(project, cx) else {
+        return false;
+    };
+    let server = server.read(cx);
+    let (Some(running), Some(token)) = (
+        server.running.as_ref(),
+        authorization.strip_prefix("Bearer "),
+    ) else {
+        return false;
+    };
+    server
+        .host_credentials(running.auth_token.clone())
+        .authenticate(token, transport::Endpoint::Browser)
+        .is_some()
+}
+
+/// ADR-F102: how many sessions hold a grant of the project's AI browser.
+#[cfg(any(test, feature = "test-support"))]
+pub fn browser_session_count(project: &Entity<Project>, cx: &App) -> usize {
+    server_for_project(project, cx).map_or(0, |server| {
+        server
+            .read(cx)
+            .browser_session_tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
+    })
+}
+
 /// このプロジェクトのホストの IDE サーバーに WebSocket で繋がっている CLI の数。
 fn host_connection_count(project_id: EntityId, cx: &App) -> usize {
     server_for_project_id(project_id, cx)
@@ -364,8 +397,9 @@ pub fn host_assist_client(
 
 /// ADR-F102: [`host_assist_client`] for an external ACP agent. Its endpoints
 /// leave the AI browser's tools out: they come from
-/// [`HostAssistClient::browser_endpoint`], a server of their own in the
-/// session, so that a thread can turn the browser and the IDE tools off apart.
+/// [`HostAssistClient::grant_browser_session`], a server of their own in each
+/// session given it, so that a thread can turn the browser and the IDE tools
+/// off apart.
 pub fn host_agent_assist_client(
     project: &Entity<Project>,
     label: impl Into<SharedString>,
@@ -442,17 +476,39 @@ impl HostAssistClient {
         }
     }
 
-    /// ADR-F102: the AI browser's own endpoint (`/mcp/zed-browser`), for an
-    /// agent registered with [`host_agent_assist_client`]. Given only where
+    /// ADR-F102: the AI browser's own endpoint (`/mcp/zed-browser`) for one
+    /// session of an agent registered with [`host_agent_assist_client`], with
+    /// a token of that session's own. The endpoint takes no other, so a
+    /// session whose grant is dropped (reopened without the browser, closed,
+    /// its connection gone) cannot reach the browser with the token the
+    /// connection's other sessions share. Given only where
     /// [`Self::agent_endpoint`] is (the browser came with the `zed` server
     /// before it had one of its own) and while `browser.ai_control` is on.
-    pub fn browser_endpoint(&self, cx: &App) -> Option<McpEndpoint> {
+    pub fn grant_browser_session(&self, cx: &App) -> Option<BrowserSessionGrant> {
         let (server, client_id) = self.server_and_id(cx)?;
         let settings = IdeServerSettings::get_global(cx);
         if !(settings.enabled || settings.assist_tools) || !tools::browser_tools_enabled(cx) {
             return None;
         }
-        server.endpoint_for(transport::BROWSER_MCP_PATH, Some(&client_id))
+        // A CLI tab's browser stays on its assist endpoint.
+        if !server.assist_clients.get(&client_id)?.browser_separate {
+            return None;
+        }
+        let port = server.running.as_ref()?.port;
+        let token: Arc<str> = uuid::Uuid::new_v4().to_string().into();
+        let tokens = server.browser_session_tokens.clone();
+        tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(token.to_string(), client_id);
+        Some(BrowserSessionGrant {
+            endpoint: McpEndpoint {
+                url: format!("http://127.0.0.1:{port}{}", transport::BROWSER_MCP_PATH),
+                authorization: format!("Bearer {token}"),
+            },
+            token,
+            tokens,
+        })
     }
 
     /// このクライアントが描く表示の出どころ。
@@ -461,6 +517,46 @@ impl HostAssistClient {
         Some(server.assist_source(Some(&client_id)))
     }
 }
+
+/// ADR-F102: one external agent's session's access to the AI browser
+/// ([`HostAssistClient::grant_browser_session`]). Dropping it revokes the
+/// session's token: a request with it is refused (`401`), and one let in
+/// before gets neither the list nor the call.
+#[must_use = "dropping the grant revokes the session's access to the browser"]
+pub struct BrowserSessionGrant {
+    endpoint: McpEndpoint,
+    token: Arc<str>,
+    tokens: transport::ClientTokens,
+}
+
+impl BrowserSessionGrant {
+    pub fn endpoint(&self) -> &McpEndpoint {
+        &self.endpoint
+    }
+}
+
+impl Drop for BrowserSessionGrant {
+    fn drop(&mut self) {
+        self.tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&*self.token);
+    }
+}
+
+impl std::fmt::Debug for BrowserSessionGrant {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BrowserSessionGrant")
+            .field("url", &self.endpoint.url)
+            .finish_non_exhaustive()
+    }
+}
+
+/// ADR-F102: the answer on `/mcp/zed-browser` to a session that no longer has
+/// the browser. For the agent's model, so in English.
+const BROWSER_SESSION_REVOKED_MESSAGE: &str =
+    "This session no longer has the built-in browser: the user turned it off for this thread.";
 
 /// Zed が名前を決めていないクライアント (`.mcp.json` を貼った外部のクライアントなど、サーバー
 /// 自身のトークンで繋いできたもの)。表示の枠の見出しは、クライアントの申告 (MCP の
@@ -613,6 +709,10 @@ pub struct IdeServer {
     /// クライアントごとのトークン (トランスポートが照合する)。サーバーではなく登録の寿命なので、
     /// サーバーを止めて起動し直しても、登録が続くかぎり同じトークンが使える。
     client_tokens: transport::ClientTokens,
+    /// ADR-F102: the sessions' own tokens for `/mcp/zed-browser` → their
+    /// client's ID, each held by a [`BrowserSessionGrant`]. Like
+    /// `client_tokens`, they outlive a restart of the server.
+    browser_session_tokens: transport::ClientTokens,
     _settings_subscription: Subscription,
     _quit_subscription: Subscription,
     _workspace_subscription: Option<Subscription>,
@@ -659,6 +759,7 @@ impl IdeServer {
             last_task_failure: None,
             assist_clients: HashMap::default(),
             client_tokens: transport::ClientTokens::default(),
+            browser_session_tokens: transport::ClientTokens::default(),
             _settings_subscription: settings_subscription,
             _quit_subscription: quit_subscription,
             _workspace_subscription: workspace_subscription,
@@ -763,6 +864,12 @@ impl IdeServer {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&*client.token);
+        // Its sessions' grants normally go with its connection, but one held
+        // past the registration must not outlive it.
+        self.browser_session_tokens
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|_, owner| owner != client_id);
         self.clear_assist_display(source, cx);
         self.apply_settings(cx);
         cx.notify();
@@ -977,10 +1084,7 @@ impl IdeServer {
             .context("handing the IDE server's socket to the async runtime")?;
         let auth_token: Arc<str> = uuid::Uuid::new_v4().to_string().into();
         let accept_task = cx.spawn({
-            let credentials = transport::Credentials::Host {
-                server_token: auth_token.clone(),
-                client_tokens: self.client_tokens.clone(),
-            };
+            let credentials = self.host_credentials(auth_token.clone());
             async move |this, cx| {
                 loop {
                     let Ok((stream, peer)) = listener.accept().await else {
@@ -1010,6 +1114,14 @@ impl IdeServer {
         log::info!("ide_server: listening on 127.0.0.1:{port}");
         cx.notify();
         Ok(())
+    }
+
+    fn host_credentials(&self, server_token: Arc<str>) -> transport::Credentials {
+        transport::Credentials::Host {
+            server_token,
+            client_tokens: self.client_tokens.clone(),
+            browser_session_tokens: self.browser_session_tokens.clone(),
+        }
     }
 
     /// ロックファイルを書く (ローカルのワークスペースだけ)。サーバーを登録したあとに書く:
@@ -1334,9 +1446,32 @@ impl ToolHost for IdeServer {
             (transport::Endpoint::Assist, _) => {
                 Err(assist_tools::ASSIST_UNAVAILABLE_MESSAGE.to_string())
             }
-            (transport::Endpoint::Browser, _) if settings.enabled || settings.assist_tools => Ok(
-                tools::ConnectionScope::without_assist(tools::ToolScope::Browser),
-            ),
+            (transport::Endpoint::Browser, _) if settings.enabled || settings.assist_tools => {
+                // The transport let the request in on a session's token; it is
+                // looked up again here and at each use, as it may have been
+                // revoked since.
+                let session = route
+                    .browser_session
+                    .as_deref()
+                    .zip(route.client.as_deref())
+                    .filter(|(_, client_id)| {
+                        self.assist_clients
+                            .get(*client_id)
+                            .is_some_and(|client| client.browser_separate)
+                    })
+                    .map(|(token, client_id)| {
+                        tools::BrowserSession::new(
+                            self.browser_session_tokens.clone(),
+                            token,
+                            client_id,
+                        )
+                    })
+                    .filter(tools::BrowserSession::is_live)
+                    .ok_or_else(|| BROWSER_SESSION_REVOKED_MESSAGE.to_string())?;
+                Ok(tools::ConnectionScope::without_assist(
+                    tools::ToolScope::Browser(session),
+                ))
+            }
             (transport::Endpoint::Browser, _) => {
                 Err(assist_tools::IDE_SERVER_DISABLED_MESSAGE.to_string())
             }

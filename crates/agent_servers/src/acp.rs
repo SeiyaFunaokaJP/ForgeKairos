@@ -332,7 +332,7 @@ pub struct AcpConnection {
     /// could have been given, for the thread's MCP menu and its IDE tools
     /// indicator (ADR-F56). By session rather than for the connection, as
     /// each thread picks its own.
-    session_mcp: RefCell<HashMap<acp::SessionId, SessionMcp>>,
+    session_mcp: RefCell<HashMap<acp::SessionId, SessionMcpEntry>>,
     /// ADR-F102: the selection the `_with_mcp` methods hand to the
     /// [`AgentConnection`] method they call, which takes it at once.
     next_session_mcp: RefCell<Option<McpSelection>>,
@@ -1277,11 +1277,18 @@ impl AcpConnection {
         let (servers, restricted_ide, session_mcp) = match purpose {
             NewSessionPurpose::Thread => {
                 let selection = self.next_session_mcp.take().unwrap_or_default();
-                let project_servers = self.project_mcp_servers(&project, &selection, cx);
-                let session_mcp = SessionMcp {
-                    selection,
-                    offer: project_servers.offer.clone(),
-                    ide_tools_given: project_servers.gives_ide_tools,
+                let (project_servers, browser_grant) =
+                    self.project_mcp_servers(&project, &selection, cx);
+                // Dropped with the entry when the session goes, and here when
+                // it is never made.
+                let session_mcp = SessionMcpEntry {
+                    mcp: SessionMcp {
+                        selection,
+                        offer: project_servers.offer.clone(),
+                        ide_tools_given: project_servers.gives_ide_tools,
+                    },
+                    opened_for: None,
+                    _browser_grant: browser_grant,
                 };
                 let ProjectMcpServers {
                     servers,
@@ -1433,11 +1440,25 @@ impl AcpConnection {
     /// connection's own registration, which starts the server for the IDE
     /// tools alone when `ide_server.enabled` is off; inside a WSL sandbox the
     /// restricted session's channel carries the IDE tools too, on `/mcp/zed`.
-    fn ide_mcp(&self, project: &Entity<Project>, cx: &mut App) -> IdeMcp {
+    ///
+    /// ADR-F102: outside a sandbox, a session that `wants_browser` is granted
+    /// the AI browser's endpoint with a token of its own, which the grant
+    /// revokes when dropped.
+    fn ide_mcp(
+        &self,
+        project: &Entity<Project>,
+        wants_browser: bool,
+        cx: &mut App,
+    ) -> (IdeMcp, Option<ide_server::BrowserSessionGrant>) {
         if self.sandbox_session.is_none() {
-            let (ide, browser) = self.host_ide_endpoints(project, cx);
-            return IdeMcp::Host { ide, browser };
+            let (ide, browser_grant) = self.host_ide_endpoints(project, wants_browser, cx);
+            let browser = browser_grant.as_ref().map(|grant| grant.endpoint().clone());
+            return (IdeMcp::Host { ide, browser }, browser_grant);
         }
+        (self.sandboxed_ide_mcp(cx), None)
+    }
+
+    fn sandboxed_ide_mcp(&self, cx: &mut App) -> IdeMcp {
         match &self.ide_link {
             Some(link) => {
                 let assist_tools = ide_server::assist_tools_enabled(cx);
@@ -1464,14 +1485,16 @@ impl AcpConnection {
     }
 
     /// The host's endpoints for this connection's registration: the IDE
-    /// tools' (ADR-F56) and, ADR-F102, the AI browser's of its own.
+    /// tools' (ADR-F56) and, ADR-F102, one session's grant of the AI browser's
+    /// own, when it `wants_browser`.
     fn host_ide_endpoints(
         &self,
         project: &Entity<Project>,
+        wants_browser: bool,
         cx: &mut App,
     ) -> (
         Option<ide_server::McpEndpoint>,
-        Option<ide_server::McpEndpoint>,
+        Option<ide_server::BrowserSessionGrant>,
     ) {
         let project_id = project.entity_id();
         let mut client = self.host_ide_client.borrow_mut();
@@ -1483,21 +1506,31 @@ impl AcpConnection {
                 .map(|registration| (project_id, registration));
         }
         match client.as_ref() {
-            Some((_, client)) => (client.agent_endpoint(cx), client.browser_endpoint(cx)),
+            Some((_, client)) => (
+                client.agent_endpoint(cx),
+                wants_browser
+                    .then(|| client.grant_browser_session(cx))
+                    .flatten(),
+            ),
             None => (None, None),
         }
     }
 
     /// The MCP servers a session of this connection is given under the
-    /// thread's `selection` (ADR-F102), with what it could have been given.
+    /// thread's `selection` (ADR-F102), with what it could have been given, and
+    /// the session's grant of the AI browser when the browser is among them.
     fn project_mcp_servers(
         &self,
         project: &Entity<Project>,
         selection: &McpSelection,
         cx: &mut App,
-    ) -> ProjectMcpServers {
-        let ide_mcp = self.ide_mcp(project, cx);
-        mcp_servers_for_project(project, ide_mcp, selection, cx)
+    ) -> (ProjectMcpServers, Option<ide_server::BrowserSessionGrant>) {
+        let (ide_mcp, browser_grant) = self.ide_mcp(project, selection.browser_enabled(), cx);
+        let servers = mcp_servers_for_project(project, ide_mcp, selection, cx);
+        // A configured server of the same name keeps the browser's out, and
+        // then its grant goes at once.
+        let browser_grant = browser_grant.filter(|_| servers.offer.browser);
+        (servers, browser_grant)
     }
 
     fn note_session_mcp(
@@ -1505,6 +1538,7 @@ impl AcpConnection {
         session_id: acp::SessionId,
         selection: McpSelection,
         servers: &ProjectMcpServers,
+        browser_grant: Option<ide_server::BrowserSessionGrant>,
     ) {
         // `open_or_create_session` hands a live thread back without asking the
         // agent, so its session keeps the servers it was opened with.
@@ -1519,15 +1553,21 @@ impl AcpConnection {
                 .get(&session_id)
                 .is_some_and(|session| session.thread.upgrade().is_some())
         });
+        // The live session was not given this grant, so it is dropped here.
         if reuses_live_session {
             return;
         }
+        // Replacing an entry drops the session's earlier grant.
         self.session_mcp.borrow_mut().insert(
             session_id,
-            SessionMcp {
-                selection,
-                offer: servers.offer.clone(),
-                ide_tools_given: servers.gives_ide_tools,
+            SessionMcpEntry {
+                mcp: SessionMcp {
+                    selection,
+                    offer: servers.offer.clone(),
+                    ide_tools_given: servers.gives_ide_tools,
+                },
+                opened_for: None,
+                _browser_grant: browser_grant,
             },
         );
     }
@@ -1539,12 +1579,15 @@ impl AcpConnection {
         self.session_mcp
             .borrow()
             .get(session_id)
-            .is_some_and(|session| session.ide_tools_given)
+            .is_some_and(|session| session.mcp.ide_tools_given)
     }
 
     /// ADR-F102: what this session was opened with, for the thread's MCP menu.
     pub fn session_mcp(&self, session_id: &acp::SessionId) -> Option<SessionMcp> {
-        self.session_mcp.borrow().get(session_id).cloned()
+        self.session_mcp
+            .borrow()
+            .get(session_id)
+            .map(|session| session.mcp.clone())
     }
 
     /// ADR-F102: whether a session of this connection can be opened again on
@@ -1746,6 +1789,23 @@ impl AcpConnection {
         }
     }
 
+    /// ADR-F102: drops what was noted for an opening of the session that
+    /// failed or was abandoned, with the grant of the browser the agent was
+    /// sent, unless a later opening noted its own since.
+    fn remove_session_mcp_opened_for(
+        &self,
+        session_id: &acp::SessionId,
+        thread_id: gpui::EntityId,
+    ) {
+        let mut session_mcp = self.session_mcp.borrow_mut();
+        if session_mcp
+            .get(session_id)
+            .is_some_and(|entry| entry.opened_for == Some(thread_id))
+        {
+            session_mcp.remove(session_id);
+        }
+    }
+
     fn remove_pending_session(&self, session_id: &acp::SessionId, thread_id: gpui::EntityId) {
         let mut sessions = self.pending_sessions.borrow_mut();
         if sessions
@@ -1854,14 +1914,26 @@ impl AcpConnection {
                 return Task::ready(Ok(thread));
             }
             // Entity-release effects may not have run yet when a view reopens.
+            // ADR-F102: the MCP servers noted for the session are this
+            // opening's (with its grant of the browser), not the dead thread's.
+            let noted_mcp = self.session_mcp.borrow_mut().remove(&session_id);
             self.release_session(session_id.clone(), thread, cx);
+            if let Some(noted_mcp) = noted_mcp {
+                self.session_mcp
+                    .borrow_mut()
+                    .insert(session_id.clone(), noted_mcp);
+            }
             return self
                 .open_or_create_session(session_id, project, work_dirs, title, rpc_call, cx);
         }
 
         let directories = match self.session_directories_from_work_dirs(&work_dirs) {
             Ok(directories) => directories,
-            Err(error) => return Task::ready(Err(error)),
+            Err(error) => {
+                // ADR-F102: no session opens, so its grant of the browser goes.
+                self.session_mcp.borrow_mut().remove(&session_id);
+                return Task::ready(Err(error));
+            }
         };
 
         // ADR-F49 decision 18 / ADR-F50: the agent's own process already writes
@@ -1884,6 +1956,9 @@ impl AcpConnection {
             )
         });
         self.register_session(session_id.clone(), &thread, None, None, cx);
+        if let Some(entry) = self.session_mcp.borrow_mut().get_mut(&session_id) {
+            entry.opened_for = Some(thread.entity_id());
+        }
 
         // The connection owns this task, so retaining the thread (which owns the
         // connection) here would keep both alive after all callers abandon the load.
@@ -1901,6 +1976,7 @@ impl AcpConnection {
                         if let Some(this) = this.upgrade() {
                             this.remove_session(&session_id, thread.entity_id());
                             this.remove_pending_session(&session_id, thread.entity_id());
+                            this.remove_session_mcp_opened_for(&session_id, thread.entity_id());
                         }
                         return Ok(());
                     }
@@ -1920,6 +1996,8 @@ impl AcpConnection {
                             connection_state.remove_session(&session_id, thread.entity_id());
                             connection_state
                                 .remove_pending_session(&session_id, thread.entity_id());
+                            connection_state
+                                .remove_session_mcp_opened_for(&session_id, thread.entity_id());
                             return Err(Arc::new(error));
                         }
                     };
@@ -1964,6 +2042,7 @@ impl AcpConnection {
                     if let Some(this) = this.upgrade() {
                         this.remove_session(&session_id, thread.entity_id());
                         this.remove_pending_session(&session_id, thread.entity_id());
+                        this.remove_session_mcp_opened_for(&session_id, thread.entity_id());
                     }
                     result.map_err(Arc::new)
                 }
@@ -4204,8 +4283,13 @@ impl AgentConnection for AcpConnection {
             ))));
         }
 
-        let project_servers = self.project_mcp_servers(&project, &selection, cx);
-        self.note_session_mcp(session_id.clone(), selection, &project_servers);
+        let (project_servers, browser_grant) = self.project_mcp_servers(&project, &selection, cx);
+        self.note_session_mcp(
+            session_id.clone(),
+            selection,
+            &project_servers,
+            browser_grant,
+        );
         let ProjectMcpServers {
             servers,
             restricted_ide,
@@ -4268,8 +4352,13 @@ impl AgentConnection for AcpConnection {
             ))));
         }
 
-        let project_servers = self.project_mcp_servers(&project, &selection, cx);
-        self.note_session_mcp(session_id.clone(), selection, &project_servers);
+        let (project_servers, browser_grant) = self.project_mcp_servers(&project, &selection, cx);
+        self.note_session_mcp(
+            session_id.clone(),
+            selection,
+            &project_servers,
+            browser_grant,
+        );
         let ProjectMcpServers {
             servers,
             restricted_ide,
@@ -5319,7 +5408,7 @@ pub mod test_support {
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use super::*;
     use feature_flags::{AcpBetaFeatureFlag, FeatureFlag as _};
@@ -6918,16 +7007,23 @@ mod tests {
         );
     }
 
-    /// ADR-F102: switching a thread's MCP servers opens its session again.
-    /// While its thread is still alive, a `load_session` alone hands that same
-    /// thread back without asking the agent; once the session is let go of for
-    /// reopening, the agent is asked again (and gets the new list), and the old
-    /// thread going later does not take the new session with it.
-    #[gpui::test]
-    async fn a_session_let_go_of_for_reopening_is_loaded_again(cx: &mut gpui::TestAppContext) {
-        let project = boundary_project(cx).await;
+    /// The requests a fake agent of [`reopening_agent_connection`] was sent.
+    #[derive(Clone, Default)]
+    struct SessionRequests {
+        new: Arc<Mutex<Vec<acp::NewSessionRequest>>>,
+        load: Arc<Mutex<Vec<acp::LoadSessionRequest>>>,
+        /// The next `session/load` is answered with an error (and still noted).
+        fail_next_load: Arc<AtomicBool>,
+    }
+
+    /// A connection to a fake agent that can load sessions and names each new
+    /// session apart (`session-1`, `session-2`, …), with what it was asked.
+    async fn reopening_agent_connection(
+        project: &Entity<Project>,
+        cx: &mut gpui::TestAppContext,
+    ) -> (Rc<AcpConnection>, SessionRequests, Task<()>) {
         let (client_transport, agent_transport) = agent_client_protocol::Channel::duplex();
-        let loads: Arc<Mutex<Vec<acp::LoadSessionRequest>>> = Arc::default();
+        let requests = SessionRequests::default();
         let agent_future = Agent
             .builder()
             .name("fake-reopening-agent")
@@ -6942,26 +7038,43 @@ mod tests {
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
-                async move |_request: acp::NewSessionRequest, responder, _cx| {
-                    responder.respond(acp::NewSessionResponse::new(acp::SessionId::new("session")))
+                {
+                    let new_sessions = requests.new.clone();
+                    async move |request: acp::NewSessionRequest, responder, _cx| {
+                        let session_id = {
+                            let mut new_sessions = new_sessions
+                                .lock()
+                                .expect("the session lock is not poisoned");
+                            new_sessions.push(request);
+                            format!("session-{}", new_sessions.len())
+                        };
+                        responder.respond(acp::NewSessionResponse::new(acp::SessionId::new(
+                            session_id,
+                        )))
+                    }
                 },
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
                 {
-                    let loads = loads.clone();
+                    let loads = requests.load.clone();
+                    let fail_next_load = requests.fail_next_load.clone();
                     async move |request: acp::LoadSessionRequest, responder, _cx| {
                         loads
                             .lock()
                             .expect("the load lock is not poisoned")
                             .push(request);
-                        responder.respond(acp::LoadSessionResponse::new())
+                        if fail_next_load.swap(false, Ordering::SeqCst) {
+                            responder.respond_with_error(acp::ErrorCode::InternalError.into())
+                        } else {
+                            responder.respond(acp::LoadSessionResponse::new())
+                        }
                     }
                 },
                 agent_client_protocol::on_receive_request!(),
             )
             .connect_to(agent_transport);
-        let _agent_io = cx.background_spawn(async move {
+        let agent_io = cx.background_spawn(async move {
             agent_future.await.ok();
         });
 
@@ -7021,6 +7134,18 @@ mod tests {
             )
         }));
         assert!(connection.can_reopen_sessions());
+        (connection, requests, agent_io)
+    }
+
+    /// ADR-F102: switching a thread's MCP servers opens its session again.
+    /// While its thread is still alive, a `load_session` alone hands that same
+    /// thread back without asking the agent; once the session is let go of for
+    /// reopening, the agent is asked again (and gets the new list), and the old
+    /// thread going later does not take the new session with it.
+    #[gpui::test]
+    async fn a_session_let_go_of_for_reopening_is_loaded_again(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let (connection, requests, _agent_io) = reopening_agent_connection(&project, cx).await;
 
         let work_dirs = PathList::new(&[std::path::Path::new(util::path!("/project"))]);
         let browser_off = McpSelection {
@@ -7063,7 +7188,7 @@ mod tests {
             .expect("the live session is handed back");
         assert_eq!(same.entity_id(), first.entity_id());
         assert!(
-            loads.lock().expect("not poisoned").is_empty(),
+            requests.load.lock().expect("not poisoned").is_empty(),
             "a live session is not asked for again"
         );
         assert_eq!(
@@ -7089,7 +7214,7 @@ mod tests {
             .await
             .expect("the session opens again");
         assert_ne!(reopened.entity_id(), first.entity_id());
-        assert_eq!(loads.lock().expect("not poisoned").len(), 1);
+        assert_eq!(requests.load.lock().expect("not poisoned").len(), 1);
         assert_eq!(
             connection
                 .session_mcp(&session_id)
@@ -7111,6 +7236,268 @@ mod tests {
                 .get(&session_id)
                 .is_some_and(|session| session.thread.entity_id() == reopened.entity_id())
         );
+    }
+
+    struct EnabledBrowser;
+
+    impl browser_control::BrowserControl for EnabledBrowser {
+        fn is_enabled(&self, _cx: &App) -> bool {
+            true
+        }
+
+        fn run(
+            &self,
+            _project: &Entity<Project>,
+            _command: browser_control::BrowserCommand,
+            _cx: &mut App,
+        ) -> Task<Result<browser_control::BrowserOutput>> {
+            Task::ready(Err(anyhow!("no browser in this test")))
+        }
+    }
+
+    /// A project in a workspace whose IDE server can grant the AI browser.
+    async fn project_with_the_browser_on(
+        cx: &mut gpui::TestAppContext,
+    ) -> (
+        Entity<Project>,
+        gpui::WindowHandle<workspace::MultiWorkspace>,
+    ) {
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+            ide_server::init(cx);
+            cx.set_global(browser_control::GlobalBrowserControl(Arc::new(
+                EnabledBrowser,
+            )));
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({}))
+            .await;
+        let project =
+            project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
+        let window = cx.add_window({
+            let project = project.clone();
+            move |window, cx| workspace::MultiWorkspace::test_new(project, window, cx)
+        });
+        cx.run_until_parked();
+        (project, window)
+    }
+
+    /// The `Authorization` a session was given for the AI browser's server.
+    fn browser_authorization(servers: &[acp::McpServer]) -> Option<String> {
+        servers.iter().find_map(|server| match server {
+            acp::McpServer::Http(server) if server.name == ide_server::BROWSER_MCP_SERVER_NAME => {
+                server.headers.first().map(|header| header.value.clone())
+            }
+            _ => None,
+        })
+    }
+
+    /// ADR-F102: each session of an agent outside a sandbox that is given the
+    /// AI browser gets a token of its own for `/mcp/zed-browser`. It is revoked
+    /// when the session is let go of for reopening (and none is given when it
+    /// reopens with the browser off), when the session is closed, and when its
+    /// connection goes, while the connection's other sessions keep theirs; a
+    /// reopening with the browser on gets a fresh one. The session that only
+    /// reads the agent's options gets none.
+    #[gpui::test]
+    async fn each_session_holds_its_own_grant_of_the_browser(cx: &mut gpui::TestAppContext) {
+        let (project, _window) = project_with_the_browser_on(cx).await;
+        let (connection, requests, _agent_io) = reopening_agent_connection(&project, cx).await;
+        let work_dirs = PathList::new(&[std::path::Path::new(util::path!("/project"))]);
+        let takes = |authorization: &str, cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| ide_server::browser_endpoint_takes(&project, authorization, cx))
+        };
+        let granted = |cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| ide_server::browser_session_count(&project, cx))
+        };
+        let given_new = |index: usize| {
+            browser_authorization(&requests.new.lock().expect("not poisoned")[index].mcp_servers)
+        };
+        let given_load = |index: usize| {
+            browser_authorization(&requests.load.lock().expect("not poisoned")[index].mcp_servers)
+        };
+
+        let options = cx
+            .update(|cx| {
+                connection.clone().new_session_to_read_options(
+                    project.clone(),
+                    work_dirs.clone(),
+                    cx,
+                )
+            })
+            .await
+            .expect("the session to read options starts");
+        assert_eq!(given_new(0), None);
+        assert_eq!(
+            granted(cx),
+            0,
+            "the session that reads the options gets none"
+        );
+
+        let new_thread = |cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| {
+                connection.clone().new_session_with_mcp(
+                    project.clone(),
+                    work_dirs.clone(),
+                    McpSelection::default(),
+                    cx,
+                )
+            })
+        };
+        let first = new_thread(cx).await.expect("a session starts");
+        let second = new_thread(cx).await.expect("another starts");
+        let first_token = given_new(1).expect("the first is given the browser");
+        let second_token = given_new(2).expect("so is the second");
+        assert_ne!(first_token, second_token);
+        assert!(takes(&first_token, cx));
+        assert!(takes(&second_token, cx));
+        assert_eq!(granted(cx), 2);
+
+        let session_id = first.read_with(cx, |thread, _| thread.session_id().clone());
+        cx.update(|cx| connection.release_session_for_reopen(&session_id, cx));
+        assert!(
+            !takes(&first_token, cx),
+            "let go of for reopening, the session's token goes at once"
+        );
+        assert!(takes(&second_token, cx), "the other session keeps its own");
+
+        let reopen = |selection: McpSelection, cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| {
+                connection.clone().load_session_with_mcp(
+                    session_id.clone(),
+                    project.clone(),
+                    work_dirs.clone(),
+                    None,
+                    selection,
+                    cx,
+                )
+            })
+        };
+        let browser_off = reopen(
+            McpSelection {
+                browser_off: true,
+                ..McpSelection::default()
+            },
+            cx,
+        )
+        .await
+        .expect("the session opens again without the browser");
+        assert_eq!(given_load(0), None);
+        assert!(!takes(&first_token, cx));
+        assert_eq!(granted(cx), 1);
+
+        cx.update(|cx| connection.release_session_for_reopen(&session_id, cx));
+        let browser_on = reopen(McpSelection::default(), cx)
+            .await
+            .expect("the session opens again with the browser");
+        let fresh_token = given_load(1).expect("given the browser again");
+        assert_ne!(fresh_token, first_token);
+        assert!(takes(&fresh_token, cx));
+        assert!(!takes(&first_token, cx));
+        assert_eq!(granted(cx), 2);
+
+        drop(second);
+        cx.run_until_parked();
+        cx.update(|_| {});
+        cx.run_until_parked();
+        assert!(!takes(&second_token, cx), "a closed session's token goes");
+        assert!(takes(&fresh_token, cx));
+        assert_eq!(granted(cx), 1);
+
+        drop((options, first, browser_off, browser_on, connection));
+        cx.run_until_parked();
+        cx.update(|_| {});
+        cx.run_until_parked();
+        assert!(
+            !takes(&fresh_token, cx),
+            "and so do all when the connection goes"
+        );
+        assert_eq!(granted(cx), 0);
+    }
+
+    /// ADR-F102: an opening of a session holds its grant of the browser until
+    /// the session goes, even when the thread it replaces is dropped without
+    /// its release having run yet, and an opening that fails takes the grant
+    /// the agent was sent with it.
+    #[gpui::test]
+    async fn a_reopening_keeps_its_grant_and_a_failed_one_revokes_it(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (project, _window) = project_with_the_browser_on(cx).await;
+        let (connection, requests, _agent_io) = reopening_agent_connection(&project, cx).await;
+        let work_dirs = PathList::new(&[std::path::Path::new(util::path!("/project"))]);
+        let takes = |authorization: &str, cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| ide_server::browser_endpoint_takes(&project, authorization, cx))
+        };
+        let granted = |cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| ide_server::browser_session_count(&project, cx))
+        };
+        let given_load = |index: usize| {
+            browser_authorization(&requests.load.lock().expect("not poisoned")[index].mcp_servers)
+        };
+        let reopen = |session_id: &acp::SessionId, cx: &mut App| {
+            connection.clone().load_session_with_mcp(
+                session_id.clone(),
+                project.clone(),
+                work_dirs.clone(),
+                None,
+                McpSelection::default(),
+                cx,
+            )
+        };
+
+        let first = cx
+            .update(|cx| {
+                connection.clone().new_session_with_mcp(
+                    project.clone(),
+                    work_dirs.clone(),
+                    McpSelection::default(),
+                    cx,
+                )
+            })
+            .await
+            .expect("a session starts");
+        let session_id = first.read_with(cx, |thread, _| thread.session_id().clone());
+        let first_token =
+            browser_authorization(&requests.new.lock().expect("not poisoned")[0].mcp_servers)
+                .expect("given the browser");
+
+        // The view drops the old thread and opens the session again before the
+        // old thread's release has run.
+        let reopening = cx.update(|cx| {
+            drop(first);
+            reopen(&session_id, cx)
+        });
+        let reopened = reopening.await.expect("the session opens again");
+        let reopened_token = given_load(0).expect("given the browser again");
+        assert!(
+            takes(&reopened_token, cx),
+            "the dead thread's release does not take the reopening's grant"
+        );
+        assert!(!takes(&first_token, cx));
+        assert_eq!(granted(cx), 1);
+        assert!(connection.session_mcp(&session_id).is_some());
+
+        cx.update(|cx| connection.release_session_for_reopen(&session_id, cx));
+        requests.fail_next_load.store(true, Ordering::SeqCst);
+        let failed = cx.update(|cx| reopen(&session_id, cx)).await;
+        assert!(failed.is_err(), "the agent refused the load");
+        let refused_token = given_load(1).expect("the failed load was sent the browser");
+        assert!(
+            !takes(&refused_token, cx),
+            "a failed opening's grant goes with it"
+        );
+        assert_eq!(granted(cx), 0);
+        assert!(connection.session_mcp(&session_id).is_none());
+
+        let retried = cx
+            .update(|cx| reopen(&session_id, cx))
+            .await
+            .expect("opened again after the failure");
+        let retried_token = given_load(2).expect("given the browser once more");
+        assert!(takes(&retried_token, cx));
+        assert_eq!(granted(cx), 1);
+        drop((reopened, retried));
     }
 
     fn init_feature_flags_test(cx: &mut gpui::TestAppContext) {
@@ -13341,6 +13728,18 @@ pub struct McpOffer {
     pub browser: bool,
     /// The MCP servers the user configured, by their ids, in the order sent.
     pub servers: Vec<Arc<str>>,
+}
+
+/// ADR-F102: a session's [`SessionMcp`] and its grant of the AI browser
+/// (ADR-F89), which is revoked when the entry goes: the session is reopened
+/// without the browser, closed, or its connection drops.
+struct SessionMcpEntry {
+    mcp: SessionMcp,
+    /// The thread a `load_session` / `resume_session` opened for the entry,
+    /// so that the opening failing or being abandoned takes the entry (and the
+    /// grant the agent was sent) with it, but never a later opening's.
+    opened_for: Option<gpui::EntityId>,
+    _browser_grant: Option<ide_server::BrowserSessionGrant>,
 }
 
 /// ADR-F102: what one session of an external agent was opened with.
