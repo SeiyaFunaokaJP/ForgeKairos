@@ -47,6 +47,9 @@ msgstr "1 Skill mit langer Beschreibung geladen"
 msgid "1 global rule"
 msgstr "1 globale Regel"
 
+msgid "A change opens the agent's session again with the new servers once it finishes its turn. The conversation stays."
+msgstr "Eine Änderung öffnet die Sitzung des Agenten mit den neuen Servern erneut, sobald er seine Antwort beendet hat. Die Unterhaltung bleibt erhalten."
+
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "Ein Host mit Platzhalter ({pattern}) kann nicht über eine Zustimmung zur Zulassungsliste hinzugefügt werden."
 
@@ -58,6 +61,9 @@ msgstr "ACP-Agent"
 
 msgid "ACP Registry"
 msgstr "ACP-Registry"
+
+msgid "AI Browser"
+msgstr "KI-Browser"
 
 msgid "AI Judge (Auto-Run If Safe)"
 msgstr "KI entscheidet (automatisch ausführen, wenn sicher)"
@@ -1171,11 +1177,17 @@ msgstr "Mit Claude Code anmelden (Abonnement)"
 msgid "Log Out"
 msgstr "Abmelden"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "MCP Server Commands"
 msgstr "Befehle des MCP-Servers"
 
 msgid "MCP Servers"
 msgstr "MCP-Server"
+
+msgid "MCP {on}/{total}"
+msgstr "MCP {on}/{total}"
 
 msgid "Make Subagent Full Screen"
 msgstr "Unteragent im Vollbild anzeigen"
@@ -2017,6 +2029,9 @@ msgstr "Vielen Dank für Ihr Feedback!"
 msgid "The ACP registry is not available, so agent updates cannot be checked."
 msgstr "Die ACP-Registry ist nicht verfügbar, daher kann nicht nach Agent-Updates gesucht werden."
 
+msgid "The AI browser is not given to an agent in the sandbox."
+msgstr "Ein Agent in der Sandbox erhält den KI-Browser nicht."
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "Das an den Remote-Host gesendete Claude Code wurde nicht gefunden. Bitte versuchen Sie es erneut."
 
@@ -2049,6 +2064,12 @@ msgstr "Der Agent kann `getDiagnostics` nicht verwenden und sieht daher die Fehl
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "Der Agent startet, wenn du deine erste Nachricht sendest. Wähle zuerst seine Sandbox und sein Netzwerk: Sobald er gestartet ist, bleiben sie für diesen Thread so."
+
+msgid "The agent starts with the servers checked here. You can change them after it starts too."
+msgstr "Der Agent startet mit den hier angehakten Servern. Sie können sie auch nach dem Start ändern."
+
+msgid "The agent stops getting the tools of what you turn off from its next tool call on."
+msgstr "Was Sie ausschalten, stellt dem Agenten ab seinem nächsten Tool-Aufruf keine Tools mehr bereit."
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "Der Agent wurde zu settings.json hinzugefügt, aber noch nicht geladen. Öffnen Sie ihn später über das Menü +."
@@ -2201,6 +2222,9 @@ msgstr "Dieses Fenster"
 
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
 msgstr "Dieser Agent kann die IDE-Tools von ForgeKairos verwenden: Hervorhebungen, Annotationen, Touren, Hover, Definitionen, Referenzen und Symbolsuche"
+
+msgid "This agent can't open its session again, so its MCP servers stay as it started with them. Start a new thread to change them."
+msgstr "Dieser Agent kann seine Sitzung nicht erneut öffnen, daher bleiben seine MCP-Server so, wie er mit ihnen gestartet ist. Starten Sie einen neuen Thread, um sie zu ändern."
 
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "Dieser Agent unterstützt das Anzeigen früherer Nachrichten nicht. Ihre Sitzung wird jedoch trotzdem an der Stelle fortgesetzt, an der Sie zuletzt aufgehört haben."
@@ -2357,6 +2381,9 @@ msgstr "Einschalten und fortfahren"
 
 msgid "Turn On and Start Outside"
 msgstr "Einschalten und außerhalb starten"
+
+msgid "Turn this thread's MCP servers on or off. Each thread keeps its own choice."
+msgstr "Die MCP-Server dieses Threads ein- oder ausschalten. Jeder Thread behält seine eigene Auswahl."
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "Zum Ausschalten der Sandbox wird „Ausführung außerhalb der Sandbox zulassen“ (Einstellungen > KI > Sandbox) benötigt, das ausgeschaltet ist. Einschalten? Es bleibt eingeschaltet, bis Sie es dort ausschalten."
@@ -2516,6 +2543,9 @@ msgstr "Sie wurden automatisch auf den kostenlosen Tarif zurückgesetzt."
 
 msgid "Your Zed Pro Trial has expired"
 msgstr "Ihre Zed-Pro-Testversion ist abgelaufen"
+
+msgid "Your change is applied when the agent finishes its turn: its session is opened again with the new servers."
+msgstr "Ihre Änderung wird angewendet, sobald der Agent seine Antwort beendet: Seine Sitzung wird mit den neuen Servern erneut geöffnet."
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "Ihre üblichen Einstellungen und Ihre Anmeldung werden unverändert verwendet."

@@ -36,7 +36,7 @@ use crate::sandboxing::{
 use agent_client_protocol::schema::v1 as acp;
 use agent_settings::{
     AgentProfileId, AgentProfileSettings, AgentSettings, AutoCompactThreshold, COMPACTION_PROMPT,
-    SUMMARIZE_THREAD_DETAILED_PROMPT, SUMMARIZE_THREAD_PROMPT, builtin_profiles,
+    McpSelection, SUMMARIZE_THREAD_DETAILED_PROMPT, SUMMARIZE_THREAD_PROMPT, builtin_profiles,
 };
 use anyhow::{Context as _, Result, anyhow};
 use chrono::{DateTime, Local, Utc};
@@ -1465,6 +1465,10 @@ pub struct Thread {
     /// chat input's Git button switches it; a new thread starts with
     /// `agent.git_operations`.
     git_operations_enabled: bool,
+    /// The MCP servers and the AI browser this thread has turned off with the
+    /// chat input's MCP menu (ADR-F102), on top of the profile. Saved with
+    /// the thread and given to its subagents.
+    mcp_selection: McpSelection,
     /// Whether this thread runs terminal commands in the sandbox (ADR-F96): the
     /// project's default when the thread was made or read back, then what the
     /// chat input's sandbox button chose; `None` lets the settings decide. Not
@@ -1648,6 +1652,7 @@ impl Thread {
             speed,
             thinking_effort,
             git_operations_enabled,
+            mcp_selection: McpSelection::default(),
             sandbox_choice,
             network_choice,
             prompt_capabilities_tx,
@@ -1675,6 +1680,7 @@ impl Thread {
         self.speed = parent.speed;
         self.thinking_enabled = parent.thinking_enabled;
         self.git_operations_enabled = parent.git_operations_enabled;
+        self.mcp_selection = parent.mcp_selection.clone();
         self.sandbox_choice = parent.sandbox_choice;
         self.network_choice = parent.network_choice;
         self.thinking_effort = parent.thinking_effort.clone();
@@ -2049,6 +2055,7 @@ impl Thread {
             thinking_effort: db_thread.thinking_effort,
             speed: db_thread.speed,
             git_operations_enabled,
+            mcp_selection: db_thread.mcp_selection,
             sandbox_choice,
             network_choice,
             project,
@@ -2180,6 +2187,7 @@ impl Thread {
             thinking_enabled: self.thinking_enabled,
             thinking_effort: self.thinking_effort.clone(),
             git_operations_enabled: Some(self.git_operations_enabled),
+            mcp_selection: self.mcp_selection.clone(),
             draft_prompt: self.draft_prompt.clone(),
             ui_scroll_position: self.ui_scroll_position.map(|lo| {
                 crate::db::SerializedScrollPosition {
@@ -2376,6 +2384,47 @@ impl Thread {
                 .ok();
         }
         cx.notify();
+    }
+
+    pub fn mcp_selection(&self) -> &McpSelection {
+        &self.mcp_selection
+    }
+
+    /// Turns MCP servers and the AI browser on or off for this thread and the
+    /// subagents it is running (ADR-F102). A turn already running stops
+    /// offering what went off from its next tool call on.
+    pub fn set_mcp_selection(&mut self, selection: McpSelection, cx: &mut Context<Self>) {
+        self.mcp_selection = selection.clone();
+        self.refresh_turn_tools(cx);
+        for subagent in &self.running_subagents {
+            subagent
+                .update(cx, |thread, cx| {
+                    thread.set_mcp_selection(selection.clone(), cx);
+                })
+                .ok();
+        }
+        cx.notify();
+    }
+
+    /// The configured MCP servers whose tools this thread's profile gives the
+    /// model, for the chat input's MCP menu (ADR-F102), by their ids.
+    pub fn mcp_menu_servers(&self, cx: &App) -> Vec<Arc<str>> {
+        let Some(profile) = AgentSettings::get_global(cx)
+            .profiles
+            .get(&self.profile(cx))
+        else {
+            return Vec::new();
+        };
+        self.context_server_registry
+            .read(cx)
+            .servers()
+            .filter(|(server_id, server_tools)| {
+                server_tools.keys().any(|tool_name| {
+                    profile.is_context_server_tool_enabled(&server_id.0, tool_name)
+                })
+            })
+            .map(|(server_id, _)| server_id.0.clone())
+            .collect()
     }
 
     pub fn sandbox_choice(&self) -> Option<bool> {
@@ -4677,6 +4726,10 @@ impl Thread {
             .filter(|(tool_name, _)| {
                 self.git_operations_enabled || tool_name.as_ref() != GitTool::NAME
             })
+            // The thread's MCP menu (ADR-F102).
+            .filter(|(tool_name, _)| {
+                self.mcp_selection.browser_enabled() || !crate::is_browser_tool(tool_name)
+            })
             .filter_map(|(tool_name, tool)| {
                 let terminal_variant = matches!(
                     tool_name.as_ref(),
@@ -4712,6 +4765,9 @@ impl Thread {
         let mut seen_tools = tools.keys().cloned().collect::<HashSet<_>>();
         let mut duplicate_tool_names = HashSet::default();
         for (server_id, server_tools) in self.context_server_registry.read(cx).servers() {
+            if !self.mcp_selection.server_enabled(&server_id.0) {
+                continue;
+            }
             for (tool_name, tool) in server_tools {
                 if profile.is_context_server_tool_enabled(&server_id.0, &tool_name) {
                     let tool_name: SharedString =
@@ -11654,6 +11710,20 @@ mod tests {
         );
 
         browser.0.store(true, Ordering::SeqCst);
+        assert_eq!(browser_tools(cx), all_browser_tools());
+
+        // ADR-F102: the thread's MCP menu turns them off on its own.
+        let browser_off = McpSelection {
+            browser_off: true,
+            ..McpSelection::default()
+        };
+        cx.update(|cx| thread.update(cx, |thread, cx| thread.set_mcp_selection(browser_off, cx)));
+        assert_eq!(browser_tools(cx), Vec::<String>::new());
+        cx.update(|cx| {
+            thread.update(cx, |thread, cx| {
+                thread.set_mcp_selection(McpSelection::default(), cx)
+            })
+        });
         assert_eq!(browser_tools(cx), all_browser_tools());
 
         cx.update(|cx| {

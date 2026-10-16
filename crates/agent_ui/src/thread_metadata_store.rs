@@ -94,6 +94,7 @@ pub fn init(cx: &mut App) {
     load_outside_sandbox_consents(cx);
     load_threads_started_with_network_lifted(cx);
     load_last_launch_choices(cx);
+    load_thread_mcp_selections(cx);
     register_revoke_outside_sandbox_consents(cx);
 }
 
@@ -346,6 +347,94 @@ pub fn forget_thread_started_with_network_lifted(thread_id: ThreadId, cx: &mut A
     let key = thread_id.to_key_string();
     cx.background_spawn(async move {
         kvp.scoped(THREADS_STARTED_WITH_NETWORK_LIFTED_NAMESPACE)
+            .delete(key)
+            .await
+    })
+    .detach_and_log_err(cx);
+}
+
+/// ADR-F102: the MCP servers an external agent's thread turned off with the
+/// chat input's MCP menu, by thread, so that the thread opens its session with
+/// the same list when it is read back. Only threads that turned something off
+/// are written down; the built-in agent's threads keep theirs in their own row.
+const THREAD_MCP_SELECTIONS_NAMESPACE: &str = "agent_thread_mcp_selections";
+
+#[derive(Default)]
+struct ThreadMcpSelections(HashMap<ThreadId, agent_settings::McpSelection>);
+
+impl Global for ThreadMcpSelections {}
+
+fn load_thread_mcp_selections(cx: &mut App) {
+    let selections = KeyValueStore::global(cx)
+        .scoped(THREAD_MCP_SELECTIONS_NAMESPACE)
+        .read_all()
+        .log_err()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let thread_id = uuid::Uuid::parse_str(&key).log_err().map(ThreadId)?;
+            let selection = serde_json::from_str::<agent_settings::McpSelection>(&value)
+                .with_context(|| format!("reading the MCP servers of thread {key}"))
+                .log_err()?;
+            Some((thread_id, selection))
+        })
+        .collect();
+    cx.set_global(ThreadMcpSelections(selections));
+}
+
+/// The MCP servers `thread_id` turned off; everything is on for a thread that
+/// turned nothing off.
+pub fn thread_mcp_selection(thread_id: ThreadId, cx: &App) -> agent_settings::McpSelection {
+    cx.try_global::<ThreadMcpSelections>()
+        .and_then(|selections| selections.0.get(&thread_id).cloned())
+        .unwrap_or_default()
+}
+
+/// Writes down what `thread_id` has turned off, or forgets it once everything
+/// is on again.
+pub fn record_thread_mcp_selection(
+    thread_id: ThreadId,
+    selection: agent_settings::McpSelection,
+    cx: &mut App,
+) {
+    if selection.is_all_on() {
+        forget_thread_mcp_selection(thread_id, cx);
+        return;
+    }
+    let Some(value) = serde_json::to_string(&selection)
+        .context("writing a thread's MCP servers")
+        .log_err()
+    else {
+        return;
+    };
+    let selections = &mut cx.default_global::<ThreadMcpSelections>().0;
+    if selections.get(&thread_id) == Some(&selection) {
+        return;
+    }
+    selections.insert(thread_id, selection);
+    let kvp = KeyValueStore::global(cx);
+    let key = thread_id.to_key_string();
+    cx.background_spawn(async move {
+        kvp.scoped(THREAD_MCP_SELECTIONS_NAMESPACE)
+            .write(key, value)
+            .await
+    })
+    .detach_and_log_err(cx);
+}
+
+fn forget_thread_mcp_selection(thread_id: ThreadId, cx: &mut App) {
+    if cx
+        .default_global::<ThreadMcpSelections>()
+        .0
+        .remove(&thread_id)
+        .is_none()
+    {
+        return;
+    }
+    let kvp = KeyValueStore::global(cx);
+    let key = thread_id.to_key_string();
+    cx.background_spawn(async move {
+        kvp.scoped(THREAD_MCP_SELECTIONS_NAMESPACE)
             .delete(key)
             .await
     })
@@ -1513,6 +1602,7 @@ impl ThreadMetadataStore {
         forget_thread_started_outside_sandbox(thread_id, cx);
         forget_outside_sandbox_consents_of_thread(thread_id, cx);
         forget_thread_started_with_network_lifted(thread_id, cx);
+        forget_thread_mcp_selection(thread_id, cx);
         cx.notify();
     }
 
@@ -2203,6 +2293,7 @@ mod tests {
             thinking_enabled: false,
             thinking_effort: None,
             git_operations_enabled: None,
+            mcp_selection: Default::default(),
             draft_prompt: None,
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
@@ -4698,6 +4789,55 @@ mod tests {
                 entry.folder_paths().paths(),
                 &[std::path::PathBuf::from("/project-a")],
                 "retained thread A's stored path must not be updated while the project is via collab"
+            );
+        });
+    }
+
+    /// ADR-F102: what an external agent's thread turned off in its MCP menu
+    /// is read back after a restart, forgotten once everything is on again,
+    /// and forgotten with the thread.
+    #[gpui::test]
+    async fn test_thread_mcp_selections_are_kept_with_the_thread(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+        let kept = ThreadId::new();
+        let deleted = ThreadId::new();
+        let mut selection = agent_settings::McpSelection {
+            browser_off: true,
+            ..Default::default()
+        };
+        selection.set_server_enabled("github", false);
+        cx.update(|cx| {
+            assert!(thread_mcp_selection(kept, cx).is_all_on());
+            record_thread_mcp_selection(kept, selection.clone(), cx);
+            record_thread_mcp_selection(deleted, selection.clone(), cx);
+        });
+        cx.run_until_parked();
+
+        cx.update(|cx| {
+            cx.remove_global::<ThreadMcpSelections>();
+            assert!(thread_mcp_selection(kept, cx).is_all_on());
+            load_thread_mcp_selections(cx);
+            assert_eq!(
+                thread_mcp_selection(kept, cx),
+                selection,
+                "read back as after a restart"
+            );
+            ThreadMetadataStore::global(cx).update(cx, |store, cx| store.delete(deleted, cx));
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            load_thread_mcp_selections(cx);
+            assert!(thread_mcp_selection(deleted, cx).is_all_on());
+            assert_eq!(thread_mcp_selection(kept, cx), selection);
+            record_thread_mcp_selection(kept, agent_settings::McpSelection::default(), cx);
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            load_thread_mcp_selections(cx);
+            assert!(
+                thread_mcp_selection(kept, cx).is_all_on(),
+                "all on again leaves nothing behind"
             );
         });
     }

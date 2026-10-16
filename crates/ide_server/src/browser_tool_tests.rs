@@ -106,6 +106,7 @@ fn scopes() -> Vec<(&'static str, tools::ConnectionScope, bool)> {
             tools::ConnectionScope {
                 tools: tools::ToolScope::Full,
                 assist: Some(assist_source()),
+                browser_separate: false,
             },
             true,
         ),
@@ -114,7 +115,31 @@ fn scopes() -> Vec<(&'static str, tools::ConnectionScope, bool)> {
             tools::ConnectionScope {
                 tools: tools::ToolScope::Assist(None),
                 assist: Some(assist_source()),
+                browser_separate: false,
             },
+            true,
+        ),
+        (
+            "an agent's /mcp",
+            tools::ConnectionScope {
+                tools: tools::ToolScope::Full,
+                assist: Some(assist_source()),
+                browser_separate: true,
+            },
+            false,
+        ),
+        (
+            "an agent's /mcp/zed",
+            tools::ConnectionScope {
+                tools: tools::ToolScope::Assist(None),
+                assist: Some(assist_source()),
+                browser_separate: true,
+            },
+            false,
+        ),
+        (
+            "host /mcp/zed-browser",
+            tools::ConnectionScope::without_assist(tools::ToolScope::Browser),
             true,
         ),
         (
@@ -134,6 +159,7 @@ fn scopes() -> Vec<(&'static str, tools::ConnectionScope, bool)> {
             tools::ConnectionScope {
                 tools: tools::ToolScope::Assist(Some(paths)),
                 assist: Some(assist_source()),
+                browser_separate: false,
             },
             false,
         ),
@@ -215,6 +241,10 @@ async fn browser_tools_are_listed_only_where_offered_and_turned_on(cx: &mut Test
         );
     }
 
+    // ADR-F102: the browser's own endpoint offers nothing else.
+    let browser_endpoint = tools::ConnectionScope::without_assist(tools::ToolScope::Browser);
+    assert_eq!(listed(&browser_endpoint, cx), browser_names());
+
     // The listing carries the contract crate's schemas and descriptions unchanged.
     let result = cx.update(|cx| tools::list_tools_result(&full, cx));
     for definition in browser_control::tool_definitions() {
@@ -256,6 +286,7 @@ async fn a_browser_tool_call_reaches_the_workspace_browser_parsed(cx: &mut TestA
     let assist = tools::ConnectionScope {
         tools: tools::ToolScope::Assist(None),
         assist: Some(assist_source()),
+        browser_separate: false,
     };
     let response = request_in(&server, assist, call("browser_tabs", json!({})), cx).await;
     assert_eq!(response["result"]["isError"], json!(false), "{response}");
@@ -458,4 +489,112 @@ async fn bad_arguments_and_browser_failures_come_back_as_tool_errors(cx: &mut Te
         first_text(&response).contains("example.com is not in the network allowlist"),
         "{response}"
     );
+}
+
+/// ADR-F102: an external agent's registration takes the browser's tools from
+/// `/mcp/zed-browser` alone, so that its thread can turn the IDE tools and the
+/// browser off apart; a CLI tab's keeps them on its assist endpoint.
+#[gpui::test]
+async fn an_agent_client_gets_the_browser_on_an_endpoint_of_its_own(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let browser = install_fake_browser(true, cx);
+    let server = cx
+        .update(|cx| crate::server_for_project(&fixture.project, cx))
+        .expect("the workspace has a server");
+    let agent = cx
+        .update(|cx| crate::host_agent_assist_client(&fixture.project, "Gemini CLI", cx))
+        .expect("an agent registers");
+    let tab = cx
+        .update(|cx| crate::host_assist_client(&fixture.project, "Claude Code", cx))
+        .expect("a CLI tab registers");
+    cx.run_until_parked();
+
+    let (agent_endpoint, browser_endpoint, tab_browser_endpoint) = cx.update(|cx| {
+        (
+            agent.agent_endpoint(cx).expect("the agent's endpoint"),
+            agent.browser_endpoint(cx).expect("the browser's endpoint"),
+            tab.browser_endpoint(cx),
+        )
+    });
+    assert!(
+        browser_endpoint.url.ends_with(crate::BROWSER_MCP_PATH),
+        "{}",
+        browser_endpoint.url
+    );
+    assert_eq!(
+        browser_endpoint.authorization, agent_endpoint.authorization,
+        "with the agent's own token"
+    );
+    assert!(tab_browser_endpoint.is_some());
+
+    let scope_of = |client: &crate::HostAssistClient, endpoint, cx: &mut TestAppContext| {
+        let route = transport::Route {
+            kind: transport::ConnectionKind::Http,
+            endpoint,
+            client: Some(client_id_of(client, cx)),
+        };
+        server
+            .read_with(cx, |server, cx| server.connection_scope(&route, cx))
+            .expect("the endpoint is open")
+    };
+    let agent_assist = scope_of(&agent, transport::Endpoint::Assist, cx);
+    assert_eq!(
+        listed_browser_tools(&agent_assist, cx),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        listed(&agent_assist, cx),
+        sorted(&crate::ASSIST_TOOL_NAMES),
+        "the IDE tools stay where they were"
+    );
+    let agent_browser = scope_of(&agent, transport::Endpoint::Browser, cx);
+    assert_eq!(listed(&agent_browser, cx), browser_names());
+    let tab_assist = scope_of(&tab, transport::Endpoint::Assist, cx);
+    assert_eq!(listed_browser_tools(&tab_assist, cx), browser_names());
+
+    let gate = server.read_with(cx, |server, _| server.connection_gate());
+    let browser_route = transport::Route {
+        kind: transport::ConnectionKind::Http,
+        endpoint: transport::Endpoint::Browser,
+        client: Some(client_id_of(&agent, cx)),
+    };
+    assert!(gate.admit(&browser_route).is_ok());
+
+    // An agent's endpoint for its IDE tools refuses a browser call too.
+    let response = request_in(&server, agent_assist, call("browser_tabs", json!({})), cx).await;
+    assert_eq!(
+        response["error"]["code"],
+        json!(protocol::INVALID_PARAMS),
+        "{response}"
+    );
+    assert_eq!(browser.take_calls(), Vec::new());
+
+    // Off with `browser.ai_control`, as the browser's tools were before.
+    browser.set_enabled(false);
+    assert_eq!(cx.update(|cx| agent.browser_endpoint(cx)), None);
+}
+
+/// ADR-F89 / ADR-F102: a sandbox's session has no `/mcp/zed-browser`, with the
+/// AI browser on and with the session's own token.
+#[gpui::test]
+async fn a_sandboxed_session_refuses_the_browsers_endpoint(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let browser = install_fake_browser(true, cx);
+    let response = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::BROWSER_MCP_PATH,
+        &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+    )
+    .await;
+    assert!(!response.starts_with("HTTP/1.1 200"), "{response:?}");
+    let response = post_mcp_to(
+        &fixture,
+        &fixture.auth_token,
+        transport::BROWSER_MCP_PATH,
+        &call("browser_tabs", json!({})),
+    )
+    .await;
+    assert!(!response.starts_with("HTTP/1.1 200"), "{response:?}");
+    assert_eq!(browser.take_calls(), Vec::new());
 }

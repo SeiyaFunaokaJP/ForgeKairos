@@ -47,6 +47,9 @@ msgstr "1 compétence chargée avec une longue description"
 msgid "1 global rule"
 msgstr "1 règle globale"
 
+msgid "A change opens the agent's session again with the new servers once it finishes its turn. The conversation stays."
+msgstr "Une modification rouvre la session de l'agent avec les nouveaux serveurs dès qu'il a terminé sa réponse. La conversation est conservée."
+
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "Un hôte contenant un caractère générique ({pattern}) ne peut pas être ajouté à la liste d'autorisation à partir d'un consentement."
 
@@ -58,6 +61,9 @@ msgstr "Agent ACP"
 
 msgid "ACP Registry"
 msgstr "Registre ACP"
+
+msgid "AI Browser"
+msgstr "Navigateur IA"
 
 msgid "AI Judge (Auto-Run If Safe)"
 msgstr "L'IA décide (exécution automatique si sûr)"
@@ -1171,11 +1177,17 @@ msgstr "Se connecter avec Claude Code (abonnement)"
 msgid "Log Out"
 msgstr "Se déconnecter"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "MCP Server Commands"
 msgstr "Commandes des serveurs MCP"
 
 msgid "MCP Servers"
 msgstr "Serveurs MCP"
+
+msgid "MCP {on}/{total}"
+msgstr "MCP {on}/{total}"
 
 msgid "Make Subagent Full Screen"
 msgstr "Mettre le sous-agent en plein écran"
@@ -2017,6 +2029,9 @@ msgstr "Merci pour vos commentaires !"
 msgid "The ACP registry is not available, so agent updates cannot be checked."
 msgstr "Le registre ACP n'est pas disponible : impossible de rechercher des mises à jour des agents."
 
+msgid "The AI browser is not given to an agent in the sandbox."
+msgstr "Un agent dans le bac à sable ne reçoit pas le navigateur IA."
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "Le Claude Code envoyé à l'hôte distant est introuvable. Réessayez."
 
@@ -2049,6 +2064,12 @@ msgstr "L'agent ne peut pas utiliser `getDiagnostics` : il ne voit donc pas les 
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "L'agent démarre lorsque vous envoyez votre premier message. Choisissez d'abord son bac à sable et son réseau : une fois démarré, ils restent tels quels pour cette conversation."
+
+msgid "The agent starts with the servers checked here. You can change them after it starts too."
+msgstr "L'agent démarre avec les serveurs cochés ici. Vous pouvez aussi les modifier après son démarrage."
+
+msgid "The agent stops getting the tools of what you turn off from its next tool call on."
+msgstr "Ce que vous désactivez ne fournit plus ses outils à l'agent à partir de son prochain appel d'outil."
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "L'agent a été ajouté à settings.json, mais il n'a pas encore été chargé. Ouvrez-le plus tard depuis le menu +."
@@ -2201,6 +2222,9 @@ msgstr "Cette fenêtre"
 
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
 msgstr "Cet agent peut utiliser les outils IDE de ForgeKairos : surbrillance, annotations, visites, survol, définitions, références et recherche de symboles"
+
+msgid "This agent can't open its session again, so its MCP servers stay as it started with them. Start a new thread to change them."
+msgstr "Cet agent ne peut pas rouvrir sa session ; ses serveurs MCP restent donc tels qu'au démarrage. Démarrez une nouvelle conversation pour les modifier."
 
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "Cet agent ne prend pas en charge l'affichage des messages précédents. Cependant, votre session continuera à partir du point où vous vous êtes arrêté."
@@ -2357,6 +2381,9 @@ msgstr "Activer et continuer"
 
 msgid "Turn On and Start Outside"
 msgstr "Activer et démarrer hors du bac à sable"
+
+msgid "Turn this thread's MCP servers on or off. Each thread keeps its own choice."
+msgstr "Activer ou désactiver les serveurs MCP de cette conversation. Chaque conversation garde son propre choix."
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "Désactiver le bac à sable nécessite \"Autoriser l'exécution hors du bac à sable\" (Paramètres > IA > Bac à sable), qui est désactivé. L'activer ? Il reste activé jusqu'à ce que vous le désactiviez à cet endroit."
@@ -2516,6 +2543,9 @@ msgstr "Votre abonnement a été automatiquement basculé vers le forfait gratui
 
 msgid "Your Zed Pro Trial has expired"
 msgstr "Votre essai Zed Pro a expiré"
+
+msgid "Your change is applied when the agent finishes its turn: its session is opened again with the new servers."
+msgstr "Votre modification s'applique quand l'agent termine sa réponse : sa session est rouverte avec les nouveaux serveurs."
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "Vos paramètres et votre connexion habituels sont utilisés tels quels."

@@ -75,6 +75,10 @@ pub const CLAUDE_CODE_AUTH_HEADER: &str = "x-claude-code-ide-authorization";
 pub const IDE_MCP_PATH: &str = "/mcp";
 /// アシストのツール (ADR-F56) だけを出す口。HTTP でだけ受ける。
 pub const ASSIST_MCP_PATH: &str = "/mcp/zed";
+/// ADR-F102: the AI browser's tools (ADR-F89) alone, so that an external agent's
+/// thread can be given them or not apart from the IDE tools. HTTP only, on the
+/// host's server only.
+pub const BROWSER_MCP_PATH: &str = "/mcp/zed-browser";
 
 /// 接続を受けてよいトークン。
 #[derive(Clone)]
@@ -136,6 +140,8 @@ pub enum Endpoint {
     Ide,
     /// `POST /mcp/zed`。
     Assist,
+    /// `POST /mcp/zed-browser` (ADR-F102)。
+    Browser,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -173,7 +179,7 @@ fn route_for(head: &HttpHead, client: Option<String>) -> std::result::Result<Rou
     if head.is_websocket_upgrade() {
         // アシストの口は streamable HTTP だけ。WebSocket で来たら、CLI の IDE の口と
         // 取り違えないように断る。
-        if path == ASSIST_MCP_PATH {
+        if path == ASSIST_MCP_PATH || path == BROWSER_MCP_PATH {
             return Err(http_response("404 Not Found", None, ""));
         }
         return Ok(Route {
@@ -185,6 +191,7 @@ fn route_for(head: &HttpHead, client: Option<String>) -> std::result::Result<Rou
     let endpoint = match path {
         IDE_MCP_PATH => Endpoint::Ide,
         ASSIST_MCP_PATH => Endpoint::Assist,
+        BROWSER_MCP_PATH => Endpoint::Browser,
         _ => return Err(http_response("404 Not Found", None, "")),
     };
     if !head.method.eq_ignore_ascii_case("POST") {
@@ -873,6 +880,15 @@ mod tests {
         assert!(
             upgrade("/mcp/zed")
                 .expect_err("no WebSocket on the assist endpoint")
+                .starts_with("HTTP/1.1 404")
+        );
+
+        // ADR-F102: the AI browser's own endpoint, HTTP only.
+        let browser = post("/mcp/zed-browser").expect("POST /mcp/zed-browser is the browser's");
+        assert_eq!(browser.endpoint, Endpoint::Browser);
+        assert!(
+            upgrade("/mcp/zed-browser")
+                .expect_err("no WebSocket on the browser's endpoint")
                 .starts_with("HTTP/1.1 404")
         );
     }

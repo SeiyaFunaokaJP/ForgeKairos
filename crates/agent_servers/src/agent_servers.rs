@@ -25,7 +25,7 @@ pub use acp::test_support::{
 };
 pub use acp::{
     AcpConnection, AcpDebugMessage, AcpDebugMessageContent, AcpDebugMessageDirection,
-    GEMINI_TERMINAL_AUTH_METHOD_ID,
+    GEMINI_TERMINAL_AUTH_METHOD_ID, McpOffer, SessionMcp, prelaunch_mcp_offer,
 };
 
 pub struct AgentServerDelegate {

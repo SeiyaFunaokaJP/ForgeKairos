@@ -83,6 +83,9 @@ pub enum ToolScope {
     /// ([`ASSIST_TOOL_NAMES`]) は [`ConnectionScope::assist`] が出す。`Some` ならサンドボックスの
     /// セッションの口で、パスの扱いは [`ToolScope::Sandboxed`] と同じ。
     Assist(Option<Arc<SandboxPaths>>),
+    /// ADR-F102: the AI browser's endpoint (`/mcp/zed-browser`) on the host's
+    /// server. Its only tools are the browser's ([`offers_browser_tools`]).
+    Browser,
 }
 
 impl ToolScope {
@@ -91,7 +94,7 @@ impl ToolScope {
             ToolScope::Full => true,
             ToolScope::Sandboxed(_) => SANDBOX_TOOL_NAMES.contains(&name),
             ToolScope::SandboxedReadOnly(_) => RESTRICTED_TOOL_NAMES.contains(&name),
-            ToolScope::Assist(_) => false,
+            ToolScope::Assist(_) | ToolScope::Browser => false,
         }
     }
 
@@ -100,7 +103,7 @@ impl ToolScope {
     /// ホストのエラー文を見せない)。
     pub fn sandbox_paths(&self) -> Option<&Arc<SandboxPaths>> {
         match self {
-            ToolScope::Full | ToolScope::Assist(None) => None,
+            ToolScope::Full | ToolScope::Assist(None) | ToolScope::Browser => None,
             ToolScope::Sandboxed(paths)
             | ToolScope::SandboxedReadOnly(paths)
             | ToolScope::Assist(Some(paths)) => Some(paths),
@@ -114,6 +117,10 @@ pub struct ConnectionScope {
     pub tools: ToolScope,
     /// `Some` なら、アシストのツールも出し、表示はこの出どころとして描く。
     pub assist: Option<AssistSource>,
+    /// ADR-F102: the client takes the browser's tools from their own endpoint
+    /// (an external agent's `zed-browser` server), so this one leaves them out
+    /// and a thread can turn the browser off without losing the IDE tools.
+    pub browser_separate: bool,
 }
 
 impl ConnectionScope {
@@ -122,6 +129,7 @@ impl ConnectionScope {
         Self {
             tools,
             assist: None,
+            browser_separate: false,
         }
     }
 
@@ -363,7 +371,9 @@ pub trait ToolHost: 'static + Sized {
     ) -> std::result::Result<ConnectionScope, String> {
         match route.endpoint {
             Endpoint::Ide => Ok(ConnectionScope::without_assist(self.tool_scope())),
-            Endpoint::Assist => Err(crate::assist_tools::ASSIST_UNAVAILABLE_MESSAGE.to_string()),
+            Endpoint::Assist | Endpoint::Browser => {
+                Err(crate::assist_tools::ASSIST_UNAVAILABLE_MESSAGE.to_string())
+            }
         }
     }
 }
@@ -765,11 +775,18 @@ pub fn list_tools_result(scope: &ConnectionScope, cx: &App) -> Value {
 pub(crate) fn offers_browser_tools(scope: &ConnectionScope) -> bool {
     // 口が増えたら、ここで出すかどうかを決めさせる (`matches!` だと黙って出さない側に倒れる)。
     match scope.tools {
-        ToolScope::Full | ToolScope::Assist(None) => true,
+        ToolScope::Browser => true,
+        ToolScope::Full | ToolScope::Assist(None) => !scope.browser_separate,
         ToolScope::Sandboxed(_) | ToolScope::SandboxedReadOnly(_) | ToolScope::Assist(Some(_)) => {
             false
         }
     }
+}
+
+/// ADR-F102: whether the AI browser's tools are on (`browser.ai_control`), so
+/// that an external agent's session is given the `zed-browser` server.
+pub fn browser_tools_enabled(cx: &App) -> bool {
+    enabled_browser_control(cx).is_some()
 }
 
 fn enabled_browser_control(cx: &App) -> Option<Arc<dyn BrowserControl>> {
