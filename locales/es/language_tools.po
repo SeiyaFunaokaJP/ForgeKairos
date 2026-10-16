@@ -20,6 +20,9 @@ msgstr "(sin coincidencia)"
 msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
 msgstr "* Servidor: {NAME} (id {ID})\n\n* Versión: {VERSION}\n\n* Binario: {BINARY}\n\n* Carpetas del área de trabajo registradas:\n{WORKSPACE_FOLDERS}\n\n* Capacidades: {CAPABILITIES}\n\n* Configuración: {CONFIGURATION}"
 
+msgid "After an agent wrote to them, these folders' code (language servers and formatters) won't run until you review and resume."
+msgstr "Un agente escribió en estas carpetas: su código (servidores de lenguaje y formateadores) no se ejecutará hasta que revises y reanudes."
+
 msgid "All Servers Operational"
 msgstr "Todos los servidores operativos"
 
@@ -28,9 +31,6 @@ msgstr "Todos los resaltados están excluidos por los filtros"
 
 msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
 msgstr "Un agente volvió a escribir después de que se abriera este cuadro de diálogo. Revise los cambios y vuelva a presionar Reanudar."
-
-msgid "An agent wrote to {name}"
-msgstr "Un agente escribió en {name}"
 
 msgid "Clear"
 msgstr "Borrar"
@@ -266,9 +266,6 @@ msgstr "El editor no tiene resaltados de texto, de tokens de sintaxis ni de toke
 msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
 msgstr "El servidor remoto es demasiado antiguo, así que los servidores de lenguaje y formateadores del host remoto no están detenidos"
 
-msgid "This folder's code (language servers and formatters) won't run until you review and resume."
-msgstr "El código de esta carpeta (servidores de lenguaje y formateadores) no se ejecutará hasta que revise y reanude."
-
 msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
 msgstr "La configuración de este proyecto elige el modo completo de clangd, que su propia configuración no cambia. Para ahorrar memoria con el modo ligero, cambie `clangd.index_mode` en la configuración del proyecto."
 
@@ -363,6 +360,11 @@ msgstr "servidor desconocido"
 msgid "{command} ({}, PID {}, {})"
 msgstr "{command} ({}, PID {}, {})"
 
+msgid "{count} folder paused"
+msgid_plural "{count} folders paused"
+msgstr[0] "{count} carpeta en pausa"
+msgstr[1] "{count} carpetas en pausa"
+
 msgid "{} / {} highlights"
 msgstr "{} / {} resaltados"
 
@@ -388,7 +390,3 @@ msgstr "tachado"
 msgctxt "highlight style"
 msgid "underline"
 msgstr "subrayado"
-
-msgctxt "paused folder code"
-msgid "Review"
-msgstr "Revisar"

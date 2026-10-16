@@ -61,6 +61,15 @@ pub(crate) fn init_test(cx: &mut TestAppContext) -> Arc<FakeLanguageModelProvide
     let fake = cx.update(|cx| {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
+        // The pause is off by default (ADR-F50); these tests are about it.
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings
+                    .agent
+                    .get_or_insert_default()
+                    .pause_worktree_code_after_agent_writes = Some(true);
+            });
+        });
         LanguageModelRegistry::test(cx)
     });
     allow_running_outside_sandbox(true, cx);
@@ -2173,6 +2182,7 @@ async fn test_mcp_tool_calls_pause_worktree_code_unless_read_only(cx: &mut TestA
         json!({
             "agent": {
                 "tool_permissions": { "default": "allow" },
+                "pause_worktree_code_after_agent_writes": true,
                 "profiles": {
                     "test": {
                         "name": "Test Profile",

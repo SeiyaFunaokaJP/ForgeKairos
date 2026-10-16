@@ -20,6 +20,9 @@ msgstr "(일치하지 않음)"
 msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
 msgstr "* 서버: {NAME} (ID {ID})\n\n* 버전: {VERSION}\n\n* 바이너리: {BINARY}\n\n* 등록된 작업 영역 폴더:\n{WORKSPACE_FOLDERS}\n\n* 기능: {CAPABILITIES}\n\n* 구성: {CONFIGURATION}"
 
+msgid "After an agent wrote to them, these folders' code (language servers and formatters) won't run until you review and resume."
+msgstr "에이전트가 기록했으므로, 검토 후 다시 시작할 때까지 이 폴더들의 코드(언어 서버와 포맷터)를 실행하지 않습니다."
+
 msgid "All Servers Operational"
 msgstr "모든 서버 정상 작동 중"
 
@@ -28,9 +31,6 @@ msgstr "필터로 인해 모든 강조 표시가 제외되었습니다"
 
 msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
 msgstr "이 대화 상자가 열린 후 에이전트가 다시 기록했습니다. 변경 사항을 검토한 다음 재개를 다시 누르세요."
-
-msgid "An agent wrote to {name}"
-msgstr "에이전트가 {name}에 기록했습니다"
 
 msgid "Clear"
 msgstr "지우기"
@@ -266,9 +266,6 @@ msgstr "편집기에 텍스트, 구문 또는 의미 기반 토큰 강조 표시
 msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
 msgstr "원격 서버가 너무 오래되어 원격 호스트의 언어 서버와 포맷터는 일시 중지되지 않습니다"
 
-msgid "This folder's code (language servers and formatters) won't run until you review and resume."
-msgstr "검토하고 재개할 때까지 이 폴더의 코드(언어 서버 및 포맷터)는 실행되지 않습니다."
-
 msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
 msgstr "이 프로젝트의 설정이 clangd의 전체 모드를 선택하므로 사용자 설정으로는 변경되지 않습니다. 경량 모드로 메모리를 절약하려면 프로젝트 설정에서 `clangd.index_mode`를 변경하세요."
 
@@ -361,6 +358,10 @@ msgstr "알 수 없는 서버"
 msgid "{command} ({}, PID {}, {})"
 msgstr "{command} ({}, PID {}, {})"
 
+msgid "{count} folder paused"
+msgid_plural "{count} folders paused"
+msgstr[0] "폴더 {count}개 일시 중지됨"
+
 msgid "{} / {} highlights"
 msgstr "강조 표시 {} / {}"
 
@@ -386,7 +387,3 @@ msgstr "취소선"
 msgctxt "highlight style"
 msgid "underline"
 msgstr "밑줄"
-
-msgctxt "paused folder code"
-msgid "Review"
-msgstr "검토"

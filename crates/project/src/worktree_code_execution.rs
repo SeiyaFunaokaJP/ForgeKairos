@@ -629,7 +629,7 @@ pub fn pause_after_agent_writes_enabled(cx: &App) -> bool {
             .as_ref()?
             .pause_worktree_code_after_agent_writes
     })
-    .unwrap_or(true)
+    .unwrap_or(false)
 }
 
 /// Extension language servers the user lets run while their worktree is

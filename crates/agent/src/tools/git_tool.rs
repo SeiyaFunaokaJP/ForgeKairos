@@ -372,7 +372,7 @@ mod tests {
     use crate::{ContextServerRegistry, Templates, ToolCallEventStreamReceiver};
     use fs::{FakeFs, Fs as _};
     use git::repository::GitCommandOutput;
-    use gpui::{AppContext as _, TestAppContext};
+    use gpui::{AppContext as _, BorrowAppContext as _, TestAppContext};
     use language_model::LanguageModelRegistry;
     use prompt_store::ProjectContext;
     use serde_json::json;
@@ -383,6 +383,15 @@ mod tests {
         cx.update(|cx| {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
+            // The pause is off by default (ADR-F50); these tests are about it.
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .pause_worktree_code_after_agent_writes = Some(true);
+                });
+            });
         });
     }
 

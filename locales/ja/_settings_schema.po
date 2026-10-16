@@ -3952,8 +3952,8 @@ msgid "Whether a thread may lift its network restriction (the network button\nne
 msgstr "スレッドがネットワーク制限を解除できるかどうか (チャット入力欄のネットワークのボタン)。組み込みエージェントでは、サンドボックス内のターミナルのコマンドと fetch が確認なしにすべてのホストに接続します。外部エージェントは、エージェント自身のホストの一覧なしで起動し直します。オフの間は、ボタンがまずこの設定をオンにするか確認します。ただし組み込みエージェントでは、`allow_all_hosts` がオンの間は確認しません (その設定でスレッドはすでにすべてのホストに接続できます)。オフにすると、解除していたスレッドはその時点で制限ありに戻ります (外部エージェントは起動し直します)。エディターのネットワークの許可リストは引き続き適用されます。リモートホストでは、そのホストにサンドボックスがある場合にだけスレッドは制限を解除できます。ユーザー設定ファイルからのみ読み込まれます (プロジェクトの設定やエージェントからはオンにできません)。\n既定値: false"
 
 msgctxt "settings schema"
-msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
-msgstr "エージェントが書き込んだワークツリーで、ユーザーが変更を確認して再開するまで、そのワークツリー自身のコード (プロジェクトの言語サーバーのモード、フォーマッター、プロジェクトの prettier) を止めるかどうか。ユーザーの設定ファイルからだけ読み、プロジェクトやサーバーの設定ではオフにできません。\n\n既定値: true"
+msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot change it.\n\nDefault: false"
+msgstr "エージェントが書き込んだワークツリーで、ユーザーが変更を確認して再開するまで、そのワークツリー自身のコード (プロジェクトの言語サーバーのモード、フォーマッター、プロジェクトの prettier) を止めるかどうか。ユーザーの設定ファイルからだけ読み、プロジェクトやサーバーの設定では変えられません。\n\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether agents connected over the IDE server may read the output of the\nlast task that failed in this window (the `getLastTaskOutput` tool, at\nmost the last 4 KB of the task's terminal).\n\nDefault: true"

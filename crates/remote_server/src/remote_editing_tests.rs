@@ -7775,6 +7775,17 @@ async fn test_the_ide_pauses_a_remote_worktrees_code_on_its_host(
     )
     .await;
     let (project, headless) = init_test(&fs, cx, server_cx).await;
+    cx.update(|cx| {
+        // The pause is off by default (ADR-F50); these tests are about it.
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings
+                    .agent
+                    .get_or_insert_default()
+                    .pause_worktree_code_after_agent_writes = Some(true);
+            });
+        });
+    });
     let (worktree, _) = project
         .update(cx, |project, cx| {
             project.find_or_create_worktree(path!("/code/project1"), true, cx)

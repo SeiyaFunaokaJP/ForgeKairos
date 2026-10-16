@@ -32,8 +32,6 @@ use serde_json::json;
 use settings::SettingsStore;
 use util::{path, rel_path::rel_path};
 
-use crate::init_test;
-
 fn only_worktree(project: &Entity<Project>, cx: &mut TestAppContext) -> WorktreeId {
     project.read_with(cx, |project, cx| {
         project
@@ -107,6 +105,26 @@ fn paused_language_servers(
             .map(|(name, how)| (name.to_string(), how))
             .collect()
     })
+}
+
+/// The pause is off by default: the tests here are about what it does once
+/// the user turned it on.
+fn init_test(cx: &mut TestAppContext) {
+    crate::init_test(cx);
+    set_pause_in_user_settings(true, cx);
+}
+
+fn set_pause_in_user_settings(pause: bool, cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings
+                    .agent
+                    .get_or_insert_default()
+                    .pause_worktree_code_after_agent_writes = Some(pause);
+            })
+        })
+    });
 }
 
 fn skipped_formatters(project: &Entity<Project>, cx: &mut TestAppContext) -> BTreeSet<String> {
@@ -1633,16 +1651,7 @@ async fn test_only_the_user_settings_can_turn_the_pause_off(cx: &mut TestAppCont
         "neither can a remote host's server settings"
     );
 
-    cx.update(|cx| {
-        SettingsStore::update_global(cx, |store, cx| {
-            store.update_user_settings(cx, |settings| {
-                settings
-                    .agent
-                    .get_or_insert_default()
-                    .pause_worktree_code_after_agent_writes = Some(false);
-            })
-        })
-    });
+    set_pause_in_user_settings(false, cx);
     cx.run_until_parked();
     assert_eq!(
         code_state(&project, cx),
@@ -1651,6 +1660,36 @@ async fn test_only_the_user_settings_can_turn_the_pause_off(cx: &mut TestAppCont
     );
     note_agent_write(&project, cx);
     assert_eq!(code_state(&project, cx), WorktreeCodeState::Allowed);
+}
+
+#[gpui::test]
+async fn test_the_pause_is_off_until_the_user_settings_turn_it_on(cx: &mut TestAppContext) {
+    crate::init_test(cx);
+    let turned_on = json!({ "agent": { "pause_worktree_code_after_agent_writes": true } });
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/root"),
+        json!({
+            ".zed": { "settings.json": turned_on.to_string() },
+            "src": { "main.rs": "fn main() {}
+        " },
+        }),
+    )
+    .await;
+    let project = Project::test(fs.clone(), [path!("/root").as_ref()], cx).await;
+    cx.run_until_parked();
+
+    note_agent_write(&project, cx);
+    assert_eq!(
+        code_state(&project, cx),
+        WorktreeCodeState::Allowed,
+        "off by default, and project settings cannot turn it on"
+    );
+
+    set_pause_in_user_settings(true, cx);
+    cx.run_until_parked();
+    note_agent_write(&project, cx);
+    assert_eq!(code_state(&project, cx), WorktreeCodeState::Paused);
 }
 
 // The pause restarts the servers that run the worktree's code. It reopens in

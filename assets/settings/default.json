@@ -1290,9 +1290,9 @@
     // Whether a project folder an agent wrote into stops running its own code
     // (the project's prettier, ESLint and Python interpreter, rust-analyzer's
     // build scripts, formatter commands from the project) until the user
-    // reviews the changes and resumes it (ADR-F50). Only the user settings
-    // file can turn this off.
-    "pause_worktree_code_after_agent_writes": true,
+    // reviews the changes and resumes it (ADR-F50). Off by default; only the
+    // user settings file can turn it on.
+    "pause_worktree_code_after_agent_writes": false,
     // Language servers from extensions that keep running while a project
     // folder's code is paused, by name (for example ["gopls"]). Other
     // extensions' servers stop until the folder is resumed. Only the user

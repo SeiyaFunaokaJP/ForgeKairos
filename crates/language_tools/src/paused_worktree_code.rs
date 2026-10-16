@@ -1,9 +1,10 @@
 //! ADR-F50: what a project's folders hold back after an agent wrote into
 //! them, and the user's resume.
 //!
-//! The notification only leads to the dialog: resuming without seeing what is
-//! paused, and without a way to what the agent changed, is what the pause
-//! exists to prevent. Nothing an agent can reach resumes a folder.
+//! The status bar only counts the paused folders and leads to the dialog: one
+//! popup per folder got in the way. Resuming without seeing what is paused,
+//! and without a way to what the agent changed, is what the pause exists to
+//! prevent. Nothing an agent can reach resumes a folder.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -11,7 +12,7 @@ use std::{
 };
 
 use gpui::{
-    Action as _, App, AppContext as _, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    Action as _, App, DismissEvent, Empty, Entity, EventEmitter, FocusHandle, Focusable,
     Subscription, Task, actions,
 };
 use project::{
@@ -23,12 +24,9 @@ use project::{
         WorktreeCodeExecutionEvent,
     },
 };
-use ui::prelude::*;
+use ui::{ButtonLike, Tooltip, prelude::*};
 use util::ResultExt as _;
-use workspace::{
-    ModalView, Workspace,
-    notifications::{NotificationId, simple_message_notification::MessageNotification},
-};
+use workspace::{HideStatusItem, ItemHandle, ModalView, StatusItemView, Workspace};
 
 actions!(
     lsp_tool,
@@ -38,9 +36,6 @@ actions!(
         ReviewPausedWorktreeCode
     ]
 );
-
-/// Marks the notification shown for each paused folder.
-struct PausedWorktreeCodeNotification;
 
 /// A remote server from before ADR-F50 keeps running the folder's code.
 const REMOTE_SERVER_DOES_NOT_FOLLOW: &str = i18n::msg!(
@@ -52,42 +47,98 @@ fn remote_server_does_not_follow(details: Option<&PausedWorktreeDetails>) -> boo
 }
 
 pub(crate) fn init(cx: &mut App) {
-    cx.observe_new(|workspace: &mut Workspace, _, cx| {
+    cx.observe_new(|workspace: &mut Workspace, _, _| {
         workspace.register_action(|workspace, _: &ReviewPausedWorktreeCode, window, cx| {
             open_dialog(workspace, window, cx);
         });
+    })
+    .detach();
+}
+
+/// The status bar's count of the project's paused folders.
+pub struct PausedWorktreeCodeIndicator {
+    execution: Entity<WorktreeCodeExecution>,
+    _subscription: Subscription,
+}
+
+impl PausedWorktreeCodeIndicator {
+    pub fn new(workspace: &Workspace, cx: &mut Context<Self>) -> Self {
         let execution = workspace
             .project()
             .read(cx)
             .worktree_code_execution()
             .clone();
-        cx.subscribe(
-            &execution,
-            |workspace, _, event: &WorktreeCodeExecutionEvent, cx| match event {
-                WorktreeCodeExecutionEvent::Paused(worktree_id) => {
-                    show_notification(workspace, *worktree_id, cx);
-                }
-                WorktreeCodeExecutionEvent::Resumed(worktree_id) => {
-                    workspace.dismiss_notification(&notification_id(*worktree_id), cx);
-                }
-                WorktreeCodeExecutionEvent::CheckGuardFiles(_)
-                | WorktreeCodeExecutionEvent::LanguageServersAllowedWhilePausedChanged
-                | WorktreeCodeExecutionEvent::DetailsChanged(_) => {}
-            },
-        )
-        .detach();
-        // A folder left paused when Zed last quit stays paused.
-        for worktree_id in execution.read(cx).paused_worktrees() {
-            show_notification(workspace, worktree_id, cx);
+        // A remote server answers after the pause, and may not follow it.
+        let subscription = cx.subscribe(&execution, |_, _, _: &WorktreeCodeExecutionEvent, cx| {
+            cx.notify()
+        });
+        Self {
+            execution,
+            _subscription: subscription,
         }
-    })
-    .detach();
+    }
 }
 
-fn notification_id(worktree_id: WorktreeId) -> NotificationId {
-    NotificationId::composite::<PausedWorktreeCodeNotification>(SharedString::from(
-        worktree_id.to_proto().to_string(),
-    ))
+impl Render for PausedWorktreeCodeIndicator {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let execution = self.execution.read(cx);
+        let paused_worktrees = execution.paused_worktrees();
+        if paused_worktrees.is_empty() {
+            return Empty.into_any_element();
+        }
+        let does_not_follow = paused_worktrees.iter().any(|worktree_id| {
+            remote_server_does_not_follow(execution.details(*worktree_id).as_ref())
+        });
+        let count = paused_worktrees.len();
+        let label: SharedString =
+            i18n::tn!(count, "{count} folder paused", "{count} folders paused").into();
+        let description: SharedString = if does_not_follow {
+            i18n::tr(REMOTE_SERVER_DOES_NOT_FOLLOW).into()
+        } else {
+            i18n::t!("After an agent wrote to them, these folders' code (language servers and formatters) won't run until you review and resume.").into()
+        };
+        ButtonLike::new("paused-worktree-code-indicator")
+            .tab_index(0isize)
+            .aria_label(label.clone())
+            .child(
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Icon::new(IconName::Warning)
+                            .size(IconSize::Small)
+                            .color(Color::Warning),
+                    )
+                    .child(Label::new(label).size(LabelSize::Small)),
+            )
+            .tooltip(move |_, cx| {
+                Tooltip::with_meta(
+                    i18n::t!("Folder Code Paused"),
+                    Some(&ReviewPausedWorktreeCode),
+                    description.clone(),
+                    cx,
+                )
+            })
+            .on_click(|_, window, cx| {
+                window.dispatch_action(ReviewPausedWorktreeCode.boxed_clone(), cx);
+            })
+            .into_any_element()
+    }
+}
+
+impl StatusItemView for PausedWorktreeCodeIndicator {
+    fn set_active_pane_item(
+        &mut self,
+        _: Option<&dyn ItemHandle>,
+        _window: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+    }
+
+    // Hiding it would leave a paused folder with no sign of why its language
+    // servers stopped.
+    fn hide_setting(&self, _: &App) -> Option<HideStatusItem> {
+        None
+    }
 }
 
 /// The folder's name as it can be shown: it comes from the project.
@@ -99,59 +150,6 @@ fn folder_name(project: &Project, worktree_id: WorktreeId, cx: &App) -> Option<S
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| abs_path.to_string_lossy().into_owned());
     Some(escape_for_display(&name).into_owned())
-}
-
-fn show_notification(
-    workspace: &mut Workspace,
-    worktree_id: WorktreeId,
-    cx: &mut Context<Workspace>,
-) {
-    let Some(name) = folder_name(workspace.project().read(cx), worktree_id, cx) else {
-        return;
-    };
-    let execution = workspace
-        .project()
-        .read(cx)
-        .worktree_code_execution()
-        .clone();
-    let weak_workspace = cx.weak_entity();
-    workspace.show_notification(notification_id(worktree_id), cx, move |cx| {
-        cx.new(|cx| {
-            // A remote server answers after the pause, and may not follow it.
-            cx.subscribe(&execution, |_, _, _: &WorktreeCodeExecutionEvent, cx| {
-                cx.notify()
-            })
-            .detach();
-            MessageNotification::new_from_builder(cx, move |_window, cx| {
-                let does_not_follow =
-                    remote_server_does_not_follow(execution.read(cx).details(worktree_id).as_ref());
-                v_flex()
-                    .gap_0p5()
-                    .child(Label::new(i18n::t!("An agent wrote to {name}")))
-                    .child(
-                        Label::new(if does_not_follow {
-                            i18n::tr(REMOTE_SERVER_DOES_NOT_FOLLOW)
-                        } else {
-                            i18n::t!("This folder's code (language servers and formatters) won't run until you review and resume.")
-                        })
-                        .size(LabelSize::Small)
-                        .color(if does_not_follow {
-                            Color::Warning
-                        } else {
-                            Color::Muted
-                        }),
-                    )
-                    .into_any_element()
-            })
-            .primary_message(i18n::tc!("paused folder code", "Review"))
-            .primary_on_click(move |window, cx| {
-                weak_workspace
-                    .update(cx, |workspace, cx| open_dialog(workspace, window, cx))
-                    .log_err();
-            })
-            .show_suppress_button(false)
-        })
-    });
 }
 
 fn open_dialog(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
@@ -695,6 +693,15 @@ mod tests {
         cx.update(|cx| {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
+            // The pause is off by default (ADR-F50); these tests are about it.
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .pause_worktree_code_after_agent_writes = Some(true);
+                });
+            });
             theme_settings::init(theme::LoadThemes::JustBase, cx);
             release_channel::init(semver::Version::new(0, 0, 0), cx);
         });

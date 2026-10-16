@@ -580,9 +580,9 @@ pub struct AgentSettingsContent {
     /// Whether a worktree an agent wrote into stops running its own code
     /// (project language server modes, formatters, the project's prettier)
     /// until the user reviews the changes and resumes it. Read from the user
-    /// settings file only: project and server settings cannot turn it off.
+    /// settings file only: project and server settings cannot change it.
     ///
-    /// Default: true
+    /// Default: false
     pub pause_worktree_code_after_agent_writes: Option<bool>,
 
     /// Language servers from extensions that keep running while their

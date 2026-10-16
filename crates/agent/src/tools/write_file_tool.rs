@@ -1539,6 +1539,10 @@ mod tests {
                         .all_languages
                         .defaults
                         .ensure_final_newline_on_save = Some(false);
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .pause_worktree_code_after_agent_writes = Some(true);
                 });
             });
         });

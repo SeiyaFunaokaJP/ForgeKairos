@@ -140,11 +140,11 @@ and edits files but has no terminal, fetch, delete or MCP tools.
 
 ## Pausing project code after agent writes
 
-After an agent writes into a project folder, that folder's own code (formatters, ESLint,
-the Python interpreter, rust-analyzer's build scripts) does not run until you review the
-changes and click **Resume**. This is on by default
-(`agent.pause_worktree_code_after_agent_writes`); only the user settings file can turn it
-off.
+When `agent.pause_worktree_code_after_agent_writes` is on, after an agent writes into a
+project folder, that folder's own code (formatters, ESLint, the Python interpreter,
+rust-analyzer's build scripts) does not run until you review the changes and click
+**Resume**. It is off by default; only the user settings file can turn it on. While folders
+are paused, the status bar shows how many; click it to review and resume.
 
 ## MCP servers
 
