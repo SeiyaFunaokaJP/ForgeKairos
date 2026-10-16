@@ -44,6 +44,9 @@ msgstr "説明が長いスキルを 1 件読み込みました"
 msgid "1 global rule"
 msgstr "グローバルルール 1 件"
 
+msgid "A change opens the agent's session again with the new servers once it finishes its turn. The conversation stays."
+msgstr "変更すると、エージェントが応答を終えたところで新しいサーバーでセッションを開き直します。会話はそのまま残ります。"
+
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "ワイルドカードを含むホスト ({pattern}) は、同意からは許可リストに追加できません。"
 
@@ -55,6 +58,9 @@ msgstr "ACP エージェント"
 
 msgid "ACP Registry"
 msgstr "ACP レジストリ"
+
+msgid "AI Browser"
+msgstr "AI ブラウザー"
 
 msgid "AI Judge (Auto-Run If Safe)"
 msgstr "AI が判定 (安全なら自動実行)"
@@ -660,6 +666,9 @@ msgstr "Claude Code のリリース情報の署名を検証できませんでし
 msgid "Couldn't create a sandbox"
 msgstr "サンドボックスを作成できませんでした"
 
+msgid "Couldn't read the agent's options; they appear once it starts."
+msgstr "エージェントのオプションを読み込めませんでした。起動すると表示されます。"
+
 msgid "Couldn't remove the API key: {error}"
 msgstr "API キーを削除できませんでした: {error}"
 
@@ -1164,11 +1173,17 @@ msgstr "Claude Code でログイン (サブスクリプション)"
 msgid "Log Out"
 msgstr "ログアウト"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "MCP Server Commands"
 msgstr "MCP サーバーのコマンド"
 
 msgid "MCP Servers"
 msgstr "MCP サーバー"
+
+msgid "MCP {on}/{total}"
+msgstr "MCP {on}/{total}"
 
 msgid "Make Subagent Full Screen"
 msgstr "サブエージェントを全画面表示"
@@ -1571,6 +1586,9 @@ msgstr "生の入力:"
 
 msgid "Reading and writing files and running commands are unavailable until you trust the folder."
 msgstr "ファイルの読み書きやコマンド実行は、フォルダーを信頼するまで使えません。"
+
+msgid "Reading the agent's options…"
+msgstr "エージェントのオプションを読み込んでいます…"
 
 msgid "Reads the {channel} version number from Anthropic's download server."
 msgstr "{channel}の版番号を Anthropic の配布元から読み取ります。"
@@ -2010,6 +2028,9 @@ msgstr "フィードバックをありがとうございます。"
 msgid "The ACP registry is not available, so agent updates cannot be checked."
 msgstr "ACP レジストリを利用できないため、エージェントの更新を確認できません。"
 
+msgid "The AI browser is not given to an agent in the sandbox."
+msgstr "サンドボックスの中のエージェントには AI ブラウザーを渡しません。"
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "接続先へ送った Claude Code が見つかりません。もう一度お試しください。"
 
@@ -2042,6 +2063,12 @@ msgstr "エージェントは `getDiagnostics` を使えないため、エディ
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "エージェントは最初のメッセージを送信したときに起動します。サンドボックスとネットワークは先に選んでください。起動後はこのスレッドではそのままになります。"
+
+msgid "The agent starts with the servers checked here. You can change them after it starts too."
+msgstr "エージェントはここでチェックしたサーバーで起動します。起動後も変更できます。"
+
+msgid "The agent stops getting the tools of what you turn off from its next tool call on."
+msgstr "オフにしたもののツールは、次のツール呼び出しからエージェントに渡されなくなります。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "エージェントを settings.json に追加しましたが、まだ読み込まれていません。後で + メニューから開いてください。"
@@ -2088,6 +2115,12 @@ msgstr[0] "1 メッセージの上限を超えるため、大きい添付 {count
 
 msgid "The model"
 msgstr "モデル"
+
+msgid "The model and the other options are the ones the agent offers. What you pick is set before your first message is sent."
+msgstr "モデルとその他のオプションは、このエージェントで選べるものです。ここで選んだものは、最初のメッセージを送信する前に設定されます。"
+
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "モデルとその他のオプションは、このエージェントの前回のスレッドで選べたものです。ここで選んだものは、最初のメッセージを送信する前に設定されます。"
 
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "モデルは最大出力長に達したため停止しました。続きから再開するよう指示できます。"
@@ -2193,6 +2226,9 @@ msgstr "このウィンドウ"
 
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
 msgstr "このエージェントは ForgeKairos の IDE ツールを使えます: ハイライト・注釈・ツアー・ホバー・定義・参照・シンボル検索"
+
+msgid "This agent can't open its session again, so its MCP servers stay as it started with them. Start a new thread to change them."
+msgstr "このエージェントはセッションを開き直せないため、MCP サーバーは起動したときのままです。変更するには新しいスレッドを始めてください。"
 
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "このエージェントは過去のメッセージの表示に対応していません。ただし、セッションは前回の続きから再開されます。"
@@ -2349,6 +2385,9 @@ msgstr "オンにして続ける"
 
 msgid "Turn On and Start Outside"
 msgstr "オンにして外で起動"
+
+msgid "Turn this thread's MCP servers on or off. Each thread keeps its own choice."
+msgstr "このスレッドの MCP サーバーをオン・オフします。選択はスレッドごとに保たれます。"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "サンドボックスをオフにするには「サンドボックスの外での実行を許可する」(設定 > AI > サンドボックス) が必要ですが、オフになっています。オンにしますか？ 設定でオフにするまでオンのままです。"
@@ -2508,6 +2547,9 @@ msgstr "自動的に Free プランに戻りました。"
 
 msgid "Your Zed Pro Trial has expired"
 msgstr "Zed Pro トライアルの期限が切れました"
+
+msgid "Your change is applied when the agent finishes its turn: its session is opened again with the new servers."
+msgstr "変更はエージェントが応答を終えたときに反映され、新しいサーバーでセッションを開き直します。"
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "設定とログインは普段のものをそのまま使います。"

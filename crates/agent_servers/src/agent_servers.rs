@@ -25,7 +25,7 @@ pub use acp::test_support::{
 };
 pub use acp::{
     AcpConnection, AcpDebugMessage, AcpDebugMessageContent, AcpDebugMessageDirection,
-    GEMINI_TERMINAL_AUTH_METHOD_ID,
+    GEMINI_TERMINAL_AUTH_METHOD_ID, McpOffer, SessionMcp, prelaunch_mcp_offer,
 };
 
 pub struct AgentServerDelegate {
@@ -122,6 +122,15 @@ pub trait AgentServer: Send {
     /// with can be picked first. Only an agent whose whole process the sandbox
     /// holds has anything to pick before it starts.
     fn starts_on_first_message(&self) -> bool {
+        false
+    }
+
+    /// ADR-F103: whether what a session of this agent offers (its model and
+    /// other options, its modes and slash commands) may be read in a session
+    /// of its own ([`AgentConnection::new_session_to_read_options`]) before
+    /// the agent's first thread has started, so that a new thread can offer
+    /// them from the very start.
+    fn reads_session_options_before_start(&self) -> bool {
         false
     }
 

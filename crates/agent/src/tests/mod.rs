@@ -7340,6 +7340,141 @@ async fn test_git_operations_switch(cx: &mut TestAppContext) {
     assert!(!thread.read_with(cx, |thread, _| thread.git_operations_enabled()));
 }
 
+/// ADR-F102: the thread's MCP menu hides every tool of a server it turned off,
+/// whatever the profile enables, from the running turn on; the choice is saved
+/// with the thread (a thread saved before it has everything on) and goes to
+/// the subagents.
+#[gpui::test]
+async fn test_mcp_selection_hides_a_servers_tools(cx: &mut TestAppContext) {
+    let ThreadTest {
+        model,
+        fake,
+        thread,
+        context_server_store,
+        fs,
+        project_context,
+        ..
+    } = setup(cx, TestModel::Fake).await;
+    fs.insert_file(
+        paths::settings_file(),
+        json!({
+            "agent": {
+                "profiles": {
+                    "test": {
+                        "name": "Test Profile",
+                        "enable_all_context_servers": true,
+                        "tools": {}
+                    },
+                }
+            }
+        })
+        .to_string()
+        .into_bytes(),
+    )
+    .await;
+    cx.run_until_parked();
+    thread.update(cx, |thread, cx| {
+        thread.set_profile(AgentProfileId("test".into()), cx)
+    });
+    let tool = |name: &str| context_server::types::Tool {
+        name: name.into(),
+        title: None,
+        description: None,
+        input_schema: EchoTool::input_schema().to_value(),
+        output_schema: None,
+        annotations: None,
+    };
+    let _alpha_calls =
+        setup_context_server("alpha", vec![tool("alpha_echo")], &context_server_store, cx);
+    let _beta_calls =
+        setup_context_server("beta", vec![tool("beta_echo")], &context_server_store, cx);
+
+    let mut menu = thread.read_with(cx, |thread, cx| thread.mcp_menu_servers(cx));
+    menu.sort();
+    assert_eq!(menu, vec![Arc::<str>::from("alpha"), Arc::from("beta")]);
+
+    let request = |cx: &mut TestAppContext| {
+        thread
+            .update(cx, |thread, cx| {
+                thread.send(ClientUserMessageId::new(), ["hello"], cx)
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let completion = fake.pending_completions().pop().unwrap();
+        fake.end_last(&model);
+        cx.run_until_parked();
+        let mut names = tool_names_for_completion(&completion);
+        names.sort();
+        names
+    };
+    assert_eq!(request(cx), vec!["alpha_echo", "beta_echo"]);
+
+    let mut alpha_off = agent_settings::McpSelection::default();
+    alpha_off.set_server_enabled("alpha", false);
+
+    // Mid-turn: the running turn stops offering it at once.
+    thread
+        .update(cx, |thread, cx| {
+            thread.send(ClientUserMessageId::new(), ["again"], cx)
+        })
+        .unwrap();
+    cx.run_until_parked();
+    assert!(thread.read_with(cx, |thread, _| thread.has_tool("alpha_echo")));
+    thread.update(cx, |thread, cx| {
+        thread.set_mcp_selection(alpha_off.clone(), cx)
+    });
+    assert!(!thread.read_with(cx, |thread, _| thread.has_tool("alpha_echo")));
+    assert!(thread.read_with(cx, |thread, _| thread.has_tool("beta_echo")));
+    fake.end_last(&model);
+    cx.run_until_parked();
+
+    assert_eq!(request(cx), vec!["beta_echo"]);
+
+    // Saved with the thread; a thread saved before the menu existed has
+    // everything on.
+    let db_thread = thread.read_with(cx, |thread, cx| thread.to_db(cx)).await;
+    assert_eq!(db_thread.mcp_selection, alpha_off);
+    let mut legacy = serde_json::to_value(&db_thread).expect("the thread serializes");
+    legacy
+        .as_object_mut()
+        .expect("a thread is an object")
+        .remove("mcp_selection");
+    let legacy: DbThread = serde_json::from_value(legacy).expect("an older thread reads back");
+    assert!(legacy.mcp_selection.is_all_on());
+    let context_server_registry =
+        thread.read_with(cx, |thread, _| thread.context_server_registry.clone());
+    let project = thread.read_with(cx, |thread, _| thread.project.clone());
+    let restored = cx.new(|cx| {
+        Thread::from_db(
+            acp::SessionId::new("restored"),
+            db_thread,
+            project,
+            project_context,
+            context_server_registry,
+            Templates::new(),
+            cx,
+        )
+    });
+    assert_eq!(
+        restored.read_with(cx, |thread, _| thread.mcp_selection().clone()),
+        alpha_off
+    );
+
+    // Subagents start with it and follow later changes.
+    let subagent = cx.new(|cx| Thread::new_subagent(&thread, None, cx));
+    assert_eq!(
+        subagent.read_with(cx, |thread, _| thread.mcp_selection().clone()),
+        alpha_off
+    );
+    thread.update(cx, |thread, _cx| {
+        thread.register_running_subagent(subagent.downgrade());
+    });
+    thread.update(cx, |thread, cx| {
+        thread.set_mcp_selection(agent_settings::McpSelection::default(), cx)
+    });
+    assert!(subagent.read_with(cx, |thread, _| thread.mcp_selection().is_all_on()));
+}
+
 /// With no language server for the file, an LSP tool's empty result is
 /// indistinguishable from "the symbol has no references", and small models
 /// read it as a broken editor setup. Both tools must instead say that no

@@ -193,6 +193,22 @@ pub trait AgentConnection {
         cx: &mut App,
     ) -> Task<Result<Entity<AcpThread>>>;
 
+    /// ADR-F103: a session that is only there for what the agent offers in
+    /// it (its options, modes and slash commands), before the first thread of
+    /// the agent has started. It is given no MCP servers and none of the
+    /// user's defaults, nothing is ever sent in it, and it is closed by
+    /// dropping its thread.
+    fn new_session_to_read_options(
+        self: Rc<Self>,
+        _project: Entity<Project>,
+        _work_dirs: PathList,
+        _cx: &mut App,
+    ) -> Task<Result<Entity<AcpThread>>> {
+        Task::ready(Err(anyhow::Error::msg(
+            "Reading the agent's options before its first thread is not supported",
+        )))
+    }
+
     /// Whether this agent supports loading existing sessions.
     fn supports_load_session(&self) -> bool {
         false

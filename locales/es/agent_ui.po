@@ -47,6 +47,9 @@ msgstr "1 habilidad cargada con una descripción larga"
 msgid "1 global rule"
 msgstr "1 regla global"
 
+msgid "A change opens the agent's session again with the new servers once it finishes its turn. The conversation stays."
+msgstr "Un cambio vuelve a abrir la sesión del agente con los nuevos servidores en cuanto termine su respuesta. La conversación se conserva."
+
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "Un host con comodín ({pattern}) no se puede agregar a la lista de permitidos desde un consentimiento."
 
@@ -58,6 +61,9 @@ msgstr "Agente ACP"
 
 msgid "ACP Registry"
 msgstr "Registro de ACP"
+
+msgid "AI Browser"
+msgstr "Navegador de IA"
 
 msgid "AI Judge (Auto-Run If Safe)"
 msgstr "Decide la IA (ejecución automática si es seguro)"
@@ -664,6 +670,9 @@ msgstr "No se pudo verificar la firma de la información de versión de Claude C
 msgid "Couldn't create a sandbox"
 msgstr "No se pudo crear un sandbox"
 
+msgid "Couldn't read the agent's options; they appear once it starts."
+msgstr "No se pudieron leer las opciones del agente; aparecerán cuando se inicie."
+
 msgid "Couldn't remove the API key: {error}"
 msgstr "No se pudo quitar la clave de API: {error}"
 
@@ -1171,11 +1180,17 @@ msgstr "Iniciar sesión con Claude Code (suscripción)"
 msgid "Log Out"
 msgstr "Cerrar sesión"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "MCP Server Commands"
 msgstr "Comandos de servidores MCP"
 
 msgid "MCP Servers"
 msgstr "Servidores MCP"
+
+msgid "MCP {on}/{total}"
+msgstr "MCP {on}/{total}"
 
 msgid "Make Subagent Full Screen"
 msgstr "Poner subagente a pantalla completa"
@@ -1578,6 +1593,9 @@ msgstr "Entrada sin procesar:"
 
 msgid "Reading and writing files and running commands are unavailable until you trust the folder."
 msgstr "La lectura y escritura de archivos y la ejecución de comandos no están disponibles hasta que confíe en la carpeta."
+
+msgid "Reading the agent's options…"
+msgstr "Leyendo las opciones del agente…"
 
 msgid "Reads the {channel} version number from Anthropic's download server."
 msgstr "Lee el número de versión de {channel} del servidor de descarga de Anthropic."
@@ -2017,6 +2035,9 @@ msgstr "¡Gracias por sus comentarios!"
 msgid "The ACP registry is not available, so agent updates cannot be checked."
 msgstr "El registro de ACP no está disponible, así que no se pueden buscar actualizaciones de los agentes."
 
+msgid "The AI browser is not given to an agent in the sandbox."
+msgstr "Un agente dentro del sandbox no recibe el navegador de IA."
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "No se encontró el Claude Code enviado al host remoto. Inténtelo de nuevo."
 
@@ -2049,6 +2070,12 @@ msgstr "El agente no puede usar `getDiagnostics`, por lo que no ve los errores y
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "El agente se inicia cuando envías tu primer mensaje. Elige antes su sandbox y su red: una vez iniciado, se mantienen así en esta conversación."
+
+msgid "The agent starts with the servers checked here. You can change them after it starts too."
+msgstr "El agente se inicia con los servidores marcados aquí. También puede cambiarlos después de que se inicie."
+
+msgid "The agent stops getting the tools of what you turn off from its next tool call on."
+msgstr "Lo que desactive deja de ofrecer sus herramientas al agente a partir de su próxima llamada a herramientas."
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "El agente se agregó a settings.json, pero todavía no se ha cargado. Ábralo más tarde desde el menú +."
@@ -2096,6 +2123,12 @@ msgstr[1] "El mensaje supera su límite de tamaño, por lo que {count} adjuntos 
 
 msgid "The model"
 msgstr "El modelo"
+
+msgid "The model and the other options are the ones the agent offers. What you pick is set before your first message is sent."
+msgstr "El modelo y las demás opciones son los que ofrece el agente. Lo que elijas se aplica antes de enviar tu primer mensaje."
+
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "El modelo y las demás opciones son los que ofreció la última conversación de este agente. Lo que elijas se aplica antes de enviar tu primer mensaje."
 
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "El modelo se detuvo porque alcanzó su longitud máxima de salida. Puede pedirle que continúe donde lo dejó."
@@ -2201,6 +2234,9 @@ msgstr "Esta ventana"
 
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
 msgstr "Este agente puede usar las herramientas del IDE de ForgeKairos: resaltados, anotaciones, recorridos, información al pasar el cursor, definiciones, referencias y búsqueda de símbolos"
+
+msgid "This agent can't open its session again, so its MCP servers stay as it started with them. Start a new thread to change them."
+msgstr "Este agente no puede volver a abrir su sesión, así que sus servidores MCP se quedan como al iniciarse. Inicie una nueva conversación para cambiarlos."
 
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "Este agente no permite ver mensajes anteriores. Sin embargo, la sesión continuará desde donde se dejó."
@@ -2357,6 +2393,9 @@ msgstr "Activar y continuar"
 
 msgid "Turn On and Start Outside"
 msgstr "Activar e iniciar fuera del sandbox"
+
+msgid "Turn this thread's MCP servers on or off. Each thread keeps its own choice."
+msgstr "Activar o desactivar los servidores MCP de esta conversación. Cada conversación conserva su propia elección."
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "Desactivar el sandbox requiere \"Permitir la ejecución fuera del sandbox\" (Configuración > IA > Sandbox), que está desactivado. ¿Activarlo? Permanece activado hasta que lo desactive allí."
@@ -2516,6 +2555,9 @@ msgstr "Se le cambió automáticamente al plan gratuito."
 
 msgid "Your Zed Pro Trial has expired"
 msgstr "Su prueba de Zed Pro caducó"
+
+msgid "Your change is applied when the agent finishes its turn: its session is opened again with the new servers."
+msgstr "Su cambio se aplica cuando el agente termina su respuesta: su sesión se vuelve a abrir con los nuevos servidores."
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "Se usan tal cual su configuración y su inicio de sesión habituales."

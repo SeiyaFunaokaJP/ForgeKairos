@@ -47,6 +47,9 @@ msgstr "已載入 1 個含過長描述的技能"
 msgid "1 global rule"
 msgstr "1 條全域規則"
 
+msgid "A change opens the agent's session again with the new servers once it finishes its turn. The conversation stays."
+msgstr "變更後，代理完成目前的回覆時會以新的伺服器重新開啟其工作階段。對話內容會保留。"
+
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "含有萬用字元的主機（{pattern}）無法透過同意加入允許清單。"
 
@@ -58,6 +61,9 @@ msgstr "ACP 代理"
 
 msgid "ACP Registry"
 msgstr "ACP 登錄庫"
+
+msgid "AI Browser"
+msgstr "AI 瀏覽器"
 
 msgid "AI Judge (Auto-Run If Safe)"
 msgstr "由 AI 判斷（安全時自動執行）"
@@ -663,6 +669,9 @@ msgstr "無法驗證 Claude Code 發行資訊的簽章。由於可能已遭竄�
 msgid "Couldn't create a sandbox"
 msgstr "無法建立沙箱"
 
+msgid "Couldn't read the agent's options; they appear once it starts."
+msgstr "無法讀取代理的選項；它們會在代理啟動後顯示。"
+
 msgid "Couldn't remove the API key: {error}"
 msgstr "無法移除 API 金鑰：{error}"
 
@@ -1167,11 +1176,17 @@ msgstr "以 Claude Code 登入（訂閱）"
 msgid "Log Out"
 msgstr "登出"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "MCP Server Commands"
 msgstr "MCP 伺服器命令"
 
 msgid "MCP Servers"
 msgstr "MCP 伺服器"
+
+msgid "MCP {on}/{total}"
+msgstr "MCP {on}/{total}"
 
 msgid "Make Subagent Full Screen"
 msgstr "將子代理設為全螢幕"
@@ -1574,6 +1589,9 @@ msgstr "原始輸入："
 
 msgid "Reading and writing files and running commands are unavailable until you trust the folder."
 msgstr "在您信任該資料夾之前，無法讀寫檔案或執行命令。"
+
+msgid "Reading the agent's options…"
+msgstr "正在讀取代理的選項…"
 
 msgid "Reads the {channel} version number from Anthropic's download server."
 msgstr "從 Anthropic 的下載伺服器讀取 {channel} 的版本號碼。"
@@ -2013,6 +2031,9 @@ msgstr "感謝您的意見回饋！"
 msgid "The ACP registry is not available, so agent updates cannot be checked."
 msgstr "無法使用 ACP 登錄庫，因此無法檢查代理的更新。"
 
+msgid "The AI browser is not given to an agent in the sandbox."
+msgstr "沙箱中的代理不會取得 AI 瀏覽器。"
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "找不到已傳送至遠端主機的 Claude Code。請再試一次。"
 
@@ -2045,6 +2066,12 @@ msgstr "代理無法使用 `getDiagnostics`，因此看不到編輯器所顯示�
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "傳送第一則訊息時代理才會啟動。請先選擇它的沙箱與網路：啟動後，此會話中會維持不變。"
+
+msgid "The agent starts with the servers checked here. You can change them after it starts too."
+msgstr "代理會以此處勾選的伺服器啟動。啟動後也可以變更。"
+
+msgid "The agent stops getting the tools of what you turn off from its next tool call on."
+msgstr "關閉的項目從下一次工具呼叫起不再向代理提供其工具。"
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "代理已新增至 settings.json，但尚未載入。請稍後從 + 選單開啟。"
@@ -2091,6 +2118,12 @@ msgstr[0] "訊息超過大小上限，因此 {count} 個大型附件會縮減為
 
 msgid "The model"
 msgstr "模型"
+
+msgid "The model and the other options are the ones the agent offers. What you pick is set before your first message is sent."
+msgstr "模型和其他選項是此代理提供的內容。你在這裡選擇的內容會在傳送第一則訊息之前生效。"
+
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "模型和其他選項來自此代理上一個會話所提供的內容。你在這裡選擇的內容會在傳送第一則訊息之前生效。"
 
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "模型已達到最大輸出長度而停止。可要求模型從上次中斷處繼續。"
@@ -2196,6 +2229,9 @@ msgstr "此視窗"
 
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
 msgstr "此代理可以使用 ForgeKairos 的 IDE 工具：醒目提示、註記、導覽、暫留、定義、參考與符號搜尋"
+
+msgid "This agent can't open its session again, so its MCP servers stay as it started with them. Start a new thread to change them."
+msgstr "此代理無法重新開啟其工作階段，因此其 MCP 伺服器會維持啟動時的狀態。若要變更，請開始新的會話。"
 
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "此代理不支援檢視先前的訊息。不過，工作階段仍會從上次離開的位置繼續。"
@@ -2352,6 +2388,9 @@ msgstr "開啟並繼續"
 
 msgid "Turn On and Start Outside"
 msgstr "開啟並在沙箱外啟動"
+
+msgid "Turn this thread's MCP servers on or off. Each thread keeps its own choice."
+msgstr "開啟或關閉此會話的 MCP 伺服器。每個會話各自保留選擇。"
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "關閉沙箱需要開啟「允許在沙箱外執行」（設定 > AI > 沙箱），但它目前已關閉。要開啟嗎？在設定中關閉之前，它會一直保持開啟。"
@@ -2511,6 +2550,9 @@ msgstr "已自動還原至免費方案。"
 
 msgid "Your Zed Pro Trial has expired"
 msgstr "Zed Pro 試用已到期"
+
+msgid "Your change is applied when the agent finishes its turn: its session is opened again with the new servers."
+msgstr "變更會在代理完成目前的回覆時生效：會以新的伺服器重新開啟其工作階段。"
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "會直接使用您平常的設定與登入狀態。"

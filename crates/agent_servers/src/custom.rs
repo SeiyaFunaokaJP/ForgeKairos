@@ -541,6 +541,10 @@ impl AgentServer for CustomAgentServer {
         true
     }
 
+    fn reads_session_options_before_start(&self) -> bool {
+        true
+    }
+
     fn default_mode(&self, cx: &App) -> Option<acp::SessionModeId> {
         let settings = cx.read_global(|settings: &SettingsStore, _| {
             settings

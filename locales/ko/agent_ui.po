@@ -47,6 +47,9 @@ msgstr "긴 설명이 있는 스킬 1개가 로드되었습니다"
 msgid "1 global rule"
 msgstr "전역 규칙 1개"
 
+msgid "A change opens the agent's session again with the new servers once it finishes its turn. The conversation stays."
+msgstr "변경하면 에이전트가 응답을 마친 뒤 새 서버로 세션을 다시 엽니다. 대화는 그대로 남습니다."
+
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "와일드카드가 포함된 호스트({pattern})는 동의를 통해 허용 목록에 추가할 수 없습니다."
 
@@ -58,6 +61,9 @@ msgstr "ACP 에이전트"
 
 msgid "ACP Registry"
 msgstr "ACP 레지스트리"
+
+msgid "AI Browser"
+msgstr "AI 브라우저"
 
 msgid "AI Judge (Auto-Run If Safe)"
 msgstr "AI 판단 (안전하면 자동 실행)"
@@ -663,6 +669,9 @@ msgstr "Claude Code 릴리스 정보의 서명을 확인하지 못했습니다. 
 msgid "Couldn't create a sandbox"
 msgstr "샌드박스를 만들지 못했습니다"
 
+msgid "Couldn't read the agent's options; they appear once it starts."
+msgstr "에이전트의 옵션을 읽지 못했습니다. 에이전트가 시작되면 표시됩니다."
+
 msgid "Couldn't remove the API key: {error}"
 msgstr "API 키를 제거하지 못했습니다: {error}"
 
@@ -1167,11 +1176,17 @@ msgstr "Claude Code로 로그인 (구독)"
 msgid "Log Out"
 msgstr "로그아웃"
 
+msgid "MCP"
+msgstr "MCP"
+
 msgid "MCP Server Commands"
 msgstr "MCP 서버 명령"
 
 msgid "MCP Servers"
 msgstr "MCP 서버"
+
+msgid "MCP {on}/{total}"
+msgstr "MCP {on}/{total}"
 
 msgid "Make Subagent Full Screen"
 msgstr "하위 에이전트 전체 화면으로 보기"
@@ -1574,6 +1589,9 @@ msgstr "원시 입력:"
 
 msgid "Reading and writing files and running commands are unavailable until you trust the folder."
 msgstr "폴더를 신뢰하기 전까지 파일 읽기/쓰기와 명령 실행을 사용할 수 없습니다."
+
+msgid "Reading the agent's options…"
+msgstr "에이전트의 옵션을 읽는 중…"
 
 msgid "Reads the {channel} version number from Anthropic's download server."
 msgstr "Anthropic 다운로드 서버에서 {channel} 버전 번호를 읽습니다."
@@ -2013,6 +2031,9 @@ msgstr "피드백을 보내주셔서 감사합니다!"
 msgid "The ACP registry is not available, so agent updates cannot be checked."
 msgstr "ACP 레지스트리를 사용할 수 없어 에이전트 업데이트를 확인할 수 없습니다."
 
+msgid "The AI browser is not given to an agent in the sandbox."
+msgstr "샌드박스 안의 에이전트에게는 AI 브라우저를 제공하지 않습니다."
+
 msgid "The Claude Code sent to the remote host could not be found. Please try again."
 msgstr "원격 호스트로 보낸 Claude Code를 찾을 수 없습니다. 다시 시도하세요."
 
@@ -2045,6 +2066,12 @@ msgstr "에이전트가 `getDiagnostics`를 사용할 수 없어 편집기에 �
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "에이전트는 첫 메시지를 보낼 때 시작됩니다. 샌드박스와 네트워크를 먼저 고르세요. 시작된 뒤에는 이 스레드에서 그대로 유지됩니다."
+
+msgid "The agent starts with the servers checked here. You can change them after it starts too."
+msgstr "에이전트는 여기에서 선택한 서버로 시작합니다. 시작한 뒤에도 바꿀 수 있습니다."
+
+msgid "The agent stops getting the tools of what you turn off from its next tool call on."
+msgstr "끈 항목의 도구는 다음 도구 호출부터 에이전트에게 제공되지 않습니다."
 
 msgid "The agent was added to settings.json, but it has not been loaded yet. Open it later from the + menu."
 msgstr "에이전트가 settings.json에 추가되었지만 아직 로드되지 않았습니다. 나중에 + 메뉴에서 여세요."
@@ -2091,6 +2118,12 @@ msgstr[0] "메시지가 크기 한도를 초과하여 큰 첨부 파일 {count}�
 
 msgid "The model"
 msgstr "모델"
+
+msgid "The model and the other options are the ones the agent offers. What you pick is set before your first message is sent."
+msgstr "모델과 다른 옵션은 이 에이전트가 제공하는 것입니다. 여기서 고른 항목은 첫 메시지를 보내기 전에 설정됩니다."
+
+msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
+msgstr "모델과 다른 옵션은 이 에이전트의 이전 스레드에서 제공된 것입니다. 여기서 고른 항목은 첫 메시지를 보내기 전에 설정됩니다."
 
 msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
 msgstr "모델이 최대 출력 길이에 도달하여 중지되었습니다. 중단된 지점부터 계속하도록 요청할 수 있습니다."
@@ -2196,6 +2229,9 @@ msgstr "이 창"
 
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
 msgstr "이 에이전트는 ForgeKairos의 IDE 도구를 사용할 수 있습니다: 강조 표시, 주석, 투어, 호버, 정의, 참조, 심볼 검색"
+
+msgid "This agent can't open its session again, so its MCP servers stay as it started with them. Start a new thread to change them."
+msgstr "이 에이전트는 세션을 다시 열 수 없으므로 MCP 서버는 시작했을 때 그대로 유지됩니다. 바꾸려면 새 스레드를 시작하세요."
 
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "이 에이전트는 이전 메시지 보기를 지원하지 않습니다. 그러나 세션은 마지막으로 중단한 지점부터 계속 진행됩니다."
@@ -2352,6 +2388,9 @@ msgstr "켜고 계속"
 
 msgid "Turn On and Start Outside"
 msgstr "켜고 샌드박스 밖에서 시작"
+
+msgid "Turn this thread's MCP servers on or off. Each thread keeps its own choice."
+msgstr "이 스레드의 MCP 서버를 켜거나 끕니다. 선택은 스레드마다 따로 유지됩니다."
 
 msgid "Turning the sandbox off needs \"Allow Running Outside the Sandbox\" (Settings > AI > Sandbox), which is off. Turn it on? It stays on until you turn it off there."
 msgstr "샌드박스를 끄려면 \"샌드박스 외부에서 실행 허용\"(설정 > AI > 샌드박스)이 필요하지만 꺼져 있습니다. 켤까요? 설정에서 끌 때까지 켜진 상태로 유지됩니다."
@@ -2511,6 +2550,9 @@ msgstr "무료 플랜으로 자동 전환되었습니다."
 
 msgid "Your Zed Pro Trial has expired"
 msgstr "Zed Pro 체험이 만료되었습니다"
+
+msgid "Your change is applied when the agent finishes its turn: its session is opened again with the new servers."
+msgstr "변경 사항은 에이전트가 응답을 마칠 때 적용되며, 새 서버로 세션을 다시 엽니다."
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "평소의 설정과 로그인을 그대로 사용합니다."

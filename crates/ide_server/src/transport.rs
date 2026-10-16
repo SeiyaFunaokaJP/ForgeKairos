@@ -75,6 +75,10 @@ pub const CLAUDE_CODE_AUTH_HEADER: &str = "x-claude-code-ide-authorization";
 pub const IDE_MCP_PATH: &str = "/mcp";
 /// アシストのツール (ADR-F56) だけを出す口。HTTP でだけ受ける。
 pub const ASSIST_MCP_PATH: &str = "/mcp/zed";
+/// ADR-F102: the AI browser's tools (ADR-F89) alone, so that an external agent's
+/// thread can be given them or not apart from the IDE tools. HTTP only, on the
+/// host's server only.
+pub const BROWSER_MCP_PATH: &str = "/mcp/zed-browser";
 
 /// 接続を受けてよいトークン。
 #[derive(Clone)]
@@ -87,6 +91,13 @@ pub enum Credentials {
     Host {
         server_token: Arc<str>,
         client_tokens: ClientTokens,
+        /// ADR-F102: one token per external agent's session that was given the
+        /// AI browser → the agent's client ID. These are the only tokens
+        /// `/mcp/zed-browser` takes, and they are taken nowhere else, so that
+        /// a session reopened without the browser (its token revoked) cannot
+        /// reach it with the token its connection shares with its other
+        /// sessions.
+        browser_session_tokens: ClientTokens,
     },
 }
 
@@ -96,13 +107,23 @@ pub type ClientTokens = Arc<Mutex<collections::HashMap<String, String>>>;
 
 impl Credentials {
     /// 受けてよいトークンなら `Some` で、クライアントのトークンならその ID を包んで返す
-    /// (サーバー自身のトークンは `Some(None)`)。
-    pub fn authenticate(&self, presented: &str) -> Option<Option<String>> {
+    /// (サーバー自身のトークンは `Some(None)`)。ADR-F102: ホストの `endpoint` が
+    /// [`Endpoint::Browser`] なら、セッションごとのブラウザーのトークンだけを受ける。
+    pub fn authenticate(&self, presented: &str, endpoint: Endpoint) -> Option<Option<String>> {
         match self {
             Self::Single(token) => (presented == &**token).then_some(None),
             Self::Host {
+                browser_session_tokens,
+                ..
+            } if endpoint == Endpoint::Browser => browser_session_tokens
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get(presented)
+                .map(|client_id| Some(client_id.clone())),
+            Self::Host {
                 server_token,
                 client_tokens,
+                ..
             } => {
                 if presented == &**server_token {
                     return Some(None);
@@ -136,6 +157,8 @@ pub enum Endpoint {
     Ide,
     /// `POST /mcp/zed`。
     Assist,
+    /// `POST /mcp/zed-browser` (ADR-F102)。
+    Browser,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -145,6 +168,9 @@ pub struct Route {
     /// 出されたトークンが登録されたアシストのクライアントのものなら、その ID。ホストの
     /// サーバーが、表示の出どころ (CLI のタブ・ACP の接続) を見分けるのに使う。
     pub client: Option<String>,
+    /// ADR-F102: on `/mcp/zed-browser`, the session's token it was let in
+    /// with, which the host looks up again before it serves the request.
+    pub browser_session: Option<String>,
 }
 
 /// 口ごとの受け入れの判断 ([`serve_connection`] の `admit`) が通したもの。
@@ -164,8 +190,9 @@ pub enum Refusal {
 }
 
 /// 要求の頭から、どの口のどの話し方かを決める。口の無いパスは `404`、HTTP の `POST` 以外は
-/// `405` の応答を返す。問い合わせ文字列は見ない。
-fn route_for(head: &HttpHead, client: Option<String>) -> std::result::Result<Route, String> {
+/// `405` の応答を返す。問い合わせ文字列は見ない。誰の接続か ([`Route::client`]) は、
+/// 認証のあとで [`serve_connection`] が入れる。
+fn route_for(head: &HttpHead) -> std::result::Result<Route, String> {
     let path = head
         .path
         .split_once('?')
@@ -173,18 +200,20 @@ fn route_for(head: &HttpHead, client: Option<String>) -> std::result::Result<Rou
     if head.is_websocket_upgrade() {
         // アシストの口は streamable HTTP だけ。WebSocket で来たら、CLI の IDE の口と
         // 取り違えないように断る。
-        if path == ASSIST_MCP_PATH {
+        if path == ASSIST_MCP_PATH || path == BROWSER_MCP_PATH {
             return Err(http_response("404 Not Found", None, ""));
         }
         return Ok(Route {
             kind: ConnectionKind::WebSocket,
             endpoint: Endpoint::Ide,
-            client,
+            client: None,
+            browser_session: None,
         });
     }
     let endpoint = match path {
         IDE_MCP_PATH => Endpoint::Ide,
         ASSIST_MCP_PATH => Endpoint::Assist,
+        BROWSER_MCP_PATH => Endpoint::Browser,
         _ => return Err(http_response("404 Not Found", None, "")),
     };
     if !head.method.eq_ignore_ascii_case("POST") {
@@ -197,7 +226,8 @@ fn route_for(head: &HttpHead, client: Option<String>) -> std::result::Result<Rou
     Ok(Route {
         kind: ConnectionKind::Http,
         endpoint,
-        client,
+        client: None,
+        browser_session: None,
     })
 }
 
@@ -549,10 +579,13 @@ where
         before_deadline(read_head(&mut stream), handshake_deadline.as_mut()).await??;
 
     let credentials = credentials.into();
-    let Some(client) = head
-        .presented_token()
-        .and_then(|token| credentials.authenticate(token))
-    else {
+    // The path is read before the token is checked, as the browser's endpoint
+    // takes tokens of its own, but nothing is said about it before the token
+    // is: an unauthenticated request learns no more than a `401`.
+    let route = route_for(&head);
+    let endpoint = route.as_ref().map_or(Endpoint::Ide, |route| route.endpoint);
+    let presented = head.presented_token();
+    let Some(client) = presented.and_then(|token| credentials.authenticate(token, endpoint)) else {
         let body = "{\"error\":\"unauthorized\"}";
         stream
             .write_all(http_response("401 Unauthorized", Some("application/json"), body).as_bytes())
@@ -561,7 +594,7 @@ where
         anyhow::bail!("rejected an IDE server connection with a bad or missing token");
     };
 
-    let route = match route_for(&head, client) {
+    let mut route = match route {
         Ok(route) => route,
         Err(response) => {
             stream.write_all(response.as_bytes()).await?;
@@ -569,6 +602,10 @@ where
             return Ok(());
         }
     };
+    route.client = client;
+    if route.endpoint == Endpoint::Browser {
+        route.browser_session = presented.map(str::to_string);
+    }
     let admitted = match admit(&route) {
         Ok(admitted) => admitted,
         Err(refusal) => {
@@ -828,7 +865,7 @@ mod tests {
     /// アシストの口は WebSocket では受けない。WebSocket の IDE の口はパスを問わない (CLI は `/`)。
     #[test]
     fn routes_requests_to_the_ide_and_assist_endpoints() {
-        let route = |raw: &str| route_for(&head(raw), None);
+        let route = |raw: &str| route_for(&head(raw));
         let post = |path: &str| {
             route(&format!(
                 "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n"
@@ -875,6 +912,15 @@ mod tests {
                 .expect_err("no WebSocket on the assist endpoint")
                 .starts_with("HTTP/1.1 404")
         );
+
+        // ADR-F102: the AI browser's own endpoint, HTTP only.
+        let browser = post("/mcp/zed-browser").expect("POST /mcp/zed-browser is the browser's");
+        assert_eq!(browser.endpoint, Endpoint::Browser);
+        assert!(
+            upgrade("/mcp/zed-browser")
+                .expect_err("no WebSocket on the browser's endpoint")
+                .starts_with("HTTP/1.1 404")
+        );
     }
 
     /// ADR-F56: ホストのサーバーはサーバー自身のトークンと、登録されたクライアントごとの
@@ -883,37 +929,84 @@ mod tests {
     #[test]
     fn host_credentials_tell_the_clients_apart_by_their_tokens() {
         let client_tokens = ClientTokens::default();
+        let browser_session_tokens = ClientTokens::default();
         let credentials = Credentials::Host {
             server_token: "server-token".into(),
             client_tokens: client_tokens.clone(),
+            browser_session_tokens: browser_session_tokens.clone(),
         };
-        assert_eq!(credentials.authenticate("server-token"), Some(None));
-        assert_eq!(credentials.authenticate("client-token"), None);
+        assert_eq!(
+            credentials.authenticate("server-token", Endpoint::Ide),
+            Some(None)
+        );
+        assert_eq!(
+            credentials.authenticate("client-token", Endpoint::Assist),
+            None
+        );
 
         client_tokens
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert("client-token".to_string(), "client-a".to_string());
         assert_eq!(
-            credentials.authenticate("client-token"),
+            credentials.authenticate("client-token", Endpoint::Assist),
             Some(Some("client-a".to_string()))
         );
         assert_eq!(
-            credentials.authenticate("client-a"),
+            credentials.authenticate("client-a", Endpoint::Assist),
             None,
             "the id is no token"
         );
-        assert_eq!(credentials.authenticate(""), None);
+        assert_eq!(credentials.authenticate("", Endpoint::Assist), None);
 
         client_tokens
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove("client-token");
-        assert_eq!(credentials.authenticate("client-token"), None);
+        assert_eq!(
+            credentials.authenticate("client-token", Endpoint::Assist),
+            None
+        );
+
+        // ADR-F102: the browser's endpoint takes a session's own token alone,
+        // and that token is taken nowhere else.
+        browser_session_tokens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert("browser-token".to_string(), "client-a".to_string());
+        client_tokens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert("client-token".to_string(), "client-a".to_string());
+        assert_eq!(
+            credentials.authenticate("browser-token", Endpoint::Browser),
+            Some(Some("client-a".to_string()))
+        );
+        for endpoint in [Endpoint::Ide, Endpoint::Assist] {
+            assert_eq!(credentials.authenticate("browser-token", endpoint), None);
+        }
+        for token in ["client-token", "server-token"] {
+            assert_eq!(
+                credentials.authenticate(token, Endpoint::Browser),
+                None,
+                "{token}"
+            );
+        }
+        browser_session_tokens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove("browser-token");
+        assert_eq!(
+            credentials.authenticate("browser-token", Endpoint::Browser),
+            None
+        );
 
         let single = Credentials::from(Arc::<str>::from("session-token"));
-        assert_eq!(single.authenticate("session-token"), Some(None));
-        assert_eq!(single.authenticate("server-token"), None);
+        assert_eq!(
+            single.authenticate("session-token", Endpoint::Assist),
+            Some(None)
+        );
+        assert_eq!(single.authenticate("server-token", Endpoint::Assist), None);
     }
 
     #[test]

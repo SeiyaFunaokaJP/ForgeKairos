@@ -409,6 +409,7 @@ dependencies = [
  "anyhow",
  "async-channel 2.5.0",
  "branding",
+ "browser_control",
  "chrono",
  "client",
  "clock",

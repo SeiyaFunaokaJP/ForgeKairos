@@ -18,7 +18,7 @@ use agent_client_protocol::schema::{
 use agent_client_protocol::{
     Agent, Builder, Client, ConnectionTo, HandleDispatchFrom, JsonRpcResponse, Lines, Responder,
 };
-use agent_settings::{AgentSettings, SandboxPermissions};
+use agent_settings::{AgentSettings, McpSelection, SandboxPermissions};
 use anyhow::anyhow;
 use async_channel;
 use collections::{HashMap, HashSet};
@@ -328,9 +328,14 @@ pub struct AcpConnection {
     /// lives: dropping it clears the highlights, annotations and tour the agent
     /// drew, and lets the server stop when nothing else needs it.
     host_ide_client: RefCell<Option<(gpui::EntityId, ide_server::HostAssistClient)>>,
-    /// ADR-F56: whether the last session request gave the agent Zed's IDE
-    /// tools (the `zed` server), for the thread's indicator.
-    ide_tools_given: std::cell::Cell<bool>,
+    /// ADR-F102: the MCP servers each session was opened with, and what it
+    /// could have been given, for the thread's MCP menu and its IDE tools
+    /// indicator (ADR-F56). By session rather than for the connection, as
+    /// each thread picks its own.
+    session_mcp: RefCell<HashMap<acp::SessionId, SessionMcpEntry>>,
+    /// ADR-F102: the selection the `_with_mcp` methods hand to the
+    /// [`AgentConnection`] method they call, which takes it at once.
+    next_session_mcp: RefCell<Option<McpSelection>>,
     /// The same for a sign-in, which runs on a terminal of its own: kept by
     /// the sign-in's task id, so that starting the sign-in again replaces it
     /// and the terminal's end releases it
@@ -1241,7 +1246,8 @@ impl AcpConnection {
             ide_link,
             ide_unavailable,
             host_ide_client: RefCell::default(),
-            ide_tools_given: std::cell::Cell::new(false),
+            session_mcp: RefCell::default(),
+            next_session_mcp: RefCell::default(),
             login_sandboxes: Rc::default(),
             paths,
             runs_outside_sandbox,
@@ -1250,6 +1256,179 @@ impl AcpConnection {
 
     pub fn prompt_capabilities(&self) -> &acp::PromptCapabilities {
         &self.agent_capabilities.prompt_capabilities
+    }
+
+    /// A new session for a thread, or ADR-F103's session that is only there
+    /// for what the agent offers in it, which gets no MCP servers (so that
+    /// nothing the user configured is started for it) and none of the user's
+    /// defaults (nothing is asked of the agent but the session).
+    fn start_new_session(
+        self: Rc<Self>,
+        project: Entity<Project>,
+        work_dirs: PathList,
+        purpose: NewSessionPurpose,
+        cx: &mut App,
+    ) -> Task<Result<Entity<AcpThread>>> {
+        let directories = match self.session_directories_from_work_dirs(&work_dirs) {
+            Ok(directories) => directories,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let name = self.id.0.clone();
+        let (servers, restricted_ide, session_mcp) = match purpose {
+            NewSessionPurpose::Thread => {
+                let selection = self.next_session_mcp.take().unwrap_or_default();
+                let (project_servers, browser_grant) =
+                    self.project_mcp_servers(&project, &selection, cx);
+                // Dropped with the entry when the session goes, and here when
+                // it is never made.
+                let session_mcp = SessionMcpEntry {
+                    mcp: SessionMcp {
+                        selection,
+                        offer: project_servers.offer.clone(),
+                        ide_tools_given: project_servers.gives_ide_tools,
+                    },
+                    opened_for: None,
+                    _browser_grant: browser_grant,
+                };
+                let ProjectMcpServers {
+                    servers,
+                    restricted_ide,
+                    ..
+                } = project_servers;
+                (servers, restricted_ide, Some(session_mcp))
+            }
+            // Nothing is recorded for this session either: it is closed once
+            // read, and no thread shows what it was given.
+            NewSessionPurpose::ReadOptions => (Vec::new(), Vec::new(), None),
+        };
+        let request = directories.into_new_session_request(servers);
+        // ADR-F49 decision 23: the folders and the MCP servers are named the
+        // way the agent's sandbox sees them; one that cannot be named there is
+        // left out, and a working directory that cannot is an error, since
+        // there would be no session to start.
+        let mut request = match self.paths.as_ref() {
+            Some(paths) => match paths.new_session_to_client(request) {
+                Ok((request, dropped)) => {
+                    note_dropped_mcp_servers(&self.id, dropped);
+                    request
+                }
+                Err(error) => return Task::ready(Err(error)),
+            },
+            None => request,
+        };
+        // ADR-F49 decision 24: after the translation, whose loopback rule
+        // would drop it — this one really is reachable, on the sandbox's own
+        // loopback rather than this machine's.
+        request.mcp_servers.extend(restricted_ide);
+        // ADR-F49 decision 18 / ADR-F50: see `open_or_create_session` — the
+        // agent writes while the session is being created as well.
+        let session_writer = acp_thread::register_agent_process_writer(self.as_ref(), &project, cx);
+
+        cx.spawn(async move |cx| {
+            let _session_writer = session_writer;
+            let response = self
+                .connection
+                .send_request(request)
+                .block_task()
+            .await
+            .map_err(map_acp_error)?;
+
+            let (modes, config_options) = config_state(response.modes, response.config_options);
+
+            let default_mode = match purpose {
+                NewSessionPurpose::Thread => self.defaults.mode(),
+                NewSessionPurpose::ReadOptions => None,
+            };
+            if let Some(default_mode) = default_mode {
+                if let Some(modes) = modes.as_ref() {
+                    let mut modes_ref = modes.borrow_mut();
+                    let has_mode = modes_ref
+                        .available_modes
+                        .iter()
+                        .any(|mode| mode.id == default_mode);
+
+                    if has_mode {
+                        let initial_mode_id = modes_ref.current_mode_id.clone();
+
+                        cx.spawn({
+                            let default_mode = default_mode.clone();
+                            let session_id = response.session_id.clone();
+                            let modes = modes.clone();
+                            let conn = self.connection.clone();
+                            async move |_| {
+                                let result = conn
+                                    .send_request(acp::SetSessionModeRequest::new(
+                                        session_id,
+                                        default_mode,
+                                    ))
+                                    .block_task()
+                                .await
+                                .log_err();
+
+                                if result.is_none() {
+                                    modes.borrow_mut().current_mode_id = initial_mode_id;
+                                }
+                            }
+                        })
+                        .detach();
+
+                        modes_ref.current_mode_id = default_mode;
+                    } else {
+                        let available_modes = modes_ref
+                            .available_modes
+                            .iter()
+                            .map(|mode| format!("- `{}`: {}", mode.id, mode.name))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+
+                        log::warn!(
+                            "`{default_mode}` is not valid {name} mode. Available options:\n{available_modes}",
+                        );
+                    }
+                }
+            }
+
+            if let Some(config_opts) = config_options.as_ref()
+                && purpose == NewSessionPurpose::Thread
+            {
+                self.apply_default_config_options(&response.session_id, config_opts, cx);
+            }
+
+            let action_log = cx.new(|_| ActionLog::new(project.clone()));
+            let thread: Entity<AcpThread> = cx.new(|cx| {
+                AcpThread::new(
+                    None,
+                    None,
+                    Some(work_dirs),
+                    self.clone(),
+                    project,
+                    action_log,
+                    response.session_id.clone(),
+                    // ACP doesn't currently support per-session prompt capabilities or changing capabilities dynamically.
+                    watch::Receiver::constant(
+                        self.agent_capabilities.prompt_capabilities.clone(),
+                    ),
+                    cx,
+                )
+            });
+
+            if let Some(session_mcp) = session_mcp {
+                self.session_mcp
+                    .borrow_mut()
+                    .insert(response.session_id.clone(), session_mcp);
+            }
+            cx.update(|cx| {
+                self.register_session(
+                    response.session_id,
+                    &thread,
+                    modes,
+                    config_options.map(ConfigOptions::new),
+                    cx,
+                )
+            });
+
+            Ok(thread)
+        })
     }
 
     /// ADR-F49: the IDE server this connection's sessions are given. Zed's own
@@ -1261,10 +1440,25 @@ impl AcpConnection {
     /// connection's own registration, which starts the server for the IDE
     /// tools alone when `ide_server.enabled` is off; inside a WSL sandbox the
     /// restricted session's channel carries the IDE tools too, on `/mcp/zed`.
-    fn ide_mcp(&self, project: &Entity<Project>, cx: &mut App) -> IdeMcp {
+    ///
+    /// ADR-F102: outside a sandbox, a session that `wants_browser` is granted
+    /// the AI browser's endpoint with a token of its own, which the grant
+    /// revokes when dropped.
+    fn ide_mcp(
+        &self,
+        project: &Entity<Project>,
+        wants_browser: bool,
+        cx: &mut App,
+    ) -> (IdeMcp, Option<ide_server::BrowserSessionGrant>) {
         if self.sandbox_session.is_none() {
-            return IdeMcp::Host(self.host_ide_endpoint(project, cx));
+            let (ide, browser_grant) = self.host_ide_endpoints(project, wants_browser, cx);
+            let browser = browser_grant.as_ref().map(|grant| grant.endpoint().clone());
+            return (IdeMcp::Host { ide, browser }, browser_grant);
         }
+        (self.sandboxed_ide_mcp(cx), None)
+    }
+
+    fn sandboxed_ide_mcp(&self, cx: &mut App) -> IdeMcp {
         match &self.ide_link {
             Some(link) => {
                 let assist_tools = ide_server::assist_tools_enabled(cx);
@@ -1290,39 +1484,201 @@ impl AcpConnection {
         agent_display_name(&self.id, self.agent_server_store.upgrade().as_ref(), cx)
     }
 
-    fn host_ide_endpoint(
+    /// The host's endpoints for this connection's registration: the IDE
+    /// tools' (ADR-F56) and, ADR-F102, one session's grant of the AI browser's
+    /// own, when it `wants_browser`.
+    fn host_ide_endpoints(
         &self,
         project: &Entity<Project>,
+        wants_browser: bool,
         cx: &mut App,
-    ) -> Option<ide_server::McpEndpoint> {
+    ) -> (
+        Option<ide_server::McpEndpoint>,
+        Option<ide_server::BrowserSessionGrant>,
+    ) {
         let project_id = project.entity_id();
         let mut client = self.host_ide_client.borrow_mut();
         if client
             .as_ref()
             .is_none_or(|(client_project, _)| *client_project != project_id)
         {
-            *client = ide_server::host_assist_client(project, self.display_name(cx), cx)
+            *client = ide_server::host_agent_assist_client(project, self.display_name(cx), cx)
                 .map(|registration| (project_id, registration));
         }
-        client
-            .as_ref()
-            .and_then(|(_, client)| client.agent_endpoint(cx))
+        match client.as_ref() {
+            Some((_, client)) => (
+                client.agent_endpoint(cx),
+                wants_browser
+                    .then(|| client.grant_browser_session(cx))
+                    .flatten(),
+            ),
+            None => (None, None),
+        }
     }
 
-    /// The MCP servers a session of this connection is given, and a note of
-    /// whether Zed's IDE tools are among them (ADR-F56, the thread's indicator).
-    fn project_mcp_servers(&self, project: &Entity<Project>, cx: &mut App) -> ProjectMcpServers {
-        let ide_mcp = self.ide_mcp(project, cx);
-        let servers = mcp_servers_for_project(project, ide_mcp, cx);
-        self.ide_tools_given.set(servers.gives_ide_tools);
-        servers
+    /// The MCP servers a session of this connection is given under the
+    /// thread's `selection` (ADR-F102), with what it could have been given, and
+    /// the session's grant of the AI browser when the browser is among them.
+    fn project_mcp_servers(
+        &self,
+        project: &Entity<Project>,
+        selection: &McpSelection,
+        cx: &mut App,
+    ) -> (ProjectMcpServers, Option<ide_server::BrowserSessionGrant>) {
+        let (ide_mcp, browser_grant) = self.ide_mcp(project, selection.browser_enabled(), cx);
+        let servers = mcp_servers_for_project(project, ide_mcp, selection, cx);
+        // A configured server of the same name keeps the browser's out, and
+        // then its grant goes at once.
+        let browser_grant = browser_grant.filter(|_| servers.offer.browser);
+        (servers, browser_grant)
     }
 
-    /// ADR-F56: whether this connection's sessions were given Zed's IDE tools
+    fn note_session_mcp(
+        &self,
+        session_id: acp::SessionId,
+        selection: McpSelection,
+        servers: &ProjectMcpServers,
+        browser_grant: Option<ide_server::BrowserSessionGrant>,
+    ) {
+        // `open_or_create_session` hands a live thread back without asking the
+        // agent, so its session keeps the servers it was opened with.
+        let pending_thread_alive = self
+            .pending_sessions
+            .borrow()
+            .get(&session_id)
+            .map(|pending| pending.thread.upgrade().is_some());
+        let reuses_live_session = pending_thread_alive.unwrap_or_else(|| {
+            self.sessions
+                .borrow()
+                .get(&session_id)
+                .is_some_and(|session| session.thread.upgrade().is_some())
+        });
+        // The live session was not given this grant, so it is dropped here.
+        if reuses_live_session {
+            return;
+        }
+        // Replacing an entry drops the session's earlier grant.
+        self.session_mcp.borrow_mut().insert(
+            session_id,
+            SessionMcpEntry {
+                mcp: SessionMcp {
+                    selection,
+                    offer: servers.offer.clone(),
+                    ide_tools_given: servers.gives_ide_tools,
+                },
+                opened_for: None,
+                _browser_grant: browser_grant,
+            },
+        );
+    }
+
+    /// ADR-F56, ADR-F102: whether this session was given Zed's IDE tools
     /// (highlights, annotations, tours, hover, definitions, references and
     /// symbol search).
-    pub fn ide_tools_given(&self) -> bool {
-        self.ide_tools_given.get()
+    pub fn ide_tools_given(&self, session_id: &acp::SessionId) -> bool {
+        self.session_mcp
+            .borrow()
+            .get(session_id)
+            .is_some_and(|session| session.mcp.ide_tools_given)
+    }
+
+    /// ADR-F102: what this session was opened with, for the thread's MCP menu.
+    pub fn session_mcp(&self, session_id: &acp::SessionId) -> Option<SessionMcp> {
+        self.session_mcp
+            .borrow()
+            .get(session_id)
+            .map(|session| session.mcp.clone())
+    }
+
+    /// ADR-F102: whether a session of this connection can be opened again on
+    /// another list of MCP servers ([`Self::release_session_for_reopen`]).
+    pub fn can_reopen_sessions(&self) -> bool {
+        self.supports_load_session() || self.supports_resume_session()
+    }
+
+    /// ADR-F102: lets go of a live session so that the next `load_session` /
+    /// `resume_session` of it asks the agent again, with the MCP servers given
+    /// then. Its thread may still be alive (the view drops it only when it is
+    /// replaced), so the session is taken out of the live ones here rather
+    /// than when that thread goes, and the reopening waits for the close.
+    pub fn release_session_for_reopen(self: &Rc<Self>, session_id: &acp::SessionId, cx: &mut App) {
+        if self.pending_sessions.borrow().contains_key(session_id) {
+            return;
+        }
+        if self.sessions.borrow_mut().remove(session_id).is_none() {
+            return;
+        }
+        self.session_mcp.borrow_mut().remove(session_id);
+        let thread = WeakEntity::<AcpThread>::new_invalid();
+        let task = cx
+            .spawn({
+                let this = Rc::downgrade(self);
+                let connection = self.connection.clone();
+                let dispatch_tx = self.dispatch_tx.clone();
+                let supports_close = self.agent_supports_session_close();
+                let session_id = session_id.clone();
+                let thread_id = thread.entity_id();
+                async move |_| {
+                    let result = close_session_and_drain(
+                        &connection,
+                        session_id.clone(),
+                        supports_close,
+                        &dispatch_tx,
+                    )
+                    .await;
+                    if let Some(this) = this.upgrade() {
+                        this.remove_pending_session(&session_id, thread_id);
+                    }
+                    result.map_err(Arc::new)
+                }
+            })
+            .shared();
+        self.pending_sessions
+            .borrow_mut()
+            .insert(session_id.clone(), PendingAcpSession { thread, task });
+    }
+
+    /// ADR-F102: [`AgentConnection::new_session`] with the MCP servers the
+    /// thread has on.
+    pub fn new_session_with_mcp(
+        self: Rc<Self>,
+        project: Entity<Project>,
+        work_dirs: PathList,
+        selection: McpSelection,
+        cx: &mut App,
+    ) -> Task<Result<Entity<AcpThread>>> {
+        *self.next_session_mcp.borrow_mut() = Some(selection);
+        self.new_session(project, work_dirs, cx)
+    }
+
+    /// ADR-F102: [`AgentConnection::load_session`] with the MCP servers the
+    /// thread has on.
+    pub fn load_session_with_mcp(
+        self: Rc<Self>,
+        session_id: acp::SessionId,
+        project: Entity<Project>,
+        work_dirs: PathList,
+        title: Option<SharedString>,
+        selection: McpSelection,
+        cx: &mut App,
+    ) -> Task<Result<Entity<AcpThread>>> {
+        *self.next_session_mcp.borrow_mut() = Some(selection);
+        self.load_session(session_id, project, work_dirs, title, cx)
+    }
+
+    /// ADR-F102: [`AgentConnection::resume_session`] with the MCP servers the
+    /// thread has on.
+    pub fn resume_session_with_mcp(
+        self: Rc<Self>,
+        session_id: acp::SessionId,
+        project: Entity<Project>,
+        work_dirs: PathList,
+        title: Option<SharedString>,
+        selection: McpSelection,
+        cx: &mut App,
+    ) -> Task<Result<Entity<AcpThread>>> {
+        *self.next_session_mcp.borrow_mut() = Some(selection);
+        self.resume_session(session_id, project, work_dirs, title, cx)
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -1361,7 +1717,8 @@ impl AcpConnection {
             ide_link: None,
             ide_unavailable: None,
             host_ide_client: RefCell::default(),
-            ide_tools_given: std::cell::Cell::new(false),
+            session_mcp: RefCell::default(),
+            next_session_mcp: RefCell::default(),
             login_sandboxes: Rc::default(),
             paths,
             runs_outside_sandbox: false,
@@ -1432,6 +1789,23 @@ impl AcpConnection {
         }
     }
 
+    /// ADR-F102: drops what was noted for an opening of the session that
+    /// failed or was abandoned, with the grant of the browser the agent was
+    /// sent, unless a later opening noted its own since.
+    fn remove_session_mcp_opened_for(
+        &self,
+        session_id: &acp::SessionId,
+        thread_id: gpui::EntityId,
+    ) {
+        let mut session_mcp = self.session_mcp.borrow_mut();
+        if session_mcp
+            .get(session_id)
+            .is_some_and(|entry| entry.opened_for == Some(thread_id))
+        {
+            session_mcp.remove(session_id);
+        }
+    }
+
     fn remove_pending_session(&self, session_id: &acp::SessionId, thread_id: gpui::EntityId) {
         let mut sessions = self.pending_sessions.borrow_mut();
         if sessions
@@ -1457,6 +1831,7 @@ impl AcpConnection {
         {
             return;
         }
+        self.session_mcp.borrow_mut().remove(&session_id);
 
         let task = cx
             .spawn({
@@ -1539,14 +1914,26 @@ impl AcpConnection {
                 return Task::ready(Ok(thread));
             }
             // Entity-release effects may not have run yet when a view reopens.
+            // ADR-F102: the MCP servers noted for the session are this
+            // opening's (with its grant of the browser), not the dead thread's.
+            let noted_mcp = self.session_mcp.borrow_mut().remove(&session_id);
             self.release_session(session_id.clone(), thread, cx);
+            if let Some(noted_mcp) = noted_mcp {
+                self.session_mcp
+                    .borrow_mut()
+                    .insert(session_id.clone(), noted_mcp);
+            }
             return self
                 .open_or_create_session(session_id, project, work_dirs, title, rpc_call, cx);
         }
 
         let directories = match self.session_directories_from_work_dirs(&work_dirs) {
             Ok(directories) => directories,
-            Err(error) => return Task::ready(Err(error)),
+            Err(error) => {
+                // ADR-F102: no session opens, so its grant of the browser goes.
+                self.session_mcp.borrow_mut().remove(&session_id);
+                return Task::ready(Err(error));
+            }
         };
 
         // ADR-F49 decision 18 / ADR-F50: the agent's own process already writes
@@ -1569,6 +1956,9 @@ impl AcpConnection {
             )
         });
         self.register_session(session_id.clone(), &thread, None, None, cx);
+        if let Some(entry) = self.session_mcp.borrow_mut().get_mut(&session_id) {
+            entry.opened_for = Some(thread.entity_id());
+        }
 
         // The connection owns this task, so retaining the thread (which owns the
         // connection) here would keep both alive after all callers abandon the load.
@@ -1586,6 +1976,7 @@ impl AcpConnection {
                         if let Some(this) = this.upgrade() {
                             this.remove_session(&session_id, thread.entity_id());
                             this.remove_pending_session(&session_id, thread.entity_id());
+                            this.remove_session_mcp_opened_for(&session_id, thread.entity_id());
                         }
                         return Ok(());
                     }
@@ -1605,6 +1996,8 @@ impl AcpConnection {
                             connection_state.remove_session(&session_id, thread.entity_id());
                             connection_state
                                 .remove_pending_session(&session_id, thread.entity_id());
+                            connection_state
+                                .remove_session_mcp_opened_for(&session_id, thread.entity_id());
                             return Err(Arc::new(error));
                         }
                     };
@@ -1649,6 +2042,7 @@ impl AcpConnection {
                     if let Some(this) = this.upgrade() {
                         this.remove_session(&session_id, thread.entity_id());
                         this.remove_pending_session(&session_id, thread.entity_id());
+                        this.remove_session_mcp_opened_for(&session_id, thread.entity_id());
                     }
                     result.map_err(Arc::new)
                 }
@@ -1803,6 +2197,14 @@ impl AcpConnection {
             }
         }
     }
+}
+
+/// What [`AcpConnection::start_new_session`] starts a session for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NewSessionPurpose {
+    Thread,
+    /// ADR-F103: only to read what the agent offers in a session.
+    ReadOptions,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3836,134 +4238,16 @@ impl AgentConnection for AcpConnection {
         work_dirs: PathList,
         cx: &mut App,
     ) -> Task<Result<Entity<AcpThread>>> {
-        let directories = match self.session_directories_from_work_dirs(&work_dirs) {
-            Ok(directories) => directories,
-            Err(error) => return Task::ready(Err(error)),
-        };
-        let name = self.id.0.clone();
-        let ProjectMcpServers {
-            servers,
-            restricted_ide,
-            ..
-        } = self.project_mcp_servers(&project, cx);
-        let request = directories.into_new_session_request(servers);
-        // ADR-F49 decision 23: the folders and the MCP servers are named the
-        // way the agent's sandbox sees them; one that cannot be named there is
-        // left out, and a working directory that cannot is an error, since
-        // there would be no session to start.
-        let mut request = match self.paths.as_ref() {
-            Some(paths) => match paths.new_session_to_client(request) {
-                Ok((request, dropped)) => {
-                    note_dropped_mcp_servers(&self.id, dropped);
-                    request
-                }
-                Err(error) => return Task::ready(Err(error)),
-            },
-            None => request,
-        };
-        // ADR-F49 decision 24: after the translation, whose loopback rule
-        // would drop it — this one really is reachable, on the sandbox's own
-        // loopback rather than this machine's.
-        request.mcp_servers.extend(restricted_ide);
-        // ADR-F49 decision 18 / ADR-F50: see `open_or_create_session` — the
-        // agent writes while the session is being created as well.
-        let session_writer = acp_thread::register_agent_process_writer(self.as_ref(), &project, cx);
+        self.start_new_session(project, work_dirs, NewSessionPurpose::Thread, cx)
+    }
 
-        cx.spawn(async move |cx| {
-            let _session_writer = session_writer;
-            let response = self
-                .connection
-                .send_request(request)
-                .block_task()
-            .await
-            .map_err(map_acp_error)?;
-
-            let (modes, config_options) = config_state(response.modes, response.config_options);
-
-            let default_mode = self.defaults.mode();
-            if let Some(default_mode) = default_mode {
-                if let Some(modes) = modes.as_ref() {
-                    let mut modes_ref = modes.borrow_mut();
-                    let has_mode = modes_ref
-                        .available_modes
-                        .iter()
-                        .any(|mode| mode.id == default_mode);
-
-                    if has_mode {
-                        let initial_mode_id = modes_ref.current_mode_id.clone();
-
-                        cx.spawn({
-                            let default_mode = default_mode.clone();
-                            let session_id = response.session_id.clone();
-                            let modes = modes.clone();
-                            let conn = self.connection.clone();
-                            async move |_| {
-                                let result = conn
-                                    .send_request(acp::SetSessionModeRequest::new(
-                                        session_id,
-                                        default_mode,
-                                    ))
-                                    .block_task()
-                                .await
-                                .log_err();
-
-                                if result.is_none() {
-                                    modes.borrow_mut().current_mode_id = initial_mode_id;
-                                }
-                            }
-                        })
-                        .detach();
-
-                        modes_ref.current_mode_id = default_mode;
-                    } else {
-                        let available_modes = modes_ref
-                            .available_modes
-                            .iter()
-                            .map(|mode| format!("- `{}`: {}", mode.id, mode.name))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-
-                        log::warn!(
-                            "`{default_mode}` is not valid {name} mode. Available options:\n{available_modes}",
-                        );
-                    }
-                }
-            }
-
-            if let Some(config_opts) = config_options.as_ref() {
-                self.apply_default_config_options(&response.session_id, config_opts, cx);
-            }
-
-            let action_log = cx.new(|_| ActionLog::new(project.clone()));
-            let thread: Entity<AcpThread> = cx.new(|cx| {
-                AcpThread::new(
-                    None,
-                    None,
-                    Some(work_dirs),
-                    self.clone(),
-                    project,
-                    action_log,
-                    response.session_id.clone(),
-                    // ACP doesn't currently support per-session prompt capabilities or changing capabilities dynamically.
-                    watch::Receiver::constant(
-                        self.agent_capabilities.prompt_capabilities.clone(),
-                    ),
-                    cx,
-                )
-            });
-
-            cx.update(|cx| {
-                self.register_session(
-                    response.session_id,
-                    &thread,
-                    modes,
-                    config_options.map(ConfigOptions::new),
-                    cx,
-                )
-            });
-
-            Ok(thread)
-        })
+    fn new_session_to_read_options(
+        self: Rc<Self>,
+        project: Entity<Project>,
+        work_dirs: PathList,
+        cx: &mut App,
+    ) -> Task<Result<Entity<AcpThread>>> {
+        self.start_new_session(project, work_dirs, NewSessionPurpose::ReadOptions, cx)
     }
 
     fn supports_load_session(&self) -> bool {
@@ -3992,17 +4276,25 @@ impl AgentConnection for AcpConnection {
         title: Option<SharedString>,
         cx: &mut App,
     ) -> Task<Result<Entity<AcpThread>>> {
+        let selection = self.next_session_mcp.take().unwrap_or_default();
         if !self.agent_capabilities.load_session {
             return Task::ready(Err(anyhow!(LoadError::Other(
                 "Loading sessions is not supported by this agent.".into()
             ))));
         }
 
+        let (project_servers, browser_grant) = self.project_mcp_servers(&project, &selection, cx);
+        self.note_session_mcp(
+            session_id.clone(),
+            selection,
+            &project_servers,
+            browser_grant,
+        );
         let ProjectMcpServers {
             servers,
             restricted_ide,
             ..
-        } = self.project_mcp_servers(&project, cx);
+        } = project_servers;
         let paths = self.paths.clone();
         let agent_id = self.id.clone();
         self.open_or_create_session(
@@ -4048,6 +4340,7 @@ impl AgentConnection for AcpConnection {
         title: Option<SharedString>,
         cx: &mut App,
     ) -> Task<Result<Entity<AcpThread>>> {
+        let selection = self.next_session_mcp.take().unwrap_or_default();
         if self
             .agent_capabilities
             .session_capabilities
@@ -4059,11 +4352,18 @@ impl AgentConnection for AcpConnection {
             ))));
         }
 
+        let (project_servers, browser_grant) = self.project_mcp_servers(&project, &selection, cx);
+        self.note_session_mcp(
+            session_id.clone(),
+            selection,
+            &project_servers,
+            browser_grant,
+        );
         let ProjectMcpServers {
             servers,
             restricted_ide,
             ..
-        } = self.project_mcp_servers(&project, cx);
+        } = project_servers;
         let paths = self.paths.clone();
         let agent_id = self.id.clone();
         self.open_or_create_session(
@@ -4398,17 +4698,50 @@ pub mod test_support {
         load_session_count: Arc<AtomicUsize>,
         close_session_count: Arc<AtomicUsize>,
         fail_next_prompt: Arc<AtomicBool>,
+        fail_next_load: Arc<AtomicBool>,
         auth_elicitation_request: Arc<Mutex<Option<acp::CreateElicitationRequest>>>,
         auth_elicitation_response:
             Arc<Mutex<Option<async_channel::Sender<acp::CreateElicitationResponse>>>>,
         auth_elicitation_completion: Arc<Mutex<Option<acp::CompleteElicitationNotification>>>,
         exit_status_sender:
             Arc<std::sync::Mutex<Option<async_channel::Sender<std::process::ExitStatus>>>>,
+        prompt_gate: Arc<Mutex<Option<async_channel::Receiver<()>>>>,
+        prompt_count: Arc<AtomicUsize>,
+        /// ADR-F102: hand the views the [`AcpConnection`] itself, so that
+        /// what they only do for one (the MCP menu) can be tested.
+        expose_acp_connection: bool,
+        starts_on_first_message: bool,
+        kept_alive: Arc<Mutex<Vec<Task<anyhow::Result<()>>>>>,
     }
 
     impl FakeAcpAgentServer {
         pub fn new() -> Self {
             Self::default()
+        }
+
+        /// A fake whose connection is the [`AcpConnection`] itself rather
+        /// than a wrapper around it. It cannot simulate an exit.
+        pub fn exposing_acp_connection() -> Self {
+            Self {
+                expose_acp_connection: true,
+                ..Self::default()
+            }
+        }
+
+        /// The agent waits for a thread's first message to start (ADR-F99).
+        pub fn starting_on_first_message(mut self) -> Self {
+            self.starts_on_first_message = true;
+            self
+        }
+
+        /// The next prompt's turn runs until the returned sender sends.
+        pub fn hold_next_prompt(&self) -> async_channel::Sender<()> {
+            let (release_tx, release_rx) = async_channel::bounded(1);
+            *self
+                .prompt_gate
+                .lock()
+                .expect("prompt gate lock should not be poisoned") = Some(release_rx);
+            release_tx
         }
 
         pub fn load_session_count(&self) -> Arc<AtomicUsize> {
@@ -4417,6 +4750,10 @@ pub mod test_support {
 
         pub fn close_session_count(&self) -> Arc<AtomicUsize> {
             self.close_session_count.clone()
+        }
+
+        pub fn prompt_count(&self) -> Arc<AtomicUsize> {
+            self.prompt_count.clone()
         }
 
         pub fn simulate_server_exit(&self) {
@@ -4433,6 +4770,11 @@ pub mod test_support {
 
         pub fn fail_next_prompt(&self) {
             self.fail_next_prompt.store(true, Ordering::SeqCst);
+        }
+
+        /// The next `session/load` is answered with an error.
+        pub fn fail_next_load(&self) {
+            self.fail_next_load.store(true, Ordering::SeqCst);
         }
 
         pub fn request_elicitation_during_auth(
@@ -4471,22 +4813,37 @@ pub mod test_support {
             let load_session_count = self.load_session_count.clone();
             let close_session_count = self.close_session_count.clone();
             let fail_next_prompt = self.fail_next_prompt.clone();
+            let fail_next_load = self.fail_next_load.clone();
             let auth_elicitation_request = self.auth_elicitation_request.clone();
             let auth_elicitation_response = self.auth_elicitation_response.clone();
             let auth_elicitation_completion = self.auth_elicitation_completion.clone();
             let exit_status_sender = self.exit_status_sender.clone();
+            let prompt_gate = self.prompt_gate.clone();
+            let prompt_count = self.prompt_count.clone();
+            let expose_acp_connection = self.expose_acp_connection;
+            let kept_alive = self.kept_alive.clone();
             cx.spawn(async move |cx| {
                 let harness = build_fake_acp_connection(
                     project,
                     load_session_count,
                     close_session_count,
                     fail_next_prompt,
+                    fail_next_load,
                     auth_elicitation_request,
                     auth_elicitation_response,
                     auth_elicitation_completion,
+                    prompt_gate,
+                    prompt_count,
                     cx,
                 )
                 .await?;
+                if expose_acp_connection {
+                    kept_alive
+                        .lock()
+                        .expect("kept-alive lock should not be poisoned")
+                        .push(harness.keep_agent_alive);
+                    return Ok(harness.connection as Rc<dyn AgentConnection>);
+                }
                 let (exit_tx, exit_rx) = async_channel::bounded(1);
                 *exit_status_sender
                     .lock()
@@ -4513,6 +4870,10 @@ pub mod test_support {
             })
         }
 
+        fn starts_on_first_message(&self) -> bool {
+            self.starts_on_first_message
+        }
+
         fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
             self
         }
@@ -4524,6 +4885,8 @@ pub mod test_support {
         pub close_session_count: Arc<AtomicUsize>,
         pub authenticate_count: Arc<AtomicUsize>,
         pub logout_count: Arc<AtomicUsize>,
+        /// The `session/new` requests the agent was sent, in order.
+        pub new_session_requests: Arc<Mutex<Vec<acp::NewSessionRequest>>>,
         pub keep_agent_alive: Task<anyhow::Result<()>>,
     }
 
@@ -4553,6 +4916,17 @@ pub mod test_support {
             cx: &mut App,
         ) -> Task<Result<Entity<AcpThread>>> {
             self.inner.clone().new_session(project, work_dirs, cx)
+        }
+
+        fn new_session_to_read_options(
+            self: Rc<Self>,
+            project: Entity<Project>,
+            work_dirs: PathList,
+            cx: &mut App,
+        ) -> Task<Result<Entity<AcpThread>>> {
+            self.inner
+                .clone()
+                .new_session_to_read_options(project, work_dirs, cx)
         }
 
         fn supports_load_session(&self) -> bool {
@@ -4698,17 +5072,21 @@ pub mod test_support {
         load_session_count: Arc<AtomicUsize>,
         close_session_count: Arc<AtomicUsize>,
         fail_next_prompt: Arc<AtomicBool>,
+        fail_next_load: Arc<AtomicBool>,
         auth_elicitation_request: Arc<Mutex<Option<acp::CreateElicitationRequest>>>,
         auth_elicitation_response: Arc<
             Mutex<Option<async_channel::Sender<acp::CreateElicitationResponse>>>,
         >,
         auth_elicitation_completion: Arc<Mutex<Option<acp::CompleteElicitationNotification>>>,
+        prompt_gate: Arc<Mutex<Option<async_channel::Receiver<()>>>>,
+        prompt_count: Arc<AtomicUsize>,
         cx: &mut AsyncApp,
     ) -> Result<FakeAcpConnectionHarness> {
         let (client_transport, agent_transport) = agent_client_protocol::Channel::duplex();
 
         let authenticate_count = Arc::new(AtomicUsize::new(0));
         let logout_count = Arc::new(AtomicUsize::new(0));
+        let new_session_requests = Arc::new(Mutex::new(Vec::new()));
         let sessions: Rc<RefCell<HashMap<acp::SessionId, AcpSession>>> =
             Rc::new(RefCell::new(HashMap::default()));
         let client_session_list: Rc<RefCell<Option<Rc<AcpSessionList>>>> =
@@ -4774,15 +5152,33 @@ pub mod test_support {
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
-                async move |_req: acp::NewSessionRequest, responder, _cx| {
-                    responder.respond(acp::NewSessionResponse::new(acp::SessionId::new("unused")))
+                {
+                    let new_session_requests = new_session_requests.clone();
+                    async move |req: acp::NewSessionRequest, responder, _cx| {
+                        new_session_requests
+                            .lock()
+                            .expect("new session requests lock should not be poisoned")
+                            .push(req);
+                        responder
+                            .respond(acp::NewSessionResponse::new(acp::SessionId::new("unused")))
+                    }
                 },
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
                 {
                     let fail_next_prompt = fail_next_prompt.clone();
+                    let prompt_gate = prompt_gate.clone();
+                    let prompt_count = prompt_count.clone();
                     async move |_req: acp::PromptRequest, responder, _cx| {
+                        prompt_count.fetch_add(1, Ordering::SeqCst);
+                        let gate = prompt_gate
+                            .lock()
+                            .expect("prompt gate lock should not be poisoned")
+                            .take();
+                        if let Some(gate) = gate {
+                            gate.recv().await.ok();
+                        }
                         if fail_next_prompt.swap(false, Ordering::SeqCst) {
                             responder.respond_with_error(acp::ErrorCode::InternalError.into())
                         } else {
@@ -4797,7 +5193,11 @@ pub mod test_support {
                     let load_session_count = load_session_count.clone();
                     async move |_req: acp::LoadSessionRequest, responder, _cx| {
                         load_session_count.fetch_add(1, Ordering::SeqCst);
-                        responder.respond(acp::LoadSessionResponse::new())
+                        if fail_next_load.swap(false, Ordering::SeqCst) {
+                            responder.respond_with_error(acp::ErrorCode::InternalError.into())
+                        } else {
+                            responder.respond(acp::LoadSessionResponse::new())
+                        }
                     }
                 },
                 agent_client_protocol::on_receive_request!(),
@@ -4904,6 +5304,7 @@ pub mod test_support {
             close_session_count,
             authenticate_count,
             logout_count,
+            new_session_requests,
             keep_agent_alive,
         })
     }
@@ -4922,9 +5323,12 @@ pub mod test_support {
             Arc::new(AtomicUsize::new(0)),
             Arc::new(AtomicUsize::new(0)),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
             Arc::new(Mutex::new(None)),
             Arc::new(Mutex::new(None)),
             Arc::new(Mutex::new(None)),
+            Arc::default(),
+            Arc::default(),
             &mut cx.to_async(),
         )
         .await
@@ -4951,9 +5355,12 @@ pub mod test_support {
             Arc::new(AtomicUsize::new(0)),
             Arc::new(AtomicUsize::new(0)),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
             Arc::new(Mutex::new(Some(request))),
             Arc::new(Mutex::new(Some(response_tx))),
             Arc::new(Mutex::new(None)),
+            Arc::default(),
+            Arc::default(),
             &mut cx.to_async(),
         )
         .await
@@ -4983,9 +5390,12 @@ pub mod test_support {
             Arc::new(AtomicUsize::new(0)),
             Arc::new(AtomicUsize::new(0)),
             Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
             Arc::new(Mutex::new(Some(request))),
             Arc::new(Mutex::new(Some(response_tx))),
             Arc::new(Mutex::new(Some(completion))),
+            Arc::default(),
+            Arc::default(),
             &mut cx.to_async(),
         )
         .await
@@ -4998,7 +5408,7 @@ pub mod test_support {
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use super::*;
     use feature_flags::{AcpBetaFeatureFlag, FeatureFlag as _};
@@ -6148,7 +6558,9 @@ mod tests {
         let project =
             project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
 
-        let none = cx.update(|cx| mcp_servers_for_project(&project, IdeMcp::None, cx));
+        let none = cx.update(|cx| {
+            mcp_servers_for_project(&project, IdeMcp::None, &McpSelection::default(), cx)
+        });
         assert!(none.restricted_ide.is_empty());
         assert!(none.servers.is_empty());
 
@@ -6160,6 +6572,7 @@ mod tests {
                     authorization: "Bearer restricted".to_string(),
                     assist_url: None,
                 },
+                &McpSelection::default(),
                 cx,
             )
         });
@@ -6204,6 +6617,7 @@ mod tests {
                     authorization: "Bearer restricted".to_string(),
                     assist_url: Some(assist_url.clone()),
                 },
+                &McpSelection::default(),
                 cx,
             )
         });
@@ -6229,6 +6643,7 @@ mod tests {
                     authorization: "Bearer restricted".to_string(),
                     assist_url: None,
                 },
+                &McpSelection::default(),
                 cx,
             )
         });
@@ -6292,7 +6707,15 @@ mod tests {
             authorization: "Bearer secret".to_string(),
         };
         let given = cx.update(|cx| {
-            mcp_servers_for_project(&project, IdeMcp::Host(Some(endpoint.clone())), cx)
+            mcp_servers_for_project(
+                &project,
+                IdeMcp::Host {
+                    ide: Some(endpoint.clone()),
+                    browser: None,
+                },
+                &McpSelection::default(),
+                cx,
+            )
         });
         let zed_entries = given
             .servers
@@ -6305,7 +6728,17 @@ mod tests {
         assert!(given.restricted_ide.is_empty());
         assert!(given.gives_ide_tools);
 
-        let none = cx.update(|cx| mcp_servers_for_project(&project, IdeMcp::Host(None), cx));
+        let none = cx.update(|cx| {
+            mcp_servers_for_project(
+                &project,
+                IdeMcp::Host {
+                    ide: None,
+                    browser: None,
+                },
+                &McpSelection::default(),
+                cx,
+            )
+        });
         assert!(none.servers.is_empty());
         assert!(!none.gives_ide_tools);
 
@@ -6318,8 +6751,17 @@ mod tests {
                 });
             });
         });
-        let off =
-            cx.update(|cx| mcp_servers_for_project(&project, IdeMcp::Host(Some(endpoint)), cx));
+        let off = cx.update(|cx| {
+            mcp_servers_for_project(
+                &project,
+                IdeMcp::Host {
+                    ide: Some(endpoint),
+                    browser: None,
+                },
+                &McpSelection::default(),
+                cx,
+            )
+        });
         assert!(!off.gives_ide_tools);
     }
 
@@ -6391,11 +6833,671 @@ mod tests {
 
         let (outside, inside) = cx.update(|cx| {
             (
-                mcp_servers_for_project(&project, IdeMcp::Host(None), cx),
-                mcp_servers_for_project(&project, IdeMcp::None, cx),
+                mcp_servers_for_project(
+                    &project,
+                    IdeMcp::Host {
+                        ide: None,
+                        browser: None,
+                    },
+                    &McpSelection::default(),
+                    cx,
+                ),
+                mcp_servers_for_project(&project, IdeMcp::None, &McpSelection::default(), cx),
             )
         });
         assert_eq!(outside, inside, "no IDE server is running in this test");
+    }
+
+    fn named_http(name: &str) -> acp::McpServer {
+        acp::McpServer::Http(acp::McpServerHttp::new(
+            name,
+            format!("http://127.0.0.1:1/{name}"),
+        ))
+    }
+
+    fn server_names(servers: &[acp::McpServer]) -> Vec<String> {
+        servers
+            .iter()
+            .map(|server| match server {
+                acp::McpServer::Http(server) => server.name.clone(),
+                acp::McpServer::Stdio(server) => server.name.clone(),
+                acp::McpServer::Sse(server) => server.name.clone(),
+                _ => String::new(),
+            })
+            .collect()
+    }
+
+    /// ADR-F102: a thread's MCP menu leaves out of its session what it turned
+    /// off — Zed's IDE servers, the AI browser, any server the user configured —
+    /// and keeps the rest, while what was on offer stays the same for the menu.
+    #[test]
+    fn a_threads_selection_leaves_its_servers_out() {
+        let configured = || {
+            vec![
+                (Arc::<str>::from("github"), named_http("github")),
+                (Arc::<str>::from("linear"), named_http("linear")),
+            ]
+        };
+        let select = |selection: &McpSelection| {
+            select_mcp_servers(
+                Some(named_http(ide_server::MCP_SERVER_NAME)),
+                Some(named_http(ide_server::BROWSER_MCP_SERVER_NAME)),
+                Vec::new(),
+                configured(),
+                true,
+                selection,
+            )
+        };
+        let offer = McpOffer {
+            ide_tools: true,
+            browser: true,
+            servers: vec!["github".into(), "linear".into()],
+        };
+
+        let all_on = select(&McpSelection::default());
+        assert_eq!(
+            server_names(&all_on.servers),
+            ["zed", "zed-browser", "github", "linear"]
+        );
+        assert!(all_on.gives_ide_tools);
+        assert_eq!(all_on.offer, offer);
+
+        let ide_off = select(&McpSelection {
+            ide_tools_off: true,
+            ..McpSelection::default()
+        });
+        assert_eq!(
+            server_names(&ide_off.servers),
+            ["zed-browser", "github", "linear"]
+        );
+        assert!(!ide_off.gives_ide_tools, "the indicator follows the list");
+        assert_eq!(ide_off.offer, offer, "the menu still offers it");
+
+        let browser_off = select(&McpSelection {
+            browser_off: true,
+            ..McpSelection::default()
+        });
+        assert_eq!(
+            server_names(&browser_off.servers),
+            ["zed", "github", "linear"]
+        );
+        assert!(browser_off.gives_ide_tools);
+
+        let mut github_off = McpSelection::default();
+        github_off.set_server_enabled("github", false);
+        let github_off = select(&github_off);
+        assert_eq!(
+            server_names(&github_off.servers),
+            ["zed", "zed-browser", "linear"]
+        );
+
+        // In a sandbox, both of Zed's servers on its channel go with the IDE
+        // tools.
+        let restricted = select_mcp_servers(
+            None,
+            None,
+            vec![
+                named_http(ide_server::RESTRICTED_MCP_SERVER_NAME),
+                named_http(ide_server::MCP_SERVER_NAME),
+            ],
+            Vec::new(),
+            true,
+            &McpSelection {
+                ide_tools_off: true,
+                ..McpSelection::default()
+            },
+        );
+        assert!(restricted.restricted_ide.is_empty());
+        assert!(!restricted.gives_ide_tools);
+        assert!(restricted.offer.ide_tools);
+        assert!(!restricted.offer.browser);
+    }
+
+    /// ADR-F102: outside a sandbox the AI browser is a server of its own,
+    /// `zed-browser`, next to `zed`; the user's own server of that name wins
+    /// as for `zed` (ADR-F42), and turning it off keeps `zed`.
+    #[gpui::test]
+    async fn an_agent_outside_a_sandbox_gets_the_browser_as_a_server_of_its_own(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        init_feature_flags_test(cx);
+        cx.update(ide_server::init);
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({}))
+            .await;
+        let project =
+            project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
+        let endpoint = |path: &str| ide_server::McpEndpoint {
+            url: format!("http://127.0.0.1:39254{path}"),
+            authorization: "Bearer secret".to_string(),
+        };
+        let host = || IdeMcp::Host {
+            ide: Some(endpoint(ide_server::ASSIST_MCP_PATH)),
+            browser: Some(endpoint(ide_server::BROWSER_MCP_PATH)),
+        };
+
+        let given =
+            cx.update(|cx| mcp_servers_for_project(&project, host(), &McpSelection::default(), cx));
+        assert_eq!(server_names(&given.servers), ["zed", "zed-browser"]);
+        let Some(acp::McpServer::Http(browser)) = given.servers.get(1) else {
+            panic!("the browser is an HTTP entry: {:?}", given.servers);
+        };
+        assert_eq!(browser.url, "http://127.0.0.1:39254/mcp/zed-browser");
+        assert_eq!(browser.headers[0].value, "Bearer secret");
+        assert!(given.offer.browser);
+
+        let browser_off = cx.update(|cx| {
+            mcp_servers_for_project(
+                &project,
+                host(),
+                &McpSelection {
+                    browser_off: true,
+                    ..McpSelection::default()
+                },
+                cx,
+            )
+        });
+        assert_eq!(server_names(&browser_off.servers), ["zed"]);
+        assert!(browser_off.gives_ide_tools);
+
+        assert_eq!(
+            browser_server_entry(Some(endpoint(ide_server::BROWSER_MCP_PATH)), true),
+            None,
+            "a configured server of the same name keeps it out"
+        );
+    }
+
+    /// The requests a fake agent of [`reopening_agent_connection`] was sent.
+    #[derive(Clone, Default)]
+    struct SessionRequests {
+        new: Arc<Mutex<Vec<acp::NewSessionRequest>>>,
+        load: Arc<Mutex<Vec<acp::LoadSessionRequest>>>,
+        /// The next `session/load` is answered with an error (and still noted).
+        fail_next_load: Arc<AtomicBool>,
+    }
+
+    /// A connection to a fake agent that can load sessions and names each new
+    /// session apart (`session-1`, `session-2`, …), with what it was asked.
+    async fn reopening_agent_connection(
+        project: &Entity<Project>,
+        cx: &mut gpui::TestAppContext,
+    ) -> (Rc<AcpConnection>, SessionRequests, Task<()>) {
+        let (client_transport, agent_transport) = agent_client_protocol::Channel::duplex();
+        let requests = SessionRequests::default();
+        let agent_future = Agent
+            .builder()
+            .name("fake-reopening-agent")
+            .on_receive_request(
+                async move |request: acp::InitializeRequest, responder, _cx| {
+                    responder.respond(
+                        acp::InitializeResponse::new(request.protocol_version).agent_capabilities(
+                            acp::AgentCapabilities::default().load_session(true),
+                        ),
+                    )
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                {
+                    let new_sessions = requests.new.clone();
+                    async move |request: acp::NewSessionRequest, responder, _cx| {
+                        let session_id = {
+                            let mut new_sessions = new_sessions
+                                .lock()
+                                .expect("the session lock is not poisoned");
+                            new_sessions.push(request);
+                            format!("session-{}", new_sessions.len())
+                        };
+                        responder.respond(acp::NewSessionResponse::new(acp::SessionId::new(
+                            session_id,
+                        )))
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                {
+                    let loads = requests.load.clone();
+                    let fail_next_load = requests.fail_next_load.clone();
+                    async move |request: acp::LoadSessionRequest, responder, _cx| {
+                        loads
+                            .lock()
+                            .expect("the load lock is not poisoned")
+                            .push(request);
+                        if fail_next_load.swap(false, Ordering::SeqCst) {
+                            responder.respond_with_error(acp::ErrorCode::InternalError.into())
+                        } else {
+                            responder.respond(acp::LoadSessionResponse::new())
+                        }
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .connect_to(agent_transport);
+        let agent_io = cx.background_spawn(async move {
+            agent_future.await.ok();
+        });
+
+        let sessions: Rc<RefCell<HashMap<acp::SessionId, AcpSession>>> =
+            Rc::new(RefCell::new(HashMap::default()));
+        let (dispatch_tx, dispatch_rx) = mpsc::unbounded::<ForegroundWork>();
+        let (connection_tx, connection_rx) = futures::channel::oneshot::channel();
+        let client_future = connect_client_future(
+            "zed-test",
+            client_transport,
+            dispatch_tx.clone(),
+            connection_tx,
+        );
+        let client_io = cx.background_spawn(async move {
+            client_future.await.ok();
+        });
+        let client_conn: ConnectionTo<Agent> = connection_rx
+            .await
+            .expect("failed to receive the ACP connection handle");
+        let response = client_conn
+            .send_request(acp::InitializeRequest::new(ProtocolVersion::V1))
+            .block_task()
+            .await
+            .expect("failed to initialize the ACP connection");
+        let request_elicitations = cx.new(|_| ElicitationStore::default());
+        let dispatch_context = ClientContext {
+            sessions: sessions.clone(),
+            session_list: Rc::new(RefCell::new(None)),
+            request_elicitations: request_elicitations.clone(),
+            paths: None,
+            commands_os: AgentCommandsOs::Projects,
+            subagents: Rc::new(subagents::SubagentRouting::default()),
+        };
+        let dispatch_task = cx.spawn({
+            let mut dispatch_rx = dispatch_rx;
+            move |cx| async move {
+                let mut cx = cx;
+                while let Some(work) = dispatch_rx.next().await {
+                    work.run(&mut cx, &dispatch_context);
+                }
+            }
+        });
+        let agent_server_store =
+            project.read_with(cx, |project, _| project.agent_server_store().downgrade());
+        let connection = Rc::new(cx.update(|cx| {
+            AcpConnection::new_for_test(
+                client_conn,
+                sessions,
+                response.agent_capabilities,
+                request_elicitations,
+                agent_server_store,
+                client_io,
+                dispatch_tx,
+                dispatch_task,
+                None,
+                cx,
+            )
+        }));
+        assert!(connection.can_reopen_sessions());
+        (connection, requests, agent_io)
+    }
+
+    /// ADR-F102: switching a thread's MCP servers opens its session again.
+    /// While its thread is still alive, a `load_session` alone hands that same
+    /// thread back without asking the agent; once the session is let go of for
+    /// reopening, the agent is asked again (and gets the new list), and the old
+    /// thread going later does not take the new session with it.
+    #[gpui::test]
+    async fn a_session_let_go_of_for_reopening_is_loaded_again(cx: &mut gpui::TestAppContext) {
+        let project = boundary_project(cx).await;
+        let (connection, requests, _agent_io) = reopening_agent_connection(&project, cx).await;
+
+        let work_dirs = PathList::new(&[std::path::Path::new(util::path!("/project"))]);
+        let browser_off = McpSelection {
+            browser_off: true,
+            ..McpSelection::default()
+        };
+        let first = cx
+            .update(|cx| {
+                connection.clone().new_session_with_mcp(
+                    project.clone(),
+                    work_dirs.clone(),
+                    browser_off.clone(),
+                    cx,
+                )
+            })
+            .await
+            .expect("the session starts");
+        let session_id = first.read_with(cx, |thread, _| thread.session_id().clone());
+        assert_eq!(
+            connection
+                .session_mcp(&session_id)
+                .map(|session| session.selection),
+            Some(browser_off.clone())
+        );
+
+        let mut github_off = McpSelection::default();
+        github_off.set_server_enabled("github", false);
+        let same = cx
+            .update(|cx| {
+                connection.clone().load_session_with_mcp(
+                    session_id.clone(),
+                    project.clone(),
+                    work_dirs.clone(),
+                    None,
+                    github_off.clone(),
+                    cx,
+                )
+            })
+            .await
+            .expect("the live session is handed back");
+        assert_eq!(same.entity_id(), first.entity_id());
+        assert!(
+            requests.load.lock().expect("not poisoned").is_empty(),
+            "a live session is not asked for again"
+        );
+        assert_eq!(
+            connection
+                .session_mcp(&session_id)
+                .map(|session| session.selection),
+            Some(browser_off.clone()),
+            "nor does it read as having the list it was not given"
+        );
+
+        cx.update(|cx| connection.release_session_for_reopen(&session_id, cx));
+        let reopened = cx
+            .update(|cx| {
+                connection.clone().load_session_with_mcp(
+                    session_id.clone(),
+                    project.clone(),
+                    work_dirs.clone(),
+                    None,
+                    github_off.clone(),
+                    cx,
+                )
+            })
+            .await
+            .expect("the session opens again");
+        assert_ne!(reopened.entity_id(), first.entity_id());
+        assert_eq!(requests.load.lock().expect("not poisoned").len(), 1);
+        assert_eq!(
+            connection
+                .session_mcp(&session_id)
+                .map(|session| session.selection),
+            Some(github_off.clone())
+        );
+
+        drop(first);
+        drop(same);
+        cx.run_until_parked();
+        assert!(
+            connection.session_mcp(&session_id).is_some(),
+            "the old thread's release leaves the reopened session alone"
+        );
+        assert!(
+            connection
+                .sessions
+                .borrow()
+                .get(&session_id)
+                .is_some_and(|session| session.thread.entity_id() == reopened.entity_id())
+        );
+    }
+
+    struct EnabledBrowser;
+
+    impl browser_control::BrowserControl for EnabledBrowser {
+        fn is_enabled(&self, _cx: &App) -> bool {
+            true
+        }
+
+        fn run(
+            &self,
+            _project: &Entity<Project>,
+            _command: browser_control::BrowserCommand,
+            _cx: &mut App,
+        ) -> Task<Result<browser_control::BrowserOutput>> {
+            Task::ready(Err(anyhow!("no browser in this test")))
+        }
+    }
+
+    /// A project in a workspace whose IDE server can grant the AI browser.
+    async fn project_with_the_browser_on(
+        cx: &mut gpui::TestAppContext,
+    ) -> (
+        Entity<Project>,
+        gpui::WindowHandle<workspace::MultiWorkspace>,
+    ) {
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+            ide_server::init(cx);
+            cx.set_global(browser_control::GlobalBrowserControl(Arc::new(
+                EnabledBrowser,
+            )));
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({}))
+            .await;
+        let project =
+            project::Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
+        let window = cx.add_window({
+            let project = project.clone();
+            move |window, cx| workspace::MultiWorkspace::test_new(project, window, cx)
+        });
+        cx.run_until_parked();
+        (project, window)
+    }
+
+    /// The `Authorization` a session was given for the AI browser's server.
+    fn browser_authorization(servers: &[acp::McpServer]) -> Option<String> {
+        servers.iter().find_map(|server| match server {
+            acp::McpServer::Http(server) if server.name == ide_server::BROWSER_MCP_SERVER_NAME => {
+                server.headers.first().map(|header| header.value.clone())
+            }
+            _ => None,
+        })
+    }
+
+    /// ADR-F102: each session of an agent outside a sandbox that is given the
+    /// AI browser gets a token of its own for `/mcp/zed-browser`. It is revoked
+    /// when the session is let go of for reopening (and none is given when it
+    /// reopens with the browser off), when the session is closed, and when its
+    /// connection goes, while the connection's other sessions keep theirs; a
+    /// reopening with the browser on gets a fresh one. The session that only
+    /// reads the agent's options gets none.
+    #[gpui::test]
+    async fn each_session_holds_its_own_grant_of_the_browser(cx: &mut gpui::TestAppContext) {
+        let (project, _window) = project_with_the_browser_on(cx).await;
+        let (connection, requests, _agent_io) = reopening_agent_connection(&project, cx).await;
+        let work_dirs = PathList::new(&[std::path::Path::new(util::path!("/project"))]);
+        let takes = |authorization: &str, cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| ide_server::browser_endpoint_takes(&project, authorization, cx))
+        };
+        let granted = |cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| ide_server::browser_session_count(&project, cx))
+        };
+        let given_new = |index: usize| {
+            browser_authorization(&requests.new.lock().expect("not poisoned")[index].mcp_servers)
+        };
+        let given_load = |index: usize| {
+            browser_authorization(&requests.load.lock().expect("not poisoned")[index].mcp_servers)
+        };
+
+        let options = cx
+            .update(|cx| {
+                connection.clone().new_session_to_read_options(
+                    project.clone(),
+                    work_dirs.clone(),
+                    cx,
+                )
+            })
+            .await
+            .expect("the session to read options starts");
+        assert_eq!(given_new(0), None);
+        assert_eq!(
+            granted(cx),
+            0,
+            "the session that reads the options gets none"
+        );
+
+        let new_thread = |cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| {
+                connection.clone().new_session_with_mcp(
+                    project.clone(),
+                    work_dirs.clone(),
+                    McpSelection::default(),
+                    cx,
+                )
+            })
+        };
+        let first = new_thread(cx).await.expect("a session starts");
+        let second = new_thread(cx).await.expect("another starts");
+        let first_token = given_new(1).expect("the first is given the browser");
+        let second_token = given_new(2).expect("so is the second");
+        assert_ne!(first_token, second_token);
+        assert!(takes(&first_token, cx));
+        assert!(takes(&second_token, cx));
+        assert_eq!(granted(cx), 2);
+
+        let session_id = first.read_with(cx, |thread, _| thread.session_id().clone());
+        cx.update(|cx| connection.release_session_for_reopen(&session_id, cx));
+        assert!(
+            !takes(&first_token, cx),
+            "let go of for reopening, the session's token goes at once"
+        );
+        assert!(takes(&second_token, cx), "the other session keeps its own");
+
+        let reopen = |selection: McpSelection, cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| {
+                connection.clone().load_session_with_mcp(
+                    session_id.clone(),
+                    project.clone(),
+                    work_dirs.clone(),
+                    None,
+                    selection,
+                    cx,
+                )
+            })
+        };
+        let browser_off = reopen(
+            McpSelection {
+                browser_off: true,
+                ..McpSelection::default()
+            },
+            cx,
+        )
+        .await
+        .expect("the session opens again without the browser");
+        assert_eq!(given_load(0), None);
+        assert!(!takes(&first_token, cx));
+        assert_eq!(granted(cx), 1);
+
+        cx.update(|cx| connection.release_session_for_reopen(&session_id, cx));
+        let browser_on = reopen(McpSelection::default(), cx)
+            .await
+            .expect("the session opens again with the browser");
+        let fresh_token = given_load(1).expect("given the browser again");
+        assert_ne!(fresh_token, first_token);
+        assert!(takes(&fresh_token, cx));
+        assert!(!takes(&first_token, cx));
+        assert_eq!(granted(cx), 2);
+
+        drop(second);
+        cx.run_until_parked();
+        cx.update(|_| {});
+        cx.run_until_parked();
+        assert!(!takes(&second_token, cx), "a closed session's token goes");
+        assert!(takes(&fresh_token, cx));
+        assert_eq!(granted(cx), 1);
+
+        drop((options, first, browser_off, browser_on, connection));
+        cx.run_until_parked();
+        cx.update(|_| {});
+        cx.run_until_parked();
+        assert!(
+            !takes(&fresh_token, cx),
+            "and so do all when the connection goes"
+        );
+        assert_eq!(granted(cx), 0);
+    }
+
+    /// ADR-F102: an opening of a session holds its grant of the browser until
+    /// the session goes, even when the thread it replaces is dropped without
+    /// its release having run yet, and an opening that fails takes the grant
+    /// the agent was sent with it.
+    #[gpui::test]
+    async fn a_reopening_keeps_its_grant_and_a_failed_one_revokes_it(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (project, _window) = project_with_the_browser_on(cx).await;
+        let (connection, requests, _agent_io) = reopening_agent_connection(&project, cx).await;
+        let work_dirs = PathList::new(&[std::path::Path::new(util::path!("/project"))]);
+        let takes = |authorization: &str, cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| ide_server::browser_endpoint_takes(&project, authorization, cx))
+        };
+        let granted = |cx: &mut gpui::TestAppContext| {
+            cx.update(|cx| ide_server::browser_session_count(&project, cx))
+        };
+        let given_load = |index: usize| {
+            browser_authorization(&requests.load.lock().expect("not poisoned")[index].mcp_servers)
+        };
+        let reopen = |session_id: &acp::SessionId, cx: &mut App| {
+            connection.clone().load_session_with_mcp(
+                session_id.clone(),
+                project.clone(),
+                work_dirs.clone(),
+                None,
+                McpSelection::default(),
+                cx,
+            )
+        };
+
+        let first = cx
+            .update(|cx| {
+                connection.clone().new_session_with_mcp(
+                    project.clone(),
+                    work_dirs.clone(),
+                    McpSelection::default(),
+                    cx,
+                )
+            })
+            .await
+            .expect("a session starts");
+        let session_id = first.read_with(cx, |thread, _| thread.session_id().clone());
+        let first_token =
+            browser_authorization(&requests.new.lock().expect("not poisoned")[0].mcp_servers)
+                .expect("given the browser");
+
+        // The view drops the old thread and opens the session again before the
+        // old thread's release has run.
+        let reopening = cx.update(|cx| {
+            drop(first);
+            reopen(&session_id, cx)
+        });
+        let reopened = reopening.await.expect("the session opens again");
+        let reopened_token = given_load(0).expect("given the browser again");
+        assert!(
+            takes(&reopened_token, cx),
+            "the dead thread's release does not take the reopening's grant"
+        );
+        assert!(!takes(&first_token, cx));
+        assert_eq!(granted(cx), 1);
+        assert!(connection.session_mcp(&session_id).is_some());
+
+        cx.update(|cx| connection.release_session_for_reopen(&session_id, cx));
+        requests.fail_next_load.store(true, Ordering::SeqCst);
+        let failed = cx.update(|cx| reopen(&session_id, cx)).await;
+        assert!(failed.is_err(), "the agent refused the load");
+        let refused_token = given_load(1).expect("the failed load was sent the browser");
+        assert!(
+            !takes(&refused_token, cx),
+            "a failed opening's grant goes with it"
+        );
+        assert_eq!(granted(cx), 0);
+        assert!(connection.session_mcp(&session_id).is_none());
+
+        let retried = cx
+            .update(|cx| reopen(&session_id, cx))
+            .await
+            .expect("opened again after the failure");
+        let retried_token = given_load(2).expect("given the browser once more");
+        assert!(takes(&retried_token, cx));
+        assert_eq!(granted(cx), 1);
+        drop((reopened, retried));
     }
 
     fn init_feature_flags_test(cx: &mut gpui::TestAppContext) {
@@ -7241,6 +8343,97 @@ mod tests {
         connection_rx
             .await
             .expect("failed to receive ACP connection")
+    }
+
+    /// ADR-F103: the session that only reads what the agent offers is given
+    /// none of the MCP servers a thread's session is given, so that nothing
+    /// the user configured is started for it.
+    #[gpui::test]
+    async fn a_session_to_read_options_is_given_no_mcp_servers(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/", serde_json::json!({ "a": {} })).await;
+        let project = project::Project::test(fs, [std::path::Path::new("/a")], cx).await;
+        let harness = test_support::connect_fake_acp_connection(project.clone(), cx).await;
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |content| {
+                    content.project.context_servers.insert(
+                        "configured".into(),
+                        settings::ContextServerSettingsContent::Http {
+                            enabled: true,
+                            url: "http://127.0.0.1:1/mcp".to_string(),
+                            headers: HashMap::default(),
+                            timeout: None,
+                            oauth: None,
+                        },
+                    );
+                });
+            })
+        });
+        cx.run_until_parked();
+        assert!(
+            !cx.update(|cx| mcp_servers_for_project(
+                &project,
+                IdeMcp::None,
+                &McpSelection::default(),
+                cx
+            ))
+            .servers
+            .is_empty(),
+            "the project has a server a thread's session is given"
+        );
+
+        let work_dirs = PathList::new(&[std::path::Path::new("/a")]);
+        // The fake agent answers every `session/new` with the same id, so the
+        // session that reads the options is checked before a thread's exists.
+        let options_session = cx
+            .update(|cx| {
+                harness.connection.clone().new_session_to_read_options(
+                    project.clone(),
+                    work_dirs.clone(),
+                    cx,
+                )
+            })
+            .await
+            .expect("the session to read options starts");
+        // ADR-F102: the session that reads the options is no thread's, so it
+        // must not show up in an MCP menu or the IDE tools indicator.
+        let options_session_id = cx.update(|cx| options_session.read(cx).session_id().clone());
+        assert!(
+            harness
+                .connection
+                .session_mcp(&options_session_id)
+                .is_none(),
+            "the session that reads the options records no MCP servers"
+        );
+        let thread = cx
+            .update(|cx| {
+                harness
+                    .connection
+                    .clone()
+                    .new_session(project.clone(), work_dirs, cx)
+            })
+            .await
+            .expect("a thread's session starts");
+        let thread_session_id = cx.update(|cx| thread.read(cx).session_id().clone());
+        assert!(harness.connection.session_mcp(&thread_session_id).is_some());
+
+        let requests = harness
+            .new_session_requests
+            .lock()
+            .expect("new session requests lock should not be poisoned")
+            .clone();
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests[0].mcp_servers.is_empty(),
+            "nothing is started for a session that only reads the options"
+        );
+        assert!(!requests[1].mcp_servers.is_empty());
+        drop((thread, options_session));
     }
 
     #[gpui::test]
@@ -12396,19 +13589,37 @@ fn ide_server_entry(
     endpoint: Option<ide_server::McpEndpoint>,
     is_name_taken: bool,
 ) -> Option<acp::McpServer> {
+    built_in_http_entry(ide_server::MCP_SERVER_NAME, endpoint, is_name_taken)
+}
+
+/// ADR-F102: the AI browser's own server in the session, named
+/// [`ide_server::BROWSER_MCP_SERVER_NAME`]. As for the IDE server, one the user
+/// configured under that name wins.
+fn browser_server_entry(
+    endpoint: Option<ide_server::McpEndpoint>,
+    is_name_taken: bool,
+) -> Option<acp::McpServer> {
+    built_in_http_entry(ide_server::BROWSER_MCP_SERVER_NAME, endpoint, is_name_taken)
+}
+
+fn built_in_http_entry(
+    name: &str,
+    endpoint: Option<ide_server::McpEndpoint>,
+    is_name_taken: bool,
+) -> Option<acp::McpServer> {
     if is_name_taken {
         log::warn!(
-            "agent_servers: not injecting the built-in IDE server because a configured MCP server \
-             is already named {}",
-            ide_server::MCP_SERVER_NAME
+            "agent_servers: not injecting the built-in {name} server because a configured MCP \
+             server is already named so"
         );
         return None;
     }
     let endpoint = endpoint?;
     Some(acp::McpServer::Http(
-        acp::McpServerHttp::new(ide_server::MCP_SERVER_NAME, endpoint.url).headers(vec![
-            acp::HttpHeader::new("Authorization", endpoint.authorization),
-        ]),
+        acp::McpServerHttp::new(name, endpoint.url).headers(vec![acp::HttpHeader::new(
+            "Authorization",
+            endpoint.authorization,
+        )]),
     ))
 }
 
@@ -12418,11 +13629,15 @@ enum IdeMcp {
     /// None at all: an agent in a sandbox with no IDE channel of its own.
     None,
     /// Zed's own (ADR-F26), on this machine's loopback. Only for an agent that
-    /// runs outside a sandbox. ADR-F56: the endpoint of this connection's own
-    /// registration — the whole set of tools and the IDE tools with
-    /// `ide_server.enabled`, the IDE tools alone without it — or `None` when
-    /// neither is on.
-    Host(Option<ide_server::McpEndpoint>),
+    /// runs outside a sandbox. ADR-F56: `ide` is the endpoint of this
+    /// connection's own registration — the whole set of tools and the IDE
+    /// tools with `ide_server.enabled`, the IDE tools alone without it — or
+    /// `None` when neither is on. ADR-F102: `browser` is the AI browser's own
+    /// endpoint, while `browser.ai_control` is on.
+    Host {
+        ide: Option<ide_server::McpEndpoint>,
+        browser: Option<ide_server::McpEndpoint>,
+    },
     /// ADR-F49 decision 24: the restricted session
     /// ([`ide_server::start_restricted_sandbox_session`]), reached through the
     /// sandbox's own IDE channel and offering `getDiagnostics` alone. The URL
@@ -12499,6 +13714,41 @@ struct ProjectMcpServers {
     restricted_ide: Vec<acp::McpServer>,
     /// ADR-F56: whether the `zed` server with the IDE tools is among them.
     gives_ide_tools: bool,
+    /// ADR-F102: what the session would be given with everything on.
+    offer: McpOffer,
+}
+
+/// ADR-F102: the MCP connections a session of an external agent can be given,
+/// each of which its thread can turn off ([`McpSelection`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct McpOffer {
+    /// Zed's own IDE servers (`zed`, and `ide` in a sandbox).
+    pub ide_tools: bool,
+    /// The AI browser's server (`zed-browser`).
+    pub browser: bool,
+    /// The MCP servers the user configured, by their ids, in the order sent.
+    pub servers: Vec<Arc<str>>,
+}
+
+/// ADR-F102: a session's [`SessionMcp`] and its grant of the AI browser
+/// (ADR-F89), which is revoked when the entry goes: the session is reopened
+/// without the browser, closed, or its connection drops.
+struct SessionMcpEntry {
+    mcp: SessionMcp,
+    /// The thread a `load_session` / `resume_session` opened for the entry,
+    /// so that the opening failing or being abandoned takes the entry (and the
+    /// grant the agent was sent) with it, but never a later opening's.
+    opened_for: Option<gpui::EntityId>,
+    _browser_grant: Option<ide_server::BrowserSessionGrant>,
+}
+
+/// ADR-F102: what one session of an external agent was opened with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionMcp {
+    pub selection: McpSelection,
+    pub offer: McpOffer,
+    /// ADR-F56: the `zed` server with the IDE tools was among them.
+    pub ide_tools_given: bool,
 }
 
 /// The MCP servers an agent's session is given. `ide_mcp` says which IDE
@@ -12511,9 +13761,13 @@ struct ProjectMcpServers {
 ///
 /// ADR-F56: either way there is one server named `zed` at most — the host's,
 /// with the IDE tools among its tools, or the restricted channel's `/mcp/zed`.
+///
+/// ADR-F102: the AI browser is a server of its own (`zed-browser`), given only
+/// outside a sandbox, and `selection` leaves out what the thread turned off.
 fn mcp_servers_for_project(
     project: &Entity<Project>,
     ide_mcp: IdeMcp,
+    selection: &McpSelection,
     cx: &App,
 ) -> ProjectMcpServers {
     let context_server_store = project.read(cx).context_server_store().read(cx);
@@ -12529,13 +13783,14 @@ fn mcp_servers_for_project(
         })
     };
     let assist_tools = ide_server::assist_tools_enabled(cx);
-    let (ide_server, restricted_ide) = match ide_mcp {
-        IdeMcp::None => (None, Vec::new()),
+    let (ide_server, restricted_ide, browser_server) = match ide_mcp {
+        IdeMcp::None => (None, Vec::new(), None),
         // ADR-F49 decision 17: asked for only where it may be given, so that
         // a sandboxed agent's session does not start the server for nothing.
-        IdeMcp::Host(endpoint) => (
-            ide_server_entry(endpoint, is_name_taken(ide_server::MCP_SERVER_NAME)),
+        IdeMcp::Host { ide, browser } => (
+            ide_server_entry(ide, is_name_taken(ide_server::MCP_SERVER_NAME)),
             Vec::new(),
+            browser_server_entry(browser, is_name_taken(ide_server::BROWSER_MCP_SERVER_NAME)),
         ),
         IdeMcp::Restricted {
             url,
@@ -12561,19 +13816,16 @@ fn mcp_servers_for_project(
                 .into_iter()
                 .chain(assist)
                 .collect(),
+                // ADR-F89: never in a sandbox.
+                None,
             )
         }
     };
-    let gives_ide_tools = assist_tools
-        && (ide_server.is_some()
-            || restricted_ide.iter().any(|server| {
-                matches!(server, acp::McpServer::Http(server) if server.name == ide_server::MCP_SERVER_NAME)
-            }));
-    let servers = ide_server
-        .into_iter()
-        .chain(configured_server_ids.iter().filter_map(|id| {
+    let configured = configured_server_ids
+        .iter()
+        .filter_map(|id| {
             let configuration = context_server_store.configuration_for_server(id)?;
-            match &*configuration {
+            let server = match &*configuration {
                 project::context_server_store::ContextServerConfiguration::Custom {
                     command,
                     remote,
@@ -12608,13 +13860,76 @@ fn mcp_servers_for_project(
                     ),
                 )),
                 _ => None,
-            }
-        }))
+            };
+            Some((id.0.clone(), server?))
+        })
+        .collect::<Vec<_>>();
+    select_mcp_servers(
+        ide_server,
+        browser_server,
+        restricted_ide,
+        configured,
+        assist_tools,
+        selection,
+    )
+}
+
+/// ADR-F102: the session's list out of everything it could be given, leaving
+/// out what the thread turned off, with a note of what was on offer.
+fn select_mcp_servers(
+    mut ide_server: Option<acp::McpServer>,
+    mut browser_server: Option<acp::McpServer>,
+    mut restricted_ide: Vec<acp::McpServer>,
+    configured: Vec<(Arc<str>, acp::McpServer)>,
+    assist_tools: bool,
+    selection: &McpSelection,
+) -> ProjectMcpServers {
+    let offer = McpOffer {
+        ide_tools: ide_server.is_some() || !restricted_ide.is_empty(),
+        browser: browser_server.is_some(),
+        servers: configured.iter().map(|(id, _)| id.clone()).collect(),
+    };
+    if !selection.ide_tools_enabled() {
+        ide_server = None;
+        restricted_ide.clear();
+    }
+    if !selection.browser_enabled() {
+        browser_server = None;
+    }
+    let gives_ide_tools = assist_tools
+        && (ide_server.is_some()
+            || restricted_ide.iter().any(|server| {
+                matches!(server, acp::McpServer::Http(server) if server.name == ide_server::MCP_SERVER_NAME)
+            }));
+    let servers = ide_server
+        .into_iter()
+        .chain(browser_server)
+        .chain(
+            configured
+                .into_iter()
+                .filter(|(id, _)| selection.server_enabled(id))
+                .map(|(_, server)| server),
+        )
         .collect();
     ProjectMcpServers {
         servers,
         restricted_ide,
         gives_ide_tools,
+        offer,
+    }
+}
+
+/// ADR-F102: what a thread whose agent has not started yet could be given, for
+/// its MCP menu before the first message. Only the session knows for sure (the
+/// sandbox's channel may not come up), so this is the settings' word for it.
+pub fn prelaunch_mcp_offer(project: &Entity<Project>, sandboxed: bool, cx: &App) -> McpOffer {
+    let ide_server_on = ide_server::agent_endpoint_enabled(cx);
+    McpOffer {
+        ide_tools: ide_server_on,
+        browser: ide_server_on && !sandboxed && ide_server::browser_tools_enabled(cx),
+        servers: mcp_servers_for_project(project, IdeMcp::None, &McpSelection::default(), cx)
+            .offer
+            .servers,
     }
 }
 

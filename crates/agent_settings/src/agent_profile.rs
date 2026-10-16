@@ -250,6 +250,49 @@ impl From<settings::ContextServerPresetContent> for ContextServerPreset {
     }
 }
 
+/// ADR-F102: the MCP connections one thread has turned off with the chat
+/// input's MCP menu, on top of what the profile enables. Everything is on by
+/// default, so a thread saved before the menu existed reads back as a new one
+/// starts. Shared by the built-in agent (its tools) and the external agents
+/// (the MCP servers their session is given).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct McpSelection {
+    /// Configured MCP servers (context server ids) turned off.
+    pub disabled_servers: std::collections::BTreeSet<Arc<str>>,
+    /// Zed's own IDE servers of an external agent (`zed`, and `ide` in a
+    /// sandbox) turned off.
+    pub ide_tools_off: bool,
+    /// The AI browser's tools (ADR-F89) turned off.
+    pub browser_off: bool,
+}
+
+impl McpSelection {
+    pub fn is_all_on(&self) -> bool {
+        self.disabled_servers.is_empty() && !self.ide_tools_off && !self.browser_off
+    }
+
+    pub fn server_enabled(&self, server_id: &str) -> bool {
+        !self.disabled_servers.contains(server_id)
+    }
+
+    pub fn set_server_enabled(&mut self, server_id: &str, enabled: bool) {
+        if enabled {
+            self.disabled_servers.remove(server_id);
+        } else {
+            self.disabled_servers.insert(server_id.into());
+        }
+    }
+
+    pub fn ide_tools_enabled(&self) -> bool {
+        !self.ide_tools_off
+    }
+
+    pub fn browser_enabled(&self) -> bool {
+        !self.browser_off
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
