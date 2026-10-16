@@ -361,7 +361,7 @@ fn resolve_absolute_path(
 mod tests {
     use super::*;
     use fs::Fs as _;
-    use gpui::TestAppContext;
+    use gpui::{BorrowAppContext as _, TestAppContext};
     use project::{FakeFs, Project};
     use serde_json::json;
     use settings::SettingsStore;
@@ -374,6 +374,15 @@ mod tests {
         cx.update(|cx| {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
+            // The pause is off by default (ADR-F50); these tests are about it.
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .pause_worktree_code_after_agent_writes = Some(true);
+                });
+            });
         });
         cx.update(|cx| {
             let mut settings = AgentSettings::get_global(cx).clone();

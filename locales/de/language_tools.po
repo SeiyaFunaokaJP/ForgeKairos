@@ -20,6 +20,9 @@ msgstr "(kein Treffer)"
 msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
 msgstr "* Server: {NAME} (ID {ID})\n\n* Version: {VERSION}\n\n* Binärdatei: {BINARY}\n\n* Registrierte Arbeitsbereichsordner:\n{WORKSPACE_FOLDERS}\n\n* Fähigkeiten: {CAPABILITIES}\n\n* Konfiguration: {CONFIGURATION}"
 
+msgid "After an agent wrote to them, these folders' code (language servers and formatters) won't run until you review and resume."
+msgstr "Ein Agent hat in diese Ordner geschrieben. Ihr Code (Sprachserver und Formatierer) wird erst ausgeführt, wenn Sie die Änderungen prüfen und fortsetzen."
+
 msgid "All Servers Operational"
 msgstr "Alle Server betriebsbereit"
 
@@ -28,9 +31,6 @@ msgstr "Alle Hervorhebungen wurden herausgefiltert"
 
 msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
 msgstr "Ein Agent hat erneut geschrieben, nachdem dieser Dialog geöffnet wurde. Prüfen Sie die Änderungen und klicken Sie dann erneut auf „Fortsetzen“."
-
-msgid "An agent wrote to {name}"
-msgstr "Ein Agent hat in „{name}“ geschrieben"
 
 msgid "Clear"
 msgstr "Leeren"
@@ -266,9 +266,6 @@ msgstr "Der Editor enthält keine Texthervorhebungen und keine Hervorhebungen sy
 msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
 msgstr "Der Remote-Server ist zu alt, daher sind Sprachserver und Formatierer auf dem Remote-Host nicht angehalten"
 
-msgid "This folder's code (language servers and formatters) won't run until you review and resume."
-msgstr "Der Code dieses Ordners (Sprachserver und Formatierer) wird erst ausgeführt, wenn Sie prüfen und fortsetzen."
-
 msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
 msgstr "Die Einstellungen dieses Projekts wählen den vollständigen Modus von clangd, den Ihre eigenen Einstellungen nicht ändern. Um mit dem Leichtmodus Speicher zu sparen, ändern Sie `clangd.index_mode` in den Projekteinstellungen."
 
@@ -363,6 +360,11 @@ msgstr "unbekannter Server"
 msgid "{command} ({}, PID {}, {})"
 msgstr "{command} ({}, PID {}, {})"
 
+msgid "{count} folder paused"
+msgid_plural "{count} folders paused"
+msgstr[0] "{count} Ordner pausiert"
+msgstr[1] "{count} Ordner pausiert"
+
 msgid "{} / {} highlights"
 msgstr "{} / {} Hervorhebungen"
 
@@ -388,7 +390,3 @@ msgstr "durchgestrichen"
 msgctxt "highlight style"
 msgid "underline"
 msgstr "unterstrichen"
-
-msgctxt "paused folder code"
-msgid "Review"
-msgstr "Prüfen"

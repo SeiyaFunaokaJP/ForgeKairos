@@ -20,6 +20,9 @@ msgstr "（不匹配）"
 msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
 msgstr "* 服务器：{NAME}（ID {ID}）\n\n* 版本：{VERSION}\n\n* 二进制文件：{BINARY}\n\n* 已注册的工作区文件夹：\n{WORKSPACE_FOLDERS}\n\n* 功能：{CAPABILITIES}\n\n* 配置：{CONFIGURATION}"
 
+msgid "After an agent wrote to them, these folders' code (language servers and formatters) won't run until you review and resume."
+msgstr "由于智能体写入了这些文件夹，在你检查并恢复之前，不会运行它们的代码（语言服务器和格式化程序）。"
+
 msgid "All Servers Operational"
 msgstr "所有服务器运行正常"
 
@@ -28,9 +31,6 @@ msgstr "所有高亮已被筛选掉"
 
 msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
 msgstr "此对话框打开后，智能体再次进行了写入。请审阅更改，然后再次点击“继续”。"
-
-msgid "An agent wrote to {name}"
-msgstr "智能体写入了 {name}"
 
 msgid "Clear"
 msgstr "清除"
@@ -266,9 +266,6 @@ msgstr "编辑器中没有文本、语法或语义标记高亮"
 msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
 msgstr "远程服务器版本过旧，因此远程主机上的语言服务器和格式化程序未暂停"
 
-msgid "This folder's code (language servers and formatters) won't run until you review and resume."
-msgstr "在你审阅并恢复之前，此文件夹的代码（语言服务器和格式化程序）不会运行。"
-
 msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
 msgstr "此项目的设置选择了 clangd 的完整模式，你自己的设置无法更改此项。若要使用轻量模式节省内存，请更改项目设置中的 `clangd.index_mode`。"
 
@@ -361,6 +358,10 @@ msgstr "未知服务器"
 msgid "{command} ({}, PID {}, {})"
 msgstr "{command}（{}，PID {}，{}）"
 
+msgid "{count} folder paused"
+msgid_plural "{count} folders paused"
+msgstr[0] "已暂停 {count} 个文件夹"
+
 msgid "{} / {} highlights"
 msgstr "{} / {} 个高亮"
 
@@ -386,7 +387,3 @@ msgstr "删除线"
 msgctxt "highlight style"
 msgid "underline"
 msgstr "下划线"
-
-msgctxt "paused folder code"
-msgid "Review"
-msgstr "审阅"

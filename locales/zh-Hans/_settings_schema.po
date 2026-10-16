@@ -3951,8 +3951,8 @@ msgid "Whether a thread may lift its network restriction (the network button\nne
 msgstr "会话是否可以解除其网络限制（聊天输入框旁的网络按钮）。内置智能体在沙盒中的终端命令和 fetch 随后无需确认即可访问任意主机；外部智能体会在不带其自身主机列表的情况下重新启动。此项关闭时，该按钮会先询问是否开启此项；但对于内置智能体，在 `allow_all_hosts` 开启期间不会询问（该设置已让其会话可以访问任意主机）。关闭此项时，已解除限制的会话会立即恢复限制（外部智能体会重新启动）。编辑器的网络允许列表仍然适用。在远程主机上，仅当该主机有沙盒时会话才能解除限制。仅从用户设置文件读取：项目设置和智能体都无法开启它。\n默认值：false"
 
 msgctxt "settings schema"
-msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
-msgstr "智能体写入过的工作树是否停止运行其自身的代码（项目语言服务器模式、格式化程序、项目的 prettier），直到用户审阅更改并恢复它。仅从用户设置文件中读取：项目和服务器设置无法将其关闭。\n\n默认值：true"
+msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot change it.\n\nDefault: false"
+msgstr "智能体写入过的工作树是否停止运行其自身的代码（项目语言服务器模式、格式化程序、项目的 prettier），直到用户审阅更改并恢复它。仅从用户设置文件中读取：项目和服务器设置无法更改它。\n\n默认值：false"
 
 msgctxt "settings schema"
 msgid "Whether agents connected over the IDE server may read the output of the\nlast task that failed in this window (the `getLastTaskOutput` tool, at\nmost the last 4 KB of the task's terminal).\n\nDefault: true"

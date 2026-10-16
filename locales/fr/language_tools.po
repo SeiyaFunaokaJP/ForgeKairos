@@ -20,6 +20,9 @@ msgstr "(aucune correspondance)"
 msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
 msgstr "* Serveur : {NAME} (id {ID})\n\n* Version : {VERSION}\n\n* Binaire : {BINARY}\n\n* Dossiers de l'espace de travail enregistrés :\n{WORKSPACE_FOLDERS}\n\n* Capacités : {CAPABILITIES}\n\n* Configuration : {CONFIGURATION}"
 
+msgid "After an agent wrote to them, these folders' code (language servers and formatters) won't run until you review and resume."
+msgstr "Un agent a écrit dans ces dossiers : leur code (serveurs de langage et formateurs) ne s'exécutera pas tant que vous n'aurez pas vérifié et repris."
+
 msgid "All Servers Operational"
 msgstr "Tous les serveurs opérationnels"
 
@@ -28,9 +31,6 @@ msgstr "Toutes les surbrillances sont masquées par les filtres"
 
 msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
 msgstr "Un agent a de nouveau écrit après l'ouverture de cette boîte de dialogue. Examinez les modifications, puis appuyez de nouveau sur Reprendre."
-
-msgid "An agent wrote to {name}"
-msgstr "Un agent a écrit dans {name}"
 
 msgid "Clear"
 msgstr "Effacer"
@@ -266,9 +266,6 @@ msgstr "L'éditeur n'a aucune surbrillance de texte, de syntaxe ou de jetons sé
 msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
 msgstr "Le serveur distant est trop ancien : les serveurs de langage et les formateurs de l'hôte distant ne sont donc pas suspendus"
 
-msgid "This folder's code (language servers and formatters) won't run until you review and resume."
-msgstr "Le code de ce dossier (serveurs de langage et formateurs) ne s'exécutera pas tant que vous n'aurez pas examiné les modifications et repris."
-
 msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
 msgstr "Les paramètres de ce projet choisissent le mode complet de clangd, que vos propres paramètres ne modifient pas. Pour économiser de la mémoire avec le mode léger, modifiez `clangd.index_mode` dans les paramètres du projet."
 
@@ -363,6 +360,11 @@ msgstr "serveur inconnu"
 msgid "{command} ({}, PID {}, {})"
 msgstr "{command} ({}, PID {}, {})"
 
+msgid "{count} folder paused"
+msgid_plural "{count} folders paused"
+msgstr[0] "{count} dossier en pause"
+msgstr[1] "{count} dossiers en pause"
+
 msgid "{} / {} highlights"
 msgstr "{} / {} surbrillances"
 
@@ -388,7 +390,3 @@ msgstr "barré"
 msgctxt "highlight style"
 msgid "underline"
 msgstr "souligné"
-
-msgctxt "paused folder code"
-msgid "Review"
-msgstr "Examiner"

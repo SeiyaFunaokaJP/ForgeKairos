@@ -3951,8 +3951,8 @@ msgid "Whether a thread may lift its network restriction (the network button\nne
 msgstr "스레드가 네트워크 제한을 해제할 수 있는지 여부(채팅 입력란 옆의 네트워크 버튼). 기본 제공 에이전트는 샌드박스 안의 터미널 명령과 fetch가 확인 없이 모든 호스트에 접속하고, 외부 에이전트는 자체 호스트 목록 없이 다시 시작합니다. 이 설정이 꺼져 있으면 그 버튼이 먼저 이 설정을 켤지 묻습니다. 단, 기본 제공 에이전트는 `allow_all_hosts`가 켜져 있는 동안에는 묻지 않습니다(그 설정으로 스레드가 이미 모든 호스트에 접속할 수 있습니다). 이 설정을 끄면 제한을 해제한 스레드가 즉시 다시 제한됩니다(외부 에이전트는 다시 시작합니다). 편집기의 네트워크 허용 목록은 계속 적용됩니다. 원격 호스트에서는 그 호스트에 샌드박스가 있을 때만 스레드가 제한을 해제할 수 있습니다. 사용자 설정 파일에서만 읽습니다. 프로젝트 설정이나 에이전트는 이를 켤 수 없습니다.\n기본값: false"
 
 msgctxt "settings schema"
-msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
-msgstr "에이전트가 쓴 워크트리가 사용자가 변경 사항을 검토하고 재개할 때까지 자체 코드(프로젝트 언어 서버 모드, 포맷터, 프로젝트의 prettier) 실행을 중지할지 여부입니다. 사용자 설정 파일에서만 읽으며, 프로젝트 및 서버 설정으로는 끌 수 없습니다.\n\n기본값: true"
+msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot change it.\n\nDefault: false"
+msgstr "에이전트가 쓴 워크트리가 사용자가 변경 사항을 검토하고 재개할 때까지 자체 코드(프로젝트 언어 서버 모드, 포맷터, 프로젝트의 prettier) 실행을 중지할지 여부입니다. 사용자 설정 파일에서만 읽으며, 프로젝트 및 서버 설정으로는 바꿀 수 없습니다.\n\n기본값: false"
 
 msgctxt "settings schema"
 msgid "Whether agents connected over the IDE server may read the output of the\nlast task that failed in this window (the `getLastTaskOutput` tool, at\nmost the last 4 KB of the task's terminal).\n\nDefault: true"

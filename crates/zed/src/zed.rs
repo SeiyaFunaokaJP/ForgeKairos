@@ -765,11 +765,15 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
         let git_blame_status = cx.new(|_| git_ui::GitBlameStatus::default());
         let merge_conflict_indicator =
             cx.new(|cx| git_ui::MergeConflictIndicator::new(workspace, cx));
+        let paused_worktree_code_indicator = cx.new(|cx| {
+            language_tools::paused_worktree_code::PausedWorktreeCodeIndicator::new(workspace, cx)
+        });
         workspace.status_bar().update(cx, |status_bar, cx| {
             // Leftmost, like VS Code's remote indicator.
             status_bar.add_left_item(remote_status_indicator, window, cx);
             status_bar.add_left_item(search_button, window, cx);
             status_bar.add_left_item(lsp_button, window, cx);
+            status_bar.add_left_item(paused_worktree_code_indicator, window, cx);
             status_bar.add_left_item(diagnostic_summary, window, cx);
             status_bar.add_left_item(active_file_name, window, cx);
             status_bar.add_left_item(git_blame_status, window, cx);

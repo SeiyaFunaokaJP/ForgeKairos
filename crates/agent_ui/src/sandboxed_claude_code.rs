@@ -4148,6 +4148,15 @@ mod tests {
             workspace::AppState::test(cx);
             editor::init(cx);
             ide_server::init(cx);
+            // The pause is off by default (ADR-F50); these tests are about it.
+            cx.update_global::<settings::SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .pause_worktree_code_after_agent_writes = Some(true);
+                });
+            });
         });
     }
 

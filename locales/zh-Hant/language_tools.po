@@ -20,6 +20,9 @@ msgstr "（不相符）"
 msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
 msgstr "* 伺服器：{NAME}（ID {ID}）\n\n* 版本：{VERSION}\n\n* 二進位檔：{BINARY}\n\n* 已註冊的工作區資料夾：\n{WORKSPACE_FOLDERS}\n\n* 功能：{CAPABILITIES}\n\n* 設定：{CONFIGURATION}"
 
+msgid "After an agent wrote to them, these folders' code (language servers and formatters) won't run until you review and resume."
+msgstr "由於代理程式寫入了這些資料夾，在你檢查並繼續之前，不會執行它們的程式碼（語言伺服器與格式化工具）。"
+
 msgid "All Servers Operational"
 msgstr "所有伺服器運作正常"
 
@@ -28,9 +31,6 @@ msgstr "所有醒目提示都已被篩除"
 
 msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
 msgstr "此對話方塊開啟後，代理又再次寫入。請檢閱變更，然後再按一次「繼續執行」。"
-
-msgid "An agent wrote to {name}"
-msgstr "代理已寫入「{name}」"
 
 msgid "Clear"
 msgstr "清除"
@@ -266,9 +266,6 @@ msgstr "此編輯器沒有文字、語法或語意標記醒目提示"
 msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
 msgstr "遠端伺服器版本太舊，因此遠端主機上的語言伺服器和格式器未暫停"
 
-msgid "This folder's code (language servers and formatters) won't run until you review and resume."
-msgstr "在您檢閱並繼續執行之前，不會執行此資料夾中的程式碼（語言伺服器和格式器）。"
-
 msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
 msgstr "此專案的設定選擇了 clangd 的完整模式，您自己的設定無法變更此項目。若要以輕量模式節省記憶體，請變更專案設定中的 `clangd.index_mode`。"
 
@@ -361,6 +358,10 @@ msgstr "未知的伺服器"
 msgid "{command} ({}, PID {}, {})"
 msgstr "{command}（{}，PID {}，{}）"
 
+msgid "{count} folder paused"
+msgid_plural "{count} folders paused"
+msgstr[0] "已暫停 {count} 個資料夾"
+
 msgid "{} / {} highlights"
 msgstr "{} / {} 個醒目提示"
 
@@ -386,7 +387,3 @@ msgstr "刪除線"
 msgctxt "highlight style"
 msgid "underline"
 msgstr "底線"
-
-msgctxt "paused folder code"
-msgid "Review"
-msgstr "檢閱"

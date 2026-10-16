@@ -3951,8 +3951,8 @@ msgid "Whether a thread may lift its network restriction (the network button\nne
 msgstr "會話是否可以解除其網路限制（聊天輸入欄旁的網路按鈕）。內建代理程式在沙箱中的終端機命令和 fetch 之後不經確認即可連線到任何主機；外部代理程式會在不帶其自身主機清單的情況下重新啟動。此項關閉時，該按鈕會先詢問是否開啟此項；但對於內建代理程式，在 `allow_all_hosts` 開啟期間不會詢問（該設定已讓其會話可以連線到任何主機）。關閉此項時，已解除限制的會話會立即恢復限制（外部代理程式會重新啟動）。編輯器的網路允許清單仍然適用。在遠端主機上，僅當該主機有沙箱時會話才能解除限制。僅從使用者設定檔讀取：專案設定和代理程式都無法開啟它。\n預設值：false"
 
 msgctxt "settings schema"
-msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot turn it off.\n\nDefault: true"
-msgstr "代理寫入過的工作樹是否停止執行其自身的程式碼（專案語言伺服器模式、格式器、專案的 prettier），直到使用者檢閱變更並繼續執行。只從使用者設定檔案讀取：專案與伺服器設定無法將其關閉。\n\n預設值：true"
+msgid "Whether a worktree an agent wrote into stops running its own code\n(project language server modes, formatters, the project's prettier)\nuntil the user reviews the changes and resumes it. Read from the user\nsettings file only: project and server settings cannot change it.\n\nDefault: false"
+msgstr "代理寫入過的工作樹是否停止執行其自身的程式碼（專案語言伺服器模式、格式器、專案的 prettier），直到使用者檢閱變更並繼續執行。只從使用者設定檔案讀取：專案與伺服器設定無法變更它。\n\n預設值：false"
 
 msgctxt "settings schema"
 msgid "Whether agents connected over the IDE server may read the output of the\nlast task that failed in this window (the `getLastTaskOutput` tool, at\nmost the last 4 KB of the task's terminal).\n\nDefault: true"

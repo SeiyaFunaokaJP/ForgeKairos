@@ -57,7 +57,7 @@ The outbound network allowlist is not a setting in `settings.json`; it is kept i
 
 | Key | Default | Description |
 |---|---|---|
-| `agent.pause_worktree_code_after_agent_writes` | `true` | A project folder an agent wrote into stops running its own code (formatters, linters, interpreters, build scripts) until you review and resume it. Read only from the user settings file. |
+| `agent.pause_worktree_code_after_agent_writes` | `false` | A project folder an agent wrote into stops running its own code (formatters, linters, interpreters, build scripts) until you review and resume it. Read only from the user settings file. |
 | `agent.language_servers_allowed_while_paused` | `[]` | Extension language servers that keep running while a folder is paused. Read only from the user settings file. |
 | `agent.starts_open` | `false` | Open the agent panel on startup. |
 | `agent.sidebar_enabled` | `false` | Make the window-wide threads sidebar available. |
