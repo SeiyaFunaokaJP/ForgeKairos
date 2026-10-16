@@ -12494,6 +12494,18 @@ pub(crate) mod tests {
         assert_eq!(banner(&view, cx).as_deref(), Some("2.0.0"));
         assert_eq!(connects.load(std::sync::atomic::Ordering::SeqCst), 1);
 
+        // The agent starts with the thread's first message, so by the time a
+        // start reports a version the thread has messages; the banner shows
+        // there too.
+        let thread = view
+            .read_with(cx, |view, _| view.root_thread_view())
+            .expect("a thread");
+        thread.update(cx, |thread, _| thread.list_state.splice(0..0, 1));
+        thread.read_with(cx, |thread, _| {
+            assert!(thread.list_state.item_count() > 0);
+            assert_eq!(thread.new_version_callout().as_deref(), Some("2.0.0"));
+        });
+
         view.update_in(cx, |view, window, cx| view.reset(window, cx));
         cx.run_until_parked();
         assert_eq!(
