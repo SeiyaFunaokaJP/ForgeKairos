@@ -650,6 +650,9 @@ msgstr "無法驗證 Claude Code 發行資訊的簽章。由於可能已遭竄�
 msgid "Couldn't create a sandbox"
 msgstr "無法建立沙箱"
 
+msgid "Couldn't read the agent's options; they appear once it starts."
+msgstr "無法讀取代理的選項；它們會在代理啟動後顯示。"
+
 msgid "Couldn't remove the API key: {error}"
 msgstr "無法移除 API 金鑰：{error}"
 
@@ -1559,6 +1562,9 @@ msgstr "原始輸入："
 msgid "Reading and writing files and running commands are unavailable until you trust the folder."
 msgstr "在您信任該資料夾之前，無法讀寫檔案或執行命令。"
 
+msgid "Reading the agent's options…"
+msgstr "正在讀取代理的選項…"
+
 msgid "Reads the {channel} version number from Anthropic's download server."
 msgstr "從 Anthropic 的下載伺服器讀取 {channel} 的版本號碼。"
 
@@ -2072,6 +2078,9 @@ msgstr[0] "訊息超過大小上限，因此 {count} 個大型附件會縮減為
 
 msgid "The model"
 msgstr "模型"
+
+msgid "The model and the other options are the ones the agent offers. What you pick is set before your first message is sent."
+msgstr "模型和其他選項是此代理提供的內容。你在這裡選擇的內容會在傳送第一則訊息之前生效。"
 
 msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
 msgstr "模型和其他選項來自此代理上一個會話所提供的內容。你在這裡選擇的內容會在傳送第一則訊息之前生效。"

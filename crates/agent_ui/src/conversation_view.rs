@@ -84,7 +84,7 @@ use crate::ModeSelector;
 use crate::ModelSelectorPopover;
 use crate::agent_connection_store::{
     AgentConnectedState, AgentConnectionEntryEvent, AgentConnectionStore, ConnectionPlace,
-    OutsideSandboxConnectionId, UnrestrictedNetworkConnectionId,
+    OutsideSandboxConnectionId, SessionOptionsRead, UnrestrictedNetworkConnectionId,
 };
 use crate::agent_diff::AgentDiff;
 use crate::completion_provider::{AgentContextSelection, AvailableSkill};
@@ -1001,6 +1001,15 @@ pub struct ConversationView {
     /// ADR-F100: what was picked on the not yet started thread's pickers, on
     /// its way to the session the send starts.
     prelaunch_picks: Option<Rc<PrelaunchSessionOptions>>,
+    /// ADR-F103: reading what the agent offers for a not yet started thread
+    /// of an agent no session of which has run yet.
+    prelaunch_options_read: PrelaunchOptionsRead,
+    /// ADR-F103: whether the thread follows the agent once it starts, as
+    /// picked on the not yet started (or idle parked) thread's row.
+    follow_on_start: bool,
+    /// ADR-F103: the Add Context menu of the row of a thread whose agent is
+    /// not running.
+    prelaunch_add_context_menu_handle: PopoverMenuHandle<ContextMenu>,
     agent_server_store: Entity<AgentServerStore>,
     workspace: WeakEntity<Workspace>,
     project: Entity<Project>,
@@ -1232,9 +1241,27 @@ struct ParkedServerState {
     _editor_subscription: Subscription,
 }
 
+/// ADR-F103: where reading what the agent offers, for a not yet started
+/// thread with nothing to offer from a last session, has come.
+enum PrelaunchOptionsRead {
+    /// Not asked for (yet): the thread has the last session's options, or
+    /// has not been shown.
+    NotAsked,
+    Reading {
+        _task: Task<()>,
+    },
+    /// Not read; the options appear once the agent has started.
+    Failed,
+    /// Read and on the pickers, or no longer wanted (the agent was started).
+    Over,
+}
+
 /// ADR-F100: the pickers a not yet started thread shows, built from what the
 /// agent's last session offered ([`SessionOptionsSnapshot`]).
 struct PrelaunchPickers {
+    /// ADR-F103: read before any thread of the agent had started, rather
+    /// than taken from the last thread's session.
+    read_before_start: bool,
     options: Rc<PrelaunchSessionOptions>,
     config_options_view: Option<Entity<ConfigOptionsView>>,
     mode_selector: Option<Entity<ModeSelector>>,
@@ -1467,6 +1494,9 @@ pub(crate) struct AdoptedDraft {
     /// Whether a send the user already asked for is still owed once the thread
     /// is there.
     auto_submit: bool,
+    /// ADR-F103: whether the thread follows the agent, as picked while the
+    /// agent was not running.
+    follow: bool,
 }
 
 // current -> Entity
@@ -1801,6 +1831,9 @@ impl ConversationView {
             launch_choice_fixed: new_thread_launch.is_some() && starts_now,
             outside_confirmed,
             prelaunch_picks: None,
+            prelaunch_options_read: PrelaunchOptionsRead::NotAsked,
+            follow_on_start: false,
+            prelaunch_add_context_menu_handle: PopoverMenuHandle::default(),
             agent_server_store,
             workspace,
             project: project.clone(),
@@ -2932,7 +2965,7 @@ impl ConversationView {
     /// only thing that survives, which is what keeps the user's text, their
     /// mentions and their caret.
     fn park(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some((message_editor, work_dirs)) = self
+        let Some((message_editor, work_dirs, following)) = self
             .as_connected()
             .and_then(|connected| connected.active_view())
             .map(|thread_view| {
@@ -2940,11 +2973,15 @@ impl ConversationView {
                 (
                     thread_view.message_editor.clone(),
                     thread_view.thread.read(cx).work_dirs().cloned(),
+                    thread_view.should_be_following,
                 )
             })
         else {
             return false;
         };
+        // ADR-F103: the thread that comes back follows the agent as this one
+        // did.
+        self.follow_on_start = following;
         // ADR-F99: nothing was ever sent in the draft, so what its agent starts
         // with is the user's to pick again, starting from what it ran with.
         if self.agent.starts_on_first_message() {
@@ -3015,7 +3052,11 @@ impl ConversationView {
         let adopted = AdoptedDraft {
             editor: parked.message_editor.clone(),
             auto_submit: matches!(then, Unpark::AndSend),
+            follow: self.follow_on_start,
         };
+        // ADR-F103: the start goes the usual way, whatever reading the
+        // agent's options before it has come to.
+        self.prelaunch_options_read = PrelaunchOptionsRead::Over;
         let prelaunch_picks = parked
             .prelaunch
             .as_ref()
@@ -6638,6 +6679,7 @@ impl ConversationView {
         cx: &mut Context<Self>,
     ) -> Option<PrelaunchPickers> {
         let snapshot = crate::thread_metadata_store::last_session_options(&agent.agent_id(), cx)?;
+        let read_before_start = snapshot.read_before_start;
         let options = Rc::new(PrelaunchSessionOptions::new(snapshot, agent, cx));
         let fs = project.read(cx).fs().clone();
         // The same choice a running thread makes: an agent's options take the
@@ -6662,6 +6704,7 @@ impl ConversationView {
         let mode_selector = (config_options_view.is_none() && options.has_modes())
             .then(|| cx.new(|_| ModeSelector::new(options.clone(), agent.clone(), fs)));
         Some(PrelaunchPickers {
+            read_before_start,
             options,
             config_options_view,
             mode_selector,
@@ -6675,23 +6718,9 @@ impl ConversationView {
     }
 
     fn record_session_options(&self, thread: &Entity<AcpThread>, cx: &mut App) {
-        let thread = thread.read(cx);
-        let connection = thread.connection().clone();
-        let session_id = thread.session_id().clone();
-        let available_commands = thread.available_commands().to_vec();
-        let config_options = connection
-            .session_config_options(&session_id, cx)
-            .map(|config_options| config_options.config_options());
-        let modes = connection
-            .session_modes(&session_id, cx)
-            .map(|modes| acp_v1::SessionModeState::new(modes.current_mode(), modes.all_modes()));
         crate::thread_metadata_store::record_last_session_options(
             self.agent.agent_id(),
-            SessionOptionsSnapshot {
-                config_options,
-                modes,
-                available_commands,
-            },
+            SessionOptionsSnapshot::of_session(thread, cx),
             cx,
         );
     }
@@ -6768,6 +6797,94 @@ impl ConversationView {
             }
         })
         .detach();
+    }
+
+    /// ADR-F103: a not yet started thread that is shown with nothing to offer
+    /// from a last session reads what the agent offers, in a session of its
+    /// own ([`AgentConnectionStore::read_session_options`]), so that the
+    /// model and the other options can be picked before the first message as
+    /// well. A snapshot another thread wrote meanwhile is shown as it is.
+    fn read_session_options_before_start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(self.prelaunch_options_read, PrelaunchOptionsRead::NotAsked)
+            || !self.agent.reads_session_options_before_start()
+            || !matches!(
+                &self.server_state,
+                ServerState::Parked(parked) if parked.not_started && parked.prelaunch.is_none()
+            )
+        {
+            return;
+        }
+        if crate::thread_metadata_store::last_session_options(&self.agent.agent_id(), cx).is_some()
+        {
+            self.prelaunch_options_read = PrelaunchOptionsRead::Over;
+            self.show_prelaunch_pickers(window, cx);
+            return;
+        }
+        let key = self.connection_key.clone();
+        let agent = self.agent.clone();
+        let read = self
+            .connection_store
+            .update(cx, |store, cx| store.read_session_options(key, agent, cx));
+        self.prelaunch_options_read = match read {
+            SessionOptionsRead::Failed => PrelaunchOptionsRead::Failed,
+            SessionOptionsRead::Reading(read) => PrelaunchOptionsRead::Reading {
+                _task: cx.spawn_in(window, async move |this, cx| {
+                    let result = read.await;
+                    this.update_in(cx, |this, window, cx| {
+                        if !matches!(
+                            this.prelaunch_options_read,
+                            PrelaunchOptionsRead::Reading { .. }
+                        ) {
+                            return;
+                        }
+                        match result {
+                            Ok(()) => {
+                                this.prelaunch_options_read = PrelaunchOptionsRead::Over;
+                                this.show_prelaunch_pickers(window, cx);
+                            }
+                            Err(_) => this.prelaunch_options_read = PrelaunchOptionsRead::Failed,
+                        }
+                        cx.notify();
+                    })
+                    .log_err();
+                }),
+            },
+        };
+        cx.notify();
+    }
+
+    /// ADR-F103: puts the agent's options, read after this not yet started
+    /// thread was opened, on its row, and its slash commands in its box.
+    fn show_prelaunch_pickers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(
+            &self.server_state,
+            ServerState::Parked(parked) if parked.not_started && parked.prelaunch.is_none()
+        ) {
+            return;
+        }
+        let Some(prelaunch) =
+            Self::prelaunch_pickers(&self.agent, &self.project, &self.workspace, window, cx)
+        else {
+            return;
+        };
+        let display_name =
+            agent_display_name(self.agent_server_store.read(cx), &self.agent.agent_id());
+        let ServerState::Parked(parked) = &mut self.server_state else {
+            return;
+        };
+        let available_commands = prelaunch.options.available_commands.clone();
+        if !available_commands.is_empty() {
+            let placeholder = placeholder_text(display_name.as_ref(), true);
+            parked.message_editor.update(cx, |editor, cx| {
+                editor
+                    .session_capabilities()
+                    .write()
+                    .set_available_commands(available_commands);
+                editor.set_placeholder_text(&placeholder, window, cx);
+            });
+        }
+        parked.prelaunch = Some(prelaunch);
+        cx.notify();
     }
 
     fn start_agent_outside_sandbox(
@@ -6978,6 +7095,19 @@ impl ConversationView {
                 .children(prelaunch.config_options_view.clone())
                 .children(prelaunch.mode_selector.clone())
         });
+        let pickers_label = prelaunch.map(|prelaunch| {
+            if prelaunch.read_before_start {
+                i18n::t!(
+                    "The model and the other options are the ones the agent offers. What you \
+                     pick is set before your first message is sent."
+                )
+            } else {
+                i18n::t!(
+                    "The model and the other options are the ones this agent's last thread \
+                     offered. What you pick is set before your first message is sent."
+                )
+            }
+        });
         v_flex()
             .w_full()
             .min_w_0()
@@ -6992,15 +7122,8 @@ impl ConversationView {
                     .color(Color::Muted),
                 )
             })
-            .when(not_started && pickers.is_some(), |this| {
-                this.child(
-                    Label::new(i18n::t!(
-                        "The model and the other options are the ones this agent's last thread \
-                         offered. What you pick is set before your first message is sent."
-                    ))
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
-                )
+            .when_some(pickers_label.filter(|_| not_started), |this, label| {
+                this.child(Label::new(label).size(LabelSize::Small).color(Color::Muted))
             })
             .child(
                 h_flex()
@@ -7009,10 +7132,119 @@ impl ConversationView {
                     .flex_wrap()
                     .gap_1()
                     .justify_end()
+                    .child(self.render_prelaunch_context_buttons(message_editor, cx))
+                    .child(div().flex_1())
                     .children(self.render_launch_switches(cx))
                     .children(pickers)
+                    .children(self.render_prelaunch_options_read(not_started, prelaunch.is_some()))
                     .child(send_button),
             )
+    }
+
+    /// ADR-F103: the buttons left of a running thread's row, on the row of a
+    /// thread whose agent is not running: Add Context acts on the draft box
+    /// as it does on a thread's, and following picked here is on once the
+    /// agent starts.
+    fn render_prelaunch_context_buttons(
+        &self,
+        message_editor: &Entity<MessageEditor>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let focus_handle = message_editor.focus_handle(cx);
+        let add_context = PopoverMenu::new("prelaunch-add-context-menu")
+            .trigger_with_tooltip(
+                IconButton::new("prelaunch-add-context", IconName::Plus)
+                    .icon_size(IconSize::Small)
+                    .icon_color(Color::Muted),
+                move |_window, cx| {
+                    Tooltip::for_action_in(
+                        i18n::t!("Add Context"),
+                        &OpenAddContextMenu,
+                        &focus_handle,
+                        cx,
+                    )
+                },
+            )
+            .anchor(gpui::Anchor::BottomLeft)
+            .with_handle(self.prelaunch_add_context_menu_handle.clone())
+            .offset(gpui::Point {
+                x: px(0.0),
+                y: px(-2.0),
+            })
+            .menu({
+                let message_editor = message_editor.clone();
+                let workspace = self.workspace.clone();
+                move |window, cx| {
+                    let session_capabilities =
+                        message_editor.read(cx).session_capabilities().clone();
+                    Some(ThreadView::add_context_menu(
+                        message_editor.clone(),
+                        workspace.clone(),
+                        &session_capabilities,
+                        window,
+                        cx,
+                    ))
+                }
+            });
+
+        let following = self.follow_on_start;
+        let agent_display_name =
+            agent_display_name(self.agent_server_store.read(cx), &self.agent.agent_id());
+        let is_native_agent = self.agent.agent_id().as_ref() == agent::ZED_AGENT_ID.as_ref();
+        let tooltip_label = match (following, is_native_agent) {
+            (true, true) => i18n::t!("Stop Following the {}", agent_display_name),
+            (true, false) => i18n::t!("Stop Following {}", agent_display_name),
+            (false, true) => i18n::t!("Follow the {}", agent_display_name),
+            (false, false) => i18n::t!("Follow {}", agent_display_name),
+        };
+        let follow = IconButton::new("prelaunch-follow-agent", IconName::Crosshair)
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .toggle_state(following)
+            .selected_icon_color(Some(Color::Custom(cx.theme().players().agent().cursor)))
+            .tooltip(move |_window, cx| {
+                if following {
+                    Tooltip::for_action(tooltip_label.clone(), &Follow, cx)
+                } else {
+                    Tooltip::with_meta(
+                        tooltip_label.clone(),
+                        Some(&Follow),
+                        i18n::t!("Track the agent's location as it reads and edits files."),
+                        cx,
+                    )
+                }
+            })
+            .on_click(cx.listener(|this, _, _window, cx| {
+                this.follow_on_start = !this.follow_on_start;
+                cx.notify();
+            }));
+
+        h_flex()
+            .min_w_0()
+            .flex_wrap()
+            .gap_0p5()
+            .child(add_context)
+            .child(follow)
+    }
+
+    /// ADR-F103: in the pickers' place, while the agent's options are read
+    /// for a not yet started thread, or why there are none.
+    fn render_prelaunch_options_read(
+        &self,
+        not_started: bool,
+        has_pickers: bool,
+    ) -> Option<impl IntoElement> {
+        if !not_started || has_pickers {
+            return None;
+        }
+        let label = match &self.prelaunch_options_read {
+            PrelaunchOptionsRead::Reading { .. } => i18n::t!("Reading the agent's options…"),
+            PrelaunchOptionsRead::Failed => {
+                i18n::t!("Couldn't read the agent's options; they appear once it starts.")
+            }
+            PrelaunchOptionsRead::NotAsked | PrelaunchOptionsRead::Over => return None,
+        };
+        Some(Label::new(label).size(LabelSize::Small).color(Color::Muted))
     }
 
     fn render_launch_switches(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
@@ -7386,6 +7618,7 @@ impl ConversationView {
 impl Render for ConversationView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_request_elicitation_states(window, cx);
+        self.read_session_options_before_start(window, cx);
         let request_elicitation_connection = self.request_elicitation_connection();
         let active_thread_renders_request_elicitations =
             self.active_thread_renders_request_elicitations();
@@ -7466,6 +7699,10 @@ impl Render for ConversationView {
                     .justify_center()
                     .on_action(cx.listener(|this, _: &ReconnectParkedAgent, window, cx| {
                         this.unpark(Unpark::Only, window, cx);
+                    }))
+                    .on_action(cx.listener(|this, _: &OpenAddContextMenu, window, cx| {
+                        let menu_handle = this.prelaunch_add_context_menu_handle.clone();
+                        window.defer(cx, move |window, cx| menu_handle.toggle(window, cx));
                     }))
                     .child(
                         v_flex()

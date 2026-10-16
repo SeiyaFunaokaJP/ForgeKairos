@@ -1252,6 +1252,158 @@ impl AcpConnection {
         &self.agent_capabilities.prompt_capabilities
     }
 
+    /// A new session for a thread, or ADR-F103's session that is only there
+    /// for what the agent offers in it, which gets no MCP servers (so that
+    /// nothing the user configured is started for it) and none of the user's
+    /// defaults (nothing is asked of the agent but the session).
+    fn start_new_session(
+        self: Rc<Self>,
+        project: Entity<Project>,
+        work_dirs: PathList,
+        purpose: NewSessionPurpose,
+        cx: &mut App,
+    ) -> Task<Result<Entity<AcpThread>>> {
+        let directories = match self.session_directories_from_work_dirs(&work_dirs) {
+            Ok(directories) => directories,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let name = self.id.0.clone();
+        let (servers, restricted_ide) = match purpose {
+            NewSessionPurpose::Thread => {
+                let ProjectMcpServers {
+                    servers,
+                    restricted_ide,
+                    ..
+                } = self.project_mcp_servers(&project, cx);
+                (servers, restricted_ide)
+            }
+            NewSessionPurpose::ReadOptions => (Vec::new(), Vec::new()),
+        };
+        let request = directories.into_new_session_request(servers);
+        // ADR-F49 decision 23: the folders and the MCP servers are named the
+        // way the agent's sandbox sees them; one that cannot be named there is
+        // left out, and a working directory that cannot is an error, since
+        // there would be no session to start.
+        let mut request = match self.paths.as_ref() {
+            Some(paths) => match paths.new_session_to_client(request) {
+                Ok((request, dropped)) => {
+                    note_dropped_mcp_servers(&self.id, dropped);
+                    request
+                }
+                Err(error) => return Task::ready(Err(error)),
+            },
+            None => request,
+        };
+        // ADR-F49 decision 24: after the translation, whose loopback rule
+        // would drop it — this one really is reachable, on the sandbox's own
+        // loopback rather than this machine's.
+        request.mcp_servers.extend(restricted_ide);
+        // ADR-F49 decision 18 / ADR-F50: see `open_or_create_session` — the
+        // agent writes while the session is being created as well.
+        let session_writer = acp_thread::register_agent_process_writer(self.as_ref(), &project, cx);
+
+        cx.spawn(async move |cx| {
+            let _session_writer = session_writer;
+            let response = self
+                .connection
+                .send_request(request)
+                .block_task()
+            .await
+            .map_err(map_acp_error)?;
+
+            let (modes, config_options) = config_state(response.modes, response.config_options);
+
+            let default_mode = match purpose {
+                NewSessionPurpose::Thread => self.defaults.mode(),
+                NewSessionPurpose::ReadOptions => None,
+            };
+            if let Some(default_mode) = default_mode {
+                if let Some(modes) = modes.as_ref() {
+                    let mut modes_ref = modes.borrow_mut();
+                    let has_mode = modes_ref
+                        .available_modes
+                        .iter()
+                        .any(|mode| mode.id == default_mode);
+
+                    if has_mode {
+                        let initial_mode_id = modes_ref.current_mode_id.clone();
+
+                        cx.spawn({
+                            let default_mode = default_mode.clone();
+                            let session_id = response.session_id.clone();
+                            let modes = modes.clone();
+                            let conn = self.connection.clone();
+                            async move |_| {
+                                let result = conn
+                                    .send_request(acp::SetSessionModeRequest::new(
+                                        session_id,
+                                        default_mode,
+                                    ))
+                                    .block_task()
+                                .await
+                                .log_err();
+
+                                if result.is_none() {
+                                    modes.borrow_mut().current_mode_id = initial_mode_id;
+                                }
+                            }
+                        })
+                        .detach();
+
+                        modes_ref.current_mode_id = default_mode;
+                    } else {
+                        let available_modes = modes_ref
+                            .available_modes
+                            .iter()
+                            .map(|mode| format!("- `{}`: {}", mode.id, mode.name))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+
+                        log::warn!(
+                            "`{default_mode}` is not valid {name} mode. Available options:\n{available_modes}",
+                        );
+                    }
+                }
+            }
+
+            if let Some(config_opts) = config_options.as_ref()
+                && purpose == NewSessionPurpose::Thread
+            {
+                self.apply_default_config_options(&response.session_id, config_opts, cx);
+            }
+
+            let action_log = cx.new(|_| ActionLog::new(project.clone()));
+            let thread: Entity<AcpThread> = cx.new(|cx| {
+                AcpThread::new(
+                    None,
+                    None,
+                    Some(work_dirs),
+                    self.clone(),
+                    project,
+                    action_log,
+                    response.session_id.clone(),
+                    // ACP doesn't currently support per-session prompt capabilities or changing capabilities dynamically.
+                    watch::Receiver::constant(
+                        self.agent_capabilities.prompt_capabilities.clone(),
+                    ),
+                    cx,
+                )
+            });
+
+            cx.update(|cx| {
+                self.register_session(
+                    response.session_id,
+                    &thread,
+                    modes,
+                    config_options.map(ConfigOptions::new),
+                    cx,
+                )
+            });
+
+            Ok(thread)
+        })
+    }
+
     /// ADR-F49: the IDE server this connection's sessions are given. Zed's own
     /// only outside a sandbox (decision 17); inside one, the restricted
     /// session on the sandbox's own loopback when its channel came up
@@ -1803,6 +1955,14 @@ impl AcpConnection {
             }
         }
     }
+}
+
+/// What [`AcpConnection::start_new_session`] starts a session for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NewSessionPurpose {
+    Thread,
+    /// ADR-F103: only to read what the agent offers in a session.
+    ReadOptions,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3836,134 +3996,16 @@ impl AgentConnection for AcpConnection {
         work_dirs: PathList,
         cx: &mut App,
     ) -> Task<Result<Entity<AcpThread>>> {
-        let directories = match self.session_directories_from_work_dirs(&work_dirs) {
-            Ok(directories) => directories,
-            Err(error) => return Task::ready(Err(error)),
-        };
-        let name = self.id.0.clone();
-        let ProjectMcpServers {
-            servers,
-            restricted_ide,
-            ..
-        } = self.project_mcp_servers(&project, cx);
-        let request = directories.into_new_session_request(servers);
-        // ADR-F49 decision 23: the folders and the MCP servers are named the
-        // way the agent's sandbox sees them; one that cannot be named there is
-        // left out, and a working directory that cannot is an error, since
-        // there would be no session to start.
-        let mut request = match self.paths.as_ref() {
-            Some(paths) => match paths.new_session_to_client(request) {
-                Ok((request, dropped)) => {
-                    note_dropped_mcp_servers(&self.id, dropped);
-                    request
-                }
-                Err(error) => return Task::ready(Err(error)),
-            },
-            None => request,
-        };
-        // ADR-F49 decision 24: after the translation, whose loopback rule
-        // would drop it — this one really is reachable, on the sandbox's own
-        // loopback rather than this machine's.
-        request.mcp_servers.extend(restricted_ide);
-        // ADR-F49 decision 18 / ADR-F50: see `open_or_create_session` — the
-        // agent writes while the session is being created as well.
-        let session_writer = acp_thread::register_agent_process_writer(self.as_ref(), &project, cx);
+        self.start_new_session(project, work_dirs, NewSessionPurpose::Thread, cx)
+    }
 
-        cx.spawn(async move |cx| {
-            let _session_writer = session_writer;
-            let response = self
-                .connection
-                .send_request(request)
-                .block_task()
-            .await
-            .map_err(map_acp_error)?;
-
-            let (modes, config_options) = config_state(response.modes, response.config_options);
-
-            let default_mode = self.defaults.mode();
-            if let Some(default_mode) = default_mode {
-                if let Some(modes) = modes.as_ref() {
-                    let mut modes_ref = modes.borrow_mut();
-                    let has_mode = modes_ref
-                        .available_modes
-                        .iter()
-                        .any(|mode| mode.id == default_mode);
-
-                    if has_mode {
-                        let initial_mode_id = modes_ref.current_mode_id.clone();
-
-                        cx.spawn({
-                            let default_mode = default_mode.clone();
-                            let session_id = response.session_id.clone();
-                            let modes = modes.clone();
-                            let conn = self.connection.clone();
-                            async move |_| {
-                                let result = conn
-                                    .send_request(acp::SetSessionModeRequest::new(
-                                        session_id,
-                                        default_mode,
-                                    ))
-                                    .block_task()
-                                .await
-                                .log_err();
-
-                                if result.is_none() {
-                                    modes.borrow_mut().current_mode_id = initial_mode_id;
-                                }
-                            }
-                        })
-                        .detach();
-
-                        modes_ref.current_mode_id = default_mode;
-                    } else {
-                        let available_modes = modes_ref
-                            .available_modes
-                            .iter()
-                            .map(|mode| format!("- `{}`: {}", mode.id, mode.name))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-
-                        log::warn!(
-                            "`{default_mode}` is not valid {name} mode. Available options:\n{available_modes}",
-                        );
-                    }
-                }
-            }
-
-            if let Some(config_opts) = config_options.as_ref() {
-                self.apply_default_config_options(&response.session_id, config_opts, cx);
-            }
-
-            let action_log = cx.new(|_| ActionLog::new(project.clone()));
-            let thread: Entity<AcpThread> = cx.new(|cx| {
-                AcpThread::new(
-                    None,
-                    None,
-                    Some(work_dirs),
-                    self.clone(),
-                    project,
-                    action_log,
-                    response.session_id.clone(),
-                    // ACP doesn't currently support per-session prompt capabilities or changing capabilities dynamically.
-                    watch::Receiver::constant(
-                        self.agent_capabilities.prompt_capabilities.clone(),
-                    ),
-                    cx,
-                )
-            });
-
-            cx.update(|cx| {
-                self.register_session(
-                    response.session_id,
-                    &thread,
-                    modes,
-                    config_options.map(ConfigOptions::new),
-                    cx,
-                )
-            });
-
-            Ok(thread)
-        })
+    fn new_session_to_read_options(
+        self: Rc<Self>,
+        project: Entity<Project>,
+        work_dirs: PathList,
+        cx: &mut App,
+    ) -> Task<Result<Entity<AcpThread>>> {
+        self.start_new_session(project, work_dirs, NewSessionPurpose::ReadOptions, cx)
     }
 
     fn supports_load_session(&self) -> bool {
@@ -4522,6 +4564,8 @@ pub mod test_support {
         pub close_session_count: Arc<AtomicUsize>,
         pub authenticate_count: Arc<AtomicUsize>,
         pub logout_count: Arc<AtomicUsize>,
+        /// The `session/new` requests the agent was sent, in order.
+        pub new_session_requests: Arc<Mutex<Vec<acp::NewSessionRequest>>>,
         pub keep_agent_alive: Task<anyhow::Result<()>>,
     }
 
@@ -4551,6 +4595,17 @@ pub mod test_support {
             cx: &mut App,
         ) -> Task<Result<Entity<AcpThread>>> {
             self.inner.clone().new_session(project, work_dirs, cx)
+        }
+
+        fn new_session_to_read_options(
+            self: Rc<Self>,
+            project: Entity<Project>,
+            work_dirs: PathList,
+            cx: &mut App,
+        ) -> Task<Result<Entity<AcpThread>>> {
+            self.inner
+                .clone()
+                .new_session_to_read_options(project, work_dirs, cx)
         }
 
         fn supports_load_session(&self) -> bool {
@@ -4707,6 +4762,7 @@ pub mod test_support {
 
         let authenticate_count = Arc::new(AtomicUsize::new(0));
         let logout_count = Arc::new(AtomicUsize::new(0));
+        let new_session_requests = Arc::new(Mutex::new(Vec::new()));
         let sessions: Rc<RefCell<HashMap<acp::SessionId, AcpSession>>> =
             Rc::new(RefCell::new(HashMap::default()));
         let client_session_list: Rc<RefCell<Option<Rc<AcpSessionList>>>> =
@@ -4772,8 +4828,16 @@ pub mod test_support {
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
-                async move |_req: acp::NewSessionRequest, responder, _cx| {
-                    responder.respond(acp::NewSessionResponse::new(acp::SessionId::new("unused")))
+                {
+                    let new_session_requests = new_session_requests.clone();
+                    async move |req: acp::NewSessionRequest, responder, _cx| {
+                        new_session_requests
+                            .lock()
+                            .expect("new session requests lock should not be poisoned")
+                            .push(req);
+                        responder
+                            .respond(acp::NewSessionResponse::new(acp::SessionId::new("unused")))
+                    }
                 },
                 agent_client_protocol::on_receive_request!(),
             )
@@ -4902,6 +4966,7 @@ pub mod test_support {
             close_session_count,
             authenticate_count,
             logout_count,
+            new_session_requests,
             keep_agent_alive,
         })
     }
@@ -7239,6 +7304,78 @@ mod tests {
         connection_rx
             .await
             .expect("failed to receive ACP connection")
+    }
+
+    /// ADR-F103: the session that only reads what the agent offers is given
+    /// none of the MCP servers a thread's session is given, so that nothing
+    /// the user configured is started for it.
+    #[gpui::test]
+    async fn a_session_to_read_options_is_given_no_mcp_servers(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/", serde_json::json!({ "a": {} })).await;
+        let project = project::Project::test(fs, [std::path::Path::new("/a")], cx).await;
+        let harness = test_support::connect_fake_acp_connection(project.clone(), cx).await;
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |content| {
+                    content.project.context_servers.insert(
+                        "configured".into(),
+                        settings::ContextServerSettingsContent::Http {
+                            enabled: true,
+                            url: "http://127.0.0.1:1/mcp".to_string(),
+                            headers: HashMap::default(),
+                            timeout: None,
+                            oauth: None,
+                        },
+                    );
+                });
+            })
+        });
+        cx.run_until_parked();
+        assert!(
+            !cx.update(|cx| mcp_servers_for_project(&project, IdeMcp::None, cx))
+                .servers
+                .is_empty(),
+            "the project has a server a thread's session is given"
+        );
+
+        let work_dirs = PathList::new(&[std::path::Path::new("/a")]);
+        let thread = cx
+            .update(|cx| {
+                harness
+                    .connection
+                    .clone()
+                    .new_session(project.clone(), work_dirs.clone(), cx)
+            })
+            .await
+            .expect("a thread's session starts");
+        let options_session = cx
+            .update(|cx| {
+                harness.connection.clone().new_session_to_read_options(
+                    project.clone(),
+                    work_dirs,
+                    cx,
+                )
+            })
+            .await
+            .expect("the session to read options starts");
+
+        let requests = harness
+            .new_session_requests
+            .lock()
+            .expect("new session requests lock should not be poisoned")
+            .clone();
+        assert_eq!(requests.len(), 2);
+        assert!(!requests[0].mcp_servers.is_empty());
+        assert!(
+            requests[1].mcp_servers.is_empty(),
+            "nothing is started for a session that only reads the options"
+        );
+        drop((thread, options_session));
     }
 
     #[gpui::test]

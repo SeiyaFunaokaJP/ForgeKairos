@@ -647,6 +647,9 @@ msgstr "Claude Code のリリース情報の署名を検証できませんでし
 msgid "Couldn't create a sandbox"
 msgstr "サンドボックスを作成できませんでした"
 
+msgid "Couldn't read the agent's options; they appear once it starts."
+msgstr "エージェントのオプションを読み込めませんでした。起動すると表示されます。"
+
 msgid "Couldn't remove the API key: {error}"
 msgstr "API キーを削除できませんでした: {error}"
 
@@ -1556,6 +1559,9 @@ msgstr "生の入力:"
 msgid "Reading and writing files and running commands are unavailable until you trust the folder."
 msgstr "ファイルの読み書きやコマンド実行は、フォルダーを信頼するまで使えません。"
 
+msgid "Reading the agent's options…"
+msgstr "エージェントのオプションを読み込んでいます…"
+
 msgid "Reads the {channel} version number from Anthropic's download server."
 msgstr "{channel}の版番号を Anthropic の配布元から読み取ります。"
 
@@ -2069,6 +2075,9 @@ msgstr[0] "1 メッセージの上限を超えるため、大きい添付 {count
 
 msgid "The model"
 msgstr "モデル"
+
+msgid "The model and the other options are the ones the agent offers. What you pick is set before your first message is sent."
+msgstr "モデルとその他のオプションは、このエージェントで選べるものです。ここで選んだものは、最初のメッセージを送信する前に設定されます。"
 
 msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
 msgstr "モデルとその他のオプションは、このエージェントの前回のスレッドで選べたものです。ここで選んだものは、最初のメッセージを送信する前に設定されます。"

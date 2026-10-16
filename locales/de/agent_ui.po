@@ -650,6 +650,9 @@ msgstr "Die Signatur der Release-Informationen von Claude Code konnte nicht übe
 msgid "Couldn't create a sandbox"
 msgstr "Sandbox konnte nicht erstellt werden"
 
+msgid "Couldn't read the agent's options; they appear once it starts."
+msgstr "Die Optionen des Agenten konnten nicht gelesen werden; sie erscheinen, sobald er startet."
+
 msgid "Couldn't remove the API key: {error}"
 msgstr "Der API-Schlüssel konnte nicht entfernt werden: {error}"
 
@@ -1562,6 +1565,9 @@ msgstr "Roheingabe:"
 msgid "Reading and writing files and running commands are unavailable until you trust the folder."
 msgstr "Das Lesen und Schreiben von Dateien und das Ausführen von Befehlen sind nicht verfügbar, bis Sie dem Ordner vertrauen."
 
+msgid "Reading the agent's options…"
+msgstr "Die Optionen des Agenten werden gelesen…"
+
 msgid "Reads the {channel} version number from Anthropic's download server."
 msgstr "Liest die Versionsnummer ({channel}) vom Downloadserver von Anthropic."
 
@@ -2076,6 +2082,9 @@ msgstr[1] "Die Nachricht überschreitet ihre Größenbeschränkung, daher werden
 
 msgid "The model"
 msgstr "Das Modell"
+
+msgid "The model and the other options are the ones the agent offers. What you pick is set before your first message is sent."
+msgstr "Das Modell und die anderen Optionen sind die, die der Agent anbietet. Was du hier wählst, wird eingestellt, bevor deine erste Nachricht gesendet wird."
 
 msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
 msgstr "Das Modell und die anderen Optionen sind die, die der letzte Thread dieses Agenten angeboten hat. Was du hier wählst, wird eingestellt, bevor deine erste Nachricht gesendet wird."

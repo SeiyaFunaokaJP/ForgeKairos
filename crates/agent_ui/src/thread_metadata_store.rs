@@ -458,6 +458,31 @@ pub struct SessionOptionsSnapshot {
     pub modes: Option<acp::SessionModeState>,
     #[serde(default)]
     pub available_commands: Vec<acp::AvailableCommand>,
+    /// ADR-F103: read in a session of its own before any thread of the agent
+    /// had started, rather than from a thread's session.
+    #[serde(default)]
+    pub read_before_start: bool,
+}
+
+impl SessionOptionsSnapshot {
+    /// What the session of `thread` offers now.
+    pub fn of_session(thread: &Entity<acp_thread::AcpThread>, cx: &App) -> Self {
+        let thread = thread.read(cx);
+        let connection = thread.connection().clone();
+        let session_id = thread.session_id().clone();
+        let config_options = connection
+            .session_config_options(&session_id, cx)
+            .map(|config_options| config_options.config_options());
+        let modes = connection
+            .session_modes(&session_id, cx)
+            .map(|modes| acp::SessionModeState::new(modes.current_mode(), modes.all_modes()));
+        Self {
+            config_options,
+            modes,
+            available_commands: thread.available_commands().to_vec(),
+            read_before_start: false,
+        }
+    }
 }
 
 #[derive(Default)]

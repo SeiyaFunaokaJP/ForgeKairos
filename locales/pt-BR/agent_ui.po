@@ -650,6 +650,9 @@ msgstr "Não foi possível verificar a assinatura das informações da versão d
 msgid "Couldn't create a sandbox"
 msgstr "Não foi possível criar um sandbox"
 
+msgid "Couldn't read the agent's options; they appear once it starts."
+msgstr "Não foi possível ler as opções do agente; elas aparecem quando ele iniciar."
+
 msgid "Couldn't remove the API key: {error}"
 msgstr "Não foi possível remover a chave de API: {error}"
 
@@ -1562,6 +1565,9 @@ msgstr "Entrada bruta:"
 msgid "Reading and writing files and running commands are unavailable until you trust the folder."
 msgstr "Ler e gravar arquivos e executar comandos ficam indisponíveis até você confiar na pasta."
 
+msgid "Reading the agent's options…"
+msgstr "Lendo as opções do agente…"
+
 msgid "Reads the {channel} version number from Anthropic's download server."
 msgstr "Lê o número de versão de {channel} no servidor de download da Anthropic."
 
@@ -2076,6 +2082,9 @@ msgstr[1] "A mensagem excede o limite de tamanho, então {count} anexos grandes 
 
 msgid "The model"
 msgstr "O modelo"
+
+msgid "The model and the other options are the ones the agent offers. What you pick is set before your first message is sent."
+msgstr "O modelo e as outras opções são os que o agente oferece. O que você escolher é aplicado antes de sua primeira mensagem ser enviada."
 
 msgid "The model and the other options are the ones this agent's last thread offered. What you pick is set before your first message is sent."
 msgstr "O modelo e as outras opções são os que a última conversa deste agente ofereceu. O que você escolher é aplicado antes de sua primeira mensagem ser enviada."

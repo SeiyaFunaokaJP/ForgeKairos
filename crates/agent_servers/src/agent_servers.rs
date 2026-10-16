@@ -125,6 +125,15 @@ pub trait AgentServer: Send {
         false
     }
 
+    /// ADR-F103: whether what a session of this agent offers (its model and
+    /// other options, its modes and slash commands) may be read in a session
+    /// of its own ([`AgentConnection::new_session_to_read_options`]) before
+    /// the agent's first thread has started, so that a new thread can offer
+    /// them from the very start.
+    fn reads_session_options_before_start(&self) -> bool {
+        false
+    }
+
     fn default_mode(&self, _cx: &App) -> Option<acp_schema::SessionModeId> {
         None
     }

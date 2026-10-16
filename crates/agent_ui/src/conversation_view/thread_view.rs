@@ -887,6 +887,7 @@ impl ThreadView {
         let placeholder = placeholder_text(agent_display_name.as_ref(), has_slash_completions);
 
         let mut should_auto_submit = false;
+        let mut should_be_following = false;
         let mut show_external_source_prompt_warning = false;
 
         // ADR-F49 (new decision): a draft that was parked while its agent was
@@ -896,6 +897,9 @@ impl ThreadView {
         // was last told about a connection that is gone.
         let adopted_editor = adopted_draft.map(|adopted| {
             should_auto_submit = adopted.auto_submit;
+            // ADR-F103: following picked before the agent started is on from
+            // its first message.
+            should_be_following = adopted.follow;
             let editor = adopted.editor;
             editor.update(cx, |editor, cx| {
                 editor.set_session_capabilities(session_capabilities.clone(), cx);
@@ -1139,7 +1143,7 @@ impl ThreadView {
             plan_expanded: false,
             queue_expanded: true,
             editor_expanded: false,
-            should_be_following: false,
+            should_be_following,
             editing_message: None,
             message_queue: MessageQueue::default(),
             turn_fields: TurnFields::default(),
@@ -6190,9 +6194,25 @@ impl ThreadView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<ContextMenu> {
-        let message_editor = self.message_editor.clone();
-        let workspace = self.workspace.clone();
-        let session_capabilities = self.session_capabilities.read();
+        Self::add_context_menu(
+            self.message_editor.clone(),
+            self.workspace.clone(),
+            &self.session_capabilities,
+            window,
+            cx,
+        )
+    }
+
+    /// The Add Context menu of `message_editor`. ADR-F103: also a thread's
+    /// before its agent has started, which has no [`ThreadView`] yet.
+    pub(super) fn add_context_menu(
+        message_editor: Entity<crate::message_editor::MessageEditor>,
+        workspace: WeakEntity<Workspace>,
+        session_capabilities: &SharedSessionCapabilities,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<ContextMenu> {
+        let session_capabilities = session_capabilities.read();
         let supports_images = session_capabilities.supports_images();
         let supports_embedded_context = session_capabilities.supports_embedded_context();
         let available_skills = session_capabilities.completion_skills();

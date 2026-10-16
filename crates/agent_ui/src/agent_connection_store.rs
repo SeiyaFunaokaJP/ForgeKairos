@@ -1,17 +1,18 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use acp_thread::{AgentConnection, LoadError};
+use acp_thread::{AcpThreadEvent, AgentConnection, LoadError};
 use agent_servers::AcpConnection;
 use agent_servers::{AgentServer, AgentServerDelegate};
 use agent_settings::AgentSettings;
 use anyhow::Result;
 use collections::{HashMap, HashSet};
-use futures::{FutureExt, future::Shared};
+use futures::{FutureExt, StreamExt as _, channel::mpsc, future::Shared};
 use gpui::{
-    App, AppContext, Context, Entity, EntityId, EventEmitter, SharedString, Subscription, Task,
-    WeakEntity,
+    App, AppContext, AsyncApp, Context, Entity, EntityId, EventEmitter, SharedString, Subscription,
+    Task, WeakEntity,
 };
+use util::ResultExt as _;
 
 use project::{AgentServerStore, AgentServersUpdated, Project};
 use settings::{Settings as _, SettingsStore};
@@ -19,6 +20,7 @@ use watch::Receiver;
 
 use crate::Agent;
 use crate::conversation_view::ConversationView;
+use crate::thread_metadata_store::SessionOptionsSnapshot;
 
 /// ADR-F49 (new decision): how often the store asks whether its connections
 /// are still used. A connection goes at most this long after its grace ran
@@ -28,6 +30,19 @@ use crate::conversation_view::ConversationView;
 /// lives on in the panel's parking slots with its connection in hand — so the
 /// question is asked from here rather than answered from there.
 const IDLE_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+
+/// ADR-F103: how long the session that reads an agent's options waits for its
+/// slash commands, which agents announce after the session itself.
+const SESSION_OPTIONS_COMMANDS_WAIT: Duration = Duration::from_secs(3);
+
+/// ADR-F103: where reading what an agent's sessions offer, before the agent's
+/// first thread has started, has come in this store (that is, in this panel):
+/// one read at a time per agent, and none again after one failed.
+#[derive(Clone)]
+pub enum SessionOptionsRead {
+    Reading(Shared<Task<Result<(), SharedString>>>),
+    Failed,
+}
 
 pub enum AgentConnectionEntry {
     Connecting {
@@ -198,6 +213,8 @@ pub struct AgentConnectionStore {
     /// were still starting, to close once they have started if no view has
     /// come onto them by then.
     left_while_starting: HashSet<ConnectionSlot>,
+    /// ADR-F103: see [`Self::read_session_options`].
+    session_options_reads: HashMap<Agent, SessionOptionsRead>,
     idle_watch: Task<()>,
     idle_watch_running: bool,
     _subscriptions: Vec<Subscription>,
@@ -226,6 +243,7 @@ impl AgentConnectionStore {
             leases: HashMap::default(),
             unused_since: HashMap::default(),
             left_while_starting: HashSet::default(),
+            session_options_reads: HashMap::default(),
             idle_watch: Task::ready(()),
             idle_watch_running: false,
             _subscriptions: subscriptions,
@@ -829,9 +847,122 @@ impl AgentConnectionStore {
     /// the lease keeps the connection; dropping it gives it back.
     #[must_use = "the connection is only kept while the lease is alive"]
     pub fn lease_connection(&mut self, key: &Agent) -> ConnectionLease {
-        let slot = ConnectionSlot::Shared(key.clone());
+        self.lease_slot(ConnectionSlot::Shared(key.clone()))
+    }
+
+    fn lease_slot(&mut self, slot: ConnectionSlot) -> ConnectionLease {
         self.unused_since.remove(&slot);
         ConnectionLease(self.leases.entry(slot).or_default().clone())
+    }
+
+    /// ADR-F103: reads what a session of `server`'s agent offers — its model
+    /// and other options, its modes and its slash commands — in a session of
+    /// its own, and writes it down as ADR-F100's snapshot, so that a new
+    /// thread can offer them before the first one of the agent has started.
+    ///
+    /// The agent is started in the safest place whatever the thread's
+    /// switches say: in its sandbox, keeping to its own hosts. That is the
+    /// shared connection, unless the user's settings start the agent outside
+    /// it, which a start in the sandbox then overrides. The session is given
+    /// no MCP servers, nothing is sent in it, and it is closed once read; the
+    /// connection goes with it unless a thread has come onto it meanwhile.
+    pub fn read_session_options(
+        &mut self,
+        key: Agent,
+        server: Rc<dyn AgentServer>,
+        cx: &mut Context<Self>,
+    ) -> SessionOptionsRead {
+        if let Some(read) = self.session_options_reads.get(&key) {
+            return read.clone();
+        }
+        let agent_id = server.agent_id();
+        let (slot, entry) =
+            if agent_servers::runs_outside_sandbox_by_user_choice(agent_id.0.as_ref(), cx) {
+                (
+                    ConnectionSlot::InSandbox(key.clone()),
+                    self.request_connection_in_sandbox(key.clone(), server, cx),
+                )
+            } else {
+                (
+                    ConnectionSlot::Shared(key.clone()),
+                    self.request_connection(key.clone(), server, cx),
+                )
+            };
+        let lease = self.lease_slot(slot.clone());
+        let connected = entry.read(cx).wait_for_connection();
+        let entry = entry.downgrade();
+        let project = self.project.clone();
+        let task = cx.spawn({
+            let key = key.clone();
+            async move |this, cx| {
+                let result = read_session_options_in_a_session_of_their_own(
+                    connected, agent_id, project, cx,
+                )
+                .await;
+                drop(lease);
+                this.update(cx, |this, cx| {
+                    match &result {
+                        Ok(()) => {
+                            this.session_options_reads.remove(&key);
+                        }
+                        Err(error) => {
+                            log::error!(
+                                "could not read the options of {} before its first thread: {error}",
+                                key.id()
+                            );
+                            this.session_options_reads
+                                .insert(key.clone(), SessionOptionsRead::Failed);
+                        }
+                    }
+                    this.close_connection_that_only_read_options(&slot, &entry, cx);
+                    cx.notify();
+                })
+                .log_err();
+                result
+            }
+        });
+        let read = SessionOptionsRead::Reading(task.shared());
+        self.session_options_reads.insert(key, read.clone());
+        read
+    }
+
+    /// ADR-F103: the connection [`Self::read_session_options`] started goes
+    /// once the read is over, unless a thread came onto it in the meantime
+    /// (the user sent the first message while the options were read) or
+    /// something else still holds it.
+    fn close_connection_that_only_read_options(
+        &mut self,
+        slot: &ConnectionSlot,
+        entry: &WeakEntity<AgentConnectionEntry>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(entry) = entry.upgrade() else {
+            return;
+        };
+        if self.slot_entry(slot) != Some(&entry) {
+            return;
+        }
+        self.holders.retain(|_, (_, view)| view.upgrade().is_some());
+        self.leases.retain(|_, lease| Rc::strong_count(lease) > 1);
+        if self.holders.values().any(|(held, _)| held == slot) || self.leases.contains_key(slot) {
+            return;
+        }
+        if let AgentConnectionEntry::Connected(state) = entry.read(cx)
+            && let Some(monitor) = state.connection.sandbox_process_monitor()
+            && let Some(reason) = monitor.read(cx).reason_to_hold_an_unused_connection()
+        {
+            log::info!(
+                "keeping the connection to {} that read its options until the idle disconnect: {reason}",
+                slot.agent().id()
+            );
+            return;
+        }
+        log::info!(
+            "closing the connection to {} that only read its options: no thread is on it",
+            slot.agent().id()
+        );
+        self.remove_slot_entry(slot);
+        self.unused_since.remove(slot);
     }
 
     /// Keeps the idle check running while there is a connection it could drop.
@@ -1083,6 +1214,59 @@ impl AgentConnectionStore {
         });
         (new_version_rx, loading_status_rx, connect_task)
     }
+}
+
+/// ADR-F103: see [`AgentConnectionStore::read_session_options`].
+async fn read_session_options_in_a_session_of_their_own(
+    connected: Shared<Task<Result<AgentConnectedState, LoadError>>>,
+    agent_id: project::AgentId,
+    project: Entity<Project>,
+    cx: &mut AsyncApp,
+) -> Result<(), SharedString> {
+    let connection = connected
+        .await
+        .map_err(|error| SharedString::from(error.to_string()))?
+        .connection;
+    let thread = cx
+        .update(|cx| {
+            let work_dirs = project.read(cx).default_path_list(cx);
+            connection
+                .clone()
+                .new_session_to_read_options(project.clone(), work_dirs, cx)
+        })
+        .await
+        .map_err(|error| SharedString::from(format!("{error:#}")))?;
+    let (commands_announced, mut commands_announced_rx) = mpsc::unbounded();
+    let _commands_subscription = cx.update(|cx| {
+        cx.subscribe(&thread, move |_, event: &AcpThreadEvent, _| {
+            if let AcpThreadEvent::AvailableCommandsUpdated(commands) = event
+                && !commands.is_empty()
+            {
+                commands_announced.unbounded_send(()).ok();
+            }
+        })
+    });
+    if thread.read_with(cx, |thread, _| thread.available_commands().is_empty()) {
+        let timeout = cx
+            .background_executor()
+            .timer(SESSION_OPTIONS_COMMANDS_WAIT);
+        futures::future::select(commands_announced_rx.next(), timeout).await;
+    }
+    cx.update(|cx| {
+        // A thread that started while the options were read wrote what its
+        // own session offers, which is what the next thread is to offer.
+        if crate::thread_metadata_store::last_session_options(&agent_id, cx)
+            .is_some_and(|snapshot| !snapshot.read_before_start)
+        {
+            return;
+        }
+        let mut snapshot = SessionOptionsSnapshot::of_session(&thread, cx);
+        snapshot.read_before_start = true;
+        crate::thread_metadata_store::record_last_session_options(agent_id, snapshot, cx);
+    });
+    // The session is closed with its thread, which only this holds.
+    drop(thread);
+    Ok(())
 }
 
 #[cfg(test)]
