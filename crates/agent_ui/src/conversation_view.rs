@@ -13829,7 +13829,12 @@ pub(crate) mod tests {
             "the report alone does not replace the connection"
         );
 
-        view.update_in(cx, |view, window, cx| view.update_agent(window, cx));
+        // As the banner's button does it: from inside the thread view (the
+        // restart above built a new one).
+        let thread = view
+            .read_with(cx, |view, _| view.root_thread_view())
+            .expect("a thread");
+        thread.update_in(cx, |thread, window, cx| thread.reset_agent_server(window, cx));
         cx.run_until_parked();
         assert_eq!(
             connects.load(std::sync::atomic::Ordering::SeqCst),

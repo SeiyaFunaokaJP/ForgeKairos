@@ -13765,12 +13765,19 @@ impl ThreadView {
 
     /// ADR-F101: the user agreed to the update, so the start this makes
     /// installs it; without that, a start launches the version installed.
-    fn reset_agent_server(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn reset_agent_server(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.update_consent = None;
         self.new_server_version_available = None;
-        self.server_view
-            .update(cx, |view, cx| view.update_agent(window, cx))
-            .log_err();
+        cx.notify();
+        // Deferred: this runs while this thread view is being updated, and the
+        // conversation view's restart reads it (to resume its session), which
+        // would panic.
+        let server_view = self.server_view.clone();
+        window.defer(cx, move |window, cx| {
+            server_view
+                .update(cx, |view, cx| view.update_agent(window, cx))
+                .log_err();
+        });
     }
 
     fn render_token_limit_callout(&self, cx: &mut Context<Self>) -> Option<Callout> {

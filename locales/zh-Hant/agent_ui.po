@@ -2185,6 +2185,9 @@ msgstr "無法使用終端機面板。"
 msgid "The thread cannot be moved back because the agent panel was not found."
 msgstr "找不到代理面板，因此無法將會話移回。"
 
+msgid "The update is installed when the agent next starts. Open threads on it show a button to restart on it now."
+msgstr "更新將在代理程式下次啟動時安裝。使用它的已開啟討論串會顯示一個按鈕，可立即重新啟動以完成更新。"
+
 msgid "The version in the release information ({manifest_version}) does not match the requested version ({version}). Canceled."
 msgstr "發行資訊中的版本（{manifest_version}）與所要求的版本（{version}）不符。已取消。"
 

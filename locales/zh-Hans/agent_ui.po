@@ -2185,6 +2185,9 @@ msgstr "终端面板不可用。"
 msgid "The thread cannot be moved back because the agent panel was not found."
 msgstr "由于找不到智能体面板，无法将会话移回。"
 
+msgid "The update is installed when the agent next starts. Open threads on it show a button to restart on it now."
+msgstr "更新将在智能体下次启动时安装。使用它的已打开线程会显示一个按钮，可立即重启以完成更新。"
+
 msgid "The version in the release information ({manifest_version}) does not match the requested version ({version}). Canceled."
 msgstr "发布信息中的版本（{manifest_version}）与请求的版本（{version}）不一致。已取消。"
 

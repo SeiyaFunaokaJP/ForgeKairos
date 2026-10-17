@@ -2185,6 +2185,9 @@ msgstr "터미널 패널을 사용할 수 없습니다."
 msgid "The thread cannot be moved back because the agent panel was not found."
 msgstr "에이전트 패널을 찾을 수 없어 스레드를 되돌릴 수 없습니다."
 
+msgid "The update is installed when the agent next starts. Open threads on it show a button to restart on it now."
+msgstr "업데이트는 에이전트가 다음에 시작될 때 설치됩니다. 이 에이전트의 열린 스레드에는 지금 다시 시작하여 업데이트하는 버튼이 표시됩니다."
+
 msgid "The version in the release information ({manifest_version}) does not match the requested version ({version}). Canceled."
 msgstr "릴리스 정보의 버전({manifest_version})이 요청한 버전({version})과 일치하지 않습니다. 취소했습니다."
 

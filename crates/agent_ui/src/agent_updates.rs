@@ -302,6 +302,19 @@ fn agree_to_agent_updates(
             .is_some_and(|requirement| !missing_hosts(&requirement.hosts, cx).is_empty())
     });
     approve_agent_updates(&agreed, cx);
+    // Agreeing installs nothing by itself, and the threads already running
+    // the agent keep their connection, so without this "Update" looks like it
+    // did nothing.
+    if !agreed.is_empty() {
+        show_message(
+            workspace,
+            i18n::t!(
+                "The update is installed when the agent next starts. Open threads on it show a button to restart on it now."
+            )
+            .into(),
+            cx,
+        );
+    }
     if !needs_consent.is_empty() {
         let page = crate::open_agent_registry_page(workspace, window, cx);
         page.update(cx, |page, cx| {
@@ -565,6 +578,7 @@ mod tests {
         });
         cx.run_until_parked();
         assert!(!approved(&mut cx), "not before the hosts are allowed");
+        assert!(!says_nothing_to_update(&workspace, &mut cx));
         let page =
             workspace
                 .read_with(&cx, |workspace, cx| {
@@ -592,6 +606,10 @@ mod tests {
         });
         cx.run_until_parked();
         assert!(approved(&mut cx));
+        assert!(
+            says_nothing_to_update(&workspace, &mut cx),
+            "it says when the update is installed"
+        );
         assert!(
             !approved_at(AgentInstallPlace::Host, &mut cx),
             "a place that is not behind is not updated"

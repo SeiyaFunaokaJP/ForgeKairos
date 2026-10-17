@@ -2190,6 +2190,9 @@ msgstr "El panel del terminal no está disponible."
 msgid "The thread cannot be moved back because the agent panel was not found."
 msgstr "No se puede devolver la conversación porque no se encontró el panel del agente."
 
+msgid "The update is installed when the agent next starts. Open threads on it show a button to restart on it now."
+msgstr "La actualización se instala la próxima vez que se inicie el agente. Los hilos abiertos con él muestran un botón para reiniciarlo ahora con ella."
+
 msgid "The version in the release information ({manifest_version}) does not match the requested version ({version}). Canceled."
 msgstr "La versión de la información de versión ({manifest_version}) no coincide con la versión solicitada ({version}). Se canceló."
 
