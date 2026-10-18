@@ -1536,10 +1536,15 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
 
                 move |event: &MouseDownEvent, phase, window, cx| {
                     state.update(cx, |state, cx| {
+                        // The thumb and track bounds ignore clipping, so a scrollbar scrolled out of
+                        // its viewport (a code block above a markdown view, say) still overlaps
+                        // whatever is drawn there, e.g. the title bar. Swallowing that press kept
+                        // Windows from starting a window drag. The hitbox carries the content mask.
                         let Some(scrollbar_layout) = (phase == capture_phase
                             && event.button == MouseButton::Left)
                             .then(|| state.hit_for_position(&event.position))
                             .flatten()
+                            .filter(|layout| layout.cursor_hitbox.is_hovered(window))
                         else {
                             return;
                         };
@@ -1670,7 +1675,121 @@ impl<T: ScrollableHandle> IntoElement for ScrollbarElement<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::point;
+    use gpui::{Modifiers, TestAppContext, div, point};
+    use std::{cell::Cell, rc::Rc};
+
+    const TITLE_HEIGHT: Pixels = px(40.);
+    const BLOCK_HEIGHT: Pixels = px(50.);
+
+    /// A title band above a clipped viewport. The viewport holds a horizontally scrollable
+    /// block like a markdown code block, pulled up by `shift` so a negative shift moves its
+    /// scrollbar out of the viewport and under the title band.
+    struct TitleOverScrollbar {
+        shift: Pixels,
+        scroll_handle: ScrollHandle,
+        title_presses: Rc<Cell<usize>>,
+    }
+
+    impl Render for TitleOverScrollbar {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let title_presses = self.title_presses.clone();
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .child(div().h(TITLE_HEIGHT).w_full().flex_none().on_mouse_down(
+                    MouseButton::Left,
+                    move |_, _, _| title_presses.set(title_presses.get() + 1),
+                ))
+                .child(
+                    div().h(px(200.)).w_full().flex_none().overflow_hidden().child(
+                        div().mt(self.shift).child(
+                            div()
+                                .relative()
+                                .w(px(300.))
+                                .h(BLOCK_HEIGHT)
+                                .custom_scrollbars(
+                                    Scrollbars::new(ScrollAxes::Horizontal)
+                                        .tracked_scroll_handle(&self.scroll_handle)
+                                        .with_track_along(
+                                            ScrollAxes::Horizontal,
+                                            cx.theme().colors().editor_background,
+                                        ),
+                                    window,
+                                    cx,
+                                )
+                                .child(
+                                    div()
+                                        .id("code")
+                                        .flex()
+                                        .size_full()
+                                        .overflow_x_scroll()
+                                        .track_scroll(&self.scroll_handle)
+                                        .child(div().flex_none().w(px(1000.)).h(px(20.))),
+                                ),
+                        ),
+                    ),
+                )
+        }
+    }
+
+    fn open(shift: Pixels, cx: &mut TestAppContext) -> (Entity<TitleOverScrollbar>, &mut gpui::VisualTestContext) {
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+        });
+        let (view, cx) = cx.add_window_view(|_, _| TitleOverScrollbar {
+            shift,
+            scroll_handle: ScrollHandle::new(),
+            title_presses: Rc::new(Cell::new(0)),
+        });
+        cx.simulate_resize(size(px(400.), px(300.)));
+        cx.run_until_parked();
+        (view, cx)
+    }
+
+    fn press(position: Point<Pixels>, cx: &mut gpui::VisualTestContext) {
+        cx.simulate_mouse_move(position, None, Modifiers::default());
+        cx.simulate_mouse_down(position, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_up(position, MouseButton::Left, Modifiers::default());
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn test_visible_scrollbar_track_takes_the_press(cx: &mut TestAppContext) {
+        let (view, cx) = open(px(0.), cx);
+        let scrollbar_y = TITLE_HEIGHT + BLOCK_HEIGHT - px(7.);
+        press(point(px(250.), scrollbar_y), cx);
+        let offset = view.read_with(cx, |view, _| view.scroll_handle.offset());
+        assert!(
+            offset.x < px(0.),
+            "a press on the visible track should scroll the block, offset {offset:?}"
+        );
+        assert_eq!(view.read_with(cx, |view, _| view.title_presses.get()), 0);
+    }
+
+    /// On Windows a title bar press that a GPUI listener stops is never handed to
+    /// `DefWindowProc`, so the window cannot be dragged from where a clipped scrollbar lies.
+    #[gpui::test]
+    async fn test_clipped_scrollbar_leaves_presses_above_its_viewport(cx: &mut TestAppContext) {
+        let shift = -(BLOCK_HEIGHT + px(10.));
+        let (view, cx) = open(shift, cx);
+        let rows = (0..TITLE_HEIGHT.as_f32() as i32).step_by(2).collect::<Vec<_>>();
+        for y in &rows {
+            press(point(px(250.), px(*y as f32)), cx);
+        }
+        assert_eq!(
+            view.read_with(cx, |view, _| view.title_presses.get()),
+            rows.len(),
+            "every press on the title band should reach it"
+        );
+        assert_eq!(
+            view.read_with(cx, |view, _| view.scroll_handle.offset()),
+            point(px(0.), px(0.)),
+            "the hidden scrollbar should not scroll"
+        );
+    }
 
     #[test]
     fn default_reveal_policy_reveals_for_content_changes() {
