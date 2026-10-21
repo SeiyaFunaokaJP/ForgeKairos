@@ -22,6 +22,12 @@ const CELL_ID_COLUMN_STRIDE: u64 = 1 << 20;
 /// up shorter than the editor that opens over it.
 pub(crate) const CELL_FRAME_HEIGHT: Pixels = px(4.);
 
+/// How far a cell's text sits from the cell's outside on the left and right:
+/// the border and the padding [`style_as_cell`] gives it.
+pub(crate) fn cell_text_inset(window: &Window) -> Pixels {
+    CELL_FRAME_HEIGHT / 2. + window.rem_size() * 0.25
+}
+
 /// The frame a cell draws around its text: the padding that keeps the text off
 /// the grid lines, the border that highlights the caret's cell, the vertical
 /// alignment, and the font.
@@ -188,7 +194,9 @@ pub(crate) const EDITOR_TEXT_DEBUG_SELECTOR: &str = "tabular-grid-cell-editor-te
 
 #[cfg(test)]
 mod tests {
-    use gpui::{Bounds, Modifiers, MouseButton, Pixels, TestAppContext, VisualTestContext, px};
+    use gpui::{
+        Bounds, Modifiers, MouseButton, Pixels, TestAppContext, VisualTestContext, point, px,
+    };
     use settings::SettingsStore;
 
     use super::*;
@@ -202,14 +210,15 @@ mod tests {
     /// never comes into play.
     const FIXTURE: &str = "name,value\nalphabetical,1\nbetabetical,2";
 
-    /// The editor that opens over a cell has to start on it exactly and be as
-    /// wide as it is. A rectangle off by the cell's border, or a font a pixel
-    /// off the cell's, moves the text the user was looking at the moment the
-    /// cell opens, which reads as editing something other than that cell.
+    /// The editor that opens over a cell has to start on it exactly and be at
+    /// least as wide as it is. A rectangle off by the cell's border, or a font a
+    /// pixel off the cell's, moves the text the user was looking at the moment
+    /// the cell opens, which reads as editing something other than that cell.
     ///
-    /// The editor is allowed to be the taller of the two: it keeps an em of
-    /// slack at its right edge, so text that fits the cell on one line can wrap
-    /// onto a second inside the editor.
+    /// The editor is allowed to be the wider of the two, because it grows to
+    /// the right over a value that fills its column (see
+    /// `a_value_that_fills_its_column_does_not_slide_when_opened`), and the
+    /// taller, because a cell's value can need more lines than its row shows.
     #[track_caller]
     fn assert_the_editor_starts_on_the_active_cell(
         cx: &mut VisualTestContext,
@@ -242,9 +251,10 @@ mod tests {
             editor.origin, cell.origin,
             "{opened_by}: the editor should start exactly where the cell does"
         );
-        assert_eq!(
-            editor.size.width, cell.size.width,
-            "{opened_by}: the editor should be exactly as wide as the cell"
+        assert!(
+            editor.size.width >= cell.size.width,
+            "{opened_by}: the editor should not leave part of the cell showing \
+             ({editor:?} over {cell:?})"
         );
         assert!(
             editor.size.height >= cell.size.height,
@@ -266,6 +276,43 @@ mod tests {
             editor.size.height, cell.size.height,
             "{opened_by}: the editor should be exactly as tall as the cell"
         );
+    }
+
+    /// Where the caret of the cell editor is, as a byte offset into its text.
+    fn caret_offset(
+        pane: &gpui::Entity<TabularDataPreviewPane>,
+        cx: &mut VisualTestContext,
+    ) -> usize {
+        pane.update(cx, |pane, cx| {
+            pane.grid.cell_editor.update(cx, |editor, cx| {
+                let snapshot = editor.display_snapshot(cx);
+                editor
+                    .selections
+                    .newest::<editor::MultiBufferOffset>(&snapshot)
+                    .head()
+                    .0
+            })
+        })
+    }
+
+    fn double_click(
+        pane: &gpui::Entity<TabularDataPreviewPane>,
+        cell: GridCell,
+        position: gpui::Point<Pixels>,
+        cx: &mut VisualTestContext,
+    ) {
+        pane.update_in(cx, |pane, window, cx| {
+            pane.on_cell_mouse_down(
+                cell,
+                MouseButton::Left,
+                Modifiers::none(),
+                2,
+                position,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
     }
 
     async fn open_the_first_body_cell(
@@ -396,6 +443,87 @@ mod tests {
         cx.run_until_parked();
 
         assert_the_editor_covers_the_active_cell(&mut cx, "a cell clamped to one line");
+    }
+
+    /// The column is sized to its longest value, so that value leaves less than
+    /// the editor's em of caret room at the right. An editor held to the cell's
+    /// width scrolled the value left as it opened, cutting off its first
+    /// letter; it has to grow to the right instead and keep the text in place.
+    #[gpui::test]
+    async fn a_value_that_fills_its_column_does_not_slide_when_opened(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_the_first_body_cell(cx).await;
+        for multiline in [false, true] {
+            pane.update(&mut cx, |pane, cx| {
+                pane.settings.multiline_cells_enabled = multiline;
+                cx.notify();
+            });
+            cx.run_until_parked();
+
+            cx.simulate_keystrokes("f2");
+            cx.run_until_parked();
+            let opened_by = if multiline {
+                "F2 with multiline cells"
+            } else {
+                "F2 with cells clamped to one line"
+            };
+            let (editor, cell) = assert_the_editor_starts_on_the_active_cell(&mut cx, opened_by);
+            assert!(
+                editor.size.width > cell.size.width,
+                "{opened_by}: the editor should have grown past a cell its value fills \
+                 ({editor:?} over {cell:?})"
+            );
+            let (scroll, lines) = pane.update(&mut cx, |pane, cx| {
+                pane.grid.cell_editor.update(cx, |editor, cx| {
+                    let scroll = editor.scroll_position(cx);
+                    let lines = editor.display_snapshot(cx).max_point().row().0 + 1;
+                    (scroll, lines)
+                })
+            });
+            assert_eq!(
+                scroll.x, 0.,
+                "{opened_by}: the value should not have scrolled"
+            );
+            assert_eq!(lines, 1, "{opened_by}: the value should not have folded");
+
+            cx.simulate_keystrokes("escape");
+            cx.run_until_parked();
+        }
+    }
+
+    /// A double click opens the cell with the caret under the pointer, as a
+    /// spreadsheet does, rather than always at the end of the value.
+    #[gpui::test]
+    async fn a_double_click_puts_the_caret_under_the_pointer(cx: &mut TestAppContext) {
+        let (pane, _editor, mut cx) = open_the_first_body_cell(cx).await;
+        let clicked = GridCell::new(GridRow::Body(DisplayRow(0)), AnyColumn(0));
+        let cell = cx
+            .debug_bounds(CELL_FRAME_DEBUG_SELECTOR)
+            .expect("the caret's cell should have been drawn");
+        let text = cx
+            .debug_bounds(CELL_TEXT_DEBUG_SELECTOR)
+            .expect("the caret's cell should have drawn its text");
+
+        double_click(
+            &pane,
+            clicked,
+            point(text.left() + px(1.), cell.center().y),
+            &mut cx,
+        );
+        assert_eq!(
+            caret_offset(&pane, &mut cx),
+            0,
+            "a double click on the first letter should put the caret before it"
+        );
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+
+        double_click(&pane, clicked, cell.center(), &mut cx);
+        let middle = caret_offset(&pane, &mut cx);
+        assert!(
+            middle > 0 && middle < "alphabetical".len(),
+            "a double click in the middle of the value should put the caret inside it, \
+             not at {middle}"
+        );
     }
 
     /// The fill handle has to sit in the bottom right corner of the cell the

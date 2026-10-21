@@ -41,10 +41,12 @@ use crate::{
         BufferEdit, CellBlock, EditEngine, RowInsertPosition, RowRef, block_to_clipboard_text,
         clipboard_text_to_block,
     },
-    grid::{CellEditMode, GridCell, GridMotion, GridRow, GridSelectionKind},
+    grid::{CellEditMode, GridCell, GridMotion, GridRow, GridSelectionKind, shape_cell_text},
     grid_fill::{FillDown, FillRight},
     grid_styles::{CellColor, StyleField, StyleShift, extend_with_color_palette},
+    renderer::table_cell::{CELL_FRAME_HEIGHT, cell_text_inset},
     renderer::table_diff_view::DiffSelectedCells,
+    settings::VerticalAlignment,
     table_data_engine::{
         ColumnShift,
         sorting_by_column::{AppliedSorting, SortDirection},
@@ -355,16 +357,79 @@ impl TabularDataPreviewPane {
         self.sync_cell_editor_mode(cx);
     }
 
+    /// Moves the caret of a cell that was just opened by a double click to the
+    /// character under the pointer, as a spreadsheet does, instead of leaving
+    /// it at the end of the value.
+    ///
+    /// The cell is still drawn, not the editor, so the position is resolved
+    /// against the cell's own layout of the text.
+    pub(crate) fn place_cell_editor_caret_at(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.grid.editing != Some(CellEditMode::Edit) {
+            return;
+        }
+        let Some(cell) = self
+            .grid
+            .active_cell_bounds
+            .painted(self.grid.render_generation)
+        else {
+            return;
+        };
+        if !cell.contains(&position) {
+            return;
+        }
+        let text = self.grid.cell_editor.read(cx).text(cx);
+        let inset = cell_text_inset(window);
+        let line_height = self.row_height;
+        let lines = shape_cell_text(&text, line_height, window, cx);
+        let text_height: Pixels = lines.iter().map(|line| line.size(line_height).height).sum();
+        let border = CELL_FRAME_HEIGHT / 2.;
+        let text_top = match self.settings.vertical_alignment {
+            VerticalAlignment::Top => cell.top() + border,
+            VerticalAlignment::Center => cell.center().y - text_height / 2.,
+        };
+        let x = position.x - (cell.left() + inset);
+        let mut y = position.y - text_top;
+
+        let mut line_start = 0;
+        let mut offset = text.len();
+        for (index, line) in lines.iter().enumerate() {
+            let height = line.size(line_height).height;
+            if y < height || index + 1 == lines.len() {
+                let local = line
+                    .closest_index_for_position(
+                        point(x, y.clamp(px(0.), height - px(1.))),
+                        line_height,
+                    )
+                    .unwrap_or_else(|closest| closest);
+                offset = line_start + local.min(line.len());
+                break;
+            }
+            y -= height;
+            line_start += line.len() + 1;
+        }
+        let offset = MultiBufferOffset(offset.min(text.len()));
+        self.grid.cell_editor.update(cx, |editor, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([offset..offset]);
+            });
+        });
+    }
+
     /// A single line editor would hide everything past the first line of a cell
     /// that holds quoted line breaks, so such a cell is edited in an auto
     /// height editor instead.
     ///
-    /// That editor folds its lines at the width of the cell whatever the soft
-    /// wrap setting says, because `calculate_wrap_width` clamps every mode's
-    /// answer to the editor's own width, and `max_lines` counts the lines as
-    /// they are drawn, folded ones included. A long value therefore stops
-    /// growing at the same height as a value of as many quoted lines, and
-    /// nothing has to be said here about soft wrap.
+    /// That editor folds its lines at its own width whatever the soft wrap
+    /// setting says, because `calculate_wrap_width` clamps every mode's answer
+    /// to the editor's width, and `max_lines` counts the lines as they are
+    /// drawn, folded ones included. A long value therefore stops growing at
+    /// the same height as a value of as many quoted lines, and nothing has to
+    /// be said here about soft wrap.
     fn sync_cell_editor_mode(&mut self, cx: &mut Context<Self>) {
         let editor = self.grid.cell_editor.clone();
         editor.update(cx, |editor, cx| {
