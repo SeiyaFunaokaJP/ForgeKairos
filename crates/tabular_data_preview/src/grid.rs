@@ -11,11 +11,13 @@ use std::{
 use editor::{Editor, EditorEvent};
 use gpui::{
     AnyElement, Bounds, DispatchPhase, Entity, Focusable as _, ListOffset, Modifiers, MouseButton,
-    MouseMoveEvent, Point, Subscription, Task, TextStyleRefinement, canvas, point,
+    MouseMoveEvent, Point, Refineable as _, Subscription, Task, TextRun, TextStyleRefinement,
+    WrappedLine, canvas, point,
 };
 use settings::Settings as _;
 use theme_settings::ThemeSettings;
 use ui::{ContextMenu, prelude::*};
+use util::ResultExt as _;
 
 use crate::{
     TabularDataPreviewPane,
@@ -410,6 +412,39 @@ pub(crate) fn cell_text_style(line_height: Pixels, cx: &App) -> TextStyleRefinem
         line_height: Some(line_height.into()),
         ..Default::default()
     }
+}
+
+/// Lays cell text out the way a cell does, one entry per line of the value, so
+/// that the overlay editor can be sized and a click placed against the text the
+/// user is looking at. A cell clips a long line rather than folding it.
+pub(crate) fn shape_cell_text(
+    text: &str,
+    line_height: Pixels,
+    window: &Window,
+    cx: &App,
+) -> Vec<WrappedLine> {
+    let mut style = window.text_style();
+    style.refine(&cell_text_style(line_height, cx));
+    let run = TextRun {
+        len: text.len(),
+        font: style.font(),
+        color: style.color,
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    window
+        .text_system()
+        .shape_text(
+            SharedString::from(text.to_owned()),
+            style.font_size.to_pixels(window.rem_size()),
+            &[run],
+            None,
+            None,
+        )
+        .log_err()
+        .map(|lines| lines.into_vec())
+        .unwrap_or_default()
 }
 
 /// How tall one line of cell text is.
@@ -1272,6 +1307,7 @@ impl TabularDataPreviewPane {
                 if click_count > 1 {
                     self.select_cell(cell, false, cx);
                     self.start_editing(CellEditMode::Edit, window, cx);
+                    self.place_cell_editor_caret_at(position, window, cx);
                     return;
                 }
                 self.commit_editing(window, cx);

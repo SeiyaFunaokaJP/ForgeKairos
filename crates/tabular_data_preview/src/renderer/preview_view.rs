@@ -1,13 +1,15 @@
 use std::time::Instant;
 
-use gpui::{AnyElement, MouseButton, anchored, deferred, point, size};
+use editor::EditorMode;
+use gpui::{AnyElement, MouseButton, Refineable as _, anchored, deferred, point, size};
 use ui::{SpinnerLabel, div, prelude::*};
+use util::ResultExt as _;
 
 use crate::{
     TabularDataPreviewPane,
-    grid::{cell_line_height, cell_text_style},
+    grid::{cell_line_height, cell_text_style, shape_cell_text},
     renderer::table_cell::{
-        EDITOR_FRAME_DEBUG_SELECTOR, EDITOR_TEXT_DEBUG_SELECTOR, style_as_cell,
+        EDITOR_FRAME_DEBUG_SELECTOR, EDITOR_TEXT_DEBUG_SELECTOR, cell_text_inset, style_as_cell,
     },
 };
 
@@ -95,7 +97,7 @@ impl Render for TabularDataPreviewPane {
                     .overflow_hidden()
                     .child(self.bounds_probe(&self.grid.root_bounds.clone(), cx))
                     .child(table_with_settings)
-                    .child(self.render_cell_editor_overlay(cx)),
+                    .child(self.render_cell_editor_overlay(window, cx)),
             )
             .children(self.grid.context_menu.as_ref().map(|(menu, position, _)| {
                 deferred(
@@ -130,8 +132,17 @@ impl Render for TabularDataPreviewPane {
 impl TabularDataPreviewPane {
     /// Re-applies the buffer font to the overlay editor, so that changing the
     /// font size keeps what is typed the same size as what the cells show.
+    ///
+    /// The color is the cell's too: left to itself the editor draws in the
+    /// editor foreground, which in most themes is dimmer than cell text, and the
+    /// value would fade the moment the cell is opened.
     fn sync_cell_editor_style(&self, cx: &mut Context<Self>) {
-        let style = cell_text_style(self.row_height, cx);
+        let mut style = cell_text_style(self.row_height, cx);
+        style.color = Some(
+            self.cell_paint(self.overlay_cell(), false, true, cx)
+                .text
+                .unwrap_or(cx.theme().colors().text),
+        );
         self.grid.cell_editor.update(cx, |editor, _cx| {
             editor.set_text_style_refinement(style);
         });
@@ -194,7 +205,7 @@ impl TabularDataPreviewPane {
     /// It is mounted here rather than inside a row so that the virtualized list
     /// can never drop the focused element out of the tree, which would leave
     /// the grid unable to receive keys at all.
-    fn render_cell_editor_overlay(&self, cx: &Context<Self>) -> AnyElement {
+    fn render_cell_editor_overlay(&self, window: &mut Window, cx: &Context<Self>) -> AnyElement {
         let generation = self.grid.render_generation;
         let root = self.grid.root_bounds.measured(generation);
         let cell = self.grid.active_cell_bounds.measured(generation);
@@ -230,6 +241,13 @@ impl TabularDataPreviewPane {
         #[cfg(test)]
         self.grid.cell_editor_was_drawn.set(visible);
 
+        let width = if visible {
+            let available = root.map(|root| root.size.width - origin.x);
+            self.cell_editor_width(cell_size.width, available, window, cx)
+        } else {
+            IDLE_EDITOR_SIZE
+        };
+
         let editor = self.grid.cell_editor.clone();
         let placed = div().absolute().left(origin.x).top(origin.y);
         if !visible {
@@ -248,7 +266,7 @@ impl TabularDataPreviewPane {
         placed
             .child(
                 style_as_cell(div(), self.settings.vertical_alignment, self.row_height, cx)
-                    .w(cell_size.width.max(MINIMUM_EDITOR_WIDTH))
+                    .w(width)
                     .min_h(cell_size.height)
                     .bg(colors.editor_background)
                     .border_color(colors.border_focused)
@@ -264,5 +282,59 @@ impl TabularDataPreviewPane {
                     ),
             )
             .into_any_element()
+    }
+
+    /// How wide the open cell is drawn.
+    ///
+    /// An editor keeps room for its caret past the end of the text: it lays its
+    /// lines out two ems short of its width, folding them there when it is an
+    /// auto height one, and a single line one scrolls so as to leave a further
+    /// em free on the right of the caret. Held to the cell's width, a value
+    /// that fills its column would slide left (or fold one word early) the
+    /// moment the cell opens. So the editor grows to the right over its
+    /// neighbours instead, as a spreadsheet's does, by as much as the text
+    /// needs and no further than the pane's edge.
+    fn cell_editor_width(
+        &self,
+        cell_width: Pixels,
+        available: Option<Pixels>,
+        window: &mut Window,
+        cx: &Context<Self>,
+    ) -> Pixels {
+        let cell_width = cell_width.max(MINIMUM_EDITOR_WIDTH);
+        let editor = self.grid.cell_editor.read(cx);
+        let text = editor.text(cx);
+        let inset = cell_text_inset(window);
+        let lines = shape_cell_text(&text, self.row_height, window, cx);
+        let Some(first_line) = lines.first() else {
+            return cell_width;
+        };
+        let text_width = lines
+            .iter()
+            .map(|line| line.width())
+            .fold(px(0.), Pixels::max);
+
+        let mut style = window.text_style();
+        style.refine(&cell_text_style(self.row_height, cx));
+        let text_system = window.text_system();
+        let font_id = text_system.resolve_font(&style.font());
+        let font_size = first_line.font_size();
+        let em_width = text_system
+            .em_width(font_id, font_size)
+            .log_err()
+            .unwrap_or(font_size);
+        let slack = if matches!(editor.mode(), EditorMode::AutoHeight { .. }) {
+            em_width * 2.
+        } else {
+            let em_advance = text_system
+                .em_advance(font_id, font_size)
+                .log_err()
+                .unwrap_or(font_size);
+            em_width * 2. + em_advance
+        };
+        // A pixel over, so that rounding cannot fold or scroll the last glyph.
+        let needed = text_width + slack + inset * 2. + px(1.);
+        let needed = available.map_or(needed, |available| needed.min(available));
+        cell_width.max(needed)
     }
 }
