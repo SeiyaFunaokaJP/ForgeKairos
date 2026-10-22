@@ -62,8 +62,8 @@ pub mod windows {
             Pin::new(&mut self.0).poll_flush(cx)
         }
 
-        fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-            Pin::new(&mut self.0).poll_close(cx)
+        fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<()>> {
+            Poll::Ready(self.0.get_ref().shutdown_write())
         }
     }
 }
