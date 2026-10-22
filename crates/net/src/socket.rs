@@ -3,8 +3,8 @@ use std::io::{Error, ErrorKind, Result};
 use windows::Win32::{
     Foundation::{HANDLE, HANDLE_FLAG_INHERIT, HANDLE_FLAGS, SetHandleInformation},
     Networking::WinSock::{
-        AF_UNIX, SEND_RECV_FLAGS, SOCK_STREAM, SOCKADDR, SOCKET, WSA_FLAG_OVERLAPPED,
-        WSAEWOULDBLOCK, WSASocketW, accept, closesocket, recv, send,
+        AF_UNIX, SD_SEND, SEND_RECV_FLAGS, SOCK_STREAM, SOCKADDR, SOCKET, WSA_FLAG_OVERLAPPED,
+        WSAEWOULDBLOCK, WSASocketW, accept, closesocket, recv, send, shutdown,
     },
 };
 
@@ -49,6 +49,11 @@ impl UnixSocket {
 
     pub(crate) fn send(&self, buf: &[u8]) -> Result<usize> {
         map_ret(unsafe { send(self.0, buf, SEND_RECV_FLAGS::default()) })
+    }
+
+    pub(crate) fn shutdown_write(&self) -> Result<()> {
+        map_ret(unsafe { shutdown(self.0, SD_SEND) })?;
+        Ok(())
     }
 }
 

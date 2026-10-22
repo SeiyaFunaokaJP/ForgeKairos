@@ -37,6 +37,10 @@ impl UnixStream {
         }
     }
 
+    pub(crate) fn shutdown_write(&self) -> Result<()> {
+        self.0.shutdown_write()
+    }
+
     pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
         let inner = self.0;
         (OwnedReadHalf(inner.clone()), OwnedWriteHalf(inner))

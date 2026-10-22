@@ -16,8 +16,8 @@ use std::time::Duration;
 use anyhow::{Context as _, Result};
 use futures::channel::{mpsc, oneshot};
 use futures::{
-    AsyncBufReadExt as _, AsyncWriteExt as _, FutureExt as _, SinkExt, StreamExt, io::BufReader,
-    select_biased,
+    AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, FutureExt as _, SinkExt,
+    StreamExt, io::BufReader, select_biased,
 };
 use gpui::{AsyncApp, BackgroundExecutor, Task};
 #[cfg(not(target_os = "windows"))]
@@ -114,6 +114,11 @@ pub struct AskPassSession {
     askpass_kill_master_rx: Option<oneshot::Receiver<()>>,
     executor: BackgroundExecutor,
 }
+
+/// How long the proxy waits for an askpass client to hang up after receiving
+/// its answer. A client that has not hung up by then is abandoned, so one
+/// misbehaving client cannot stall the prompts queued behind it.
+const CLIENT_HANG_UP_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(not(target_os = "windows"))]
 const ASKPASS_SCRIPT_NAME: &str = "askpass.sh";
@@ -307,6 +312,7 @@ impl PasswordProxy {
                 }
             };
 
+        let hang_up_executor = executor.clone();
         let _task = executor.spawn(async move {
             maybe!(async move {
                 let listener =
@@ -327,6 +333,19 @@ impl PasswordProxy {
                                     password.decrypt(IKnowWhatIAmDoingAndIHaveReadTheDocs)
                             {
                                 stream.write_all(decrypted.as_bytes()).await.log_err();
+                                // Closing our end as soon as the answer is written
+                                // sometimes loses it on Windows AF_UNIX sockets: the
+                                // client then waits for it forever, and so does the
+                                // `ssh` that launched it. Signal the end of the answer
+                                // explicitly and let the client hang up first.
+                                stream.close().await.log_err();
+                                let mut unexpected_input = Vec::new();
+                                select_biased! {
+                                    _ = stream.read_to_end(&mut unexpected_input).fuse() => {}
+                                    _ = hang_up_executor.timer(CLIENT_HANG_UP_TIMEOUT).fuse() => {
+                                        log::warn!("askpass client did not hang up after receiving its answer");
+                                    }
+                                }
                             }
                         }
                         ControlFlow::Break(()) => {
