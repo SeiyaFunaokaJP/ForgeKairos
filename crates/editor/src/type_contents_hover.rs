@@ -38,7 +38,7 @@ use ui::{CommonAnimationExt as _, TextSize, Tooltip, prelude::*};
 use util::{ResultExt as _, paths::PathStyle, rel_path::RelPath};
 
 use crate::{
-    Anchor, Editor, HighlightKey, SelectionEffects,
+    Anchor, DisplayPoint, Editor, HighlightKey, SelectionEffects,
     hover_popover::{
         HOVER_POPOVER_GAP, HoverState, InfoPopover, hover_markdown_style, parse_blocks,
     },
@@ -887,6 +887,72 @@ fn symbol_range(
         .snapshot(cx)
         .buffer_anchor_range_to_anchor_range(buffer_range)
         .unwrap_or(anchor..anchor)
+}
+
+/// Where a stack with a type contents section was drawn, relative to the hovered point.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct KeptStackLayout {
+    position: DisplayPoint,
+    /// The stack's top left corner.
+    pub(crate) offset: gpui::Point<Pixels>,
+    /// Above the line, the popover nearest the line is the lowest.
+    pub(crate) above: bool,
+}
+
+/// Where a stack can end: bounds ending exactly at the limit are not contained in it.
+fn lowest_bottom(bottom_limit: Pixels) -> Pixels {
+    bottom_limit - px(1.)
+}
+
+/// How far the kept stack, `stack_height` tall, would reach past `bottom_limit` with its top
+/// where it was.
+pub(crate) fn kept_stack_overflow(
+    kept: Option<KeptStackLayout>,
+    position: DisplayPoint,
+    hovered_point: gpui::Point<Pixels>,
+    stack_height: Pixels,
+    bottom_limit: Pixels,
+) -> Option<Pixels> {
+    let kept = kept.filter(|kept| kept.position == position)?;
+    let overflow = hovered_point.y + kept.offset.y + stack_height - lowest_bottom(bottom_limit);
+    (overflow > Pixels::ZERO).then_some(overflow)
+}
+
+/// Where to draw a stack with a type contents section, `None` leaving it to upstream's
+/// placement. Members are expanded while the stack is read, so it goes below the line where it
+/// fits, growing away from the line. Once shown, its top and left edges stay where they were
+/// (moved only to stay on screen): growing or shrinking neither moves the row being read nor
+/// carries the stack out from under the pointer, which would hide it.
+pub(crate) fn place_stack(
+    kept: Option<KeptStackLayout>,
+    position: DisplayPoint,
+    hovered_point: gpui::Point<Pixels>,
+    line_height: Pixels,
+    stack_size: Size<Pixels>,
+    bottom_limit: Pixels,
+    right_limit: Pixels,
+    fits: impl Fn(gpui::Bounds<Pixels>) -> bool,
+) -> Option<KeptStackLayout> {
+    let max_left = right_limit - stack_size.width;
+    let layout = |origin: gpui::Point<Pixels>, above: bool| {
+        fits(gpui::Bounds::new(origin, stack_size)).then(|| KeptStackLayout {
+            position,
+            offset: origin - hovered_point,
+            above,
+        })
+    };
+    if let Some(kept) = kept.filter(|kept| kept.position == position) {
+        let origin = gpui::point(
+            (hovered_point.x + kept.offset.x).min(max_left),
+            (hovered_point.y + kept.offset.y).min(lowest_bottom(bottom_limit) - stack_size.height),
+        );
+        if let Some(layout) = layout(origin, kept.above) {
+            return Some(layout);
+        }
+    }
+    let left = hovered_point.x.min(max_left);
+    layout(gpui::point(left, hovered_point.y + line_height), false)
+        .or_else(|| layout(gpui::point(left, hovered_point.y - stack_size.height), true))
 }
 
 /// Whether `point` is on one of the shown popovers or in a gap between two stacked ones. Only
@@ -4843,13 +4909,10 @@ static struct ring *ring_head;
 
     /// Hovers the `occurrence`-th `needle`, draws the language server's popover alone, and then
     /// with the section arriving: the popover alone, then the language server's and the section.
-    /// `shown_below` says the popover alone was shown below the line, where there is room above
-    /// too.
     fn draw_section_arriving_later(
         cx: &mut EditorLspTestContext,
         needle: &str,
         occurrence: usize,
-        shown_below: bool,
     ) -> (
         gpui::Bounds<Pixels>,
         gpui::Bounds<Pixels>,
@@ -4859,7 +4922,7 @@ static struct ring *ring_head;
         hover_over(cx, needle, occurrence);
         let section = cx.update_editor(|editor, _, _| {
             let section = editor.hover_state.info_popovers.pop();
-            editor.hover_state.kept_side = None;
+            editor.hover_state.kept_stack_layout = None;
             section.expect("a section")
         });
         let alone = drawn_popovers(cx);
@@ -4867,15 +4930,6 @@ static struct ring *ring_head;
             panic!("one popover: {alone:?}");
         };
         let alone = *alone;
-        if shown_below {
-            cx.update_editor(|editor, _, _| {
-                let (position, _) = editor
-                    .hover_state
-                    .kept_side
-                    .expect("the side the popover was shown on");
-                editor.hover_state.kept_side = Some((position, false));
-            });
-        }
         cx.update_editor(|editor, _, cx| {
             editor.hover_state.info_popovers.push(section);
             cx.notify();
@@ -4888,10 +4942,10 @@ static struct ring *ring_head;
     }
 
     #[gpui::test]
-    async fn test_a_section_arriving_later_keeps_the_side_while_the_stack_fits(
+    async fn test_a_stack_with_a_section_goes_below_the_line_where_it_fits(
         cx: &mut TestAppContext,
     ) {
-        // Room above the line for the whole stack.
+        // Room above the line for the whole stack, too.
         let edited = format!("{}{FILE_C}", "\n".repeat(12));
         let mut cx = c_context(true, cx).await;
         cx.set_state(&format!("ˇ{edited}"));
@@ -4902,19 +4956,115 @@ static struct ring *ring_head;
         )
         .await;
 
-        let (alone, first, section) = draw_section_arriving_later(&mut cx, "shade", 0, false);
-        assert_eq!(first, alone, "{both:?}", both = (first, section));
-        assert!(
-            section.bottom() <= alone.top(),
-            "a fresh stack goes above: {section:?} after {alone:?}"
-        );
-        cx.update_editor(|editor, _, cx| hide_hover(editor, cx));
-
-        let (alone, first, section) = draw_section_arriving_later(&mut cx, "shade", 0, true);
+        // Without a section, the popover goes above as upstream places it.
+        let (alone, first, section) = draw_section_arriving_later(&mut cx, "shade", 0);
         assert!(
             first.top() > alone.bottom() && section.top() > first.bottom(),
-            "shown below, the stack stays below while it fits there: {first:?} and {section:?} \
-             after {alone:?}"
+            "with the section, the stack goes below: {first:?} and {section:?} after {alone:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_expanding_a_member_keeps_the_stack_where_it_is(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(true, cx).await;
+        answer_hovers_briefly(&mut cx);
+        hover_over(&mut cx, "local", 1);
+        let before = drawn_popovers(&mut cx);
+        let [first, section] = before.as_slice() else {
+            panic!("two popovers: {before:?}");
+        };
+        let (first, section) = (*first, *section);
+        assert!(section.top() > first.bottom(), "below the line: {before:?}");
+
+        toggle(&mut cx, "in");
+        let after = drawn_popovers(&mut cx);
+        let [first_after, section_after] = after.as_slice() else {
+            panic!("two popovers: {after:?}");
+        };
+        assert!(
+            section_after.size.height > section.size.height,
+            "expanded: {section:?} to {section_after:?}"
+        );
+        assert_eq!(
+            (first_after.origin, section_after.origin),
+            (first.origin, section.origin),
+            "the popovers stay where they were"
+        );
+
+        // A stack shown above the line keeps its top as it grows, rather than its bottom.
+        toggle(&mut cx, "in");
+        drawn_popovers(&mut cx);
+        cx.update_editor(|editor, _, cx| {
+            let kept = editor
+                .hover_state
+                .kept_stack_layout
+                .as_mut()
+                .expect("the stack's layout is kept");
+            kept.above = true;
+            cx.notify();
+        });
+        let above = drawn_popovers(&mut cx);
+        let [first_above, section_above] = above.as_slice() else {
+            panic!("two popovers: {above:?}");
+        };
+        assert!(
+            section_above.bottom() < first_above.top(),
+            "above the line, the popover nearest the line is the lowest: {above:?}"
+        );
+        let top = section_above.top();
+        toggle(&mut cx, "in");
+        let grown = drawn_popovers(&mut cx);
+        let [first_grown, section_grown] = grown.as_slice() else {
+            panic!("two popovers: {grown:?}");
+        };
+        assert_eq!(section_grown.top(), top, "{grown:?} after {above:?}");
+        assert!(
+            first_grown.top() > first_above.top(),
+            "the stack grows downward: {grown:?} after {above:?}"
+        );
+
+        // With no room left below, the stack is drawn shorter rather than moved up.
+        toggle(&mut cx, "in");
+        drawn_popovers(&mut cx);
+        let bottom = cx.editor(|editor, _, _| {
+            editor
+                .last_bounds()
+                .expect("the editor is drawn")
+                .bottom()
+        });
+        let stack = drawn_popovers(&mut cx);
+        let stack_top = stack.iter().map(|bounds| bounds.top()).fold(bottom, Pixels::min);
+        let stack_bottom = stack
+            .iter()
+            .map(|bounds| bounds.bottom())
+            .fold(Pixels::ZERO, Pixels::max);
+        let room = px(4.);
+        let lowered = bottom - room - stack_bottom;
+        cx.update_editor(|editor, _, cx| {
+            let kept = editor
+                .hover_state
+                .kept_stack_layout
+                .as_mut()
+                .expect("the stack's layout is kept");
+            kept.offset.y += lowered;
+            cx.notify();
+        });
+        let lowered_stack = drawn_popovers(&mut cx);
+        let lowered_top = lowered_stack
+            .iter()
+            .map(|bounds| bounds.top())
+            .fold(bottom, Pixels::min);
+        assert_eq!(lowered_top, stack_top + lowered, "{lowered_stack:?}");
+        toggle(&mut cx, "in");
+        let squeezed = drawn_popovers(&mut cx);
+        let squeezed_top = squeezed
+            .iter()
+            .map(|bounds| bounds.top())
+            .fold(bottom, Pixels::min);
+        assert_eq!(squeezed_top, lowered_top, "the top stays: {squeezed:?}");
+        assert!(
+            squeezed.iter().all(|bounds| bounds.bottom() <= bottom),
+            "shorter, within the editor: {squeezed:?} in {bottom:?}"
         );
     }
 
@@ -4927,7 +5077,7 @@ static struct ring *ring_head;
 
         // A tall section does not fit above with the popover shown there: the whole stack moves
         // below, rather than being split by the line.
-        let (alone, first, section) = draw_section_arriving_later(&mut cx, "local", 1, false);
+        let (alone, first, section) = draw_section_arriving_later(&mut cx, "local", 1);
         assert!(
             first.top() >= alone.bottom() + line_height && section.top() > first.bottom(),
             "the whole stack goes to the other side of the line: {first:?} and {section:?} \
@@ -4942,7 +5092,7 @@ static struct ring *ring_head;
         hover_over(&mut cx, "local", 1);
         cx.update_editor(|editor, _, _| {
             editor.hover_state.info_popovers.pop();
-            editor.hover_state.kept_side = None;
+            editor.hover_state.kept_stack_layout = None;
         });
         let alone = drawn_popovers(&mut cx);
         let [alone] = alone.as_slice() else {
@@ -4971,7 +5121,7 @@ static struct ring *ring_head;
         hover_over(&mut cx, "local", 1);
         let mut second = cx.update_editor(|editor, _, _| {
             let section = editor.hover_state.info_popovers.pop();
-            editor.hover_state.kept_side = None;
+            editor.hover_state.kept_stack_layout = None;
             section.expect("a section")
         });
         let alone = drawn_popovers(&mut cx);

@@ -266,7 +266,7 @@ pub fn hide_hover(editor: &mut Editor, cx: &mut Context<Editor>) -> bool {
     editor.hover_state.info_task = None;
     editor.hover_state.hiding_delay_task = None;
     editor.hover_state.closest_mouse_distance = None;
-    editor.hover_state.kept_side = None;
+    editor.hover_state.kept_stack_layout = None;
 
     editor.clear_background_highlights(HighlightKey::HoverState, cx);
 
@@ -1134,9 +1134,9 @@ pub struct HoverState {
     pub info_task: Option<Task<Option<()>>>,
     pub closest_mouse_distance: Option<Pixels>,
     pub hiding_delay_task: Option<Task<()>>,
-    /// Where the shown popovers are placed and whether above the line, kept while they are
-    /// shown so that one arriving later does not move them to the other side.
-    pub(crate) kept_side: Option<(DisplayPoint, bool)>,
+    /// Where a shown stack with a type contents section was placed, kept while it is shown so
+    /// that it does not move as it changes size.
+    pub(crate) kept_stack_layout: Option<crate::type_contents_hover::KeptStackLayout>,
 }
 
 impl HoverState {

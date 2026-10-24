@@ -4516,30 +4516,92 @@ impl EditorElement {
         );
         let hovered_point = content_origin + point(x, y);
 
-        let mut overall_height = Pixels::ZERO;
-
-        let measured_hover_popovers = hover_popovers
-            .into_iter()
-            .with_position()
-            .map(|(position, mut hover_popover)| {
-                let size = hover_popover.layout_as_root(AvailableSpace::min_size(), window, cx);
-                let horizontal_offset =
-                    (hitbox.top_right().x - POPOVER_RIGHT_OFFSET - (hovered_point.x + size.width))
+        fn measure_popovers(
+            hover_popovers: Vec<AnyElement>,
+            hovered_point: gpui::Point<Pixels>,
+            hitbox: &Hitbox,
+            window: &mut Window,
+            cx: &mut App,
+        ) -> (Vec<MeasuredHoverPopover>, Pixels) {
+            let mut overall_height = Pixels::ZERO;
+            let measured_hover_popovers = hover_popovers
+                .into_iter()
+                .with_position()
+                .map(|(position, mut hover_popover)| {
+                    let size = hover_popover.layout_as_root(AvailableSpace::min_size(), window, cx);
+                    let horizontal_offset = (hitbox.top_right().x
+                        - POPOVER_RIGHT_OFFSET
+                        - (hovered_point.x + size.width))
                         .min(Pixels::ZERO);
-                match position {
-                    itertools::Position::Middle | itertools::Position::Last => {
-                        overall_height += HOVER_POPOVER_GAP
+                    match position {
+                        itertools::Position::Middle | itertools::Position::Last => {
+                            overall_height += HOVER_POPOVER_GAP
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                }
-                overall_height += size.height;
-                MeasuredHoverPopover {
-                    element: hover_popover,
-                    size,
-                    horizontal_offset,
-                }
-            })
-            .collect::<Vec<_>>();
+                    overall_height += size.height;
+                    MeasuredHoverPopover {
+                        element: hover_popover,
+                        size,
+                        horizontal_offset,
+                    }
+                })
+                .collect::<Vec<_>>();
+            (measured_hover_popovers, overall_height)
+        }
+
+        let (mut measured_hover_popovers, mut overall_height) =
+            measure_popovers(hover_popovers, hovered_point, hitbox, window, cx);
+
+        // A shown stack with a type contents section keeps its top: when it has grown past the
+        // bottom of the editor, it is drawn again shorter, scrolling inside, rather than moved.
+        let hover_state = &self.editor.read(cx).hover_state;
+        let has_type_contents = hover_state
+            .info_popovers
+            .iter()
+            .any(|popover| popover.type_contents.is_some());
+        let kept_stack_layout = hover_state.kept_stack_layout;
+        let mut popover_max_height = max_size.height;
+        // The popover's border and padding are outside its maximum height, so a second pass
+        // takes off what the first left.
+        for _ in 0..2 {
+            let Some(overflow) = crate::type_contents_hover::kept_stack_overflow(
+                kept_stack_layout,
+                popover_position,
+                hovered_point,
+                overall_height,
+                hitbox.bottom(),
+            )
+            .filter(|_| has_type_contents) else {
+                break;
+            };
+            let tallest = measured_hover_popovers
+                .iter()
+                .map(|popover| popover.size.height)
+                .max()
+                .unwrap_or_default();
+            let max_height = (tallest.min(popover_max_height) - overflow)
+                .max(MIN_POPOVER_LINE_HEIGHT * line_height);
+            if max_height >= popover_max_height {
+                break;
+            }
+            popover_max_height = max_height;
+            let shorter = self.editor.update(cx, |editor, cx| {
+                editor.hover_state.render(
+                    snapshot,
+                    visible_display_row_range.clone(),
+                    size(max_size.width, popover_max_height),
+                    &editor.text_layout_details(window, cx),
+                    window,
+                    cx,
+                )
+            });
+            let Some((_, hover_popovers)) = shorter else {
+                break;
+            };
+            (measured_hover_popovers, overall_height) =
+                measure_popovers(hover_popovers, hovered_point, hitbox, window, cx);
+        }
 
         fn draw_occluder(
             width: Pixels,
@@ -4633,32 +4695,48 @@ impl EditorElement {
             })
         };
 
-        // A stack shown below the line stays there while the whole of it fits, so that a
-        // section arriving later does not move the popover being read; otherwise it is placed
-        // as a whole, as before, never split by the line. Only a stack with a type contents
-        // section has one arriving later.
         let hover_state = &self.editor.read(cx).hover_state;
-        let kept_below = hover_state.kept_side.is_some_and(|(position, above)| {
-            !above
-                && position == popover_position
-                && hover_state
-                    .info_popovers
-                    .iter()
-                    .any(|popover| popover.type_contents.is_some())
-        }) && can_place_below();
-        let place_above = can_place_above && !kept_below;
-        let placed_above = if place_above {
-            Some(true)
-        } else if can_place_below() {
-            Some(false)
+        let stack_layout = if has_type_contents {
+            let stack_width = measured_hover_popovers
+                .iter()
+                .map(|popover| popover.size.width)
+                .max()
+                .unwrap_or_default();
+            crate::type_contents_hover::place_stack(
+                hover_state.kept_stack_layout,
+                popover_position,
+                hovered_point,
+                line_height,
+                size(stack_width, overall_height),
+                hitbox.bottom(),
+                hitbox.top_right().x - POPOVER_RIGHT_OFFSET,
+                |bounds| bounds.is_contained_within(hitbox) && !intersects_menu(bounds),
+            )
         } else {
             None
         };
         self.editor.update(cx, |editor, _| {
-            editor.hover_state.kept_side = placed_above.map(|above| (popover_position, above));
+            editor.hover_state.kept_stack_layout = stack_layout;
         });
 
-        if place_above {
+        if let Some(layout) = stack_layout {
+            let mut popovers = measured_hover_popovers;
+            // Above the line, the popover nearest the line is the lowest.
+            if layout.above {
+                popovers.reverse();
+            }
+            let x = hovered_point.x + layout.offset.x;
+            let mut current_y = hovered_point.y + layout.offset.y;
+            for (position, popover) in popovers.into_iter().with_position() {
+                let popover_origin = point(x, current_y);
+                window.defer_draw(popover.element, popover_origin, 2, None);
+                if position != itertools::Position::Last {
+                    let origin = point(x, popover_origin.y + popover.size.height);
+                    draw_occluder(popover.size.width, origin, window, cx);
+                }
+                current_y = popover_origin.y + popover.size.height + HOVER_POPOVER_GAP;
+            }
+        } else if can_place_above {
             // try placing above hovered point
             place_popovers_above(hovered_point, measured_hover_popovers, window, cx);
         } else if can_place_below() {
