@@ -2875,3 +2875,76 @@ async fn test_folders_past_the_scan_depth_are_pointed_out(cx: &mut TestAppContex
         "Folders deeper than the file scan depth outside git repositories are not in the symbol index."
     );
 }
+
+/// A name longer than the panel is wide wraps: the row grows taller, and neither the name nor
+/// the location beside it reaches past the panel's edge, at any depth.
+#[gpui::test]
+async fn test_a_long_name_wraps_inside_the_panel(cx: &mut TestAppContext) {
+    const LONG_NAME: &str =
+        "compute_the_weighted_average_of_all_the_leaves_in_the_tree_and_then_some_more";
+    let (harness, cx) = setup(
+        graph_with_incoming(vec![("helper", vec![call(LONG_NAME, "main.rs", 0)])]),
+        cx,
+    )
+    .await;
+    harness.show_callers_at(1, cx);
+    assert_eq!(
+        harness.rows(cx),
+        vec!["helper".to_string(), format!("  {LONG_NAME}")]
+    );
+    cx.update(|window, _| window.refresh());
+    cx.executor().run_until_parked();
+
+    let panel = cx
+        .debug_bounds("call-graph-panel")
+        .expect("the panel is drawn");
+    let id = harness.panel.read_with(cx, |panel, _| {
+        panel
+            .rows
+            .iter()
+            .find_map(|row| match row {
+                Row::Node { id, .. }
+                    if panel
+                        .tree
+                        .node(*id)
+                        .is_some_and(|node| node.symbol.name == LONG_NAME) =>
+                {
+                    Some(id.index())
+                }
+                _ => None,
+            })
+            .expect("the long row")
+    });
+    let short_id = harness.panel.read_with(cx, |panel, _| {
+        panel
+            .rows
+            .first()
+            .map(|row| row.node().index())
+            .expect("the root row")
+    });
+    let names = cx
+        .debug_bounds(format!("call-graph-row-names-{id}").leak())
+        .expect("the names are drawn");
+    let location = cx
+        .debug_bounds(format!("call-graph-row-location-{id}").leak())
+        .expect("the location is drawn");
+    let short_names = cx
+        .debug_bounds(format!("call-graph-row-names-{short_id}").leak())
+        .expect("the root's names are drawn");
+    assert!(
+        names.size.height > short_names.size.height * 1.5,
+        "the long name wraps: {names:?}, a short one is {short_names:?}"
+    );
+    let short_location = cx
+        .debug_bounds(format!("call-graph-row-location-{short_id}").leak())
+        .expect("the root's location is drawn");
+    assert!(
+        names.right() <= location.left() && location.right() <= panel.right(),
+        "the name, then the location, inside the panel: {names:?} {location:?} in {panel:?}"
+    );
+    assert_eq!(
+        location.right(),
+        short_location.right(),
+        "locations line up at every depth"
+    );
+}

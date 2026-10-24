@@ -7,7 +7,6 @@ mod call_graph_panel_tests;
 
 use std::{
     collections::VecDeque,
-    ops::Range,
     time::{Duration, Instant},
 };
 
@@ -18,8 +17,8 @@ use editor::{Editor, EditorEvent, SelectionEffects, scroll::Autoscroll};
 use futures::FutureExt as _;
 use gpui::{
     Action, App, AsyncWindowContext, ClickEvent, ClipboardItem, Context, Entity, EventEmitter,
-    FocusHandle, Focusable, KeyContext, ScrollHandle, ScrollStrategy, Subscription, Task,
-    UniformListScrollHandle, WeakEntity, Window, actions, px, uniform_list,
+    FocusHandle, Focusable, KeyContext, ListAlignment, ListState, ScrollHandle, Subscription, Task,
+    WeakEntity, Window, actions, list, px,
 };
 use language::{Anchor, Buffer, ToPoint as _};
 use project::{
@@ -284,7 +283,7 @@ pub struct CallGraphPanel {
     workspace: WeakEntity<Workspace>,
     focus_handle: FocusHandle,
     filter_editor: Entity<Editor>,
-    scroll_handle: UniformListScrollHandle,
+    list_state: ListState,
     direction: CallDirection,
     follow_cursor: bool,
     sources: SourceFilter,
@@ -460,7 +459,7 @@ impl CallGraphPanel {
                 workspace: workspace_handle,
                 focus_handle: cx.focus_handle(),
                 filter_editor,
-                scroll_handle: UniformListScrollHandle::new(),
+                list_state: ListState::new(0, ListAlignment::Top, px(200.)),
                 direction: CallDirection::default(),
                 follow_cursor: follow_cursor_setting,
                 sources: sources_setting.into(),
@@ -890,7 +889,7 @@ impl CallGraphPanel {
     fn clear_tree(&mut self) {
         self.tree.clear();
         self.fetch_tasks.clear();
-        self.rows.clear();
+        self.set_rows(Vec::new());
         self.selected = None;
         self.site_cycle = None;
         self.root_candidates.clear();
@@ -1084,12 +1083,35 @@ impl CallGraphPanel {
 
     fn update_rows(&mut self, cx: &mut Context<Self>) {
         let filter = self.filter_editor.read(cx).text(cx);
-        self.rows = self.tree.rows(&filter);
+        self.set_rows(self.tree.rows(&filter));
         self.selected = self
             .selected
             .and_then(|selected| self.shown_row_for(selected))
             .or_else(|| self.rows.first().copied());
         cx.notify();
+    }
+
+    /// Tells the list only about the rows that changed, so that it keeps its scroll position.
+    /// Rows wrap, so the ones that stay are measured again: their text may have changed.
+    fn set_rows(&mut self, rows: Vec<Row>) {
+        let common_prefix = self
+            .rows
+            .iter()
+            .zip(&rows)
+            .take_while(|(old, new)| old == new)
+            .count();
+        let common_suffix = self.rows[common_prefix..]
+            .iter()
+            .rev()
+            .zip(rows[common_prefix..].iter().rev())
+            .take_while(|(old, new)| old == new)
+            .count();
+        self.list_state.splice(
+            common_prefix..self.rows.len() - common_suffix,
+            rows.len() - common_prefix - common_suffix,
+        );
+        self.list_state.remeasure();
+        self.rows = rows;
     }
 
     /// The row to select in place of `selected`. A row that went away (a
@@ -1128,8 +1150,7 @@ impl CallGraphPanel {
                 self.site_cycle = None;
             }
             self.selected = Some(*row);
-            self.scroll_handle
-                .scroll_to_item(index, ScrollStrategy::Nearest);
+            self.list_state.scroll_to_reveal_item(index);
             cx.notify();
         }
     }
@@ -1859,16 +1880,18 @@ impl CallGraphPanel {
                             .min_w_0()
                             .flex_1()
                             .gap_1()
-                            .overflow_hidden()
-                            .child(Label::new(symbol.name.clone()).size(LabelSize::Small))
-                            .children(location.map(|location| {
-                                Label::new(location)
-                                    .size(LabelSize::XSmall)
-                                    .color(Color::Muted)
-                                    .truncate()
-                            })),
+                            .justify_between()
+                            .child(
+                                text_column()
+                                    .child(Label::new(symbol.name.clone()))
+                                    .children(location.map(|location| {
+                                        Label::new(location)
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted)
+                                    })),
+                            )
+                            .child(div().flex_none().child(badge)),
                     )
-                    .end_slot(badge)
                     .on_click(cx.listener(move |panel, _, window, cx| {
                         panel.choose_root(index, window, cx);
                     })),
@@ -1983,19 +2006,17 @@ impl CallGraphPanel {
         )
     }
 
-    fn render_rows(
+    fn render_list_row(
         &mut self,
-        range: Range<usize>,
+        index: usize,
         _window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
-        let selected_index = self.selected_index();
-        range
-            .filter_map(|index| {
-                let row = *self.rows.get(index)?;
-                Some(self.render_row(index, row, selected_index == Some(index), cx))
-            })
-            .collect()
+    ) -> AnyElement {
+        let Some(row) = self.rows.get(index).copied() else {
+            return div().into_any_element();
+        };
+        let selected = self.selected_index() == Some(index);
+        self.render_row(index, row, selected, cx)
     }
 
     fn render_row(
@@ -2005,6 +2026,7 @@ impl CallGraphPanel {
         selected: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let row_content = || h_flex().min_w_0().flex_1().gap_1();
         let item = ListItem::new(index)
             .indent_level(row.depth() + 1)
             .indent_step_size(px(INDENT_STEP))
@@ -2028,13 +2050,13 @@ impl CallGraphPanel {
                 let Some(node) = self.tree.node(id) else {
                     return item.into_any_element();
                 };
-                self.render_node(item, id, node, cx)
+                self.render_node(item, row_content(), id, node, cx)
             }
             Row::Empty { .. } => item
                 .child(
-                    Label::new(empty_children_label(self.direction))
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
+                    row_content().child(
+                        Label::new(empty_children_label(self.direction)).color(Color::Muted),
+                    ),
                 )
                 .into_any_element(),
             Row::Error { parent, .. } => {
@@ -2048,37 +2070,38 @@ impl CallGraphPanel {
                         .color(Color::Warning),
                 )
                 .child(
-                    Label::new(i18n::t!("Could not get the calls: {message}"))
-                        .size(LabelSize::Small)
-                        .color(Color::Warning)
-                        .truncate(),
-                )
-                .end_slot(
-                    Button::new(("call-graph-retry", index), i18n::t!("Retry"))
-                        .label_size(LabelSize::Small)
-                        .on_click(cx.listener(move |panel, _, window, cx| {
-                            panel.expand(parent, window, cx);
-                        })),
+                    row_content()
+                        .justify_between()
+                        .child(
+                            text_column().child(
+                                Label::new(i18n::t!("Could not get the calls: {message}"))
+                                    .color(Color::Warning),
+                            ),
+                        )
+                        .child(
+                            Button::new(("call-graph-retry", index), i18n::t!("Retry")).on_click(
+                                cx.listener(move |panel, _, window, cx| {
+                                    panel.expand(parent, window, cx);
+                                }),
+                            ),
+                        ),
                 )
                 .into_any_element()
             }
             Row::ShowMore { remaining, .. } => item
                 .child(
-                    Label::new(i18n::tn!(
-                        remaining,
-                        "Show {count} more",
-                        "Show {count} more"
-                    ))
-                    .size(LabelSize::Small)
-                    .color(Color::Accent),
+                    row_content().child(
+                        Label::new(i18n::tn!(
+                            remaining,
+                            "Show {count} more",
+                            "Show {count} more"
+                        ))
+                        .color(Color::Accent),
+                    ),
                 )
                 .into_any_element(),
             Row::Excluded { count, .. } => item
-                .child(
-                    Label::new(excluded_label(count))
-                        .size(LabelSize::Small)
-                        .color(Color::Accent),
-                )
+                .child(row_content().child(Label::new(excluded_label(count)).color(Color::Accent)))
                 .tooltip(Tooltip::text(i18n::t!(
                     "Callees in the call_graph_panel.excluded_callees setting. Click to show them."
                 )))
@@ -2090,9 +2113,9 @@ impl CallGraphPanel {
                         .color(Color::Muted),
                 )
                 .child(
-                    Label::new(truncated_label())
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
+                    row_content().child(
+                        text_column().child(Label::new(truncated_label()).color(Color::Muted)),
+                    ),
                 )
                 .into_any_element(),
         }
@@ -2101,6 +2124,7 @@ impl CallGraphPanel {
     fn render_node(
         &self,
         item: ListItem,
+        content: Div,
         id: NodeId,
         node: &call_tree::CallNode,
         cx: &mut Context<Self>,
@@ -2133,68 +2157,75 @@ impl CallGraphPanel {
                     .color(Color::Muted),
             )
             .tooltip(Tooltip::text(tooltip_text))
+            // Wraps rather than truncating: a long signature is read in the panel, not in its
+            // tooltip. The location sits beside the name rather than in the end slot, which
+            // `ListItem` lets a long name squeeze and clip.
             .child(
-                h_flex()
-                    .min_w_0()
-                    .flex_1()
-                    .gap_1()
-                    .overflow_hidden()
-                    .child(Label::new(name).size(LabelSize::Small).color(name_color))
-                    .children(symbol.detail.clone().map(|detail| {
-                        Label::new(detail)
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .truncate()
-                    }))
-                    .children(note.map(|note| {
-                        Label::new(note)
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .truncate()
-                    })),
-            )
-            .end_slot(
-                h_flex()
-                    .gap_1()
-                    .flex_none()
-                    .when(loading, |this| {
-                        this.child(
-                            Icon::new(IconName::ArrowCircle)
-                                .size(IconSize::XSmall)
-                                .color(Color::Muted)
-                                .with_rotate_animation(2),
-                        )
-                    })
-                    .when(node.recursive, |this| {
-                        this.child(
-                            div()
-                                .id(("call-graph-recursive", id.index()))
-                                .child(
-                                    Icon::new(IconName::RotateCcw)
+                content
+                    .justify_between()
+                    .child(
+                        text_column()
+                            .debug_selector(|| format!("call-graph-row-names-{}", id.index()))
+                            .child(Label::new(name).color(name_color))
+                            .children(
+                                symbol
+                                    .detail
+                                    .clone()
+                                    .map(|detail| Label::new(detail).color(Color::Muted)),
+                            )
+                            .children(note.map(|note| Label::new(note).color(Color::Muted))),
+                    )
+                    .child(
+                        h_flex()
+                            .debug_selector(|| format!("call-graph-row-location-{}", id.index()))
+                            .gap_1()
+                            .flex_none()
+                            .when(loading, |this| {
+                                this.child(
+                                    Icon::new(IconName::ArrowCircle)
                                         .size(IconSize::XSmall)
+                                        .color(Color::Muted)
+                                        .with_rotate_animation(2),
+                                )
+                            })
+                            .when(node.recursive, |this| {
+                                this.child(
+                                    div()
+                                        .id(("call-graph-recursive", id.index()))
+                                        .child(
+                                            Icon::new(IconName::RotateCcw)
+                                                .size(IconSize::XSmall)
+                                                .color(Color::Muted),
+                                        )
+                                        .tooltip(Tooltip::text(i18n::t!(
+                                            "Recursive: this function is already on the path above"
+                                        ))),
+                                )
+                            })
+                            .when(site_count > 1, |this| {
+                                this.child(
+                                    Label::new(format!("×{site_count}"))
+                                        .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
-                                .tooltip(Tooltip::text(i18n::t!(
-                                    "Recursive: this function is already on the path above"
-                                ))),
-                        )
-                    })
-                    .when(site_count > 1, |this| {
-                        this.child(
-                            Label::new(format!("×{site_count}"))
-                                .size(LabelSize::XSmall)
-                                .color(Color::Muted),
-                        )
-                    })
-                    .children(location.map(|location| {
-                        Label::new(location)
-                            .size(LabelSize::XSmall)
-                            .color(Color::Muted)
-                    }))
-                    .child(origin_badge(symbol.origin, cx)),
+                            })
+                            .children(location.map(|location| {
+                                Label::new(location)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted)
+                            }))
+                            .child(origin_badge(symbol.origin, cx)),
+                    ),
             )
             .into_any_element()
     }
+}
+
+/// A column of text that wraps to whatever width the row leaves it. Without the zero width and
+/// the clipping (`min_w_0` is not enough), the row's minimum width counts the column's longest
+/// line, and a long name widens the row past the panel's edge.
+fn text_column() -> Div {
+    v_flex().w_0().flex_1().overflow_hidden()
 }
 
 fn empty_children_label(direction: CallDirection) -> &'static str {
@@ -2330,7 +2361,7 @@ fn origin_badge(origin: CallOrigin, cx: &App) -> impl IntoElement {
             this.border_1()
                 .border_color(cx.theme().colors().border_variant)
         })
-        .child(Label::new(label).size(LabelSize::XSmall).color(if exact {
+        .child(Label::new(label).size(LabelSize::Small).color(if exact {
             Color::Default
         } else {
             Color::Muted
@@ -2439,15 +2470,9 @@ impl Render for CallGraphPanel {
                 .min_h_0()
                 .size_full()
                 .child(
-                    uniform_list(
-                        "call-graph-rows",
-                        self.rows.len(),
-                        cx.processor(Self::render_rows),
-                    )
-                    .size_full()
-                    .track_scroll(&self.scroll_handle),
+                    list(self.list_state.clone(), cx.processor(Self::render_list_row)).size_full(),
                 )
-                .vertical_scrollbar_for(&self.scroll_handle, window, cx)
+                .vertical_scrollbar_for(&self.list_state, window, cx)
                 .into_any_element(),
         };
         v_flex()
