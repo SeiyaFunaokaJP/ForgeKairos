@@ -262,6 +262,7 @@ pub enum ModelState {
 pub enum CompatibilityType {
     Gguf,
     Mlx,
+    Splash,
 }
 
 pub async fn stream_chat_completion(

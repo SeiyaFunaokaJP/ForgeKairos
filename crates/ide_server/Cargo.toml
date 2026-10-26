@@ -47,7 +47,7 @@ terminal.workspace = true
 text.workspace = true
 ui.workspace = true
 util.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 workspace.workspace = true
 zed_actions.workspace = true
 

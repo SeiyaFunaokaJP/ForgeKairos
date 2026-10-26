@@ -175,9 +175,10 @@ impl FsWatcher {
     fn add_existing_path(&self, path: Arc<Path>) -> anyhow::Result<()> {
         let case_insensitive = !self.fs.is_path_case_sensitive(&path);
         let key = WatchKey::for_registration(SanitizedPath::new(&path), case_insensitive);
-        if self.registrations.lock().contains_key(&key) {
-            log::trace!("path to watch is already watched: {path:?}");
-            return Ok(());
+        let existing = self.registrations.lock().get(&key).cloned();
+        if let Some(existing) = existing {
+            log::trace!("path to watch is already registered: {path:?}");
+            return existing.os_watcher.rewatch_if_stale(&key);
         }
         match register_existing_path(
             &self.native_watcher,
@@ -1379,6 +1380,12 @@ struct PathRegistrationState {
     /// Whether the native watch is held for a priority path beyond the share (ADR-F104), so
     /// trimming leaves it alone and releasing it gives back a priority slot.
     held_for_priority: bool,
+    /// Set when the backend watch may be gone or may have moved: inotify drops the watch of a
+    /// deleted directory, a renamed directory takes its watch (and those of the directories
+    /// below it) along, and a queue overflow may have lost either event. A delete and a
+    /// recreate that fall into one debounce window never remove the registration, so the next
+    /// registration of the path reinstalls the watch instead.
+    stale: bool,
 }
 
 // Deep directories are handed to the poller first and shallow ones taken back first, so the
@@ -1447,6 +1454,64 @@ impl WatchPaths {
     fn set_polled_by_fallback(&mut self, key: &WatchKey, polled_by_fallback: bool) {
         if let Some(registration) = self.entries.get_mut(key) {
             registration.polled_by_fallback = polled_by_fallback;
+            // A hand-over leaves the path with a watch that was made just now.
+            registration.stale = false;
+        }
+    }
+
+    /// Marks the backend watches that `event` may have dropped or moved. Only non-recursive
+    /// (inotify) watches are affected; the fallback poller notices a recreated directory on
+    /// its own.
+    fn mark_stale_watches(&mut self, event: &notify::Event) {
+        fn mark(registration: &mut PathRegistrationState) {
+            if registration.has_os_watcher && !registration.polled_by_fallback {
+                registration.stale = true;
+            }
+        }
+
+        if event.need_rescan() {
+            self.entries.values_mut().for_each(mark);
+            return;
+        }
+        let renamed = matches!(
+            event.kind,
+            EventKind::Modify(notify::event::ModifyKind::Name(_))
+        );
+        if !renamed && !matches!(event.kind, EventKind::Remove(_)) {
+            return;
+        }
+        let include_folded = self.folded_entries > 0;
+        for path in &event.paths {
+            let path = SanitizedPath::new(path);
+            let event_keys = if include_folded {
+                vec![WatchKey::exact(path), WatchKey::folded(path)]
+            } else {
+                vec![WatchKey::exact(path)]
+            };
+            for event_key in event_keys {
+                let Some(registration) = self.entries.get_mut(&event_key) else {
+                    continue;
+                };
+                mark(registration);
+                if !renamed {
+                    continue;
+                }
+                // The watches below a renamed directory move with it without events of their own.
+                for (key, registration) in &mut self.entries {
+                    let descendant = match (key, &event_key) {
+                        (WatchKey::Exact(key), WatchKey::Exact(event_key)) => {
+                            key.starts_with(event_key)
+                        }
+                        (WatchKey::Folded(key), WatchKey::Folded(event_key)) => {
+                            Path::new(key.as_ref()).starts_with(Path::new(event_key.as_ref()))
+                        }
+                        _ => false,
+                    };
+                    if descendant {
+                        mark(registration);
+                    }
+                }
+            }
         }
     }
 
@@ -1614,6 +1679,7 @@ impl WatcherState {
             polled_by_fallback,
             native_unavailable: false,
             held_for_priority,
+            stale: false,
         });
         id
     }
@@ -1978,6 +2044,7 @@ impl OsWatcher {
         }
 
         let key_guard = self.lock_key(&key);
+        self.rewatch_if_stale_with_key_locked(&key)?;
         {
             let mut state = self.state.lock();
             if let Some(has_os_watcher) = state.joinable_registration(&key, &path, self.recursive) {
@@ -2137,6 +2204,71 @@ impl OsWatcher {
                 }
             }
         }
+    }
+
+    fn rewatch_if_stale(&self, key: &WatchKey) -> anyhow::Result<()> {
+        let _key_guard = self.lock_key(key);
+        self.rewatch_if_stale_with_key_locked(key)
+    }
+
+    /// Reinstalls the backend watch of a registered path that `dispatch` marked stale. The
+    /// caller holds the key lock of `key`.
+    fn rewatch_if_stale_with_key_locked(&self, key: &WatchKey) -> anyhow::Result<()> {
+        let (watched_path, held_for_priority) = {
+            let mut state = self.state.lock();
+            let Some(registration) = state.paths.get_mut(key) else {
+                return Ok(());
+            };
+            if !registration.stale {
+                return Ok(());
+            }
+            // Cleared before the backend calls, so that a removal dispatched while they run
+            // marks the new watch stale again.
+            registration.stale = false;
+            if !registration.has_os_watcher || registration.polled_by_fallback {
+                return Ok(());
+            }
+            (
+                registration.watched_path.clone(),
+                registration.held_for_priority,
+            )
+        };
+
+        log::trace!("rewatching stale path: {watched_path:?}");
+        // A renamed directory's watch survives under the old path; unwatch it so the backend
+        // won't skip installation as a duplicate.
+        self.unwatch(watched_path.as_path()).log_err();
+        let error = match self.watch(watched_path.as_path()) {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
+        let mark_stale_again = || {
+            if let Some(registration) = self.state.lock().paths.get_mut(key) {
+                registration.stale = true;
+            }
+        };
+        let Some(fallback) = &self.fallback else {
+            mark_stale_again();
+            return Err(error);
+        };
+        // The old watch is gone either way, so the poller takes the path over rather than
+        // leaving it unwatched (ADR-F43).
+        log::debug!(
+            "polling {:?} after its native watch could not be reinstalled: {error:#}",
+            watched_path.as_path()
+        );
+        if let Err(error) = self.watch_with_fallback_poller(fallback, watched_path.as_path()) {
+            mark_stale_again();
+            return Err(error);
+        }
+        {
+            let mut state = self.state.lock();
+            state.paths.set_polled_by_fallback(key, true);
+            state.paths.set_held_for_priority(key, false);
+        }
+        fallback.release_native(held_for_priority);
+        self.ensure_background_thread();
+        Ok(())
     }
 
     fn watch_fallback(
@@ -2985,7 +3117,11 @@ fn dispatch(
     log::trace!("handle {kind:?} watcher event: {event:?}");
 
     let callbacks = {
-        let state = state.lock();
+        let mut state = state.lock();
+        // Before the callbacks, which may start the rescan that registers these paths again.
+        if !kind.is_recursive() {
+            state.paths.mark_stale_watches(&event);
+        }
         if event.need_rescan() {
             // This also reaches the paths the native watcher handed to its fallback poller,
             // whose native events may be among the lost ones.
@@ -5052,6 +5188,119 @@ mod tests {
         deliver_fallback_events(&watcher, &fallback_events);
         assert_eq!(*first_fired.lock(), vec![handover_file.clone()]);
         assert_eq!(*second_fired.lock(), vec![handover_file]);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[test]
+    fn removed_or_renamed_path_is_rewatched_once() {
+        let dir = PathBuf::from("/Repo/Dir");
+        let subdir = PathBuf::from("/Repo/Dir/Subdir");
+        let removal = notify::Event {
+            paths: vec![dir.clone()],
+            ..notify::Event::new(EventKind::Remove(notify::event::RemoveKind::Folder))
+        };
+        let overflow = notify::Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
+        let rename = |path: &str| notify::Event {
+            paths: vec![PathBuf::from(path)],
+            ..notify::Event::new(EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::From,
+            )))
+        };
+
+        for (event, case_insensitive, rewatched) in [
+            (removal, false, &dir),
+            (overflow, false, &dir),
+            (rename("/Repo/Dir"), false, &subdir),
+            (rename("/repo/dir"), true, &subdir),
+        ] {
+            let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+            let watcher = test_os_watcher(OsWatcherKind::Native, Some(backend.clone()));
+            for path in [&dir, &dir, &subdir] {
+                watcher
+                    .add(path.as_path().into(), case_insensitive, |_| {})
+                    .expect("add watch")
+                    .expect("watch registered");
+            }
+
+            watcher.dispatch(Ok(event));
+            let rewatched = SanitizedPath::new(rewatched);
+            let key = WatchKey::for_registration(rewatched, case_insensitive);
+            watcher.rewatch_if_stale(&key).expect("rewatch");
+            // The repair is made once, however many registrations share the path.
+            watcher.rewatch_if_stale(&key).expect("rewatch again");
+
+            let backend = backend.lock();
+            assert_eq!(
+                backend.watch_calls,
+                &[
+                    dir.clone(),
+                    subdir.clone(),
+                    rewatched.as_path().to_path_buf()
+                ]
+            );
+            assert_eq!(backend.unwatch_calls, &[rewatched.as_path().to_path_buf()]);
+        }
+    }
+
+    /// The fallback poller notices a recreated directory itself, and a stale watch that the
+    /// kernel refuses to reinstall is polled rather than left without a watch.
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[test]
+    fn a_stale_watch_is_reinstalled_on_the_next_add_or_handed_to_the_poller() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = make_directories(
+            temp_dir.path(),
+            ["rewatched".to_owned(), "refused".to_owned()],
+        );
+        let removal = |path: &Path| notify::Event {
+            paths: vec![path.to_path_buf()],
+            ..notify::Event::new(EventKind::Remove(notify::event::RemoveKind::Folder))
+        };
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let (watcher, _fallback_events) = test_os_watcher_with_fallback(
+            native_backend.clone(),
+            WatchBudget::new(false, Arc::new(ProcfsBudgetSource)),
+        );
+        let registrations = watch_all(&watcher, &directories, |_| {});
+        assert!(
+            registrations
+                .iter()
+                .all(|registration| registration.kind == Some(OsWatcherKind::Native))
+        );
+
+        let rewatched = &directories[0];
+        watcher.dispatch(Ok(removal(rewatched)));
+        watcher
+            .add(rewatched.as_path().into(), false, |_| {})
+            .expect("add again")
+            .expect("registered again");
+        assert_eq!(
+            native_backend.lock().watch_calls,
+            vec![rewatched.clone(), directories[1].clone(), rewatched.clone()]
+        );
+        assert_eq!(native_backend.lock().unwatch_calls, vec![rewatched.clone()]);
+
+        let refused = &directories[1];
+        watcher.dispatch(Ok(removal(refused)));
+        native_backend.lock().fail_with_watch_limit = true;
+        watcher
+            .add(refused.as_path().into(), false, |_| {})
+            .expect("add again")
+            .expect("registered again");
+        assert_eq!(
+            registration_kind(&watcher, registrations[1].id),
+            Some(OsWatcherKind::Fallback)
+        );
+        assert_eq!(watched_path_counts(&watcher), (1, 1));
+
+        // An event on a polled path leaves it to the poller.
+        let unwatch_calls = native_backend.lock().unwatch_calls.len();
+        watcher.dispatch(Ok(removal(refused)));
+        watcher
+            .add(refused.as_path().into(), false, |_| {})
+            .expect("add a third time")
+            .expect("registered a third time");
+        assert_eq!(native_backend.lock().unwatch_calls.len(), unwatch_calls);
     }
 
     fn modify_event(path: &str) -> notify::Event {

@@ -102,11 +102,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "新しいウィンドウを開いたときに表示する内容です。",
     ),
     (
-        "p1.i30[cursor_animation.enabled].title",
+        "p1.i33[cursor_animation.enabled].title",
         "カーソルのアニメーション",
     ),
     (
-        "p1.i30[cursor_animation.enabled].description",
+        "p1.i33[cursor_animation.enabled].description",
         "エディター内でカーソルが移動するときに、滑らかにアニメーションさせるかどうかを設定します。",
     ),
     (
@@ -204,61 +204,61 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     ),
     // Added by zed-jp-enhance with the call graph panel, at the end of the
     // Panels page so that the rows above keep their keys.
-    ("p7.i79.header", "呼び出しグラフパネル"),
+    ("p7.i80.header", "呼び出しグラフパネル"),
     (
-        "p7.i80[call_graph_panel.button].title",
+        "p7.i81[call_graph_panel.button].title",
         "呼び出しグラフパネルのボタン",
     ),
     (
-        "p7.i80[call_graph_panel.button].description",
+        "p7.i81[call_graph_panel.button].description",
         "ステータスバーに呼び出しグラフパネルのボタンを表示します。",
     ),
     (
-        "p7.i81[call_graph_panel.dock].title",
+        "p7.i82[call_graph_panel.dock].title",
         "呼び出しグラフパネルのドック位置",
     ),
     (
-        "p7.i81[call_graph_panel.dock].description",
+        "p7.i82[call_graph_panel.dock].description",
         "呼び出しグラフパネルをドッキングする位置です。",
     ),
     (
-        "p7.i82[call_graph_panel.default_width].title",
+        "p7.i83[call_graph_panel.default_width].title",
         "呼び出しグラフパネルの既定の幅",
     ),
     (
-        "p7.i82[call_graph_panel.default_width].description",
+        "p7.i83[call_graph_panel.default_width].description",
         "呼び出しグラフパネルの既定の幅 (ピクセル) です。",
     ),
     (
-        "p7.i83[call_graph_panel.max_children].title",
+        "p7.i84[call_graph_panel.max_children].title",
         "一覧する呼び出しの上限",
     ),
     (
-        "p7.i83[call_graph_panel.max_children].description",
+        "p7.i84[call_graph_panel.max_children].description",
         "1 つの関数の呼び出し元 / 呼び出し先を、「さらに表示」の行の前にいくつまで並べるかです。",
     ),
     (
-        "p7.i84[call_graph_panel.follow_cursor].title",
+        "p7.i85[call_graph_panel.follow_cursor].title",
         "カーソルに追従",
     ),
     (
-        "p7.i84[call_graph_panel.follow_cursor].description",
+        "p7.i85[call_graph_panel.follow_cursor].description",
         "カーソルが動くたびに、カーソル位置の関数を起点にします。",
     ),
     (
-        "p7.i85[call_graph_panel.sources].title",
+        "p7.i86[call_graph_panel.sources].title",
         "呼び出しグラフの情報源",
     ),
     (
-        "p7.i85[call_graph_panel.sources].description",
+        "p7.i86[call_graph_panel.sources].description",
         "呼び出しをどこから取得するか。正確な言語サーバー、C と C++ のファイルを名前で照合する索引、またはその両方です。",
     ),
     (
-        "p7.i86[call_graph_panel.excluded_callees].title",
+        "p7.i87[call_graph_panel.excluded_callees].title",
         "除外する呼び出し先",
     ),
     (
-        "p7.i86[call_graph_panel.excluded_callees].description",
+        "p7.i87[call_graph_panel.excluded_callees].description",
         "関数の呼び出し先の一覧から外す呼び出し先 (ログやアサーションのマクロなど)。末尾の行に件数を出し、押すと表示します。",
     ),
     // zed-jp-enhance: clangd's memory settings, whose header moves the
@@ -402,6 +402,42 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     (
         "p6.i23[title_bar.open_menus_on_hover].description",
         "タイトルバーのメニューを、ホバーしたときに自動で開きます。",
+    ),
+    ("p0.i27.header", "拡張機能"),
+    ("p0.i28[suggest_extensions].title", "拡張機能を提案する"),
+    (
+        "p0.i28[suggest_extensions].description",
+        "開いたファイルに応じて、拡張機能のインストールを提案するかどうかです。",
+    ),
+    (
+        "p1.i25[markdown_preview.heading_font_weight].title",
+        "見出しのフォントの太さ",
+    ),
+    (
+        "p1.i25[markdown_preview.heading_font_weight].description",
+        "Markdown プレビューの見出しのフォントの太さです (CSS の単位で 100〜900)。",
+    ),
+    ("p1.i26.header", "Mermaid のフォント"),
+    ("p1.i27[mermaid_font_family].title", "フォントファミリー"),
+    (
+        "p1.i27[mermaid_font_family].description",
+        "エージェントパネルと Markdown プレビューの Mermaid 図のフォントファミリーです。未設定の場合は UI フォントファミリーを使います。",
+    ),
+    (
+        "p5.i16[file_finder.prefill_query_from_selection].title",
+        "選択範囲を検索語に入れる",
+    ),
+    (
+        "p5.i16[file_finder.prefill_query_from_selection].description",
+        "フォーカスのある項目 (エディターやターミナルなど) で選択しているテキストを、ファイル検索の検索語にあらかじめ入れるかどうかです。",
+    ),
+    (
+        "p7.i62[git_panel.commit_editor].title",
+        "コミットメッセージの入力欄",
+    ),
+    (
+        "p7.i62[git_panel.commit_editor].description",
+        "Git パネルにコミットメッセージの入力欄を既定で表示するかどうかです。",
     ),
 ];
 
@@ -1017,6 +1053,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         GitGutterWidthDiscriminants,
         GitHunkStyleSetting,
         GitPanelClickBehavior,
+        GitPanelCommitEditor,
         GitPanelGroupBy,
         GitPanelSortBy,
         GitPathStyle,

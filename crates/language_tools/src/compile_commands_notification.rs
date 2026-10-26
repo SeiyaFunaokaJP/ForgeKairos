@@ -259,6 +259,7 @@ fn file_exists(project: &Entity<Project>, abs_path: String, cx: &App) -> Task<Op
         .request(proto::GetPathMetadata {
             project_id: proto::REMOTE_SERVER_PROJECT_ID,
             path: abs_path,
+            canonicalize: false,
         });
     cx.background_spawn(async move {
         request
@@ -316,7 +317,10 @@ mod tests {
             LanguageConfig {
                 name: name.into(),
                 matcher: LanguageMatcher {
-                    path_suffixes: suffixes.iter().map(|suffix| suffix.to_string()).collect(),
+                    path_suffixes: suffixes
+                        .iter()
+                        .map(|suffix| suffix.to_string().into())
+                        .collect(),
                     ..LanguageMatcher::default()
                 }
                 .into(),

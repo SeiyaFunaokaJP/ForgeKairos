@@ -795,6 +795,7 @@ fn fold_wsl_grant_spelling(path: &Path) -> PathBuf {
 pub struct AgentProfileContent {
     pub name: Arc<str>,
     #[serde(default)]
+    #[schemars(schema_with = "agent_profile_tools_schema")]
     pub tools: IndexMap<Arc<str>, bool>,
     /// Whether all context servers are enabled by default.
     pub enable_all_context_servers: Option<bool>,
@@ -808,6 +809,79 @@ pub struct AgentProfileContent {
 #[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct ContextServerPresetContent {
     pub tools: IndexMap<Arc<str>, bool>,
+}
+
+fn agent_profile_tools_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    let tool_names = [
+        "apply_code_action",
+        "ask_user",
+        "copy_path",
+        "create_directory",
+        "create_thread",
+        "delete_path",
+        "diagnostics",
+        "edit_file",
+        "fetch",
+        "find_path",
+        "find_references",
+        "get_code_actions",
+        "go_to_definition",
+        "grep",
+        "list_agents_and_models",
+        "list_directory",
+        "move_path",
+        "read_file",
+        "rename_symbol",
+        "search_web",
+        "skill",
+        "spawn_agent",
+        "terminal",
+        "write_file",
+    ];
+    // zed-jp-enhance: the fork's own tools, so that a profile naming them is not flagged.
+    let fork_tool_names = [
+        "annotate_code",
+        "browser_click",
+        "browser_close_tab",
+        "browser_console",
+        "browser_eval",
+        "browser_find",
+        "browser_hover",
+        "browser_navigate",
+        "browser_network",
+        "browser_open_tab",
+        "browser_page_text",
+        "browser_press_key",
+        "browser_screenshot",
+        "browser_scroll",
+        "browser_select_tab",
+        "browser_set_value",
+        "browser_snapshot",
+        "browser_tabs",
+        "browser_type",
+        "browser_wait_for",
+        "call_hierarchy",
+        "clear_annotations",
+        "code_tour",
+        "git",
+        "git_diff",
+        "highlight_code",
+        "hover",
+        "repo_map",
+        "sandboxed_terminal",
+        "search_symbols",
+        "type_layout",
+    ];
+    let properties = tool_names
+        .into_iter()
+        .chain(fork_tool_names)
+        .map(|name| (name.to_string(), serde_json::json!({ "type": "boolean" })))
+        .collect::<serde_json::Map<_, _>>();
+    json_schema!({
+        "type": "object",
+        "properties": properties,
+        "additionalProperties": false
+    })
 }
 
 #[derive(

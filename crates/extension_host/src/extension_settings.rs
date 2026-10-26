@@ -16,6 +16,7 @@ pub struct ExtensionSettings {
     /// at startup that the user did not ask for)
     pub auto_install_extensions: HashMap<Arc<str>, bool>,
     pub auto_update_extensions: HashMap<Arc<str>, bool>,
+    pub suggest_extensions: bool,
     pub granted_capabilities: Vec<ExtensionCapability>,
 }
 
@@ -41,6 +42,7 @@ impl Settings for ExtensionSettings {
         Self {
             auto_install_extensions: content.extension.auto_install_extensions.clone(),
             auto_update_extensions: content.extension.auto_update_extensions.clone(),
+            suggest_extensions: content.extension.suggest_extensions,
             granted_capabilities: content
                 .extension
                 .granted_extension_capabilities

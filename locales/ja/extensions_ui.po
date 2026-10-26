@@ -47,6 +47,9 @@ msgstr "デバッグアダプター"
 msgid "Dev extension '{extension_id}' is not installed."
 msgstr "開発中の拡張機能 '{extension_id}' はインストールされていません。"
 
+msgid "Disable Suggestions"
+msgstr "推奨拡張機能の提案を無効にする"
+
 msgid "Do you want to install the recommended '{extension_id}' extension for '{file_name_or_extension}' files?"
 msgstr "'{file_name_or_extension}' ファイル向けの推奨拡張機能 '{extension_id}' をインストールしますか?"
 
@@ -67,6 +70,9 @@ msgstr "開発中の拡張機能のインストールに失敗しました: {}"
 
 msgid "Failed to load extensions. Please check your connection and try again."
 msgstr "拡張機能の読み込みに失敗しました。接続を確認してもう一度お試しください。"
+
+msgid "Failed to load extensions. Showing installed extensions only."
+msgstr "拡張機能の読み込みに失敗しました。インストール済みの拡張機能だけを表示しています。"
 
 msgid "Gemini CLI support is built-in to Zed!"
 msgstr "Gemini CLI のサポートは ForgeKairos に組み込まれています。"
@@ -157,6 +163,9 @@ msgstr "再ビルド"
 
 msgid "Rebuild dev extension…"
 msgstr "開発中の拡張機能を再ビルド…"
+
+msgid "Retry"
+msgstr "再試行"
 
 msgid "Ruff (linter for Python) support is built-in to Zed!"
 msgstr "Ruff (Python 用リンター) のサポートは ForgeKairos に組み込まれています。"

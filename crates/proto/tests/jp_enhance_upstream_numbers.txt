@@ -1,5 +1,5 @@
 # Every numbered field and enum value in upstream's crates/proto/proto at
-# v1.21.0 (33c9585), as `scope name number`. Written by `regenerate_upstream_numbers`
+# v1.24.4 (aed3754), as `scope name number`. Written by `regenerate_upstream_numbers`
 # in jp_enhance_numbering.rs; do not edit by hand.
 AckBufferOperation buffer_id 1
 AckBufferOperation epoch 2
@@ -818,6 +818,8 @@ Envelope get_remotes 306
 Envelope get_remotes_response 307
 Envelope get_signature_help 217
 Envelope get_signature_help_response 218
+Envelope get_terminal_shell 494
+Envelope get_terminal_shell_response 495
 Envelope get_tree_diff 384
 Envelope get_tree_diff_response 385
 Envelope get_type_definition 34
@@ -1318,6 +1320,7 @@ GetOutgoingCalls item 3
 GetOutgoingCalls project_id 1
 GetOutgoingCalls version 4
 GetOutgoingCallsResponse calls 1
+GetPathMetadata canonicalize 3
 GetPathMetadata path 2
 GetPathMetadata project_id 1
 GetPathMetadataResponse exists 1
@@ -1353,6 +1356,9 @@ GetSignatureHelp position 3
 GetSignatureHelp project_id 1
 GetSignatureHelp version 4
 GetSignatureHelpResponse signature_help 1
+GetTerminalShell project_id 1
+GetTerminalShell worktree_id 2
+GetTerminalShellResponse shell 1
 GetTreeDiff base 4
 GetTreeDiff head 5
 GetTreeDiff includes_worktree 6
@@ -1438,6 +1444,7 @@ GitDiffCheckpoints repository_id 2
 GitDiffCheckpoints target_commit_sha 4
 GitDiffCheckpointsResponse diff 1
 GitDiffResponse diff 1
+GitEditRef create_to_commit 6
 GitEditRef delete 5
 GitEditRef project_id 1
 GitEditRef ref_name 3

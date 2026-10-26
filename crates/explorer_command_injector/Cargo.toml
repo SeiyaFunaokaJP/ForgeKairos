@@ -22,6 +22,6 @@ nightly = []
 
 [target.'cfg(target_os = "windows")'.dependencies]
 branding.workspace = true
-windows.workspace = true
+windows = { workspace = true, features = ["Win32_Globalization", "Win32_System_SystemServices"] }
 windows-core.workspace = true
 windows-registry.workspace = true

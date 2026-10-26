@@ -80,7 +80,10 @@ impl CommitSearchConditionKind {
         // A label that is one of the condition's own words (English, or no translation) is
         // written as that word already.
         if label.is_empty()
-            || self.prefix_words().iter().any(|word| same_word(word, label))
+            || self
+                .prefix_words()
+                .iter()
+                .any(|word| same_word(word, label))
             || label.trim() != label
             || label.contains(|character: char| is_colon(character) || character == '"')
         {

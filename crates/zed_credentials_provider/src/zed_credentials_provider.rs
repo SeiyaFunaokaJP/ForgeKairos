@@ -127,16 +127,18 @@ async fn move_credentials_file_into(
             Ok(Some(_)) => Err(anyhow::anyhow!(
                 "the credential store already holds a different value"
             )),
-            Ok(None) => async {
-                store.write_credentials(url, username, password, cx).await?;
-                let read_back = store.read_credentials(url, cx).await?;
-                anyhow::ensure!(
-                    read_back.is_some_and(|(_, stored)| stored == *password),
-                    "the credential store did not give back what was written"
-                );
-                Ok(())
+            Ok(None) => {
+                async {
+                    store.write_credentials(url, username, password, cx).await?;
+                    let read_back = store.read_credentials(url, cx).await?;
+                    anyhow::ensure!(
+                        read_back.is_some_and(|(_, stored)| stored == *password),
+                        "the credential store did not give back what was written"
+                    );
+                    Ok(())
+                }
+                .await
             }
-            .await,
             Err(error) => Err(error),
         };
         if let Err(error) = moved {
@@ -476,7 +478,10 @@ mod tests {
     async fn a_value_the_store_holds_differently_keeps_both(cx: &mut TestAppContext) {
         let directory = tempfile::tempdir().expect("a temporary directory");
         let path = directory.path().join("development_credentials");
-        write_file(&path, &[("https://api.example.com", "Bearer", b"from-file")]);
+        write_file(
+            &path,
+            &[("https://api.example.com", "Bearer", b"from-file")],
+        );
         let store = InMemoryCredentialsProvider::default();
         store.insert("https://api.example.com", "Bearer", b"from-store");
 

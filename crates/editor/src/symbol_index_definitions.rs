@@ -345,7 +345,7 @@ mod tests {
             LanguageConfig {
                 name: "C".into(),
                 matcher: LanguageMatcher {
-                    path_suffixes: vec!["c".to_string()],
+                    path_suffixes: vec!["c".into()],
                     ..LanguageMatcher::default()
                 }
                 .into(),
@@ -506,7 +506,7 @@ mod tests {
             LanguageConfig {
                 name: "C".into(),
                 matcher: LanguageMatcher {
-                    path_suffixes: vec!["c".to_string()],
+                    path_suffixes: vec!["c".into()],
                     ..LanguageMatcher::default()
                 }
                 .into(),

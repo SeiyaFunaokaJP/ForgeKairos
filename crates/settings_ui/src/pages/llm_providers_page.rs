@@ -640,7 +640,10 @@ fn render_provider_section(
                     provider,
                     provider_name.clone(),
                     config,
-                    settings_window.api_key_save_errors.get(&provider_id).cloned(),
+                    settings_window
+                        .api_key_save_errors
+                        .get(&provider_id)
+                        .cloned(),
                     cx,
                 ),
                 Some(ProviderSettingsView::Inline(settings)) => {
@@ -3902,7 +3905,10 @@ mod provider_edit_tests {
             });
             cx.run_until_parked();
             settings_window.read_with(cx, |settings_window, _| {
-                settings_window.api_key_save_errors.get(&provider_id).cloned()
+                settings_window
+                    .api_key_save_errors
+                    .get(&provider_id)
+                    .cloned()
             })
         };
 

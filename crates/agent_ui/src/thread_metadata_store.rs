@@ -4,7 +4,7 @@ use std::{
 };
 
 use agent::{ThreadStore, ZED_AGENT_ID};
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::{v1 as acp, v2 as acp_v2};
 use anyhow::Context as _;
 use chrono::{DateTime, Utc};
 use collections::{HashMap, HashSet};
@@ -25,7 +25,7 @@ pub use project::WorktreePaths;
 use project::{AgentId, linked_worktree_short_name};
 use remote::{RemoteConnectionOptions, same_remote_connection_identity};
 use ui::{App, Context, SharedString, ThreadItemWorktreeInfo, WorktreeKind};
-use util::ResultExt as _;
+use util::{ResultExt as _, paths::PathStyle};
 use workspace::{PathList, SerializedWorkspaceLocation, WorkspaceDb};
 
 use crate::is_default_thread_title;
@@ -542,18 +542,52 @@ const LAST_SESSION_OPTIONS_NAMESPACE: &str = "agent_last_session_options";
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SessionOptionsSnapshot {
     #[serde(default)]
-    pub config_options: Option<Vec<acp::SessionConfigOption>>,
+    pub config_options: Option<Vec<acp_v2::SessionConfigOption>>,
     #[serde(default)]
     pub modes: Option<acp::SessionModeState>,
     #[serde(default)]
-    pub available_commands: Vec<acp::AvailableCommand>,
+    pub available_commands: Vec<acp_v2::AvailableCommand>,
     /// ADR-F103: read in a session of its own before any thread of the agent
     /// had started, rather than from a thread's session.
     #[serde(default)]
     pub read_before_start: bool,
 }
 
+/// The shape [`SessionOptionsSnapshot`] was written in before the session
+/// options moved to ACP v2 (`id` rather than `configId`, among others).
+#[derive(serde::Deserialize)]
+struct SessionOptionsSnapshotV1 {
+    #[serde(default)]
+    config_options: Option<Vec<acp::SessionConfigOption>>,
+    #[serde(default)]
+    modes: Option<acp::SessionModeState>,
+    #[serde(default)]
+    available_commands: Vec<acp::AvailableCommand>,
+    #[serde(default)]
+    read_before_start: bool,
+}
+
 impl SessionOptionsSnapshot {
+    /// Reads a snapshot written by this version, or by one from before ACP v2.
+    fn from_json(value: &str) -> anyhow::Result<Self> {
+        let error = match serde_json::from_str::<Self>(value) {
+            Ok(snapshot) => return Ok(snapshot),
+            Err(error) => error,
+        };
+        let Ok(legacy) = serde_json::from_str::<SessionOptionsSnapshotV1>(value) else {
+            return Err(error.into());
+        };
+        Ok(Self {
+            config_options: legacy
+                .config_options
+                .map(acp_thread::config_options::from_v1)
+                .transpose()?,
+            modes: legacy.modes,
+            available_commands: acp_thread::commands::from_v1(legacy.available_commands)?,
+            read_before_start: legacy.read_before_start,
+        })
+    }
+
     /// What the session of `thread` offers now.
     pub fn of_session(thread: &Entity<acp_thread::AcpThread>, cx: &App) -> Self {
         let thread = thread.read(cx);
@@ -589,7 +623,7 @@ fn load_last_session_options(cx: &mut App) {
         .filter_map(|(agent_id, value)| {
             // An agent's options change shape between its versions; one that
             // no longer reads is only a picker not shown before the start.
-            let snapshot = serde_json::from_str::<SessionOptionsSnapshot>(&value)
+            let snapshot = SessionOptionsSnapshot::from_json(&value)
                 .with_context(|| format!("reading the last session options of {agent_id}"))
                 .log_err()?;
             Some((AgentId(agent_id.into()), snapshot))
@@ -644,7 +678,7 @@ pub fn record_last_session_options(
 /// its own later (a mode it left) is not what the next thread starts with.
 pub fn record_last_available_commands(
     agent_id: AgentId,
-    available_commands: Vec<acp::AvailableCommand>,
+    available_commands: Vec<acp_v2::AvailableCommand>,
     cx: &mut App,
 ) {
     let mut snapshot = last_session_options(&agent_id, cx).unwrap_or_default();
@@ -944,7 +978,8 @@ pub fn worktree_info_from_thread_paths<S: std::hash::BuildHasher>(
         let is_linked = main_path != folder_path;
 
         if is_linked {
-            let short_name = linked_worktree_short_name(main_path, folder_path).unwrap_or_default();
+            let short_name = linked_worktree_short_name(main_path, folder_path, PathStyle::local())
+                .unwrap_or_default();
             let project_name = main_path
                 .file_name()
                 .map(|n| SharedString::from(n.to_string_lossy().to_string()))
@@ -2388,7 +2423,7 @@ mod tests {
     use acp_thread::StubAgentConnection;
     use action_log::ActionLog;
     use agent::DbThread;
-    use agent_client_protocol::schema::v1 as acp;
+    use agent_client_protocol::schema::{v1 as acp, v2 as acp_v2};
     use gpui::{TestAppContext, VisualTestContext};
     use project::FakeFs;
     use project::Project;
@@ -2396,6 +2431,62 @@ mod tests {
     use std::path::Path;
     use std::rc::Rc;
     use workspace::MultiWorkspace;
+
+    /// Session options written before they moved to ACP v2 (`id` rather than
+    /// `configId`) still read, and come back in the v2 shape.
+    #[test]
+    fn last_session_options_written_in_acp_v1_still_read() -> anyhow::Result<()> {
+        let legacy = serde_json::json!({
+            "config_options": [
+                acp::SessionConfigOption::select(
+                    "model",
+                    "Model",
+                    "opus",
+                    vec![
+                        acp::SessionConfigSelectOption::new("opus", "Opus"),
+                        acp::SessionConfigSelectOption::new("sonnet", "Sonnet"),
+                    ],
+                ),
+                acp::SessionConfigOption::boolean("fast", "Fast mode", true),
+            ],
+            "available_commands": [acp::AvailableCommand::new("review", "Review the changes")],
+            "read_before_start": true,
+        })
+        .to_string();
+        assert!(
+            serde_json::from_str::<SessionOptionsSnapshot>(&legacy).is_err(),
+            "the v1 shape does not read as v2, so this exercises the fallback"
+        );
+
+        let snapshot = SessionOptionsSnapshot::from_json(&legacy)?;
+        let config_options = snapshot.config_options.clone().unwrap_or_default();
+        let config_ids = config_options
+            .iter()
+            .map(|option| option.config_id.0.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(config_ids, ["model", "fast"]);
+        match &config_options[0].kind {
+            acp_v2::SessionConfigKind::Select(select) => {
+                assert_eq!(select.current_value.0.as_ref(), "opus")
+            }
+            other => panic!("the model option should stay a select, got {other:?}"),
+        }
+        match &config_options[1].kind {
+            acp_v2::SessionConfigKind::Boolean(boolean) => assert!(boolean.current_value),
+            other => panic!("the fast mode option should stay a boolean, got {other:?}"),
+        }
+        let command_names = snapshot
+            .available_commands
+            .iter()
+            .map(|command| command.name.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(command_names, ["review"]);
+        assert!(snapshot.read_before_start);
+
+        let written = serde_json::to_string(&snapshot)?;
+        assert_eq!(SessionOptionsSnapshot::from_json(&written)?, snapshot);
+        Ok(())
+    }
 
     fn make_db_thread(title: &str, updated_at: DateTime<Utc>) -> DbThread {
         DbThread {
@@ -3500,7 +3591,7 @@ mod tests {
                     project.clone(),
                     action_log,
                     subagent_session_id.clone(),
-                    watch::Receiver::constant(acp::PromptCapabilities::new()),
+                    watch::Receiver::constant(acp_v2::PromptCapabilities::new()),
                     cx,
                 )
             })

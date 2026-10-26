@@ -108,12 +108,11 @@ fn missing_consent(provider_id: &LanguageModelProviderId, cx: &App) -> Option<Co
 /// Registers [`missing_consent`] as the rule the agent panel checks before it
 /// starts a thread on a provider, so the two never disagree on what needs one.
 pub(crate) fn init(cx: &mut App) {
-    cx.set_global(agent_settings::ai_vendor::LanguageModelProviderConsentCheck(
-        |provider_id, cx| {
-            missing_consent(&LanguageModelProviderId(provider_id.to_string().into()), cx)
-                .is_none()
-        },
-    ));
+    cx.set_global(
+        agent_settings::ai_vendor::LanguageModelProviderConsentCheck(|provider_id, cx| {
+            missing_consent(&LanguageModelProviderId(provider_id.to_string().into()), cx).is_none()
+        }),
+    );
 }
 
 pub(crate) fn provider_step(provider_id: &LanguageModelProviderId, cx: &mut App) -> SetupStep {

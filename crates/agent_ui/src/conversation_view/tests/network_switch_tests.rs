@@ -1151,7 +1151,7 @@ async fn test_a_thread_that_starts_as_it_opens_starts_in_the_sandbox(cx: &mut Te
         None,
         None,
         Some(AgentInitialContent::ContentBlock {
-            blocks: vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
+            blocks: vec![acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
                 "Hello",
             ))],
             auto_submit: true,

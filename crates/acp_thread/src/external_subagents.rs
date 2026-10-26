@@ -227,8 +227,8 @@ impl AcpThread {
             }
             if let Some(title) = title {
                 child.thread.update(cx, |thread, cx| {
-                    if thread.title.as_ref() != Some(&title) {
-                        thread.title = Some(title);
+                    if thread.session_info.title.as_ref() != Some(&title) {
+                        thread.session_info.title = Some(title);
                         cx.emit(AcpThreadEvent::TitleUpdated);
                     }
                 });
@@ -239,8 +239,8 @@ impl AcpThread {
 
         let project = self.project.clone();
         let action_log = cx.new(|_| ActionLog::new(project.clone()));
-        let parent_session_id = self.session_id.clone();
-        let work_dirs = self.work_dirs.clone();
+        let parent_session_id = self.session_id().clone();
+        let work_dirs = self.work_dirs().cloned();
         let connection = self.connection.clone();
         let prompt_capabilities = self.prompt_capabilities.clone();
         let session_id = report.session_id.clone();
@@ -378,7 +378,7 @@ impl AcpThread {
                 && let Some(label) = background_shell_label(tool_call)
             {
                 tasks.push(BackgroundShellTask {
-                    session_id: self.session_id.clone(),
+                    session_id: self.session_id().clone(),
                     tool_call_id: tool_call.id.clone(),
                     label,
                 });

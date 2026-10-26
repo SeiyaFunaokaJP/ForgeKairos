@@ -1697,43 +1697,56 @@ mod tests {
                 .flex()
                 .flex_col()
                 .size_full()
-                .child(div().h(TITLE_HEIGHT).w_full().flex_none().on_mouse_down(
-                    MouseButton::Left,
-                    move |_, _, _| title_presses.set(title_presses.get() + 1),
-                ))
                 .child(
-                    div().h(px(200.)).w_full().flex_none().overflow_hidden().child(
-                        div().mt(self.shift).child(
-                            div()
-                                .relative()
-                                .w(px(300.))
-                                .h(BLOCK_HEIGHT)
-                                .custom_scrollbars(
-                                    Scrollbars::new(ScrollAxes::Horizontal)
-                                        .tracked_scroll_handle(&self.scroll_handle)
-                                        .with_track_along(
-                                            ScrollAxes::Horizontal,
-                                            cx.theme().colors().editor_background,
-                                        ),
-                                    window,
-                                    cx,
-                                )
-                                .child(
-                                    div()
-                                        .id("code")
-                                        .flex()
-                                        .size_full()
-                                        .overflow_x_scroll()
-                                        .track_scroll(&self.scroll_handle)
-                                        .child(div().flex_none().w(px(1000.)).h(px(20.))),
-                                ),
+                    div()
+                        .h(TITLE_HEIGHT)
+                        .w_full()
+                        .flex_none()
+                        .on_mouse_down(MouseButton::Left, move |_, _, _| {
+                            title_presses.set(title_presses.get() + 1)
+                        }),
+                )
+                .child(
+                    div()
+                        .h(px(200.))
+                        .w_full()
+                        .flex_none()
+                        .overflow_hidden()
+                        .child(
+                            div().mt(self.shift).child(
+                                div()
+                                    .relative()
+                                    .w(px(300.))
+                                    .h(BLOCK_HEIGHT)
+                                    .custom_scrollbars(
+                                        Scrollbars::new(ScrollAxes::Horizontal)
+                                            .tracked_scroll_handle(&self.scroll_handle)
+                                            .with_track_along(
+                                                ScrollAxes::Horizontal,
+                                                cx.theme().colors().editor_background,
+                                            ),
+                                        window,
+                                        cx,
+                                    )
+                                    .child(
+                                        div()
+                                            .id("code")
+                                            .flex()
+                                            .size_full()
+                                            .overflow_x_scroll()
+                                            .track_scroll(&self.scroll_handle)
+                                            .child(div().flex_none().w(px(1000.)).h(px(20.))),
+                                    ),
+                            ),
                         ),
-                    ),
                 )
         }
     }
 
-    fn open(shift: Pixels, cx: &mut TestAppContext) -> (Entity<TitleOverScrollbar>, &mut gpui::VisualTestContext) {
+    fn open(
+        shift: Pixels,
+        cx: &mut TestAppContext,
+    ) -> (Entity<TitleOverScrollbar>, &mut gpui::VisualTestContext) {
         cx.update(|cx| {
             let settings_store = settings::SettingsStore::test(cx);
             cx.set_global(settings_store);
@@ -1775,7 +1788,9 @@ mod tests {
     async fn test_clipped_scrollbar_leaves_presses_above_its_viewport(cx: &mut TestAppContext) {
         let shift = -(BLOCK_HEIGHT + px(10.));
         let (view, cx) = open(shift, cx);
-        let rows = (0..TITLE_HEIGHT.as_f32() as i32).step_by(2).collect::<Vec<_>>();
+        let rows = (0..TITLE_HEIGHT.as_f32() as i32)
+            .step_by(2)
+            .collect::<Vec<_>>();
         for y in &rows {
             press(point(px(250.), px(*y as f32)), cx);
         }

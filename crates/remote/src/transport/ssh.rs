@@ -20,7 +20,7 @@ use paths::remote_server_dir_relative;
 use release_channel::{AppVersion, ReleaseChannel};
 use rpc::proto::Envelope;
 use semver::Version;
-pub use settings::SshPortForwardOption;
+pub use settings_content::SshPortForwardOption;
 use smol::fs;
 use std::{
     net::IpAddr,
@@ -228,8 +228,8 @@ pub struct SshConnectionOptions {
     pub upload_binary_over_ssh: bool,
 }
 
-impl From<settings::SshConnection> for SshConnectionOptions {
-    fn from(val: settings::SshConnection) -> Self {
+impl From<settings_content::SshConnection> for SshConnectionOptions {
+    fn from(val: settings_content::SshConnection) -> Self {
         SshConnectionOptions {
             host: val.host.to_string().into(),
             username: val.username,
@@ -725,6 +725,7 @@ async fn find_existing_control_master(
 impl SshRemoteConnection {
     pub(crate) async fn new(
         connection_options: SshConnectionOptions,
+        known_os: Option<RemoteOs>,
         delegate: Arc<dyn RemoteClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<Self> {
@@ -904,8 +905,11 @@ impl SshRemoteConnection {
         // one round trip, what the sequence below needs four for — plus the two
         // that `ensure_server_binary` and `ensure_slirp4netns_binary` would each
         // spend on their own. A Windows remote cannot run it and falls through
-        // to that sequence, paying one wasted round trip.
-        let posix_probe = {
+        // to that sequence, paying one wasted round trip, which a reconnect that
+        // already knows the remote runs Windows skips.
+        let posix_probe = if known_os.is_some_and(|os| os.is_windows()) {
+            None
+        } else {
             let (_, binary_name) = server_binary_names(release_channel, &version, false);
             let server_binary_path = remote_server_dir_relative()
                 .join(
@@ -934,7 +938,10 @@ impl SshRemoteConnection {
                 probe.os_version.clone(),
             ),
             None => {
-                let is_windows = socket.probe_is_windows().await;
+                let is_windows = match known_os {
+                    Some(os) => os.is_windows(),
+                    None => socket.probe_is_windows().await,
+                };
                 let ssh_shell = socket.shell(is_windows).await;
                 let ssh_shell_kind = ShellKind::new(&ssh_shell, is_windows);
                 let ssh_platform = socket.platform(ssh_shell_kind, is_windows).await?;

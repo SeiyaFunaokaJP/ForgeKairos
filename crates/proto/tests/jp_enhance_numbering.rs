@@ -20,6 +20,7 @@ const FORK_FILES: &[&str] = &["jp_enhance.proto", "file_transfer.proto"];
 /// Fields the fork added to upstream's messages, as `(message, field)`.
 const FORK_FIELDS_IN_UPSTREAM_MESSAGES: &[(&str, &str)] = &[
     ("GetAgentServerCommand", "project_roots"),
+    ("GetAgentServerCommand", "approve_update"),
     ("AgentServerCommand", "sandbox"),
     ("AgentServerCommand", "sandbox_error"),
     ("Entry", "is_private"),

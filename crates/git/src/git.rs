@@ -133,6 +133,8 @@ actions!(
         /// Toggles whether the commit message editor fills all the available
         /// vertical space within the git panel.
         ToggleFillCommitEditor,
+        /// Toggles whether the commit message editor is shown in the git panel.
+        ToggleCommitEditor,
         /// Generates a commit message using AI.
         GenerateCommitMessage,
         /// Initializes a new git repository.
@@ -176,6 +178,8 @@ actions!(
         ConfirmForcePush,
         /// Opens the merge request box of the commit graph (and keeps it open if it already is).
         OpenMergeRequestBox,
+        /// Creates a tag at HEAD.
+        CreateTagAtHead,
     ]
 );
 

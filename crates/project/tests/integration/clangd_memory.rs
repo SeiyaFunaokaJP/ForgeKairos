@@ -28,7 +28,7 @@ fn c_lang() -> Arc<Language> {
         LanguageConfig {
             name: "C".into(),
             matcher: LanguageMatcher {
-                path_suffixes: vec!["c".to_string()],
+                path_suffixes: vec!["c".into()],
                 ..Default::default()
             }
             .into(),

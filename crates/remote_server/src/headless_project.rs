@@ -12,7 +12,7 @@ use egress_policy::child_process_proxy::Supervisor as ChildProcessProxySuperviso
 use extension::ExtensionHostProxy;
 use extension_host::headless_host::HeadlessExtensionStore;
 use fs::{Fs, RemoveOptions, RenameOptions};
-use futures::channel::oneshot;
+use futures::{channel::oneshot, stream::StreamExt as _};
 use gpui::{
     App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, PromptLevel, Task, TaskExt,
     WeakEntity,
@@ -50,6 +50,7 @@ use smol::process::Child;
 use settings::{Settings as _, SettingsLocation, initial_server_settings_content};
 use std::{
     cell::RefCell,
+    mem,
     num::NonZeroU64,
     path::{Path, PathBuf},
     rc::Rc,
@@ -121,6 +122,8 @@ pub struct HeadlessProject {
     /// Whether `ShutdownRemoteServer` ends the whole process, which is only
     /// right when this project is the only thing the process serves.
     quit_app_on_shutdown: bool,
+    search_buffer_batches: async_channel::Sender<SearchBufferBatch>,
+    _search_buffer_sender: Task<()>,
 }
 
 pub struct HeadlessAppState {
@@ -272,6 +275,17 @@ pub enum HeadlessProjectEvent {
 }
 
 impl EventEmitter<HeadlessProjectEvent> for HeadlessProject {}
+
+const MAX_SEARCH_CANDIDATES_PER_BATCH: usize = 64;
+const MAX_UNACKNOWLEDGED_SEARCH_BYTES: usize = 1024 * 1024;
+
+struct SearchBufferBatch {
+    buffers: Vec<Entity<Buffer>>,
+    handle: u64,
+    peer_id: proto::PeerId,
+    project_id: u64,
+    completion: oneshot::Sender<Result<()>>,
+}
 
 impl HeadlessProject {
     pub fn init(cx: &mut App) {
@@ -618,6 +632,59 @@ impl HeadlessProject {
         ContextServerStore::init_headless(&session);
         SymbolIndexStore::init(&session);
 
+        let (search_buffer_batches, batches) = async_channel::bounded::<SearchBufferBatch>(1);
+        let search_buffer_sender = cx.spawn({
+            let buffer_store = buffer_store.clone();
+            let client = session.clone();
+            async move |_, cx| {
+                while let Ok(batch) = batches.recv().await {
+                    let result = async {
+                        let mut buffer_ids = Vec::new();
+                        let mut unacknowledged_bytes = 0;
+                        for buffer in &batch.buffers {
+                            if batch.completion.is_canceled() {
+                                break;
+                            }
+                            let (buffer_id, transferred_bytes, transfer) =
+                                buffer_store.update(cx, |store, cx| {
+                                    let buffer_id = buffer.read(cx).remote_id();
+                                    let transferred_bytes = if store.is_shared(buffer_id, cx) {
+                                        0
+                                    } else {
+                                        buffer.read(cx).len()
+                                    };
+                                    let transfer = store.create_buffer_for_peer(
+                                        buffer,
+                                        REMOTE_SERVER_PEER_ID,
+                                        cx,
+                                    );
+                                    (buffer_id, transferred_bytes, transfer)
+                                });
+                            transfer.await?;
+                            buffer_ids.push(buffer_id.to_proto());
+                            unacknowledged_bytes += transferred_bytes;
+                            if unacknowledged_bytes >= MAX_UNACKNOWLEDGED_SEARCH_BYTES {
+                                Self::send_search_candidates(
+                                    &client,
+                                    &batch,
+                                    mem::take(&mut buffer_ids),
+                                )
+                                .await?;
+                                unacknowledged_bytes = 0;
+                            }
+                        }
+                        if !buffer_ids.is_empty() {
+                            Self::send_search_candidates(&client, &batch, buffer_ids).await?;
+                        }
+                        anyhow::Ok(())
+                    }
+                    .await;
+
+                    batch.completion.send(result).ok();
+                }
+            }
+        });
+
         HeadlessProject {
             next_entry_id: Default::default(),
             session,
@@ -646,6 +713,8 @@ impl HeadlessProject {
             transfer_commands: Default::default(),
             host,
             quit_app_on_shutdown: false,
+            search_buffer_batches,
+            _search_buffer_sender: search_buffer_sender,
         }
     }
 
@@ -1625,8 +1694,6 @@ impl HeadlessProject {
         envelope: TypedEnvelope<proto::ListTransferDirectory>,
         cx: AsyncApp,
     ) -> Result<proto::ListTransferDirectoryResponse> {
-        use smol::stream::StreamExt as _;
-
         let fs = cx.read_entity(&this, |this, _| this.fs.clone());
         let directory = PathBuf::from(shellexpand::tilde(&envelope.payload.path).to_string());
         let mut children = fs.read_dir(&directory).await?;
@@ -1714,8 +1781,6 @@ impl HeadlessProject {
         envelope: TypedEnvelope<proto::FindSearchCandidates>,
         mut cx: AsyncApp,
     ) -> Result<proto::Ack> {
-        use futures::stream::StreamExt as _;
-
         let peer_id = envelope.original_sender_id.unwrap_or(envelope.sender_id);
         let message = envelope.payload;
         let query = SearchQuery::from_proto(
@@ -1726,8 +1791,9 @@ impl HeadlessProject {
         let project_id = message.project_id;
         let buffer_store = this.read_with(&cx, |this, _| this.buffer_store.clone());
         let handle = message.handle;
-        let _buffer_store = buffer_store.clone();
-        let client = this.read_with(&cx, |this, _| this.session.clone());
+        let client = this.read_with(&cx, |project, _| project.session.clone());
+        let search_buffer_batches =
+            this.read_with(&cx, |project, _| project.search_buffer_batches.clone());
         let task = cx.spawn(async move |cx| {
             let results = this.update(cx, |this, cx| {
                 project::Search::local(
@@ -1740,44 +1806,25 @@ impl HeadlessProject {
                 .into_handle(query, cx)
                 .matching_buffers(cx)
             });
-            let (batcher, batches) =
-                project::project_search::AdaptiveBatcher::new(cx.background_executor());
-            let mut new_matches = Box::pin(results.rx);
-
-            let sender_task = cx.background_executor().spawn({
-                let client = client.clone();
-                async move {
-                    let mut batches = std::pin::pin!(batches);
-                    while let Some(buffer_ids) = batches.next().await {
-                        client
-                            .request(proto::FindSearchCandidatesChunk {
-                                handle,
-                                peer_id: Some(peer_id),
-                                project_id,
-                                variant: Some(
-                                    proto::find_search_candidates_chunk::Variant::Matches(
-                                        proto::FindSearchCandidatesMatches { buffer_ids },
-                                    ),
-                                ),
-                            })
-                            .await?;
-                    }
-                    anyhow::Ok(())
-                }
-            });
-
-            while let Some((buffer, _)) = new_matches.next().await {
-                let _ = buffer_store
-                    .update(cx, |this, cx| {
-                        this.create_buffer_for_peer(&buffer, REMOTE_SERVER_PEER_ID, cx)
+            let mut batches = std::pin::pin!(
+                results
+                    .rx
+                    .map(|(buffer, _)| buffer)
+                    .ready_chunks(MAX_SEARCH_CANDIDATES_PER_BATCH)
+            );
+            while let Some(buffers) = batches.next().await {
+                let (completion, completed) = oneshot::channel();
+                search_buffer_batches
+                    .send(SearchBufferBatch {
+                        buffers,
+                        handle,
+                        peer_id,
+                        project_id,
+                        completion,
                     })
-                    .await;
-                let buffer_id = buffer.read_with(cx, |this, _| this.remote_id().to_proto());
-                batcher.push(buffer_id).await;
+                    .await?;
+                completed.await??;
             }
-            batcher.flush().await;
-
-            sender_task.await?;
 
             client
                 .request(proto::FindSearchCandidatesChunk {
@@ -1791,11 +1838,29 @@ impl HeadlessProject {
                 .await?;
             anyhow::Ok(())
         });
-        _buffer_store.update(&mut cx, |this, _| {
-            this.register_ongoing_project_search((peer_id, handle), task);
+        buffer_store.update(&mut cx, |store, _| {
+            store.register_ongoing_project_search((peer_id, handle), task);
         });
 
         Ok(proto::Ack {})
+    }
+
+    async fn send_search_candidates(
+        client: &AnyProtoClient,
+        batch: &SearchBufferBatch,
+        buffer_ids: Vec<u64>,
+    ) -> Result<()> {
+        client
+            .request(proto::FindSearchCandidatesChunk {
+                handle: batch.handle,
+                peer_id: Some(batch.peer_id),
+                project_id: batch.project_id,
+                variant: Some(proto::find_search_candidates_chunk::Variant::Matches(
+                    proto::FindSearchCandidatesMatches { buffer_ids },
+                )),
+            })
+            .await?;
+        Ok(())
     }
 
     // Goes from client to host.
@@ -1813,7 +1878,6 @@ impl HeadlessProject {
         envelope: TypedEnvelope<proto::ListRemoteDirectory>,
         cx: AsyncApp,
     ) -> Result<proto::ListRemoteDirectoryResponse> {
-        use smol::stream::StreamExt;
         let fs = cx.read_entity(&this, |this, _| this.fs.clone());
         let expanded = PathBuf::from(shellexpand::tilde(&envelope.payload.path).to_string());
         let check_info = envelope
@@ -1851,11 +1915,20 @@ impl HeadlessProject {
 
         let metadata = fs.metadata(&expanded).await?;
         let is_dir = metadata.map(|metadata| metadata.is_dir).unwrap_or(false);
+        let path = if envelope.payload.canonicalize && metadata.is_some() {
+            fs.canonicalize(&expanded)
+                .await?
+                .to_str()
+                .context("canonical file path is not valid UTF-8")?
+                .to_owned()
+        } else {
+            expanded.to_string_lossy().into_owned()
+        };
 
         Ok(proto::GetPathMetadataResponse {
             exists: metadata.is_some(),
             is_dir,
-            path: expanded.to_string_lossy().into_owned(),
+            path,
         })
     }
 

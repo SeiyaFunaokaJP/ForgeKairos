@@ -293,17 +293,12 @@ mod tests {
         } else {
             "/home/Ada Work/.ssh/id_ed25519"
         };
-        let with_key = identity()
-            .with_ssh_key(Some(Path::new(absolute)))
-            .unwrap();
+        let with_key = identity().with_ssh_key(Some(Path::new(absolute))).unwrap();
         assert_eq!(
             with_key.ssh_command().unwrap(),
             format!("ssh -i '{absolute}' -o IdentitiesOnly=yes")
         );
-        assert_eq!(
-            identity().with_ssh_key(None).unwrap().ssh_command(),
-            None
-        );
+        assert_eq!(identity().with_ssh_key(None).unwrap().ssh_command(), None);
         assert_eq!(
             identity()
                 .with_ssh_key(Some(Path::new("")))

@@ -1,5 +1,5 @@
 use crate::types::TableCell;
-use gpui::{AnyElement, Div, Entity, MouseButton, MouseDownEvent, actions};
+use gpui::{AnyElement, Div, Entity, Hsla, MouseButton, MouseDownEvent, actions};
 use std::ops::Range;
 use ui::{
     ColumnWidthConfig, ResizableColumnsState, Table, Tooltip, UncheckedTableRow, div, prelude::*,
@@ -215,7 +215,7 @@ impl TabularDataPreviewPane {
         this: &TabularDataPreviewPane,
         cols: usize,
         display_row: DisplayRow,
-        row_identifier_text_color: gpui::Hsla,
+        row_identifier_text_color: Hsla,
         row_height: Pixels,
         cx: &Context<TabularDataPreviewPane>,
     ) -> Option<UncheckedTableRow<AnyElement>> {

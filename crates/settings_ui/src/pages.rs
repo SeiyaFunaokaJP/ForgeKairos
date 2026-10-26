@@ -40,9 +40,7 @@ pub(crate) use mcp_servers_page::{
 pub(crate) use network_allowlist::{
     NetworkAllowlistState, load_network_allowlist, render_network_allowlist_page,
 };
-pub(crate) use provider_setup_modal::{
-    init as init_provider_setup, open_provider_setup_modal,
-};
+pub(crate) use provider_setup_modal::{init as init_provider_setup, open_provider_setup_modal};
 pub(crate) use sandbox_settings::render_sandbox_settings_page;
 pub use skill_creator::SkillCreatorOpenMode;
 pub(crate) use skill_creator::{

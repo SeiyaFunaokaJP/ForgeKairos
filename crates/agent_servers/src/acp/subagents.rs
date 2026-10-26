@@ -624,6 +624,7 @@ fn register_child_session(
             suppress_abort_err: false,
             session_modes: None,
             config_options: None,
+            default_config_task: None,
             _release_subscription: release_subscription,
         },
     );

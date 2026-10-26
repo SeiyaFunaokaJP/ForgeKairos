@@ -138,7 +138,7 @@ fn rust_lang() -> Arc<Language> {
         LanguageConfig {
             name: LanguageName::new("Rust"),
             matcher: Arc::new(LanguageMatcher {
-                path_suffixes: vec!["rs".to_string()],
+                path_suffixes: vec!["rs".into()],
                 ..LanguageMatcher::default()
             }),
             ..LanguageConfig::default()
@@ -1335,7 +1335,7 @@ fn c_lang() -> Arc<Language> {
         LanguageConfig {
             name: LanguageName::new("C"),
             matcher: Arc::new(LanguageMatcher {
-                path_suffixes: vec!["c".to_string(), "h".to_string()],
+                path_suffixes: vec!["c".into(), "h".into()],
                 ..LanguageMatcher::default()
             }),
             ..LanguageConfig::default()

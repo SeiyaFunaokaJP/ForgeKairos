@@ -403,7 +403,7 @@ pub fn build_mermaid_theme(cx: &App) -> mermaid_render::MermaidTheme {
 
     mermaid_render::MermaidTheme {
         dark_mode: is_dark,
-        font_family: mermaid_font_family(theme_settings.ui_font.family.as_ref()),
+        font_family: mermaid_font_family(theme_settings.mermaid_font_family().as_ref()),
         background: colors.editor_background,
         primary_color: colors.surface_background,
         primary_text_color: colors.text,
