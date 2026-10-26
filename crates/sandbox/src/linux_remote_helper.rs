@@ -101,8 +101,9 @@ use crate::protected_paths::{
 use crate::sandbox_processes::{SANDBOX_KILL_FLAG, SANDBOX_PROCESSES_FLAG, parse_stat};
 use crate::util::CanonicalPathBuf;
 use crate::{
-    IDE_BRIDGE_FLAG, REMOTE_SANDBOX_HELPER_FLAG, SANDBOX_SESSION_FLAG, WSL_HELPER_MODE_FLAG,
-    WSL_PROBE_RESULT_PREFIX, WSL_SANDBOX_PROBE_FLAG, WSL_SANDBOX_RESOLVE_FLAG,
+    IDE_BRIDGE_FLAG, REMOTE_SANDBOX_HELPER_FLAG, SANDBOX_SESSION_FLAG, SETENV_FROM_STDIN_FLAG,
+    WSL_HELPER_MODE_FLAG, WSL_PROBE_RESULT_PREFIX, WSL_SANDBOX_PROBE_FLAG,
+    WSL_SANDBOX_RESOLVE_FLAG,
 };
 
 /// Exit code for "the sandbox could not be built" (mirrors the Bubblewrap
@@ -173,6 +174,19 @@ pub(crate) fn run_if_invoked() {
         Err(error) => fail_closed("bad-args", &format!("{error:#}")),
     };
     WSL_MODE.store(invocation.wsl, Ordering::Relaxed);
+    // Before anything else touches the standard input: the frame is followed
+    // directly by the command's own input.
+    if invocation.environment_from_stdin {
+        let environment = std::io::stdin()
+            .as_fd()
+            .try_clone_to_owned()
+            .map_err(anyhow::Error::from)
+            .and_then(|stdin| read_environment_from(&mut std::fs::File::from(stdin)));
+        match environment {
+            Ok(environment) => invocation.set_environment.extend(environment),
+            Err(error) => fail_closed("bad-args", &format!("{error:#}")),
+        }
+    }
     invocation.on_wsl = invocation.wsl || running_on_wsl();
     run_helper(invocation);
 }
@@ -331,6 +345,10 @@ struct Stage1Invocation {
     /// Variables to set in the command's environment. `wsl.exe` does not carry
     /// the Windows environment across, so the WSL backend passes it here.
     set_environment: Vec<(OsString, OsString)>,
+    /// [`SETENV_FROM_STDIN_FLAG`]: more of `set_environment` follows on the
+    /// standard input, kept out of the argv because it holds the agent's
+    /// secrets.
+    environment_from_stdin: bool,
     /// Variables to remove from the command's environment.
     unset_environment: Vec<OsString>,
     /// ADR-F49: a long-running program on a terminal (`--interactive`), whose
@@ -372,6 +390,7 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
     let mut wsl = false;
     let mut slirp_sha256 = None;
     let mut set_environment = Vec::new();
+    let mut environment_from_stdin = false;
     let mut unset_environment = Vec::new();
     let mut interactive = false;
     let mut ide_listen: Option<u16> = None;
@@ -429,6 +448,7 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
                 ensure_environment_name(&name)?;
                 set_environment.push((name, value));
             }
+            SETENV_FROM_STDIN_FLAG => environment_from_stdin = true,
             "--unsetenv" => {
                 let name = args.next().context("--unsetenv requires a name")?;
                 ensure_environment_name(&name)?;
@@ -504,6 +524,7 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
         on_wsl: wsl,
         slirp_sha256,
         set_environment,
+        environment_from_stdin,
         unset_environment,
         interactive,
         ide_forward,
@@ -511,6 +532,25 @@ fn parse_stage1_args(args: impl IntoIterator<Item = OsString>) -> Result<Stage1I
         program,
         args: trailing,
     })
+}
+
+/// The variables [`SETENV_FROM_STDIN_FLAG`] sends, checked as `--setenv`'s
+/// are. `input` must not read ahead of the frame.
+fn read_environment_from(input: &mut impl std::io::Read) -> Result<Vec<(OsString, OsString)>> {
+    crate::read_stdin_environment(input)?
+        .into_iter()
+        .map(|(name, value)| {
+            let name = OsString::from(name);
+            ensure_environment_name(&name)?;
+            // An argv can't carry a NUL, but the frame can, and `exec` would
+            // refuse the whole environment only once the sandbox is built.
+            ensure!(
+                !name.as_bytes().contains(&0) && !value.as_bytes().contains(&0),
+                "the environment variable {name:?} contains a NUL byte"
+            );
+            Ok((name, OsString::from(value)))
+        })
+        .collect()
 }
 
 /// Reject a name `setenv(3)` would refuse, here rather than in the holder, where
@@ -6905,6 +6945,42 @@ mod tests {
         }
         let args = ["--unsetenv", "=C:", "--", "true"];
         assert!(parse_stage1_args(args.iter().map(OsString::from)).is_err());
+    }
+
+    /// Upstream #65174's way, for the agent's sandbox: the environment comes
+    /// in on the standard input, is checked like `--setenv`'s, and leaves the
+    /// rest of the input to the command.
+    #[test]
+    fn the_environment_can_come_in_on_the_standard_input() {
+        let args = [SETENV_FROM_STDIN_FLAG, "--setenv", "A", "1", "--", "true"];
+        let invocation =
+            parse_stage1_args(args.iter().map(OsString::from)).expect("the flag parses");
+        assert!(invocation.environment_from_stdin);
+        let plain = parse_stage1_args(["--", "true"].iter().map(OsString::from))
+            .expect("a plain invocation parses");
+        assert!(!plain.environment_from_stdin);
+
+        let mut input =
+            crate::encode_stdin_environment(&[("API_KEY".to_string(), "secret".to_string())])
+                .expect("encodes");
+        input.extend_from_slice(b"agent input");
+        let mut reader = std::io::Cursor::new(input);
+        assert_eq!(
+            read_environment_from(&mut reader).expect("reads"),
+            [(OsString::from("API_KEY"), OsString::from("secret"))]
+        );
+        let mut rest = Vec::new();
+        std::io::Read::read_to_end(&mut reader, &mut rest).expect("reads the rest");
+        assert_eq!(rest, b"agent input");
+
+        for (name, value) in [("", "v"), ("A=B", "v"), ("A\0B", "v"), ("A", "v\0w")] {
+            let input = crate::encode_stdin_environment(&[(name.to_string(), value.to_string())])
+                .expect("encodes");
+            assert!(
+                read_environment_from(&mut input.as_slice()).is_err(),
+                "{name:?}={value:?} must be rejected"
+            );
+        }
     }
 
     /// In WSL mode a writable root must still be exactly the canonical path the

@@ -1182,7 +1182,7 @@ impl AcpConnection {
                     )
                 }
                 AgentLaunch::RemoteHelper { remote_binary } => {
-                    let (child, session, session_id) = remote_sandboxed_agent_command(
+                    let (child, input, session, session_id) = remote_sandboxed_agent_command(
                         &project,
                         &command,
                         remote_binary,
@@ -1190,6 +1190,7 @@ impl AcpConnection {
                         lift_agent_hosts,
                         cx,
                     )?;
+                    command_input = Some(input);
                     (
                         child,
                         Some(Rc::new(session)),
@@ -4054,6 +4055,9 @@ fn prepare_wsl_sandbox(
 struct RemoteAgentPlan {
     program: String,
     args: Vec<String>,
+    /// What the helper reads from its standard input before the agent's own
+    /// traffic: the agent's environment, kept out of `args`.
+    input: Vec<u8>,
     write_scope: Vec<PathBuf>,
     wrap: acp_thread::SandboxWrap,
     readable_paths: Vec<String>,
@@ -4133,7 +4137,8 @@ fn remote_agent_start_network(
 
 /// ADR-F49 第 2a 段: the helper invocation that starts the agent in the
 /// remote host's sandbox, as the host resolved it. The helper takes the
-/// agent's whole environment through `--setenv`; its own process gets none.
+/// agent's whole environment on its standard input (upstream #65174), never in
+/// its argv; its own process gets none of it.
 #[allow(
     clippy::too_many_arguments,
     reason = "one argument per part of what the helper is told about the agent"
@@ -4168,24 +4173,23 @@ fn plan_remote_agent(
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
-    let (program, args) = acp_thread::build_remote_sandbox_command(
+    // ADR-F49 decision 24's IDE forward is the WSL backend's alone: a remote
+    // agent runs without the IDE's MCP (ADR-F49 第 2a 段).
+    let (program, args, input) = acp_thread::build_remote_sandbox_agent_command(
         remote_binary,
         &wrap,
         network_ceiling,
         cwd,
         &sandbox_command.env,
         &readable_paths,
-        false,
-        // ADR-F49 decision 24's IDE forward is the WSL backend's alone: a
-        // remote agent runs without the IDE's MCP (ADR-F49 第 2a 段).
-        None,
         session_id,
         program,
         args,
-    );
+    )?;
     Ok(RemoteAgentPlan {
         program,
         args,
+        input,
         write_scope,
         wrap,
         readable_paths,
@@ -4207,7 +4211,7 @@ fn remote_sandboxed_agent_command(
     root_dir: Option<PathBuf>,
     lift_agent_hosts: bool,
     cx: &mut AsyncApp,
-) -> Result<(std::process::Command, AgentSandboxSession, String)> {
+) -> Result<(std::process::Command, Vec<u8>, AgentSandboxSession, String)> {
     let sandbox_command = command
         .sandbox
         .as_ref()
@@ -4244,7 +4248,7 @@ fn remote_sandboxed_agent_command(
     )?;
     let remote_client = remote_client.context("the project is no longer connected to its host")?;
     // ADR-F46: the transports refuse an environment for the helper's own
-    // process; everything the agent is given went in through `--setenv`.
+    // process; everything the agent is given goes in on the helper's stdin.
     let template = remote_client.read_with(cx, |client, _| {
         client.build_command(
             Some(plan.program.clone()),
@@ -4260,6 +4264,7 @@ fn remote_sandboxed_agent_command(
     child.envs(template.env);
     Ok((
         child,
+        plan.input,
         AgentSandboxSession {
             write_scope: plan.write_scope,
             env: sandbox_command.env.clone(),
@@ -6164,7 +6169,8 @@ mod tests {
 
     /// ADR-F49 第 2a 段: a remote agent is started by the host's helper, with
     /// its worktrees and its folder writable, what it runs from shown back,
-    /// and its whole environment going in through `--setenv`.
+    /// and its whole environment going in on the helper's standard input
+    /// (upstream #65174), never through its argv.
     #[test]
     fn a_remote_agent_is_started_by_the_hosts_helper() {
         let readable =
@@ -6220,16 +6226,23 @@ mod tests {
         };
         assert_eq!(values_of("--writable"), ["/home/u/project", CONFIG_DIR]);
         assert_eq!(values_of("--allow-host"), ["api.anthropic.com"]);
-        let forwarded = policy
-            .windows(3)
-            .filter_map(|window| match window {
-                [flag, name, value] if flag == "--setenv" => Some((name.as_str(), value.as_str())),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
+        assert!(
+            !policy.iter().any(|arg| arg == "--setenv"),
+            "the agent's environment must not be in the helper's argv: {policy:?}"
+        );
+        assert!(
+            policy
+                .iter()
+                .any(|arg| arg == sandbox::SETENV_FROM_STDIN_FLAG),
+            "the helper is told to read the environment from its stdin: {policy:?}"
+        );
         assert_eq!(
-            forwarded,
-            [("CLAUDE_CONFIG_DIR", CONFIG_DIR), ("PATH", "/usr/bin")]
+            sandbox::read_stdin_environment(&mut plan.input.as_slice())
+                .expect("the stdin frame decodes"),
+            [
+                ("CLAUDE_CONFIG_DIR".to_string(), CONFIG_DIR.to_string()),
+                ("PATH".to_string(), "/usr/bin".to_string())
+            ]
         );
         // What it runs from reaches the helper's policy as its readable paths.
         let expected_policy = sandbox::build_remote_sandbox_helper_argv(
@@ -6472,7 +6485,11 @@ mod tests {
                 path: PathBuf::from("agent"),
                 args: Vec::new(),
                 env: None,
-                sandbox: Some(placed_sandbox(&[], &[], agent_hosts())),
+                sandbox: Some(placed_sandbox(
+                    &[("API_KEY", "remote-agent-secret")],
+                    &[],
+                    agent_hosts(),
+                )),
             };
             for (lift, allowed_hosts, reported) in [
                 (
@@ -6486,7 +6503,7 @@ mod tests {
                     acp_thread::AgentSandboxNetwork::AgentHostsLifted,
                 ),
             ] {
-                let (child, session, _) = remote_sandboxed_agent_command(
+                let (child, input, session, _) = remote_sandboxed_agent_command(
                     &project,
                     &command,
                     remote_helper(),
@@ -6501,6 +6518,22 @@ mod tests {
                     .last()
                     .and_then(|payload| payload.to_str())
                     .expect("the packed argv is the last argument");
+                // Upstream #65174: the agent's secrets reach the helper on its
+                // stdin, not in an argv the host's other accounts can read.
+                let argv = sandbox::decode_remote_sandbox_helper_argv(payload)
+                    .expect("the packed argv decodes");
+                assert!(
+                    !argv.iter().any(|arg| arg.contains("remote-agent-secret"))
+                        && !child
+                            .get_args()
+                            .any(|arg| arg.to_string_lossy().contains("remote-agent-secret")),
+                    "the secret is in the helper's argv: {argv:?}"
+                );
+                assert_eq!(
+                    sandbox::read_stdin_environment(&mut input.as_slice())
+                        .expect("the stdin frame decodes"),
+                    [("API_KEY".to_string(), "remote-agent-secret".to_string())]
+                );
                 let network = decoded_helper_network(payload, reported);
                 assert_eq!(network.net, ["hosts"], "lift: {lift}");
                 assert_eq!(network.allowed_hosts, allowed_hosts, "lift: {lift}");
@@ -14461,6 +14494,19 @@ exit 7
     async fn test_a_session_being_loaded_is_already_a_writer(cx: &mut gpui::TestAppContext) {
         let (connection, project, _load_count, _close_count, _updates, load_session_gate, _agent) =
             connect_fake_agent(None, cx).await;
+        // The pause is off by default (ADR-F50), and with it the registration
+        // of writers that this test is about.
+        cx.update(|cx| {
+            cx.update_global::<settings::SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .agent
+                        .get_or_insert_default()
+                        .pause_worktree_code_after_agent_writes = Some(true);
+                });
+            });
+        });
+        cx.run_until_parked();
 
         let (gate_tx, gate_rx) = async_channel::bounded::<()>(1);
         *load_session_gate
@@ -14495,6 +14541,7 @@ exit 7
                 cx,
             )
         });
+        cx.run_until_parked();
         cx.run_until_parked();
         assert!(
             writer_running(cx),

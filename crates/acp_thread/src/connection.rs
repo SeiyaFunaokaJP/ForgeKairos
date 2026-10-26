@@ -1026,6 +1026,9 @@ mod test_support {
         set_title_calls: Arc<Mutex<Vec<(acp_v2::SessionId, SharedString)>>>,
         cancel_calls: Arc<Mutex<Vec<acp_v2::SessionId>>>,
         supports_receipt_submissions: bool,
+        supports_receipt_retry: bool,
+        receipt_retry_calls: Arc<AtomicUsize>,
+        sandbox_process_monitor: Option<Entity<crate::SandboxProcessMonitor>>,
         supports_retry: bool,
         supports_load_session: bool,
         supports_session_additional_directories: bool,
@@ -1063,6 +1066,9 @@ mod test_support {
                 permission_requests: HashMap::default(),
                 sessions: Arc::default(),
                 supports_receipt_submissions: false,
+                supports_receipt_retry: false,
+                receipt_retry_calls: Arc::default(),
+                sandbox_process_monitor: None,
                 supports_retry: false,
                 supports_load_session: false,
                 supports_session_additional_directories: false,
@@ -1165,6 +1171,27 @@ mod test_support {
 
         pub fn with_receipt_submissions(mut self, enabled: bool) -> Self {
             self.supports_receipt_submissions = enabled;
+            self
+        }
+
+        /// Lets the receipt transport resend the latest prompt, answering
+        /// each retry with the next deferred receipt response.
+        pub fn with_receipt_retry(mut self) -> Self {
+            self.supports_receipt_retry = true;
+            self
+        }
+
+        /// How many times the receipt transport was asked to resend.
+        pub fn receipt_retry_calls(&self) -> usize {
+            self.receipt_retry_calls.load(Ordering::SeqCst)
+        }
+
+        /// ADR-F49 decision 18 (C): follows the agent's sandbox with `monitor`.
+        pub fn with_sandbox_process_monitor(
+            mut self,
+            monitor: Entity<crate::SandboxProcessMonitor>,
+        ) -> Self {
+            self.sandbox_process_monitor = Some(monitor);
             self
         }
 
@@ -1282,6 +1309,10 @@ mod test_support {
 
         fn sandbox_ide_unavailable(&self) -> Option<SharedString> {
             self.sandbox_ide_unavailable.clone()
+        }
+
+        fn sandbox_process_monitor(&self) -> Option<Entity<crate::SandboxProcessMonitor>> {
+            self.sandbox_process_monitor.clone()
         }
 
         fn runs_outside_sandbox(&self) -> bool {
@@ -1440,6 +1471,8 @@ mod test_support {
                     sessions: self.sessions.clone(),
                     next_receipt_response: self.next_receipt_response.clone(),
                     receipt_prompt: self.receipt_prompt.clone(),
+                    supports_retry: self.supports_receipt_retry,
+                    retry_calls: self.receipt_retry_calls.clone(),
                 }) as Rc<dyn ReceiptSessionSubmissions>
             })
         }
@@ -1529,6 +1562,17 @@ mod test_support {
         next_receipt_response:
             Arc<Mutex<Option<oneshot::Receiver<Result<acp_v2::PromptResponse>>>>>,
         receipt_prompt: Arc<Mutex<Option<Vec<acp_v2::ContentBlock>>>>,
+        supports_retry: bool,
+        retry_calls: Arc<AtomicUsize>,
+    }
+
+    impl StubReceiptSessionSubmissions {
+        fn next_response(&self, cx: &mut App) -> Task<Result<acp_v2::PromptResponse>> {
+            match self.next_receipt_response.lock().take() {
+                Some(receiver) => cx.spawn(async move |_| Ok(receiver.await??)),
+                None => Task::ready(Err(anyhow::Error::msg("No deferred receipt response"))),
+            }
+        }
     }
 
     impl ReceiptSessionSubmissions for StubReceiptSessionSubmissions {
@@ -1541,10 +1585,16 @@ mod test_support {
                 return Task::ready(Err(anyhow::Error::msg("Unknown receipt session")));
             }
             *self.receipt_prompt.lock() = Some(content);
-            match self.next_receipt_response.lock().take() {
-                Some(receiver) => cx.spawn(async move |_| Ok(receiver.await??)),
-                None => Task::ready(Err(anyhow::Error::msg("No deferred receipt response"))),
-            }
+            self.next_response(cx)
+        }
+
+        fn supports_retry(&self) -> bool {
+            self.supports_retry
+        }
+
+        fn retry(&self, cx: &mut App) -> Task<Result<acp_v2::PromptResponse>> {
+            self.retry_calls.fetch_add(1, Ordering::SeqCst);
+            self.next_response(cx)
         }
     }
 

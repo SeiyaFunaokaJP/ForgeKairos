@@ -15279,6 +15279,205 @@ mod tests {
         );
     }
 
+    /// ADR-F50: a prompt the caller has already sent through the receipt
+    /// transport (`submit_receipt`) is written for from that moment, exactly
+    /// like one `send` sends, until the agent reports itself idle with it
+    /// taken in.
+    #[gpui::test]
+    async fn test_a_prompt_sent_by_the_caller_is_a_worktree_writer_until_the_agent_is_idle(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let connection = Rc::new(StubAgentConnection::new().with_receipt_submissions(true));
+        let thread = cx
+            .update(|cx| {
+                connection.clone().new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .expect("receipt session should be created");
+        cx.run_until_parked();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let writer_running = |cx: &mut TestAppContext| {
+            project.read_with(cx, |project, cx| {
+                project
+                    .worktree_code_execution()
+                    .read(cx)
+                    .details(worktree_id)
+                    .is_some_and(|details| details.sandboxed_writer_running)
+            })
+        };
+        assert!(!writer_running(cx));
+
+        let (receipt_sender, receipt) = oneshot::channel::<Result<acp_v2::PromptResponse>>();
+        let submission = thread.update(cx, |thread, cx| {
+            let response = cx.background_spawn(async move {
+                receipt
+                    .await
+                    .map_err(|_| anyhow!("the receipt was dropped"))?
+            });
+            thread.submit_receipt(vec!["Fix it".into()], response, cx)
+        });
+        cx.run_until_parked();
+        assert!(
+            writer_running(cx),
+            "the caller has already sent the prompt, so the agent may be writing"
+        );
+
+        receipt_sender
+            .send(Ok(acp_v2::PromptResponse::new("message-id")))
+            .expect("the receipt is awaited");
+        submission.await.expect("the prompt is accepted");
+        cx.run_until_parked();
+        assert!(writer_running(cx), "accepted is not answered");
+
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("message-id").content(vec!["Fix it".into()]),
+                    cx,
+                )
+                .expect("echo");
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(acp_v2::IdleStateUpdate::new()),
+                    cx,
+                )
+                .expect("idle");
+        });
+        cx.run_until_parked();
+        assert!(
+            !writer_running(cx),
+            "idle with everything taken in: the agent is no longer a writer"
+        );
+    }
+
+    /// ADR-F50 and ADR-F49 decision 18 (C): a receipt-driven retry sends the
+    /// prompt again, so the agent is a writer from before it goes out, and in
+    /// a sandbox the resend waits for the answer's baseline the way a turn's
+    /// prompt does — nothing the retry starts may land in its own baseline.
+    #[gpui::test]
+    async fn test_a_receipt_driven_retry_is_a_writer_and_waits_for_the_baseline(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/test"),
+            json!({ "src": { "main.rs": "fn main() {}\n" } }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [path!("/test").as_ref()], cx).await;
+        let sandbox = FakeSandboxProcesses::new(vec![PathBuf::from(path!("/test"))]);
+        sandbox.start(1, "claude --acp");
+        let monitor = cx
+            .update(|cx| SandboxProcessMonitor::new(sandbox.clone(), &project, cx))
+            .expect("a sandboxed agent is followed");
+        let connection = Rc::new(
+            StubAgentConnection::new()
+                .with_receipt_submissions(true)
+                .with_receipt_retry()
+                .with_sandbox_write_scope(vec![PathBuf::from(path!("/test"))])
+                .with_sandbox_process_monitor(monitor),
+        );
+        let thread = cx
+            .update(|cx| {
+                connection.clone().new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/test"))]),
+                    cx,
+                )
+            })
+            .await
+            .expect("receipt session should be created");
+        cx.run_until_parked();
+        let writer_held = |cx: &mut TestAppContext| {
+            thread.read_with(cx, |thread, _| thread.reported_turn_writer.is_some())
+        };
+
+        let receipt_sender = connection.defer_next_receipt_response();
+        let first = thread.update(cx, |thread, cx| thread.send(vec!["Fix it".into()], cx));
+        cx.run_until_parked();
+        receipt_sender
+            .send(Ok(acp_v2::PromptResponse::new("message-id")))
+            .expect("the receipt is awaited");
+        first.await.expect("the prompt is accepted");
+        thread.update(cx, |thread, cx| {
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Running(acp_v2::RunningStateUpdate::new()),
+                    cx,
+                )
+                .expect("running");
+            thread
+                .upsert_user_message(
+                    acp_v2::UserMessage::new("message-id").content(vec!["Fix it".into()]),
+                    cx,
+                )
+                .expect("echo");
+            thread
+                .update_session_state(
+                    acp_v2::StateUpdate::Idle(
+                        acp_v2::IdleStateUpdate::new().stop_reason(acp_v2::StopReason::EndTurn),
+                    ),
+                    cx,
+                )
+                .expect("idle");
+        });
+        cx.run_until_parked();
+        assert!(!writer_held(cx), "the first answer is over");
+        assert_eq!(connection.receipt_retry_calls(), 0);
+
+        let open_the_gate = sandbox.hold_listings();
+        let receipt_sender = connection.defer_next_receipt_response();
+        let retry = thread.update(cx, |thread, cx| thread.retry(cx));
+        cx.run_until_parked();
+        assert!(
+            writer_held(cx),
+            "the retry is written for from before it goes out"
+        );
+        assert_eq!(
+            connection.receipt_retry_calls(),
+            0,
+            "the retry must not reach the agent before its baseline is taken"
+        );
+
+        open_the_gate.send(()).expect("the look is waiting");
+        cx.run_until_parked();
+        assert_eq!(connection.receipt_retry_calls(), 1);
+        receipt_sender
+            .send(Ok(acp_v2::PromptResponse::new("retry-id")))
+            .expect("the retry's receipt is awaited");
+        assert!(matches!(
+            retry.await.expect("the retry is accepted"),
+            Some(SubmissionResponse::Accepted(_))
+        ));
+        assert!(writer_held(cx), "accepted is not answered");
+    }
+
     /// ADR-F50: a cancelled turn is not over the moment the user asks for it —
     /// the agent is still answering, and it writes until it has. So the turn
     /// stays a writer until its own task ends, not until the entry is taken.
@@ -21749,6 +21948,9 @@ mod tests {
         /// up on the request looks like from here.
         stop_abandoned: Arc<AtomicBool>,
         stopped: RefCell<Vec<sandbox::SandboxProcessKey>>,
+        /// While set, a look answers only once the gate opens, as a host that
+        /// is slow to answer does.
+        listing_gate: RefCell<Option<futures::future::Shared<oneshot::Receiver<()>>>>,
     }
 
     /// Marks [`FakeSandboxProcesses::stop_abandoned`] when the request it was
@@ -21771,6 +21973,7 @@ mod tests {
                 stop_never_answers: Cell::new(false),
                 stop_abandoned: Arc::default(),
                 stopped: RefCell::default(),
+                listing_gate: RefCell::default(),
             })
         }
 
@@ -21783,6 +21986,7 @@ mod tests {
                 stop_never_answers: Cell::new(false),
                 stop_abandoned: Arc::default(),
                 stopped: RefCell::default(),
+                listing_gate: RefCell::default(),
             })
         }
 
@@ -21805,6 +22009,13 @@ mod tests {
                 .borrow_mut()
                 .retain(|process| process.pid != pid);
         }
+
+        /// Holds every look from now on until the returned sender is used.
+        fn hold_listings(&self) -> oneshot::Sender<()> {
+            let (sender, receiver) = oneshot::channel();
+            self.listing_gate.replace(Some(receiver.shared()));
+            sender
+        }
     }
 
     impl SandboxProcessSource for FakeSandboxProcesses {
@@ -21820,11 +22031,18 @@ mod tests {
             "fake-agent".into()
         }
 
-        fn list(&self, _cx: &App) -> Task<Result<Vec<sandbox::SandboxProcess>>> {
+        fn list(&self, cx: &App) -> Task<Result<Vec<sandbox::SandboxProcess>>> {
             if self.refuses.get() {
                 return Task::ready(Err(anyhow!("the host did not answer")));
             }
-            Task::ready(Ok(self.running.borrow().clone()))
+            let running = self.running.borrow().clone();
+            match self.listing_gate.borrow().clone() {
+                Some(gate) => cx.foreground_executor().spawn(async move {
+                    gate.await.ok();
+                    Ok(running)
+                }),
+                None => Task::ready(Ok(running)),
+            }
         }
 
         fn stop(

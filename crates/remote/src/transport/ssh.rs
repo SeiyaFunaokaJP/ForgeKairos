@@ -591,10 +591,14 @@ impl RemoteConnection for SshRemoteConnection {
         mut command: RemoteCommand,
     ) -> Result<(CommandTemplate, Vec<u8>)> {
         if self.ssh_platform.os.is_windows() {
+            // A Windows remote has no stdin launcher, so the environment goes
+            // through `build_command_windows`, which drops all of it except
+            // the egress proxy (ADR-F14): dropping that too would run the
+            // process outside the allowlist without a word.
             let template = self.build_command(
                 Some(command.program),
                 &command.args,
-                &HashMap::default(),
+                &command.env,
                 command.working_dir,
                 None,
                 Interactive::No,
@@ -3804,6 +3808,11 @@ mod tests {
             assert_eq!(
                 template.args,
                 [
+                    // ADR-F21: the keepalive this fork adds to every `ssh`.
+                    "-o",
+                    "ServerAliveInterval=15",
+                    "-o",
+                    "ServerAliveCountMax=3",
                     "-p",
                     "2222",
                     "-o",
@@ -3826,13 +3835,19 @@ mod tests {
         let command = RemoteCommand {
             program: String::from("agent"),
             args: vec![String::from("--acp")],
-            env: HashMap::from_iter([(String::from("API_KEY"), String::from("agent-secret"))]),
+            env: HashMap::from_iter([
+                (String::from("API_KEY"), String::from("agent-secret")),
+                (
+                    String::from("HTTPS_PROXY"),
+                    String::from("http://127.0.0.1:53123"),
+                ),
+            ]),
             working_dir: Some(String::from(r"C:\project")),
         };
         let expected = connection.build_command(
             Some(command.program.clone()),
             &command.args,
-            &HashMap::default(),
+            &command.env,
             command.working_dir.clone(),
             None,
             Interactive::No,
@@ -3842,6 +3857,28 @@ mod tests {
         assert_eq!(template.args, expected.args);
         assert_eq!(template.env, expected.env);
         assert_eq!(payload, Vec::<u8>::new());
+        // ADR-F14: the remote's egress proxy reaches the process; the rest of
+        // its environment does not cross to a Windows remote at all.
+        let decoded = {
+            use base64::Engine as _;
+            let encoded = template
+                .args
+                .last()
+                .and_then(|arg| arg.strip_prefix("powershell.exe -E "))
+                .context("missing the base64 encoded remote command")?;
+            let decoded = base64::engine::general_purpose::STANDARD.decode(encoded)?;
+            String::from_utf16(
+                &decoded
+                    .chunks_exact(2)
+                    .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                    .collect::<Vec<_>>(),
+            )?
+        };
+        assert!(
+            decoded.contains("$env:HTTPS_PROXY='http://127.0.0.1:53123'"),
+            "{decoded}"
+        );
+        assert!(!decoded.contains("agent-secret"), "{decoded}");
         Ok(())
     }
 
