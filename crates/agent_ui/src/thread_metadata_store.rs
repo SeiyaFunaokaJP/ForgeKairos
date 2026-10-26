@@ -2460,6 +2460,13 @@ mod tests {
                 ),
                 acp_v1::SessionConfigOption::boolean("fast", "Fast mode", true),
             ],
+            "modes": acp_v1::SessionModeState::new(
+                "plan",
+                vec![
+                    acp_v1::SessionMode::new("default", "Default"),
+                    acp_v1::SessionMode::new("plan", "Plan"),
+                ],
+            ),
             "available_commands": [acp_v1::AvailableCommand::new("review", "Review the changes")],
             "read_before_start": true,
         })
@@ -2492,6 +2499,12 @@ mod tests {
             .map(|command| command.name.clone())
             .collect::<Vec<_>>();
         assert_eq!(command_names, ["review"]);
+        let modes = snapshot
+            .modes
+            .as_ref()
+            .expect("the modes should carry over");
+        assert_eq!(modes.current_mode_id.0.as_ref(), "plan");
+        assert_eq!(modes.available_modes.len(), 2);
         assert!(snapshot.read_before_start);
 
         let written = serde_json::to_string(&snapshot)?;

@@ -480,6 +480,14 @@ msgctxt "GitPanelClickBehavior"
 msgid "View File"
 msgstr "파일 보기"
 
+msgctxt "GitPanelCommitEditor"
+msgid "Collapsed"
+msgstr "접힘"
+
+msgctxt "GitPanelCommitEditor"
+msgid "Expanded"
+msgstr "펼침"
+
 msgctxt "GitPanelGroupBy"
 msgid "None"
 msgstr "없음"
@@ -1785,6 +1793,10 @@ msgid "Command to automatically run when Zed creates a Terminal Thread shell in 
 msgstr "ForgeKairos가 에이전트 패널에서 터미널 스레드 셸을 만들 때 자동으로 실행할 명령입니다. 구성된 셸에서 실행됩니다."
 
 msgctxt "settings"
+msgid "Commit Editor"
+msgstr "커밋 편집기"
+
+msgctxt "settings"
 msgid "Commit Title Max Length"
 msgstr "커밋 제목 최대 길이"
 
@@ -2461,6 +2473,10 @@ msgid "Extend Comment On Newline"
 msgstr "줄 바꿈 시 주석 이어가기"
 
 msgctxt "settings"
+msgid "Extensions"
+msgstr "확장 프로그램"
+
+msgctxt "settings"
 msgid "External AI Providers You Consented To"
 msgstr "동의한 외부 AI 프로바이더"
 
@@ -2593,6 +2609,10 @@ msgid "Font fallbacks for terminal text. If not set, defaults to buffer font fal
 msgstr "터미널 텍스트의 대체 글꼴입니다. 설정하지 않으면 버퍼의 대체 글꼴이 기본값으로 사용됩니다."
 
 msgctxt "settings"
+msgid "Font family for Mermaid diagrams in the agent panel and markdown preview. Falls back to the UI font family."
+msgstr "에이전트 패널과 Markdown 미리 보기의 Mermaid 다이어그램에 사용할 글꼴 패밀리입니다. 설정하지 않으면 UI 글꼴 패밀리를 사용합니다."
+
+msgctxt "settings"
 msgid "Font family for UI elements."
 msgstr "UI 요소의 글꼴 패밀리입니다."
 
@@ -2655,6 +2675,10 @@ msgstr "UI 요소의 글꼴 두께입니다 (100-900)."
 msgctxt "settings"
 msgid "Font weight for editor text (100-900)."
 msgstr "편집기 텍스트의 글꼴 두께입니다 (100-900)."
+
+msgctxt "settings"
+msgid "Font weight for headings in the markdown preview, in CSS units from 100 to 900."
+msgstr "Markdown 미리 보기의 제목 글꼴 두께입니다(CSS 단위, 100~900)."
 
 msgctxt "settings"
 msgid "Font weight for terminal text in CSS weight units (100-900)."
@@ -2815,6 +2839,10 @@ msgstr "SSH 터미널의 셸을 원격 ForgeKairos 서버에 맡깁니다. 연�
 msgctxt "settings"
 msgid "Hard Tabs"
 msgstr "하드 탭"
+
+msgctxt "settings"
+msgid "Heading Font Weight"
+msgstr "제목 글꼴 두께"
 
 msgctxt "settings"
 msgid "Hidden Files"
@@ -3381,6 +3409,10 @@ msgid "Menu Delay"
 msgstr "메뉴 지연"
 
 msgctxt "settings"
+msgid "Mermaid Font"
+msgstr "Mermaid 글꼴"
+
+msgctxt "settings"
 msgid "Message Editor Min Lines"
 msgstr "메시지 편집기 최소 줄 수"
 
@@ -3631,6 +3663,10 @@ msgstr "선호 줄 길이"
 msgctxt "settings"
 msgid "Preferred debuggers for this language."
 msgstr "이 언어에 대한 선호 디버거입니다."
+
+msgctxt "settings"
+msgid "Prefill Query From Selection"
+msgstr "선택 영역으로 검색어 미리 채우기"
 
 msgctxt "settings"
 msgid "Prefix every line with `[YYYY-MM-DD HH:MM:SS] `. In a terminal that is recording, this can also be toggled from the recording bar."
@@ -4577,6 +4613,10 @@ msgid "Strip Control Sequences"
 msgstr "제어 시퀀스 제거"
 
 msgctxt "settings"
+msgid "Suggest Extensions"
+msgstr "확장 프로그램 제안"
+
+msgctxt "settings"
 msgid "Suggest Missing Development Tools"
 msgstr "누락된 개발 도구 제안"
 
@@ -5489,6 +5529,10 @@ msgid "Whether the browser panel should open on startup."
 msgstr "시작 시 브라우저 패널을 열지 여부입니다."
 
 msgctxt "settings"
+msgid "Whether the commit message editor is shown in the Git panel by default."
+msgstr "Git 패널에 커밋 메시지 편집기를 기본으로 표시할지 여부입니다."
+
+msgctxt "settings"
 msgid "Whether the cursor blinks in the editor."
 msgstr "편집기에서 커서가 깜박일지 여부입니다."
 
@@ -5733,6 +5777,10 @@ msgid "Whether to pop the completions menu while typing in an editor without exp
 msgstr "명시적으로 요청하지 않아도 편집기에서 입력하는 동안 자동 완성 메뉴를 표시할지 여부를 설정합니다."
 
 msgctxt "settings"
+msgid "Whether to pre-fill the file finder's query with the text selected in the focused item (e.g. an editor or a terminal)."
+msgstr "포커스된 항목(예: 편집기 또는 터미널)에서 선택한 텍스트로 파일 찾기의 검색어를 미리 채울지 여부입니다."
+
+msgctxt "settings"
 msgid "Whether to pull for language server-powered diagnostics or not."
 msgstr "언어 서버 기반 진단 정보를 가져올지 여부를 설정합니다."
 
@@ -5807,6 +5855,10 @@ msgstr "프로젝트 패널 상단에 상위 디렉터리를 고정할지 여부
 msgctxt "settings"
 msgid "Whether to stick scopes to the top of the editor"
 msgstr "편집기 상단에 범위를 고정할지 여부입니다"
+
+msgctxt "settings"
+msgid "Whether to suggest installing extensions based on the files you open."
+msgstr "여는 파일에 따라 확장 프로그램 설치를 제안할지 여부입니다."
 
 msgctxt "settings"
 msgid "Whether to use additional LSP queries to format (and amend) the code after every \"trigger\" symbol input, defined by LSP server capabilities"

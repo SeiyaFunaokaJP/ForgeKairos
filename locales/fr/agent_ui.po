@@ -179,6 +179,9 @@ msgstr "L'agent a refusé de répondre à cette demande"
 msgid "Agent stopped at the output token limit"
 msgstr "L'agent s'est arrêté à la limite de jetons de sortie"
 
+msgid "Agent stopped because of an error"
+msgstr "L'agent s'est arrêté en raison d'une erreur"
+
 msgid "Agent stopped due to an error"
 msgstr "L'agent s'est arrêté en raison d'une erreur"
 
@@ -762,6 +765,12 @@ msgstr "Abandonner"
 
 msgid "Discard Interrupted Edit"
 msgstr "Abandonner la modification interrompue"
+
+msgid "Discard draft"
+msgstr "Abandonner le brouillon"
+
+msgid "Discard the unsupported draft before moving a queued message into the composer."
+msgstr "Abandonnez le brouillon non pris en charge avant de déplacer un message en file d'attente dans la zone de saisie."
 
 msgid "Dismiss"
 msgstr "Ignorer"
@@ -1969,6 +1978,9 @@ msgstr "Échec du sous-agent"
 msgid "Subagent Output"
 msgstr "Sortie du sous-agent"
 
+msgid "Subagent: {title} ({session_id})"
+msgstr "Sous-agent : {title} ({session_id})"
+
 msgid "Subagents Awaiting Permission:"
 msgstr "Sous-agents en attente d'autorisation :"
 
@@ -2277,6 +2289,9 @@ msgstr "Cette commande a été autorisée à s'exécuter sans bac à sable par u
 msgid "This conversation is too long for the model's context window. Start a new thread or remove some attached files to continue."
 msgstr "Cette conversation est trop longue pour la fenêtre de contexte du modèle. Démarrez une nouvelle conversation ou retirez des fichiers joints pour continuer."
 
+msgid "This draft contains unsupported content and cannot be edited or sent. Discard the draft to write a new message."
+msgstr "Ce brouillon contient du contenu non pris en charge et ne peut être ni modifié ni envoyé. Abandonnez le brouillon pour écrire un nouveau message."
+
 msgid "This extension has no settings to configure."
 msgstr "Cette extension n'a aucun paramètre à configurer."
 
@@ -2303,6 +2318,15 @@ msgstr "Ce modèle permet uniquement d'activer ou de désactiver la réflexion (
 
 msgid "This prompt was pre-filled by an external link. Read it carefully before you submit it to the model."
 msgstr "Ce prompt a été prérempli par un lien externe. Lisez-le attentivement avant de l'envoyer au modèle."
+
+msgid "This queued message contains unsupported content and cannot be edited."
+msgstr "Ce message en file d'attente contient du contenu non pris en charge et ne peut pas être modifié."
+
+msgid "This saved submission cannot be restored into the composer. The original submission and draft have been kept."
+msgstr "Cet envoi enregistré ne peut pas être restauré dans la zone de saisie. L'envoi d'origine et le brouillon ont été conservés."
+
+msgid "This saved submission contains unsupported content and cannot be restored. The original submission has been kept."
+msgstr "Cet envoi enregistré contient du contenu non pris en charge et ne peut pas être restauré. L'envoi d'origine a été conservé."
 
 msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
 msgstr "Ce serveur est défini dans le fichier de paramètres du projet (.zed/settings.json). L'enregistrement ici écrit dans vos paramètres utilisateur, mais la définition du projet est prioritaire : cela n'a donc aucun effet. Modifiez le fichier qui le définit depuis la page Serveurs MCP de la fenêtre des paramètres."
@@ -2376,6 +2400,9 @@ msgstr "Afficher/masquer la barre latérale des conversations"
 msgid "Tool Permissions"
 msgstr "Autorisations des outils"
 
+msgid "Tool call: {id}"
+msgstr "Appel d'outil : {id}"
+
 msgid "Tools Unsupported"
 msgstr "Outils non pris en charge"
 
@@ -2432,6 +2459,12 @@ msgstr "Retirer le modèle des favoris"
 
 msgid "Unknown"
 msgstr "Inconnu"
+
+msgid "Unknown permission subject"
+msgstr "Objet d'autorisation inconnu"
+
+msgid "Unknown permission subject: {kind}"
+msgstr "Objet d'autorisation inconnu : {kind}"
 
 msgid "Update"
 msgstr "Mettre à jour"
@@ -2519,6 +2552,9 @@ msgstr "Qu'est-ce qui s'est mal passé ? Partagez vos commentaires pour nous aid
 
 msgid "When an API key is set, Claude Code uses it instead. To use your subscription, remove the key."
 msgstr "Lorsqu'une clé API est définie, Claude Code l'utilise à la place. Pour utiliser votre abonnement, supprimez la clé."
+
+msgid "Working directory: {path}"
+msgstr "Répertoire de travail : {path}"
 
 msgid "Write Access"
 msgstr "Accès en écriture"

@@ -634,7 +634,11 @@ impl HeadlessProject {
 
         let (search_buffer_batches, batches) = async_channel::bounded::<SearchBufferBatch>(1);
         let search_buffer_sender = cx.spawn({
-            let buffer_store = buffer_store.clone();
+            // Weak: dropping this task releases its future only on a later
+            // executor tick, outside any update, and a strong handle would keep
+            // the closed session's buffers alive until something else updates
+            // (ADR-F45: the daemon outlives its sessions).
+            let buffer_store = buffer_store.downgrade();
             let client = session.clone();
             async move |_, cx| {
                 while let Ok(batch) = batches.recv().await {
@@ -659,7 +663,7 @@ impl HeadlessProject {
                                         cx,
                                     );
                                     (buffer_id, transferred_bytes, transfer)
-                                });
+                                })?;
                             transfer.await?;
                             buffer_ids.push(buffer_id.to_proto());
                             unacknowledged_bytes += transferred_bytes;

@@ -480,6 +480,14 @@ msgctxt "GitPanelClickBehavior"
 msgid "View File"
 msgstr "Afficher le fichier"
 
+msgctxt "GitPanelCommitEditor"
+msgid "Collapsed"
+msgstr "Réduit"
+
+msgctxt "GitPanelCommitEditor"
+msgid "Expanded"
+msgstr "Développé"
+
 msgctxt "GitPanelGroupBy"
 msgid "None"
 msgstr "Aucun"
@@ -1785,6 +1793,10 @@ msgid "Command to automatically run when Zed creates a Terminal Thread shell in 
 msgstr "Commande à exécuter automatiquement lorsque ForgeKairos crée un shell de conversation de terminal dans le panneau de l'agent. Elle s'exécute dans votre shell configuré."
 
 msgctxt "settings"
+msgid "Commit Editor"
+msgstr "Éditeur de message de validation"
+
+msgctxt "settings"
 msgid "Commit Title Max Length"
 msgstr "Longueur maximale du titre de validation"
 
@@ -2461,6 +2473,10 @@ msgid "Extend Comment On Newline"
 msgstr "Continuer le commentaire à la ligne suivante"
 
 msgctxt "settings"
+msgid "Extensions"
+msgstr "Extensions"
+
+msgctxt "settings"
 msgid "External AI Providers You Consented To"
 msgstr "Fournisseurs d'IA externes auxquels vous avez donné votre consentement"
 
@@ -2593,6 +2609,10 @@ msgid "Font fallbacks for terminal text. If not set, defaults to buffer font fal
 msgstr "Polices de secours pour le texte du terminal. Si elles ne sont pas définies, les polices de secours du tampon sont utilisées."
 
 msgctxt "settings"
+msgid "Font family for Mermaid diagrams in the agent panel and markdown preview. Falls back to the UI font family."
+msgstr "Famille de polices pour les diagrammes Mermaid dans le panneau de l'agent et l'aperçu Markdown. Utilise la famille de polices de l'interface si non définie."
+
+msgctxt "settings"
 msgid "Font family for UI elements."
 msgstr "Famille de polices pour les éléments d'interface."
 
@@ -2655,6 +2675,10 @@ msgstr "Épaisseur de police pour les éléments d'interface (100-900)."
 msgctxt "settings"
 msgid "Font weight for editor text (100-900)."
 msgstr "Épaisseur de police pour le texte de l'éditeur (100-900)."
+
+msgctxt "settings"
+msgid "Font weight for headings in the markdown preview, in CSS units from 100 to 900."
+msgstr "Épaisseur de police des titres dans l'aperçu Markdown, en unités CSS de 100 à 900."
 
 msgctxt "settings"
 msgid "Font weight for terminal text in CSS weight units (100-900)."
@@ -2815,6 +2839,10 @@ msgstr "Confie les shells des terminaux SSH au serveur ForgeKairos distant. Les 
 msgctxt "settings"
 msgid "Hard Tabs"
 msgstr "Tabulations dures"
+
+msgctxt "settings"
+msgid "Heading Font Weight"
+msgstr "Épaisseur de police des titres"
 
 msgctxt "settings"
 msgid "Hidden Files"
@@ -3381,6 +3409,10 @@ msgid "Menu Delay"
 msgstr "Délai du menu"
 
 msgctxt "settings"
+msgid "Mermaid Font"
+msgstr "Police Mermaid"
+
+msgctxt "settings"
 msgid "Message Editor Min Lines"
 msgstr "Nombre minimum de lignes de l'éditeur de messages"
 
@@ -3631,6 +3663,10 @@ msgstr "Longueur de ligne préférée"
 msgctxt "settings"
 msgid "Preferred debuggers for this language."
 msgstr "Débogueurs préférés pour ce langage."
+
+msgctxt "settings"
+msgid "Prefill Query From Selection"
+msgstr "Préremplir la requête avec la sélection"
 
 msgctxt "settings"
 msgid "Prefix every line with `[YYYY-MM-DD HH:MM:SS] `. In a terminal that is recording, this can also be toggled from the recording bar."
@@ -4577,6 +4613,10 @@ msgid "Strip Control Sequences"
 msgstr "Supprimer les séquences de contrôle"
 
 msgctxt "settings"
+msgid "Suggest Extensions"
+msgstr "Suggérer des extensions"
+
+msgctxt "settings"
 msgid "Suggest Missing Development Tools"
 msgstr "Suggérer les outils de développement manquants"
 
@@ -5489,6 +5529,10 @@ msgid "Whether the browser panel should open on startup."
 msgstr "Indique si le panneau Navigateur doit s'ouvrir au démarrage."
 
 msgctxt "settings"
+msgid "Whether the commit message editor is shown in the Git panel by default."
+msgstr "Indique si l'éditeur de message de validation est affiché par défaut dans le panneau Git."
+
+msgctxt "settings"
 msgid "Whether the cursor blinks in the editor."
 msgstr "Indique si le curseur clignote dans l'éditeur."
 
@@ -5733,6 +5777,10 @@ msgid "Whether to pop the completions menu while typing in an editor without exp
 msgstr "Indique si le menu de complétion doit apparaître lors de la saisie dans un éditeur sans en faire explicitement la demande."
 
 msgctxt "settings"
+msgid "Whether to pre-fill the file finder's query with the text selected in the focused item (e.g. an editor or a terminal)."
+msgstr "Indique s'il faut préremplir la requête de la recherche de fichiers avec le texte sélectionné dans l'élément ayant le focus (par exemple un éditeur ou un terminal)."
+
+msgctxt "settings"
 msgid "Whether to pull for language server-powered diagnostics or not."
 msgstr "Indique s'il faut récupérer les diagnostics fournis par le serveur de langage ou non."
 
@@ -5807,6 +5855,10 @@ msgstr "Indique si les répertoires parents doivent être épinglés en haut du 
 msgctxt "settings"
 msgid "Whether to stick scopes to the top of the editor"
 msgstr "Indique si les portées doivent être épinglées en haut de l'éditeur"
+
+msgctxt "settings"
+msgid "Whether to suggest installing extensions based on the files you open."
+msgstr "Indique s'il faut suggérer l'installation d'extensions en fonction des fichiers que vous ouvrez."
 
 msgctxt "settings"
 msgid "Whether to use additional LSP queries to format (and amend) the code after every \"trigger\" symbol input, defined by LSP server capabilities"

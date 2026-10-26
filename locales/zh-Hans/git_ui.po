@@ -781,6 +781,9 @@ msgstr "已创建分支“{name}”。"
 msgid "Created tag \"{name}\"."
 msgstr "已创建标签“{name}”。"
 
+msgid "Created tag \"{tag_name}\" at {target}"
+msgstr "已在 {target} 处创建标签“{tag_name}”"
+
 msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
 msgstr "已创建 MR 分支“{}”，但仍在临时分支“{}”上。"
 
@@ -840,6 +843,9 @@ msgstr "删除"
 msgid "Delete Branch"
 msgstr "删除分支"
 
+msgid "Delete Local Tracking Branch"
+msgstr "删除本地跟踪分支"
+
 msgid "Deleted on both the development branch and the MR branch."
 msgstr "在开发分支和 MR 分支上均已删除。"
 
@@ -894,6 +900,9 @@ msgstr "放弃对 {tracked_count} 个文件的更改？"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "放弃此文件的更改，并将其恢复为最后一次提交中的内容"
+
+msgid "Does not delete the branch on the remote"
+msgstr "不会删除远程上的分支"
 
 msgid "Don't Show Again"
 msgstr "不再显示"
@@ -1036,6 +1045,9 @@ msgstr "创建分支失败"
 
 msgid "Failed to create remote"
 msgstr "创建远程失败"
+
+msgid "Failed to create tag"
+msgstr "创建标签失败"
 
 msgid "Failed to drop stash"
 msgstr "删除储藏失败"
@@ -1250,6 +1262,12 @@ msgstr "fixup 之后 HEAD 已移动或签出了其他分支，因此无法在此
 
 msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
 msgstr "改写之后 HEAD 已移动，因此无法在此撤销。请使用 git reflog 手动撤销。"
+
+msgid "Hide Commit Details"
+msgstr "隐藏提交详情"
+
+msgid "Hide Commit Editor"
+msgstr "隐藏提交编辑器"
 
 msgid "History"
 msgstr "历史记录"
@@ -2143,6 +2161,12 @@ msgstr "浅克隆边界：缺少更早的历史记录，因此这些行可能来
 msgid "Show Changes Only"
 msgstr "仅显示更改"
 
+msgid "Show Commit Details"
+msgstr "显示提交详情"
+
+msgid "Show Commit Editor"
+msgstr "显示提交编辑器"
+
 msgid "Show Flat View"
 msgstr "显示平铺视图"
 
@@ -2392,6 +2416,9 @@ msgstr "标签（为特定提交添加的标记）"
 
 msgid "Tag Here…"
 msgstr "在此处添加标签…"
+
+msgid "Tag name"
+msgstr "标签名称"
 
 msgid "Tag name (e.g. v1.2.3)"
 msgstr "标签名称（例如 v1.2.3）"
@@ -3185,6 +3212,10 @@ msgstr "停止从 MR 中排除"
 msgctxt "commit button"
 msgid "Commit"
 msgstr "提交"
+
+msgctxt "commit details"
+msgid "Message"
+msgstr "消息"
 
 msgctxt "commit modal"
 msgid "Signoff"

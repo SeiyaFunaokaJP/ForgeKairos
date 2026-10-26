@@ -1406,9 +1406,6 @@ mod tests {
         .await;
         read_until_closed(&mut connection).await;
         cx.run_until_parked();
-        // The project's search task holds the buffer store, and a task dropped
-        // outside an update leaves what it held to the next effect cycle.
-        cx.update(|_| {});
 
         // `assert_released` rather than `upgrade().is_none()`: an entity whose
         // last handle is gone no longer upgrades, yet keeps everything it

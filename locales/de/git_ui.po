@@ -792,6 +792,9 @@ msgstr "Branch „{name}“ wurde erstellt."
 msgid "Created tag \"{name}\"."
 msgstr "Tag „{name}“ wurde erstellt."
 
+msgid "Created tag \"{tag_name}\" at {target}"
+msgstr "Tag „{tag_name}“ bei {target} erstellt"
+
 msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
 msgstr "Der MR-Branch „{}“ wurde erstellt, aber Sie befinden sich weiterhin auf dem temporären Branch „{}“."
 
@@ -853,6 +856,9 @@ msgstr "Löschen"
 msgid "Delete Branch"
 msgstr "Branch löschen"
 
+msgid "Delete Local Tracking Branch"
+msgstr "Lokalen Tracking-Branch löschen"
+
 msgid "Deleted on both the development branch and the MR branch."
 msgstr "Sowohl auf dem Entwicklungsbranch als auch auf dem MR-Branch gelöscht."
 
@@ -908,6 +914,9 @@ msgstr "Änderungen an {tracked_count} Dateien verwerfen?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Verwirft die Änderungen dieser Datei und setzt sie auf ihren Inhalt im letzten Commit zurück"
+
+msgid "Does not delete the branch on the remote"
+msgstr "Löscht den Branch auf dem Remote nicht"
 
 msgid "Don't Show Again"
 msgstr "Nicht mehr anzeigen"
@@ -1054,6 +1063,9 @@ msgstr "Branch konnte nicht erstellt werden"
 
 msgid "Failed to create remote"
 msgstr "Remote konnte nicht erstellt werden"
+
+msgid "Failed to create tag"
+msgstr "Tag konnte nicht erstellt werden"
 
 msgid "Failed to drop stash"
 msgstr "Stash konnte nicht verworfen werden"
@@ -1269,6 +1281,12 @@ msgstr "Seit dem fixup wurde HEAD verschoben oder ein anderer Branch ausgecheckt
 
 msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
 msgstr "Seit dem Umschreiben wurde HEAD verschoben, daher kann es hier nicht rückgängig gemacht werden. Machen Sie es manuell mit git reflog rückgängig."
+
+msgid "Hide Commit Details"
+msgstr "Commit-Details ausblenden"
+
+msgid "Hide Commit Editor"
+msgstr "Commit-Editor ausblenden"
 
 msgid "History"
 msgstr "Verlauf"
@@ -2172,6 +2190,12 @@ msgstr "Grenze des Shallow Clone: Der frühere Verlauf fehlt, daher können dies
 msgid "Show Changes Only"
 msgstr "Nur Änderungen anzeigen"
 
+msgid "Show Commit Details"
+msgstr "Commit-Details anzeigen"
+
+msgid "Show Commit Editor"
+msgstr "Commit-Editor anzeigen"
+
 msgid "Show Flat View"
 msgstr "Flache Ansicht anzeigen"
 
@@ -2428,6 +2452,9 @@ msgstr "Tag (eine Markierung für einen bestimmten Commit)"
 
 msgid "Tag Here…"
 msgstr "Hier taggen…"
+
+msgid "Tag name"
+msgstr "Tag-Name"
 
 msgid "Tag name (e.g. v1.2.3)"
 msgstr "Tag-Name (z. B. v1.2.3)"
@@ -3244,6 +3271,10 @@ msgstr "Ausschluss aus MR aufheben"
 msgctxt "commit button"
 msgid "Commit"
 msgstr "Committen"
+
+msgctxt "commit details"
+msgid "Message"
+msgstr "Nachricht"
 
 msgctxt "commit modal"
 msgid "Signoff"

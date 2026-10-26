@@ -179,6 +179,9 @@ msgstr "El agente se negó a responder a esta solicitud"
 msgid "Agent stopped at the output token limit"
 msgstr "El agente se detuvo al alcanzar el límite de tokens de salida"
 
+msgid "Agent stopped because of an error"
+msgstr "El agente se detuvo debido a un error"
+
 msgid "Agent stopped due to an error"
 msgstr "El agente se detuvo debido a un error"
 
@@ -762,6 +765,12 @@ msgstr "Descartar"
 
 msgid "Discard Interrupted Edit"
 msgstr "Descartar edición interrumpida"
+
+msgid "Discard draft"
+msgstr "Descartar borrador"
+
+msgid "Discard the unsupported draft before moving a queued message into the composer."
+msgstr "Descarte el borrador no compatible antes de mover un mensaje en cola al cuadro de mensaje."
 
 msgid "Dismiss"
 msgstr "Cerrar"
@@ -1969,6 +1978,9 @@ msgstr "El subagente falló"
 msgid "Subagent Output"
 msgstr "Salida del subagente"
 
+msgid "Subagent: {title} ({session_id})"
+msgstr "Subagente: {title} ({session_id})"
+
 msgid "Subagents Awaiting Permission:"
 msgstr "Subagentes pendientes de permiso:"
 
@@ -2277,6 +2289,9 @@ msgstr "Una versión anterior permitió que este comando se ejecutara sin sandbo
 msgid "This conversation is too long for the model's context window. Start a new thread or remove some attached files to continue."
 msgstr "Esta conversación es demasiado larga para la ventana de contexto del modelo. Para continuar, inicie una nueva conversación o quite algunos archivos adjuntos."
 
+msgid "This draft contains unsupported content and cannot be edited or sent. Discard the draft to write a new message."
+msgstr "Este borrador tiene contenido no compatible y no se puede editar ni enviar. Descarte el borrador para escribir un mensaje nuevo."
+
 msgid "This extension has no settings to configure."
 msgstr "Esta extensión no tiene opciones de configuración."
 
@@ -2303,6 +2318,15 @@ msgstr "Este modelo solo admite activar o desactivar el razonamiento (no admite 
 
 msgid "This prompt was pre-filled by an external link. Read it carefully before you submit it to the model."
 msgstr "Este prompt se rellenó previamente mediante un enlace externo. Léalo atentamente antes de enviarlo al modelo."
+
+msgid "This queued message contains unsupported content and cannot be edited."
+msgstr "Este mensaje en cola tiene contenido no compatible y no se puede editar."
+
+msgid "This saved submission cannot be restored into the composer. The original submission and draft have been kept."
+msgstr "Este envío guardado no se puede restaurar en el cuadro de mensaje. Se conservaron el envío original y el borrador."
+
+msgid "This saved submission contains unsupported content and cannot be restored. The original submission has been kept."
+msgstr "Este envío guardado tiene contenido no compatible y no se puede restaurar. Se conservó el envío original."
 
 msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
 msgstr "Este servidor está definido en el archivo de configuración del proyecto (.zed/settings.json). Al guardar aquí se escribe en su configuración de usuario, pero la definición del proyecto tiene prioridad, por lo que no tiene efecto. Edite el archivo que lo define desde la página Servidores MCP de la ventana de configuración."
@@ -2376,6 +2400,9 @@ msgstr "Alternar barra lateral de conversaciones"
 msgid "Tool Permissions"
 msgstr "Permisos de herramientas"
 
+msgid "Tool call: {id}"
+msgstr "Llamada a herramienta: {id}"
+
 msgid "Tools Unsupported"
 msgstr "Herramientas no compatibles"
 
@@ -2432,6 +2459,12 @@ msgstr "Quitar modelo de favoritos"
 
 msgid "Unknown"
 msgstr "Desconocido"
+
+msgid "Unknown permission subject"
+msgstr "Objeto de permiso desconocido"
+
+msgid "Unknown permission subject: {kind}"
+msgstr "Objeto de permiso desconocido: {kind}"
 
 msgid "Update"
 msgstr "Actualizar"
@@ -2519,6 +2552,9 @@ msgstr "¿Qué salió mal? Comparta sus comentarios para que podamos mejorar."
 
 msgid "When an API key is set, Claude Code uses it instead. To use your subscription, remove the key."
 msgstr "Cuando hay una clave de API establecida, Claude Code la usa en su lugar. Para usar su suscripción, quite la clave."
+
+msgid "Working directory: {path}"
+msgstr "Directorio de trabajo: {path}"
 
 msgid "Write Access"
 msgstr "Acceso de escritura"

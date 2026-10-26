@@ -781,6 +781,9 @@ msgstr "已建立分支「{name}」。"
 msgid "Created tag \"{name}\"."
 msgstr "已建立標籤「{name}」。"
 
+msgid "Created tag \"{tag_name}\" at {target}"
+msgstr "已在 {target} 建立標籤「{tag_name}」"
+
 msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
 msgstr "已建立 MR 分支「{}」，但仍在暫用分支「{}」上。"
 
@@ -840,6 +843,9 @@ msgstr "刪除"
 msgid "Delete Branch"
 msgstr "刪除分支"
 
+msgid "Delete Local Tracking Branch"
+msgstr "刪除本機追蹤分支"
+
 msgid "Deleted on both the development branch and the MR branch."
 msgstr "在開發分支和 MR 分支上都已刪除。"
 
@@ -894,6 +900,9 @@ msgstr "要捨棄 {tracked_count} 個檔案的變更嗎？"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "捨棄此檔案的變更，並將其還原為最後一次提交中的內容"
+
+msgid "Does not delete the branch on the remote"
+msgstr "不會刪除遠端上的分支"
 
 msgid "Don't Show Again"
 msgstr "不要再顯示"
@@ -1036,6 +1045,9 @@ msgstr "建立分支失敗"
 
 msgid "Failed to create remote"
 msgstr "建立遠端失敗"
+
+msgid "Failed to create tag"
+msgstr "無法建立標籤"
 
 msgid "Failed to drop stash"
 msgstr "捨棄貯藏失敗"
@@ -1250,6 +1262,12 @@ msgstr "fixup 之後 HEAD 已移動，或已簽出其他分支，因此無法從
 
 msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
 msgstr "改寫之後 HEAD 已移動，因此無法從這裡復原。請以 git reflog 手動復原。"
+
+msgid "Hide Commit Details"
+msgstr "隱藏提交詳細資料"
+
+msgid "Hide Commit Editor"
+msgstr "隱藏提交訊息編輯器"
 
 msgid "History"
 msgstr "歷程記錄"
@@ -2143,6 +2161,12 @@ msgstr "淺層複製的邊界：缺少更早的歷程，因此這些行可能來
 msgid "Show Changes Only"
 msgstr "僅顯示變更"
 
+msgid "Show Commit Details"
+msgstr "顯示提交詳細資料"
+
+msgid "Show Commit Editor"
+msgstr "顯示提交訊息編輯器"
+
 msgid "Show Flat View"
 msgstr "顯示平面檢視"
 
@@ -2392,6 +2416,9 @@ msgstr "標籤（為特定提交加上的標記）"
 
 msgid "Tag Here…"
 msgstr "在此建立標籤…"
+
+msgid "Tag name"
+msgstr "標籤名稱"
 
 msgid "Tag name (e.g. v1.2.3)"
 msgstr "標籤名稱（例如：v1.2.3）"
@@ -3185,6 +3212,10 @@ msgstr "停止從 MR 排除"
 msgctxt "commit button"
 msgid "Commit"
 msgstr "提交"
+
+msgctxt "commit details"
+msgid "Message"
+msgstr "訊息"
 
 msgctxt "commit modal"
 msgid "Signoff"

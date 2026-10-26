@@ -50,6 +50,9 @@ msgstr "Adaptadores de depuração"
 msgid "Dev extension '{extension_id}' is not installed."
 msgstr "A extensão de desenvolvimento '{extension_id}' não está instalada."
 
+msgid "Disable Suggestions"
+msgstr "Desativar sugestões"
+
 msgid "Do you want to install the recommended '{extension_id}' extension for '{file_name_or_extension}' files?"
 msgstr "Deseja instalar a extensão recomendada '{extension_id}' para arquivos '{file_name_or_extension}'?"
 
@@ -70,6 +73,9 @@ msgstr "Falha ao instalar a extensão de desenvolvimento: {}"
 
 msgid "Failed to load extensions. Please check your connection and try again."
 msgstr "Falha ao carregar as extensões. Verifique sua conexão e tente novamente."
+
+msgid "Failed to load extensions. Showing installed extensions only."
+msgstr "Falha ao carregar as extensões. Mostrando apenas as extensões instaladas."
 
 msgid "Gemini CLI support is built-in to Zed!"
 msgstr "O suporte ao Gemini CLI já está integrado ao ForgeKairos!"
@@ -160,6 +166,9 @@ msgstr "Recompilar"
 
 msgid "Rebuild dev extension…"
 msgstr "Recompilar extensão de desenvolvimento…"
+
+msgid "Retry"
+msgstr "Tentar novamente"
 
 msgid "Ruff (linter for Python) support is built-in to Zed!"
 msgstr "O suporte ao Ruff (linter para Python) já está integrado ao ForgeKairos!"

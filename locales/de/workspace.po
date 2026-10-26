@@ -242,6 +242,9 @@ msgstr "Tab bearbeitbar machen"
 msgid "Make Tab Read-Only"
 msgstr "Tab schreibgeschützt machen"
 
+msgid "More Options"
+msgstr "Weitere Optionen"
+
 msgid "Move to New Window"
 msgstr "In neues Fenster verschieben"
 

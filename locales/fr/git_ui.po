@@ -792,6 +792,9 @@ msgstr "La branche \"{name}\" a été créée."
 msgid "Created tag \"{name}\"."
 msgstr "L'étiquette \"{name}\" a été créée."
 
+msgid "Created tag \"{tag_name}\" at {target}"
+msgstr "L'étiquette \"{tag_name}\" a été créée sur {target}"
+
 msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
 msgstr "La branche MR \"{}\" a été créée, mais vous êtes toujours sur la branche temporaire \"{}\"."
 
@@ -853,6 +856,9 @@ msgstr "Supprimer"
 msgid "Delete Branch"
 msgstr "Supprimer la branche"
 
+msgid "Delete Local Tracking Branch"
+msgstr "Supprimer la branche de suivi locale"
+
 msgid "Deleted on both the development branch and the MR branch."
 msgstr "Supprimé à la fois sur la branche de développement et sur la branche MR."
 
@@ -908,6 +914,9 @@ msgstr "Abandonner les modifications de {tracked_count} fichiers ?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Abandonne les modifications de ce fichier et rétablit son contenu de la dernière validation"
+
+msgid "Does not delete the branch on the remote"
+msgstr "Ne supprime pas la branche sur le dépôt distant"
 
 msgid "Don't Show Again"
 msgstr "Ne plus afficher"
@@ -1054,6 +1063,9 @@ msgstr "Échec de la création de la branche"
 
 msgid "Failed to create remote"
 msgstr "Échec de la création du dépôt distant"
+
+msgid "Failed to create tag"
+msgstr "Échec de la création de l'étiquette"
 
 msgid "Failed to drop stash"
 msgstr "Échec de la suppression de la remise"
@@ -1269,6 +1281,12 @@ msgstr "HEAD a bougé ou une autre branche a été extraite depuis le fixup : il
 
 msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
 msgstr "HEAD a bougé depuis la réécriture : elle ne peut donc pas être annulée d'ici. Annulez-la manuellement avec git reflog."
+
+msgid "Hide Commit Details"
+msgstr "Masquer les détails de la validation"
+
+msgid "Hide Commit Editor"
+msgstr "Masquer l'éditeur de message de validation"
 
 msgid "History"
 msgstr "Historique"
@@ -2172,6 +2190,12 @@ msgstr "Limite du clone superficiel : l'historique antérieur est manquant, ces 
 msgid "Show Changes Only"
 msgstr "Afficher uniquement les modifications"
 
+msgid "Show Commit Details"
+msgstr "Afficher les détails de la validation"
+
+msgid "Show Commit Editor"
+msgstr "Afficher l'éditeur de message de validation"
+
 msgid "Show Flat View"
 msgstr "Afficher la vue à plat"
 
@@ -2428,6 +2452,9 @@ msgstr "Étiquette (un repère attribué à une validation précise)"
 
 msgid "Tag Here…"
 msgstr "Créer une étiquette ici…"
+
+msgid "Tag name"
+msgstr "Nom de l'étiquette"
 
 msgid "Tag name (e.g. v1.2.3)"
 msgstr "Nom de l'étiquette (p. ex. v1.2.3)"
@@ -3244,6 +3271,10 @@ msgstr "Ne plus exclure de la MR"
 msgctxt "commit button"
 msgid "Commit"
 msgstr "Valider"
+
+msgctxt "commit details"
+msgid "Message"
+msgstr "Message"
 
 msgctxt "commit modal"
 msgid "Signoff"

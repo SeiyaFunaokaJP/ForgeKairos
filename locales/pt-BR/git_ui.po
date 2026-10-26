@@ -792,6 +792,9 @@ msgstr "Branch \"{name}\" criado."
 msgid "Created tag \"{name}\"."
 msgstr "Tag \"{name}\" criada."
 
+msgid "Created tag \"{tag_name}\" at {target}"
+msgstr "Tag \"{tag_name}\" criada em {target}"
+
 msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
 msgstr "O branch do MR \"{}\" foi criado, mas você ainda está no branch temporário \"{}\"."
 
@@ -853,6 +856,9 @@ msgstr "Excluir"
 msgid "Delete Branch"
 msgstr "Excluir branch"
 
+msgid "Delete Local Tracking Branch"
+msgstr "Excluir branch de rastreamento local"
+
 msgid "Deleted on both the development branch and the MR branch."
 msgstr "Excluído tanto no branch de desenvolvimento quanto no branch do MR."
 
@@ -908,6 +914,9 @@ msgstr "Descartar as alterações em {tracked_count} arquivos?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Descarta as alterações deste arquivo e o retorna ao conteúdo do último commit"
+
+msgid "Does not delete the branch on the remote"
+msgstr "Não exclui o branch no remoto"
 
 msgid "Don't Show Again"
 msgstr "Não mostrar novamente"
@@ -1054,6 +1063,9 @@ msgstr "Falha ao criar o branch"
 
 msgid "Failed to create remote"
 msgstr "Falha ao criar o remoto"
+
+msgid "Failed to create tag"
+msgstr "Falha ao criar a tag"
 
 msgid "Failed to drop stash"
 msgstr "Falha ao descartar o stash"
@@ -1269,6 +1281,12 @@ msgstr "O HEAD foi movido ou outro branch passou por checkout desde o fixup, ent
 
 msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
 msgstr "O HEAD foi movido desde a reescrita, então ela não pode ser desfeita daqui. Desfaça-a manualmente com git reflog."
+
+msgid "Hide Commit Details"
+msgstr "Ocultar detalhes do commit"
+
+msgid "Hide Commit Editor"
+msgstr "Ocultar editor de mensagem de commit"
 
 msgid "History"
 msgstr "Histórico"
@@ -2172,6 +2190,12 @@ msgstr "Limite do clone raso: o histórico anterior está ausente, portanto esta
 msgid "Show Changes Only"
 msgstr "Mostrar somente alterações"
 
+msgid "Show Commit Details"
+msgstr "Mostrar detalhes do commit"
+
+msgid "Show Commit Editor"
+msgstr "Mostrar editor de mensagem de commit"
+
 msgid "Show Flat View"
 msgstr "Mostrar exibição plana"
 
@@ -2428,6 +2452,9 @@ msgstr "Tag (uma marcação dada a um commit específico)"
 
 msgid "Tag Here…"
 msgstr "Criar tag aqui…"
+
+msgid "Tag name"
+msgstr "Nome da tag"
 
 msgid "Tag name (e.g. v1.2.3)"
 msgstr "Nome da tag (ex.: v1.2.3)"
@@ -3244,6 +3271,10 @@ msgstr "Deixar de excluir do MR"
 msgctxt "commit button"
 msgid "Commit"
 msgstr "Fazer commit"
+
+msgctxt "commit details"
+msgid "Message"
+msgstr "Mensagem"
 
 msgctxt "commit modal"
 msgid "Signoff"

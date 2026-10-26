@@ -1311,6 +1311,9 @@ msgstr "설정 @{{{settings}}}"
 msgid "Show Numbers"
 msgstr "번호 표시"
 
+msgid "Show Source"
+msgstr "소스 표시"
+
 msgid "Show Values"
 msgstr "값 표시"
 

@@ -1667,6 +1667,10 @@ fn write_pid_file(path: &Path, pid: u32) -> Result<()> {
     std::fs::write(path, pid.to_string()).context("Failed to write PID file")
 }
 
+/// How many log chunks the proxy holds for a client that is slow to read its
+/// stderr before it starts dropping them.
+const PROXY_LOG_CHUNKS_IN_FLIGHT: usize = 1024;
+
 async fn forward_stdio(connection: UnixStream) -> Result<(), ExecuteProxyError> {
     forward(
         connection,
@@ -1708,6 +1712,25 @@ where
         }
     });
 
+    // A client that stops reading stderr must not hold up the replies queued
+    // behind the log (upstream #65011), so the log goes out on its own task.
+    // What that task cannot take is dropped rather than buffered without
+    // bound: the daemon's log file keeps all of it.
+    let (log_tx, log_rx) = smol::channel::bounded::<Vec<u8>>(PROXY_LOG_CHUNKS_IN_FLIGHT);
+    let _stderr_task = smol::spawn(async move {
+        while let Ok(chunk) = log_rx.recv().await {
+            let written = async {
+                stderr.write_all(&chunk).await?;
+                stderr.flush().await
+            }
+            .await;
+            if let Err(error) = written {
+                log::warn!("stopped forwarding the server log to stderr: {error:#}");
+                break;
+            }
+        }
+    });
+
     let stdout_task: smol::Task<Result<()>> = smol::spawn(async move {
         let mut buffer = Vec::new();
         loop {
@@ -1721,10 +1744,12 @@ where
                         .context("failed to write message to stdout")?;
                     stdout.flush().await?;
                 }
-                DaemonFrameKind::Log => {
-                    stderr.write_all(&buffer).await?;
-                    stderr.flush().await?;
-                }
+                DaemonFrameKind::Log => match log_tx.try_send(buffer.clone()) {
+                    Ok(()) | Err(smol::channel::TrySendError::Closed(_)) => {}
+                    Err(smol::channel::TrySendError::Full(_)) => {
+                        log::debug!("dropped a server log chunk the client is not reading");
+                    }
+                },
             }
         }
     });
@@ -2038,7 +2063,7 @@ fn is_file_in_use(file_name: &OsStr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::daemon::test_support::memory_stream_pair;
+    use crate::daemon::test_support::{memory_stream_pair, memory_stream_pair_with_capacity};
     use remote::protocol::{decode_envelope, read_message, write_envelope_frame, write_message};
     use rpc::proto::EnvelopedMessage as _;
     use std::cell::RefCell;
@@ -2703,5 +2728,65 @@ mod tests {
             }
         });
         assert_eq!(error.raw_os_error(), Some(libc::ELOOP));
+    }
+
+    #[test]
+    fn the_proxy_answers_while_the_client_leaves_the_log_unread() {
+        smol::block_on(async {
+            let (mut daemon_end, proxy_connection) = memory_stream_pair();
+            let (mut client_stdin, proxy_stdin) = memory_stream_pair();
+            let (proxy_stdout, mut client_stdout) = memory_stream_pair();
+            let (proxy_stderr, client_stderr) = memory_stream_pair_with_capacity(Some(16));
+            let forwarding = smol::spawn(forward(
+                proxy_connection,
+                proxy_stdin,
+                proxy_stdout,
+                proxy_stderr,
+            ));
+
+            let mut buffer = Vec::new();
+            for _ in 0..4 {
+                write_daemon_frame(&mut daemon_end, DaemonFrameKind::Log, &[b'x'; 64 * 1024])
+                    .await
+                    .expect("the daemon logs");
+            }
+            let ack = proto::Ack {}.into_envelope(2, Some(1), None);
+            write_envelope_frame(&mut daemon_end, &mut buffer, ack.clone())
+                .await
+                .expect("the daemon answers");
+            daemon_end.flush().await.expect("flush the daemon's end");
+
+            futures::select! {
+                answer = read_message(&mut client_stdout, &mut buffer).fuse() => {
+                    assert_eq!(answer.expect("the client reads the answer"), ack);
+                }
+                _ = sleep(Duration::from_secs(5)).fuse() => {
+                    panic!("the answer is stuck behind a log the client does not read");
+                }
+            }
+
+            let ping = proto::Ping {}.into_envelope(3, None, None);
+            write_message(&mut client_stdin, &mut buffer, ping.clone())
+                .await
+                .expect("the client writes to the proxy's stdin");
+            client_stdin.flush().await.expect("flush stdin");
+            assert_eq!(
+                read_daemon_frame(&mut daemon_end, &mut buffer)
+                    .await
+                    .expect("the daemon should receive a frame"),
+                DaemonFrameKind::Envelope
+            );
+            assert_eq!(
+                decode_envelope(&buffer).expect("the frame carries the envelope"),
+                ping
+            );
+
+            drop(client_stderr);
+            drop(client_stdin);
+            assert!(matches!(
+                forwarding.await,
+                Err(ExecuteProxyError::StdinTask(_))
+            ));
+        });
     }
 }

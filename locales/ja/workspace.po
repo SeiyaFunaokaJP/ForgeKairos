@@ -239,6 +239,9 @@ msgstr "タブを編集可能にする"
 msgid "Make Tab Read-Only"
 msgstr "タブを読み取り専用にする"
 
+msgid "More Options"
+msgstr "その他のオプション"
+
 msgid "Move to New Window"
 msgstr "新しいウィンドウへ移動"
 

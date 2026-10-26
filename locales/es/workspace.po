@@ -242,6 +242,9 @@ msgstr "Hacer editable la pestaña"
 msgid "Make Tab Read-Only"
 msgstr "Hacer la pestaña de solo lectura"
 
+msgid "More Options"
+msgstr "Más opciones"
+
 msgid "Move to New Window"
 msgstr "Mover a una ventana nueva"
 

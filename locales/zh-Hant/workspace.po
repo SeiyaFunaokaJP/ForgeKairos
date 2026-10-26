@@ -242,6 +242,9 @@ msgstr "設為可編輯"
 msgid "Make Tab Read-Only"
 msgstr "設為唯讀"
 
+msgid "More Options"
+msgstr "更多選項"
+
 msgid "Move to New Window"
 msgstr "移至新視窗"
 

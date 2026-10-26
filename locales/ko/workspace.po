@@ -242,6 +242,9 @@ msgstr "탭 편집 가능으로 변경"
 msgid "Make Tab Read-Only"
 msgstr "탭 읽기 전용으로 변경"
 
+msgid "More Options"
+msgstr "추가 옵션"
+
 msgid "Move to New Window"
 msgstr "새 창으로 이동"
 

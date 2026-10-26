@@ -480,6 +480,14 @@ msgctxt "GitPanelClickBehavior"
 msgid "View File"
 msgstr "查看文件"
 
+msgctxt "GitPanelCommitEditor"
+msgid "Collapsed"
+msgstr "已折叠"
+
+msgctxt "GitPanelCommitEditor"
+msgid "Expanded"
+msgstr "已展开"
+
 msgctxt "GitPanelGroupBy"
 msgid "None"
 msgstr "无"
@@ -1785,6 +1793,10 @@ msgid "Command to automatically run when Zed creates a Terminal Thread shell in 
 msgstr "ForgeKairos 在智能体面板中创建终端会话 shell 时自动运行的命令。该命令会在你配置的 shell 中运行。"
 
 msgctxt "settings"
+msgid "Commit Editor"
+msgstr "提交编辑器"
+
+msgctxt "settings"
 msgid "Commit Title Max Length"
 msgstr "提交标题最大长度"
 
@@ -2461,6 +2473,10 @@ msgid "Extend Comment On Newline"
 msgstr "换行时延续注释"
 
 msgctxt "settings"
+msgid "Extensions"
+msgstr "扩展"
+
+msgctxt "settings"
 msgid "External AI Providers You Consented To"
 msgstr "你已同意的外部 AI 提供商"
 
@@ -2593,6 +2609,10 @@ msgid "Font fallbacks for terminal text. If not set, defaults to buffer font fal
 msgstr "终端文本的后备字体。未设置时默认使用缓冲区后备字体。"
 
 msgctxt "settings"
+msgid "Font family for Mermaid diagrams in the agent panel and markdown preview. Falls back to the UI font family."
+msgstr "智能体面板和 Markdown 预览中 Mermaid 图的字体系列，未设置时回退到 UI 字体系列。"
+
+msgctxt "settings"
 msgid "Font family for UI elements."
 msgstr "UI 元素的字体系列。"
 
@@ -2655,6 +2675,10 @@ msgstr "UI 元素的字体粗细（100-900）。"
 msgctxt "settings"
 msgid "Font weight for editor text (100-900)."
 msgstr "编辑器文本的字体粗细（100-900）。"
+
+msgctxt "settings"
+msgid "Font weight for headings in the markdown preview, in CSS units from 100 to 900."
+msgstr "Markdown 预览中标题的字体粗细，以 CSS 单位表示，范围为 100 至 900。"
 
 msgctxt "settings"
 msgid "Font weight for terminal text in CSS weight units (100-900)."
@@ -2815,6 +2839,10 @@ msgstr "将 SSH 终端的 Shell 交给远程 ForgeKairos 服务器托管。连�
 msgctxt "settings"
 msgid "Hard Tabs"
 msgstr "硬制表符"
+
+msgctxt "settings"
+msgid "Heading Font Weight"
+msgstr "标题字体粗细"
 
 msgctxt "settings"
 msgid "Hidden Files"
@@ -3381,6 +3409,10 @@ msgid "Menu Delay"
 msgstr "菜单延迟"
 
 msgctxt "settings"
+msgid "Mermaid Font"
+msgstr "Mermaid 字体"
+
+msgctxt "settings"
 msgid "Message Editor Min Lines"
 msgstr "消息编辑器最少行数"
 
@@ -3631,6 +3663,10 @@ msgstr "首选行宽"
 msgctxt "settings"
 msgid "Preferred debuggers for this language."
 msgstr "该语言的首选调试器。"
+
+msgctxt "settings"
+msgid "Prefill Query From Selection"
+msgstr "用所选内容预填查询"
 
 msgctxt "settings"
 msgid "Prefix every line with `[YYYY-MM-DD HH:MM:SS] `. In a terminal that is recording, this can also be toggled from the recording bar."
@@ -4577,6 +4613,10 @@ msgid "Strip Control Sequences"
 msgstr "去除控制序列"
 
 msgctxt "settings"
+msgid "Suggest Extensions"
+msgstr "推荐扩展"
+
+msgctxt "settings"
 msgid "Suggest Missing Development Tools"
 msgstr "提示缺少的开发工具"
 
@@ -5489,6 +5529,10 @@ msgid "Whether the browser panel should open on startup."
 msgstr "是否在启动时打开浏览器面板。"
 
 msgctxt "settings"
+msgid "Whether the commit message editor is shown in the Git panel by default."
+msgstr "是否默认在 Git 面板中显示提交消息编辑器。"
+
+msgctxt "settings"
 msgid "Whether the cursor blinks in the editor."
 msgstr "编辑器中光标是否闪烁。"
 
@@ -5733,6 +5777,10 @@ msgid "Whether to pop the completions menu while typing in an editor without exp
 msgstr "是否在编辑器中输入时自动弹出补全菜单，而无需显式触发。"
 
 msgctxt "settings"
+msgid "Whether to pre-fill the file finder's query with the text selected in the focused item (e.g. an editor or a terminal)."
+msgstr "是否用当前焦点项（例如编辑器或终端）中所选的文本预先填充文件查找器的查询。"
+
+msgctxt "settings"
 msgid "Whether to pull for language server-powered diagnostics or not."
 msgstr "是否拉取语言服务器提供的诊断信息。"
 
@@ -5807,6 +5855,10 @@ msgstr "是否将父目录固定在项目面板顶部。"
 msgctxt "settings"
 msgid "Whether to stick scopes to the top of the editor"
 msgstr "是否将作用域固定在编辑器顶部"
+
+msgctxt "settings"
+msgid "Whether to suggest installing extensions based on the files you open."
+msgstr "是否根据你打开的文件推荐安装扩展。"
 
 msgctxt "settings"
 msgid "Whether to use additional LSP queries to format (and amend) the code after every \"trigger\" symbol input, defined by LSP server capabilities"
