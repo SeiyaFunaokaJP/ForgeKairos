@@ -22,6 +22,7 @@ mod symbol_index_types;
 mod task_inventory;
 mod terminals;
 mod trusted_worktrees;
+mod watch_priority;
 mod worktree_code_execution;
 mod yarn;
 

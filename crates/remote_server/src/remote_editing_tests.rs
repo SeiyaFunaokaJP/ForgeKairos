@@ -4335,6 +4335,129 @@ async fn test_remote_rescan_worktrees(cx: &mut TestAppContext, server_cx: &mut T
 }
 
 #[gpui::test]
+async fn test_remote_watch_priority_reaches_the_server(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                "src": { "lib.rs": "" },
+                "docs": { "guide": {} },
+            },
+        }),
+    )
+    .await;
+
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    let (worktree, _) = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    cx.run_until_parked();
+
+    let server_worktree = headless.read_with(server_cx, |headless, cx| {
+        headless
+            .worktree_store
+            .read(cx)
+            .worktree_for_id(worktree_id, cx)
+            .expect("the server's worktree")
+    });
+    let server_priority = |server_cx: &mut TestAppContext| {
+        server_worktree.read_with(server_cx, |worktree, _| {
+            worktree
+                .as_local()
+                .expect("a local worktree on the server")
+                .watch_priority_paths()
+                .iter()
+                .map(|path| path.as_unix_str().to_owned())
+                .collect::<Vec<_>>()
+        })
+    };
+    let settle = |cx: &mut TestAppContext, server_cx: &mut TestAppContext| {
+        cx.executor()
+            .advance_clock(project::watch_priority::WATCH_PRIORITY_DEBOUNCE);
+        cx.run_until_parked();
+        server_cx.run_until_parked();
+    };
+    let set_panel = |paths: &[&str], cx: &mut TestAppContext| {
+        project.update(cx, |project, cx| {
+            project.set_panel_watch_priority(
+                worktree_id,
+                paths.iter().map(|path| rel_path(path).into_arc()).collect(),
+                cx,
+            )
+        });
+    };
+
+    set_panel(&["", "docs"], cx);
+    let buffer = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("src/lib.rs")), cx)
+        })
+        .await
+        .unwrap();
+    settle(cx, server_cx);
+    assert_eq!(server_priority(server_cx), ["src", "", "docs"]);
+
+    // An unchanged set is not sent again.
+    server_worktree.update(server_cx, |worktree, cx| {
+        worktree.set_watch_priority(vec![rel_path("sentinel").into_arc()], cx)
+    });
+    set_panel(&["docs", ""], cx);
+    settle(cx, server_cx);
+    assert_eq!(server_priority(server_cx), ["sentinel"]);
+
+    set_panel(&["", "docs", "docs/guide"], cx);
+    settle(cx, server_cx);
+    assert_eq!(
+        server_priority(server_cx),
+        ["src", "", "docs", "docs/guide"]
+    );
+
+    cx.update(|_| drop(buffer));
+    cx.run_until_parked();
+    settle(cx, server_cx);
+    assert_eq!(server_priority(server_cx), ["", "docs", "docs/guide"]);
+
+    // The server holds no path that leaves the worktree, and only so many.
+    let (client, project_id) = worktree.read_with(cx, |worktree, _| {
+        let worktree = worktree.as_remote().expect("a remote worktree");
+        (worktree.client(), worktree.project_id())
+    });
+    let mut paths = [
+        "..",
+        "../outside",
+        "docs/../..",
+        "/etc",
+        "docs/./guide",
+        "docs",
+    ]
+    .map(String::from)
+    .to_vec();
+    paths.extend((0..5000).map(|index| format!("dir{index:05}")));
+    client
+        .request(proto::SetWorktreeWatchPriority {
+            project_id,
+            worktree_id: worktree_id.to_proto(),
+            paths,
+        })
+        .await
+        .expect("acknowledged");
+    server_cx.run_until_parked();
+    let held = server_priority(server_cx);
+    assert_eq!(held.len(), 4091, "4096 taken, 5 of them invalid");
+    assert_eq!(held[0], "docs");
+    assert_eq!(held[1], "dir00000");
+    assert_eq!(held[4090], "dir04089");
+}
+
+#[gpui::test]
 async fn test_remote_entries_carry_the_hosts_private_files_verdict(
     cx: &mut TestAppContext,
     server_cx: &mut TestAppContext,

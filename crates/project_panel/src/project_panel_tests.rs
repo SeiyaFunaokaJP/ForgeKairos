@@ -12332,7 +12332,7 @@ pub(crate) fn init_test(cx: &mut TestAppContext) {
     });
 }
 
-fn init_test_with_editor(cx: &mut TestAppContext) {
+pub(crate) fn init_test_with_editor(cx: &mut TestAppContext) {
     cx.update(|cx| {
         let app_state = AppState::test(cx);
         theme_settings::init(theme::LoadThemes::JustBase, cx);

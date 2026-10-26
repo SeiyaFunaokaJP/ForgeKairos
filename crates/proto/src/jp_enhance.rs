@@ -8,11 +8,13 @@ use crate::*;
 ///
 /// 2: `CheckWireRevision`, and `AddWorktree.code_runs_without_ide_decision`
 /// in place of `code_execution_follows_ide`.
-pub const JP_ENHANCE_WIRE_REVISION: u32 = 2;
+/// 3: SetWorktreeWatchPriority.
+pub const JP_ENHANCE_WIRE_REVISION: u32 = 3;
 
 crate::request_messages!(
     (CheckWireRevision, CheckWireRevisionResponse),
     (RescanProjectWorktree, RescanProjectWorktreeResponse),
+    (SetWorktreeWatchPriority, Ack),
     (SetWorktreeCodeExecution, Ack),
     (
         RequestProjectLaunchApproval,
@@ -55,6 +57,7 @@ crate::request_messages!(
 crate::entity_messages!(
     {project_id, ShareProject},
     RescanProjectWorktree,
+    SetWorktreeWatchPriority,
     RequestProjectLaunchApproval,
     ProjectLaunchApprovalDecided,
     ProjectLaunchApprovalRevoked,

@@ -269,6 +269,7 @@ impl WorktreeStore {
         client.add_entity_request_handler(Self::handle_expand_project_entry);
         client.add_entity_request_handler(Self::handle_expand_all_for_project_entry);
         client.add_entity_request_handler(Self::handle_rescan_project_worktree);
+        client.add_entity_request_handler(Self::handle_set_worktree_watch_priority);
         client.add_entity_request_handler(Self::handle_verify_agent_read);
     }
 
@@ -1502,6 +1503,25 @@ impl WorktreeStore {
                 .context("worktree not found")
         })?;
         Worktree::handle_rescan(worktree, cx).await
+    }
+
+    /// ADR-F104: on the host that holds the files, the directories the IDE's
+    /// user is looking at, which get native watches before the rest.
+    pub async fn handle_set_worktree_watch_priority(
+        this: Entity<Self>,
+        envelope: TypedEnvelope<proto::SetWorktreeWatchPriority>,
+        mut cx: AsyncApp,
+    ) -> Result<proto::Ack> {
+        let worktree_id = WorktreeId::from_proto(envelope.payload.worktree_id);
+        let worktree = this.update(&mut cx, |this, cx| {
+            this.worktree_for_id(worktree_id, cx)
+                .context("worktree not found")
+        })?;
+        Ok(Worktree::handle_set_watch_priority(
+            worktree,
+            envelope.payload,
+            &mut cx,
+        ))
     }
 
     /// ADR-F49 decision 11: checks that `path` in `worktree` can be read

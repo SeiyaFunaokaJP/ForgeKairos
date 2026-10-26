@@ -45,6 +45,7 @@ messages!(
     (CheckWireRevisionResponse, Foreground),
     (RescanProjectWorktree, Foreground),
     (RescanProjectWorktreeResponse, Foreground),
+    (SetWorktreeWatchPriority, Foreground),
     (RequestProjectLaunchApproval, Foreground),
     (RequestProjectLaunchApprovalResponse, Foreground),
     (ProjectLaunchApprovalDecided, Foreground),

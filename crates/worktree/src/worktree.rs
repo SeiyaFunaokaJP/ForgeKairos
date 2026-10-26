@@ -143,6 +143,7 @@ pub struct LocalWorktree {
     scan_requests_tx: async_channel::Sender<ScanRequest>,
     path_prefixes_to_scan_tx: async_channel::Sender<PathPrefixScanRequest>,
     rescan_requests_tx: async_channel::Sender<RescanRequest>,
+    watch_priority_tx: async_channel::Sender<Vec<Arc<RelPath>>>,
     is_scanning: (watch::Sender<bool>, watch::Receiver<bool>),
     snapshot_subscriptions: VecDeque<(usize, oneshot::Sender<()>)>,
     _background_scanner_tasks: Vec<Task<()>>,
@@ -155,6 +156,8 @@ pub struct LocalWorktree {
     share_private_files: bool,
     scanning_enabled: bool,
     force_defer_watch: bool,
+    /// ADR-F104: the last set given to [`Worktree::set_watch_priority`].
+    watch_priority_paths: Vec<Arc<RelPath>>,
 }
 
 pub struct PathPrefixScanRequest {
@@ -606,6 +609,7 @@ impl Worktree {
             let (scan_requests_tx, scan_requests_rx) = async_channel::unbounded();
             let (path_prefixes_to_scan_tx, path_prefixes_to_scan_rx) = async_channel::unbounded();
             let (rescan_requests_tx, rescan_requests_rx) = async_channel::unbounded();
+            let (watch_priority_tx, watch_priority_rx) = async_channel::unbounded();
             let mut worktree = LocalWorktree {
                 share_private_files,
                 next_entry_id,
@@ -616,6 +620,7 @@ impl Worktree {
                 scan_requests_tx,
                 path_prefixes_to_scan_tx,
                 rescan_requests_tx,
+                watch_priority_tx,
                 _background_scanner_tasks: Vec::new(),
                 fs,
                 fs_case_sensitive,
@@ -623,11 +628,13 @@ impl Worktree {
                 settings,
                 scanning_enabled,
                 force_defer_watch: false,
+                watch_priority_paths: Vec::new(),
             };
             worktree.start_background_scanner(
                 scan_requests_rx,
                 path_prefixes_to_scan_rx,
                 rescan_requests_rx,
+                watch_priority_rx,
                 cx,
             );
             Worktree::Local(worktree)
@@ -1179,6 +1186,17 @@ impl Worktree {
         }
     }
 
+    /// ADR-F104: tells the host that holds the files which directories the
+    /// user is looking at, so that they get native watches before the rest
+    /// (see [`fs::Watcher::set_priority_paths`]). Replaces the previous set.
+    /// Best effort: a remote server that doesn't know the message ignores it.
+    pub fn set_watch_priority(&mut self, paths: Vec<Arc<RelPath>>, cx: &Context<Worktree>) {
+        match self {
+            Worktree::Local(this) => this.set_watch_priority(paths),
+            Worktree::Remote(this) => this.set_watch_priority(paths, cx),
+        }
+    }
+
     /// Re-reads the whole worktree from disk to pick up changes that the file
     /// system watcher missed. The task resolves once this worktree's snapshot
     /// reflects the rescan.
@@ -1355,6 +1373,30 @@ impl Worktree {
         })
     }
 
+    pub fn handle_set_watch_priority(
+        this: Entity<Self>,
+        request: proto::SetWorktreeWatchPriority,
+        cx: &mut AsyncApp,
+    ) -> proto::Ack {
+        // Far more than the IDE sends; it only bounds what a peer can make
+        // this host hold.
+        const MAX_PATHS: usize = 4096;
+        let paths = request
+            .paths
+            .iter()
+            .take(MAX_PATHS)
+            .filter_map(|path| match RelPath::from_unix_str(path) {
+                Ok(path) => Some(path.into_arc()),
+                Err(error) => {
+                    log::debug!("ignoring an invalid watch priority path {path:?}: {error:#}");
+                    None
+                }
+            })
+            .collect();
+        this.update(cx, |this, cx| this.set_watch_priority(paths, cx));
+        proto::Ack {}
+    }
+
     pub fn is_single_file(&self) -> bool {
         self.root_dir().is_none()
     }
@@ -1423,14 +1465,23 @@ impl LocalWorktree {
         let (scan_requests_tx, scan_requests_rx) = async_channel::unbounded();
         let (path_prefixes_to_scan_tx, path_prefixes_to_scan_rx) = async_channel::unbounded();
         let (rescan_requests_tx, rescan_requests_rx) = async_channel::unbounded();
+        let (watch_priority_tx, watch_priority_rx) = async_channel::unbounded();
         self.scan_requests_tx = scan_requests_tx;
         self.path_prefixes_to_scan_tx = path_prefixes_to_scan_tx;
         self.rescan_requests_tx = rescan_requests_tx;
+        self.watch_priority_tx = watch_priority_tx;
+        // The new scanner comes with a new watcher, which knows nothing of the set yet.
+        if !self.watch_priority_paths.is_empty() {
+            self.watch_priority_tx
+                .try_send(self.watch_priority_paths.clone())
+                .log_err();
+        }
 
         self.start_background_scanner(
             scan_requests_rx,
             path_prefixes_to_scan_rx,
             rescan_requests_rx,
+            watch_priority_rx,
             cx,
         );
         let always_included_entries = self
@@ -1454,6 +1505,7 @@ impl LocalWorktree {
         scan_requests_rx: async_channel::Receiver<ScanRequest>,
         path_prefixes_to_scan_rx: async_channel::Receiver<PathPrefixScanRequest>,
         rescan_requests_rx: async_channel::Receiver<RescanRequest>,
+        watch_priority_rx: async_channel::Receiver<Vec<Arc<RelPath>>>,
         cx: &Context<Worktree>,
     ) {
         let track_gitignores = self.visible;
@@ -1501,6 +1553,9 @@ impl LocalWorktree {
                     scan_requests_rx,
                     path_prefixes_to_scan_rx,
                     rescan_requests_rx,
+                    watch_priority_rx,
+                    watch_priority_paths: Vec::new(),
+                    watch_priority_unresolved: false,
                     next_entry_id,
                     state: async_lock::Mutex::new(BackgroundScannerState {
                         prev_snapshot: snapshot.snapshot.clone(),
@@ -2313,6 +2368,17 @@ impl LocalWorktree {
         rx
     }
 
+    pub fn set_watch_priority(&mut self, paths: Vec<Arc<RelPath>>) {
+        self.watch_priority_paths = paths;
+        self.watch_priority_tx
+            .try_send(self.watch_priority_paths.clone())
+            .log_err();
+    }
+
+    pub fn watch_priority_paths(&self) -> &[Arc<RelPath>] {
+        &self.watch_priority_paths
+    }
+
     /// Re-reads the whole worktree from disk, the same way the scanner recovers
     /// when the file system watcher reports that it dropped events. The
     /// returned barrier is released once the resulting snapshot has been
@@ -2449,6 +2515,25 @@ impl LocalWorktree {
 impl RemoteWorktree {
     pub fn project_id(&self) -> u64 {
         self.project_id
+    }
+
+    pub fn set_watch_priority(&mut self, paths: Vec<Arc<RelPath>>, cx: &Context<Worktree>) {
+        let request = self.client.request(proto::SetWorktreeWatchPriority {
+            project_id: self.project_id,
+            worktree_id: self.id().to_proto(),
+            paths: paths
+                .iter()
+                .map(|path| path.as_unix_str().to_owned())
+                .collect(),
+        });
+        cx.background_spawn(async move {
+            // Best effort: without it the directories are only picked up by
+            // the server's poller, later, which is no reason to bother the user.
+            if let Err(error) = request.await {
+                log::debug!("could not set the watch priority on the remote server: {error:#}");
+            }
+        })
+        .detach();
     }
 
     pub fn client(&self) -> AnyProtoClient {
@@ -3432,6 +3517,24 @@ impl LocalSnapshot {
 }
 
 impl BackgroundScannerState {
+    /// The absolute path the directory at `path` is (or will be) registered with the watcher
+    /// under, or `None` for an external directory that isn't watched yet.
+    fn watched_abs_path(&self, path: &RelPath) -> Option<PathBuf> {
+        if let Some(entry) = self.snapshot.entry_for_path(path)
+            && let Some(watched_abs_path) = self.watched_dir_abs_paths_by_entry_id.get(&entry.id)
+        {
+            return Some(watched_abs_path.to_path_buf());
+        }
+        // A directory not scanned yet is judged by its nearest known ancestor.
+        let nearest_known = path
+            .ancestors()
+            .find_map(|ancestor| self.snapshot.entry_for_path(ancestor));
+        if nearest_known.is_some_and(|entry| entry.is_external) {
+            return None;
+        }
+        Some(self.snapshot.absolutize(path))
+    }
+
     async fn enqueue_scan_dir(
         &self,
         abs_path: Arc<Path>,
@@ -4578,6 +4681,12 @@ struct BackgroundScanner {
     scan_requests_rx: async_channel::Receiver<ScanRequest>,
     path_prefixes_to_scan_rx: async_channel::Receiver<PathPrefixScanRequest>,
     rescan_requests_rx: async_channel::Receiver<RescanRequest>,
+    watch_priority_rx: async_channel::Receiver<Vec<Arc<RelPath>>>,
+    /// ADR-F104: the latest set from [`LocalWorktree::set_watch_priority`].
+    watch_priority_paths: Vec<Arc<RelPath>>,
+    /// Whether some of `watch_priority_paths` are external directories that weren't watched
+    /// yet when the set was last handed to the watcher.
+    watch_priority_unresolved: bool,
     next_entry_id: Arc<AtomicUsize>,
     phase: BackgroundScannerPhase,
     watcher: Arc<dyn Watcher>,
@@ -4818,6 +4927,10 @@ impl BackgroundScanner {
                     if !self.process_scan_request(request, false).await {
                         return;
                     }
+                    // A request can be what loads an external directory of the set.
+                    if self.watch_priority_unresolved {
+                        self.send_watch_priority().await;
+                    }
                 }
 
                 path_prefix_request = self.path_prefixes_to_scan_rx.recv().fuse() => {
@@ -4848,6 +4961,9 @@ impl BackgroundScanner {
                         }
                     }
                     self.send_status_update(false, request.done, &[]).await;
+                    if self.watch_priority_unresolved {
+                        self.send_watch_priority().await;
+                    }
                 }
 
                 // Only this loop takes rescan requests. The nested loops in
@@ -4856,6 +4972,15 @@ impl BackgroundScanner {
                 rescan_request = self.next_rescan_request().fuse() => {
                     let Ok(done) = rescan_request else { break };
                     self.process_rescan_request(done).await;
+                }
+
+                watch_priority = self.watch_priority_rx.recv().fuse() => {
+                    let Ok(mut paths) = watch_priority else { break };
+                    while let Ok(newer_paths) = self.watch_priority_rx.try_recv() {
+                        paths = newer_paths;
+                    }
+                    self.watch_priority_paths = paths;
+                    self.send_watch_priority().await;
                 }
 
                 paths = fs_events_rx.next().fuse() => {
@@ -6638,6 +6763,26 @@ impl BackgroundScanner {
             request.done.extend(next_request.done);
         }
         Ok(request)
+    }
+
+    /// Hands the priority set to the watcher as the absolute paths the directories were
+    /// registered with: an external directory is watched under its canonical path, which is
+    /// only known once it is scanned.
+    async fn send_watch_priority(&mut self) {
+        let mut unresolved = false;
+        let abs_paths = {
+            let state = self.state.lock().await;
+            self.watch_priority_paths
+                .iter()
+                .filter_map(|path| {
+                    let abs_path = state.watched_abs_path(path);
+                    unresolved |= abs_path.is_none();
+                    abs_path
+                })
+                .collect()
+        };
+        self.watch_priority_unresolved = unresolved;
+        self.watcher.set_priority_paths(abs_paths);
     }
 
     async fn next_rescan_request(&self) -> Result<SmallVec<[barrier::Sender; 1]>> {
