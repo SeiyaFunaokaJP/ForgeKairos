@@ -12,7 +12,7 @@ use std::{
 
 use acp_thread::{AcpThread, AcpThreadEvent, MentionUri, line_range_suffix};
 use agent::{ContextServerRegistry, SharedThread, ThreadStore};
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp_v2;
 use agent_servers::AgentServer;
 use agent_settings::UserAgentsMd;
 use collections::HashSet;
@@ -1057,14 +1057,14 @@ pub fn init(cx: &mut App) {
                         let diff_uri = mention_uri.to_uri().to_string();
 
                         let content_blocks = vec![
-                            acp::ContentBlock::Text(acp::TextContent::new(
+                            acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
                                 "Please review this branch diff carefully. Point out any issues, \
                                  potential bugs, or improvement opportunities you find.\n\n"
                                     .to_string(),
                             )),
-                            acp::ContentBlock::Resource(acp::EmbeddedResource::new(
-                                acp::EmbeddedResourceResource::TextResourceContents(
-                                    acp::TextResourceContents::new(content, diff_uri),
+                            acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource::new(
+                                acp_v2::EmbeddedResourceResource::TextResourceContents(
+                                    acp_v2::TextResourceContents::new(content, diff_uri),
                                 ),
                             )),
                         ];
@@ -1180,12 +1180,25 @@ pub fn init(cx: &mut App) {
 
                         agent_panel.update(cx, |panel, cx| {
                             panel.last_context_source = Some(source);
-                            cx.defer_in(window, move |panel, window, cx| {
-                                if let Some(conversation_view) = panel.active_conversation_view() {
-                                    conversation_view.update(cx, |conversation_view, cx| {
+                            if let Some(conversation_view) = panel.active_conversation_view() {
+                                conversation_view.update(cx, |conversation_view, cx| {
+                                    if conversation_view.active_thread().is_some() {
+                                        cx.defer_in(
+                                            window,
+                                            move |conversation_view, window, cx| {
+                                                conversation_view
+                                                    .insert_selection(selection, window, cx);
+                                            },
+                                        );
+                                    } else {
                                         conversation_view.insert_selection(selection, window, cx);
-                                    });
-                                } else if let Some(terminal_id) = panel.active_terminal_id()
+                                    }
+                                });
+                                return;
+                            }
+
+                            cx.defer_in(window, move |panel, window, cx| {
+                                if let Some(terminal_id) = panel.active_terminal_id()
                                     && let Some(agent_terminal) = panel.terminals.get(&terminal_id)
                                 {
                                     // Resolve mentions against the cwd: live cwd, else spawn dir.
@@ -1373,26 +1386,27 @@ fn mention_path_for_terminal(
     match (abs_path, working_directory) {
         (Some(abs_path), Some(working_directory)) => path_style
             .strip_prefix(&abs_path, working_directory)
-            .map(|relative| relative.display(path_style).into_owned())
-            .unwrap_or_else(|| abs_path.to_string_lossy().into_owned()),
+            .unwrap_or(&abs_path)
+            .to_string_lossy()
+            .into_owned(),
         (Some(abs_path), None) => abs_path.to_string_lossy().into_owned(),
         (None, _) => project_path.path.display(path_style).into_owned(),
     }
 }
 
-fn conflict_resource_block(conflict: &ConflictContent) -> acp::ContentBlock {
+fn conflict_resource_block(conflict: &ConflictContent) -> acp_v2::ContentBlock {
     let mention_uri = MentionUri::MergeConflict {
         file_path: conflict.file_path.clone(),
     };
-    acp::ContentBlock::Resource(acp::EmbeddedResource::new(
-        acp::EmbeddedResourceResource::TextResourceContents(acp::TextResourceContents::new(
+    acp_v2::ContentBlock::Resource(acp_v2::EmbeddedResource::new(
+        acp_v2::EmbeddedResourceResource::TextResourceContents(acp_v2::TextResourceContents::new(
             conflict.conflict_text.clone(),
             mention_uri.to_uri().to_string(),
         )),
     ))
 }
 
-fn build_conflict_resolution_prompt(conflicts: &[ConflictContent]) -> Vec<acp::ContentBlock> {
+fn build_conflict_resolution_prompt(conflicts: &[ConflictContent]) -> Vec<acp_v2::ContentBlock> {
     if conflicts.is_empty() {
         return Vec::new();
     }
@@ -1402,18 +1416,17 @@ fn build_conflict_resolution_prompt(conflicts: &[ConflictContent]) -> Vec<acp::C
     if conflicts.len() == 1 {
         let conflict = &conflicts[0];
 
-        blocks.push(acp::ContentBlock::Text(acp::TextContent::new(
+        blocks.push(acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
             "Please resolve the following merge conflict in ",
         )));
         let mention = MentionUri::File {
             abs_path: PathBuf::from(conflict.file_path.clone()),
         };
-        blocks.push(acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
-            mention.name(),
-            mention.to_uri(),
-        )));
+        blocks.push(acp_v2::ContentBlock::ResourceLink(
+            acp_v2::ResourceLink::new(mention.name(), mention.to_uri()),
+        ));
 
-        blocks.push(acp::ContentBlock::Text(acp::TextContent::new(
+        blocks.push(acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
             indoc::formatdoc!(
                 "\nThe conflict is between branch `{ours}` (ours) and `{theirs}` (theirs).
 
@@ -1431,7 +1444,7 @@ fn build_conflict_resolution_prompt(conflicts: &[ConflictContent]) -> Vec<acp::C
         let unique_files: HashSet<&str> = conflicts.iter().map(|c| c.file_path.as_str()).collect();
         let ours = &conflicts[0].ours_branch_name;
         let theirs = &conflicts[0].theirs_branch_name;
-        blocks.push(acp::ContentBlock::Text(acp::TextContent::new(
+        blocks.push(acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
             indoc::formatdoc!(
                 "Please resolve all {n} merge conflicts below.
 
@@ -1456,7 +1469,7 @@ fn build_conflict_resolution_prompt(conflicts: &[ConflictContent]) -> Vec<acp::C
 
 fn build_conflicted_files_resolution_prompt(
     conflicted_file_paths: &[String],
-) -> Vec<acp::ContentBlock> {
+) -> Vec<acp_v2::ContentBlock> {
     if conflicted_file_paths.is_empty() {
         return Vec::new();
     }
@@ -1473,16 +1486,17 @@ fn build_conflicted_files_resolution_prompt(
          ",
     );
 
-    let mut content = vec![acp::ContentBlock::Text(acp::TextContent::new(instruction))];
+    let mut content = vec![acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
+        instruction,
+    ))];
     for path in conflicted_file_paths {
         let mention = MentionUri::File {
             abs_path: PathBuf::from(path),
         };
-        content.push(acp::ContentBlock::ResourceLink(acp::ResourceLink::new(
-            mention.name(),
-            mention.to_uri(),
-        )));
-        content.push(acp::ContentBlock::Text(acp::TextContent::new("\n")));
+        content.push(acp_v2::ContentBlock::ResourceLink(
+            acp_v2::ResourceLink::new(mention.name(), mention.to_uri()),
+        ));
+        content.push(acp_v2::ContentBlock::Text(acp_v2::TextContent::new("\n")));
     }
     content
 }
@@ -2020,7 +2034,7 @@ impl AgentPanel {
                             let thread_id = store.read_with(cx, |store, _cx| {
                                 let primary = info.thread_id.and_then(|tid| store.entry(tid));
                                 let fallback = info.session_id.as_ref().and_then(|sid| {
-                                    store.entry_by_session(&acp::SessionId::new(sid.clone()))
+                                    store.entry_by_session(&acp_v2::SessionId::new(sid.clone()))
                                 });
                                 primary
                                     .or(fallback)
@@ -2507,7 +2521,7 @@ impl AgentPanel {
 
     pub fn open_thread(
         &mut self,
-        session_id: acp::SessionId,
+        session_id: acp_v2::SessionId,
         work_dirs: Option<PathList>,
         title: Option<SharedString>,
         window: &mut Window,
@@ -2550,7 +2564,7 @@ impl AgentPanel {
     fn external_thread_by_session(
         &mut self,
         agent: Agent,
-        session_id: acp::SessionId,
+        session_id: acp_v2::SessionId,
         work_dirs: Option<PathList>,
         title: Option<SharedString>,
         focus: bool,
@@ -2688,6 +2702,9 @@ impl AgentPanel {
 
     fn draft_has_content(&self, draft: &Entity<ConversationView>, cx: &App) -> bool {
         let cv = draft.read(cx);
+        if cv.has_pending_selections() {
+            return true;
+        }
         // A draft whose agent could not start has no editor; the text it was
         // sent with was written to the draft store before the start
         // ([`ConversationView::unpark`]).
@@ -3983,7 +4000,12 @@ impl AgentPanel {
             let failed_to_start =
                 draft.read(cx).is_load_error() && !self.draft_has_content(draft, cx);
 
-            if !failed_to_start && (agent_matches || has_editor_content || !draft_is_active) {
+            if !failed_to_start
+                && (agent_matches
+                    || has_editor_content
+                    || draft.read(cx).has_pending_selections()
+                    || !draft_is_active)
+            {
                 return draft.clone();
             }
 
@@ -4267,10 +4289,11 @@ impl AgentPanel {
         }
 
         if self.active_thread_id(cx) == Some(id) {
+            // Activating another view must not retain the thread that was explicitly removed
+            self.base_view = BaseView::Uninitialized;
             if activate_draft_after_remove {
                 self.activate_draft(false, AgentThreadSource::AgentPanel, window, cx);
             } else {
-                self.base_view = BaseView::Uninitialized;
                 self.refresh_base_view_subscriptions(window, cx);
             }
             self.serialize(cx);
@@ -4364,7 +4387,7 @@ impl AgentPanel {
         &self,
         id: ThreadId,
         cx: &App,
-    ) -> Option<Vec<acp::ContentBlock>> {
+    ) -> Option<Vec<acp_v2::ContentBlock>> {
         let cv = self
             .retained_threads
             .get(&id)
@@ -4383,6 +4406,19 @@ impl AgentPanel {
                 _ => None,
             })?;
         let message_editor = cv.read(cx).draft_message_editor(cx)?;
+        if message_editor.read(cx).editor().read(cx).read_only(cx)
+            && let Some(thread_view) = cv.read(cx).root_thread_view()
+        {
+            return Some(
+                thread_view
+                    .read(cx)
+                    .thread
+                    .read(cx)
+                    .draft_prompt()
+                    .map(|blocks| blocks.to_vec())
+                    .unwrap_or_default(),
+            );
+        }
         Some(message_editor.read(cx).draft_content_blocks_snapshot(cx))
     }
 
@@ -4419,7 +4455,7 @@ impl AgentPanel {
     }
 
     fn initial_content_for_thread_summary(
-        session_id: acp::SessionId,
+        session_id: acp_v2::SessionId,
         cx: &App,
     ) -> Option<AgentInitialContent> {
         let thread = ThreadStore::global(cx)
@@ -5008,7 +5044,7 @@ impl AgentPanel {
         };
 
         let db_thread = shared_thread.to_db_thread();
-        let session_id = acp::SessionId::new(uuid::Uuid::new_v4().to_string());
+        let session_id = acp_v2::SessionId::new(uuid::Uuid::new_v4().to_string());
         let thread_store = self.thread_store.clone();
         let title = db_thread.title.clone();
         let workspace = self.workspace.clone();
@@ -5584,7 +5620,11 @@ impl AgentPanel {
             .retained_threads
             .iter()
             .filter(|(_id, view)| {
-                let Some(thread_view) = view.read(cx).root_thread_view() else {
+                let view = view.read(cx);
+                if view.has_pending_selections() {
+                    return false;
+                }
+                let Some(thread_view) = view.root_thread_view() else {
                     return true;
                 };
                 let thread = thread_view.read(cx).thread.read(cx);
@@ -6594,7 +6634,7 @@ impl AgentPanel {
         &mut self,
         agent: Agent,
         server_override: Option<Rc<dyn AgentServer>>,
-        resume_session_id: acp::SessionId,
+        resume_session_id: acp_v2::SessionId,
         work_dirs: Option<PathList>,
         title: Option<SharedString>,
         initial_content: Option<AgentInitialContent>,
@@ -6622,7 +6662,7 @@ impl AgentPanel {
         agent: Agent,
         server_override: Option<Rc<dyn AgentServer>>,
         resume_thread_id: Option<ThreadId>,
-        resume_session_id: Option<acp::SessionId>,
+        resume_session_id: Option<acp_v2::SessionId>,
         work_dirs: Option<PathList>,
         title: Option<SharedString>,
         initial_content: Option<AgentInitialContent>,
@@ -6846,7 +6886,7 @@ impl agent::SiblingThreadHost for AgentPanelSiblingHost {
             };
 
             let initial_content = AgentInitialContent::ContentBlock {
-                blocks: vec![acp::ContentBlock::Text(acp::TextContent::new(
+                blocks: vec![acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
                     request.prompt.clone(),
                 ))],
                 auto_submit: true,
@@ -8719,6 +8759,10 @@ impl AgentPanel {
             .when(accepts_tabs, |this| {
                 this.drag_over::<DraggedTab>(|this, _, _, _| this.visible())
                     .on_drop(cx.listener(move |this, tab: &DraggedTab, window, cx| {
+                        if this.handle_dragged_terminal_tab(tab, window, cx) {
+                            return;
+                        }
+
                         let item = tab.pane.read(cx).item_for_index(tab.ix);
                         let project_paths = item
                             .and_then(|item| item.project_path(cx))
@@ -8812,6 +8856,71 @@ impl AgentPanel {
         terminal_view.update(cx, |terminal_view, cx| {
             terminal_view.add_paths_to_terminal(paths.paths(), window, cx);
         });
+    }
+
+    fn handle_dragged_terminal_tab(
+        &mut self,
+        tab: &DraggedTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if !self.supports_terminal(cx) {
+            return false;
+        }
+
+        let Some(terminal_view) = tab
+            .pane
+            .read(cx)
+            .item_for_index(tab.ix)
+            .and_then(|item| item.downcast::<TerminalView>())
+        else {
+            return false;
+        };
+
+        if let Some((&terminal_id, _)) = self
+            .terminals
+            .iter()
+            .find(|(_, terminal)| terminal.view == terminal_view)
+        {
+            self.activate_terminal(terminal_id, true, window, cx);
+            return true;
+        }
+
+        let (working_directory, custom_title, initial_title) = {
+            let terminal_view = terminal_view.read(cx);
+            let working_directory = terminal_view.terminal().read(cx).working_directory();
+            let custom_title = terminal_view
+                .custom_title()
+                .map(|title| SharedString::from(title.to_string()));
+            let initial_title = Some(AgentTerminal::terminal_title_for_view(terminal_view, cx));
+            (working_directory, custom_title, initial_title)
+        };
+
+        let item_id = terminal_view.item_id();
+        tab.pane.update(cx, |pane, cx| {
+            pane.remove_item(item_id, false, true, window, cx);
+        });
+
+        terminal_view.update(cx, |terminal_view, cx| {
+            terminal_view.set_show_workspace_actions(false, cx);
+        });
+
+        let terminal_id = TerminalId::new();
+        self.set_last_created_entry_kind_from_user_action(AgentPanelEntryKind::Terminal, cx);
+        self.insert_terminal(
+            terminal_id,
+            terminal_view,
+            working_directory,
+            custom_title,
+            initial_title,
+            None,
+            true,
+            true,
+            AgentThreadSource::AgentPanel,
+            window,
+            cx,
+        );
+        true
     }
 
     fn handle_drop(
@@ -9240,7 +9349,7 @@ impl AgentPanel {
     pub fn open_restored_thread_with_server(
         &mut self,
         server: Rc<dyn AgentServer>,
-        resume_session_id: acp::SessionId,
+        resume_session_id: acp_v2::SessionId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -9515,6 +9624,7 @@ mod tests {
     };
     use acp_thread::{AgentConnection, StubAgentConnection, ThreadStatus};
     use action_log::ActionLog;
+    use agent_client_protocol::schema::v1 as acp;
     use anyhow::{Result, anyhow};
     use feature_flags::FeatureFlagAppExt;
     use fs::FakeFs;
@@ -9681,7 +9791,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct SessionTrackingConnection {
         next_session_number: Arc<Mutex<usize>>,
-        sessions: Arc<Mutex<HashSet<acp::SessionId>>>,
+        sessions: Arc<Mutex<HashSet<acp_v2::SessionId>>>,
     }
 
     impl SessionTrackingConnection {
@@ -9691,7 +9801,7 @@ mod tests {
 
         fn create_session(
             self: Rc<Self>,
-            session_id: acp::SessionId,
+            session_id: acp_v2::SessionId,
             project: Entity<Project>,
             work_dirs: PathList,
             title: Option<SharedString>,
@@ -9710,10 +9820,10 @@ mod tests {
                     action_log,
                     session_id,
                     watch::Receiver::constant(
-                        acp::PromptCapabilities::new()
-                            .image(true)
-                            .audio(true)
-                            .embedded_context(true),
+                        acp_v2::PromptCapabilities::new()
+                            .image(acp_v2::PromptImageCapabilities::new())
+                            .audio(acp_v2::PromptAudioCapabilities::new())
+                            .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new()),
                     ),
                     cx,
                 )
@@ -9738,7 +9848,7 @@ mod tests {
         ) -> Task<Result<Entity<AcpThread>>> {
             let session_id = {
                 let mut next_session_number = self.next_session_number.lock();
-                let session_id = acp::SessionId::new(format!(
+                let session_id = acp_v2::SessionId::new(format!(
                     "session-tracking-session-{}",
                     *next_session_number
                 ));
@@ -9755,7 +9865,7 @@ mod tests {
 
         fn load_session(
             self: Rc<Self>,
-            session_id: acp::SessionId,
+            session_id: acp_v2::SessionId,
             project: Entity<Project>,
             work_dirs: PathList,
             title: Option<SharedString>,
@@ -9789,34 +9899,39 @@ mod tests {
 
         fn close_session(
             self: Rc<Self>,
-            session_id: &acp::SessionId,
+            session_id: &acp_v2::SessionId,
             _cx: &mut App,
         ) -> Task<Result<()>> {
             self.sessions.lock().remove(session_id);
             Task::ready(Ok(()))
         }
 
-        fn auth_methods(&self) -> &[acp::AuthMethod] {
+        fn auth_methods(&self) -> &[acp_v2::AuthMethod] {
             &[]
         }
 
-        fn authenticate(&self, _method_id: acp::AuthMethodId, _cx: &mut App) -> Task<Result<()>> {
+        fn authenticate(
+            &self,
+            _method_id: acp_v2::AuthMethodId,
+            _cx: &mut App,
+        ) -> Task<Result<()>> {
             Task::ready(Ok(()))
         }
 
         fn prompt(
             &self,
-            params: acp::PromptRequest,
+            params: acp_v2::PromptRequest,
             _cx: &mut App,
         ) -> Task<Result<acp::PromptResponse>> {
-            if !self.sessions.lock().contains(&params.session_id) {
+            let session_id = params.session_id;
+            if !self.sessions.lock().contains(&session_id) {
                 return Task::ready(Err(anyhow!("Session not found")));
             }
 
             Task::ready(Ok(acp::PromptResponse::new(acp::StopReason::EndTurn)))
         }
 
-        fn cancel(&self, _session_id: &acp::SessionId, _cx: &mut App) {}
+        fn cancel(&self, _session_id: &acp_v2::SessionId, _cx: &mut App) {}
 
         fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
             self
@@ -9855,12 +9970,12 @@ mod tests {
         open_thread_with_connection(&panel, connection.clone(), cx);
 
         let session_id = active_session_id(&panel, cx);
-        let tool_call_id = acp::ToolCallId::new("tool-call-output-focus-regression");
+        let tool_call_id = acp_v2::ToolCallId::new("tool-call-output-focus-regression");
         cx.update(|_window, cx| {
             connection.send_update(
                 session_id.clone(),
                 acp::SessionUpdate::ToolCall(
-                    acp::ToolCall::new(tool_call_id.clone(), "Read file")
+                    acp::ToolCall::new(acp::ToolCallId::new(tool_call_id.0.clone()), "Read file")
                         .kind(acp::ToolKind::Fetch)
                         .status(acp::ToolCallStatus::InProgress),
                 ),
@@ -9869,7 +9984,7 @@ mod tests {
             connection.send_update(
                 session_id,
                 acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                    tool_call_id.clone(),
+                    acp::ToolCallId::new(tool_call_id.0.clone()),
                     acp::ToolCallUpdateFields::new()
                         .status(acp::ToolCallStatus::Completed)
                         .content(vec![acp::ToolCallContent::Content(acp::Content::new(
@@ -10978,7 +11093,7 @@ mod tests {
         let cx = &mut VisualTestContext::from_window(multi_workspace.into(), cx);
 
         // Simulate a previous run that persisted metadata for this session.
-        let resume_session_id = acp::SessionId::new("persistent-session");
+        let resume_session_id = acp_v2::SessionId::new("persistent-session");
         cx.update(|_window, cx| {
             ThreadMetadataStore::global(cx).update(cx, |store, cx| {
                 store.save(
@@ -11058,19 +11173,19 @@ mod tests {
     }
 
     /// Extracts the text from a Text content block, panicking if it's not Text.
-    fn expect_text_block(block: &acp::ContentBlock) -> &str {
+    fn expect_text_block(block: &acp_v2::ContentBlock) -> &str {
         match block {
-            acp::ContentBlock::Text(t) => t.text.as_str(),
+            acp_v2::ContentBlock::Text(t) => t.text.as_str(),
             other => panic!("expected Text block, got {:?}", other),
         }
     }
 
     /// Extracts the (text_content, uri) from a Resource content block, panicking
     /// if it's not a TextResourceContents resource.
-    fn expect_resource_block(block: &acp::ContentBlock) -> (&str, &str) {
+    fn expect_resource_block(block: &acp_v2::ContentBlock) -> (&str, &str) {
         match block {
-            acp::ContentBlock::Resource(r) => match &r.resource {
-                acp::EmbeddedResourceResource::TextResourceContents(t) => {
+            acp_v2::ContentBlock::Resource(r) => match &r.resource {
+                acp_v2::EmbeddedResourceResource::TextResourceContents(t) => {
                     (t.text.as_str(), t.uri.as_str())
                 }
                 other => panic!("expected TextResourceContents, got {:?}", other),
@@ -11130,7 +11245,7 @@ mod tests {
 
         thread.update(cx, |thread, cx| {
             thread.set_draft_prompt(
-                Some(vec![acp::ContentBlock::Text(acp::TextContent::new(
+                Some(vec![acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
                     "stale prompt",
                 ))]),
                 cx,
@@ -11149,7 +11264,7 @@ mod tests {
 
         thread.update(cx, |thread, cx| {
             thread.set_draft_prompt(
-                Some(vec![acp::ContentBlock::Text(acp::TextContent::new(
+                Some(vec![acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
                     "stale prompt after clear",
                 ))]),
                 cx,
@@ -11282,7 +11397,7 @@ mod tests {
         );
 
         match &blocks[1] {
-            acp::ContentBlock::ResourceLink(link) => {
+            acp_v2::ContentBlock::ResourceLink(link) => {
                 assert!(
                     link.uri.contains("file://"),
                     "resource link URI should use file scheme"
@@ -11448,7 +11563,7 @@ mod tests {
             let newline_index = link_index + 1;
 
             match &blocks[link_index] {
-                acp::ContentBlock::ResourceLink(link) => {
+                acp_v2::ContentBlock::ResourceLink(link) => {
                     assert!(
                         link.uri.contains("file://"),
                         "resource link URI should use file scheme"
@@ -11519,7 +11634,7 @@ mod tests {
         panel: &Entity<AgentPanel>,
         connection: &StubAgentConnection,
         cx: &mut VisualTestContext,
-    ) -> (acp::SessionId, ThreadId) {
+    ) -> (acp_v2::SessionId, ThreadId) {
         let previous = panel.read_with(cx, |panel, cx| panel.active_thread_id(cx));
         open_thread_with_custom_connection(panel, connection.clone(), cx);
         // ADR-F36 Phase B: 別のスレッドを開いてもタブは残るので、「前のスレッド
@@ -11545,7 +11660,7 @@ mod tests {
         panel: &Entity<AgentPanel>,
         connection: &StubAgentConnection,
         cx: &mut VisualTestContext,
-    ) -> (acp::SessionId, ThreadId) {
+    ) -> (acp_v2::SessionId, ThreadId) {
         let previous = panel.read_with(cx, |panel, cx| panel.active_thread_id(cx));
         open_thread_with_custom_connection(panel, connection.clone(), cx);
         if let Some(previous) = previous {
@@ -12210,6 +12325,267 @@ mod tests {
         });
     }
 
+    struct DelayedSelectionAgentServer {
+        ready: async_channel::Receiver<()>,
+    }
+
+    impl AgentServer for DelayedSelectionAgentServer {
+        fn logo(&self) -> IconName {
+            IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> AgentId {
+            AgentId::new("delayed-selection")
+        }
+
+        fn connect(
+            &self,
+            _delegate: agent_servers::AgentServerDelegate,
+            _project: Entity<Project>,
+            cx: &mut App,
+        ) -> Task<Result<Rc<dyn AgentConnection>>> {
+            let ready = self.ready.clone();
+            cx.spawn(async move |_| {
+                ready.recv().await?;
+                Ok(Rc::new(StubAgentConnection::new()) as Rc<dyn AgentConnection>)
+            })
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    #[gpui::test]
+    async fn test_add_selection_to_loading_thread(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        open_thread_with_connection(&panel, StubAgentConnection::new(), &mut cx);
+        let (workspace, project, previous) = panel.read_with(&cx, |panel, _cx| {
+            (
+                panel.workspace.upgrade().expect("workspace must exist"),
+                panel.project.clone(),
+                panel
+                    .active_conversation_view()
+                    .cloned()
+                    .expect("previous conversation must exist"),
+            )
+        });
+        let previous_editor = previous.read_with(&cx, |view, cx| {
+            view.active_thread()
+                .expect("previous thread must be ready")
+                .read(cx)
+                .message_editor
+                .clone()
+        });
+        previous_editor.update_in(&mut cx, |editor, window, cx| {
+            editor.set_text("Keep this draft", window, cx);
+        });
+        let editor = workspace.update_in(&mut cx, |workspace, window, cx| {
+            let buffer = project.update(cx, |project, cx| {
+                project.create_local_buffer("first selection\nsecond selection\n", None, false, cx)
+            });
+            let editor = cx.new(|cx| Editor::for_buffer(buffer, Some(project.clone()), window, cx));
+            workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
+            editor
+        });
+        editor.update_in(&mut cx, |editor, window, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([text::Point::new(0, 0)..text::Point::new(0, 15)]);
+            });
+        });
+
+        let (release, ready) = async_channel::bounded(1);
+        panel.update(&mut cx, |panel, cx| {
+            let server = Rc::new(DelayedSelectionAgentServer { ready });
+            let agent = Agent::Custom {
+                id: server.agent_id(),
+            };
+            install_custom_agent(server.agent_id().0.as_ref(), cx);
+            panel.connection_store.update(cx, |store, cx| {
+                store.request_connection(agent.clone(), server, cx);
+            });
+            panel.set_selected_agent_and_persist(agent, cx);
+            panel.set_last_created_entry_kind_from_user_action(AgentPanelEntryKind::Thread, cx);
+        });
+        cx.update(|_, cx| {
+            cx.bind_keys([gpui::KeyBinding::new(
+                "ctrl-alt-q",
+                settings::ActionSequence(vec![
+                    ToggleFocus.boxed_clone(),
+                    NewThread.boxed_clone(),
+                    ToggleFocus.boxed_clone(),
+                    AddSelectionToThread.boxed_clone(),
+                ]),
+                Some("Workspace"),
+            )]);
+        });
+        cx.focus(&editor);
+        cx.simulate_keystrokes("ctrl-alt-q");
+        cx.run_until_parked();
+
+        let conversation = panel.read_with(&cx, |panel, _| {
+            panel
+                .active_conversation_view()
+                .cloned()
+                .expect("new conversation must exist")
+        });
+        assert_ne!(conversation.entity_id(), previous.entity_id());
+        assert!(conversation.read_with(&cx, |view, _| view.active_thread().is_none()));
+
+        editor.update_in(&mut cx, |editor, window, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([text::Point::new(1, 0)..text::Point::new(1, 16)]);
+            });
+        });
+        cx.focus(&editor);
+        workspace.update_in(&mut cx, |_, window, cx| {
+            window.dispatch_action(AddSelectionToThread.boxed_clone(), cx);
+        });
+        cx.run_until_parked();
+        editor.update_in(&mut cx, |editor, window, cx| {
+            editor.change_selections(Default::default(), window, cx, |selections| {
+                selections.select_ranges([text::Point::new(2, 0)..text::Point::new(2, 0)]);
+            });
+        });
+        cx.focus(&editor);
+        release.try_send(()).expect("startup gate must remain open");
+        cx.run_until_parked();
+
+        // ADR-F99: a custom agent waits for its first message, so the parked
+        // draft's editor takes the selections in place of the thread's.
+        let message_editor = conversation.read_with(&cx, |view, cx| {
+            assert!(view.is_parked());
+            view.draft_message_editor(cx)
+                .expect("the parked draft must have an editor")
+        });
+        let (contents, _) = message_editor
+            .update(&mut cx, |editor, cx| editor.contents(true, cx))
+            .await
+            .expect("selections must resolve");
+        let selections = contents
+            .iter()
+            .filter_map(|block| match block {
+                acp_v2::ContentBlock::Resource(resource) => match &resource.resource {
+                    acp_v2::EmbeddedResourceResource::TextResourceContents(content) => {
+                        Some(content.text.as_str())
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(selections, ["first selection", "second selection"]);
+        assert_eq!(
+            previous_editor.read_with(&cx, |editor, cx| editor.text(cx)),
+            "Keep this draft"
+        );
+        cx.update(|window, cx| {
+            assert!(editor.focus_handle(cx).is_focused(window));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_loading_selection_survives_draft_retention(cx: &mut TestAppContext) {
+        assert_loading_selection_removal(cx, false).await;
+    }
+
+    #[gpui::test]
+    async fn test_loading_selection_is_discarded_with_active_draft(cx: &mut TestAppContext) {
+        assert_loading_selection_removal(cx, true).await;
+    }
+
+    async fn assert_loading_selection_removal(cx: &mut TestAppContext, remove_active: bool) {
+        let (panel, mut cx) = setup_visible_panel(cx).await;
+        let (release, ready) = async_channel::bounded(1);
+        let conversation = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.open_draft_with_server(
+                Rc::new(DelayedSelectionAgentServer { ready }),
+                window,
+                cx,
+            );
+            let conversation = panel
+                .active_conversation_view()
+                .cloned()
+                .expect("draft must exist");
+            conversation.update(cx, |view, cx| {
+                view.insert_selection(
+                    AgentContextSelection::Terminal(vec!["pending context".into()]),
+                    window,
+                    cx,
+                );
+            });
+            panel.selected_agent = Agent::Stub;
+            let draft = panel.ensure_draft(AgentThreadSource::AgentPanel, window, cx);
+            assert_eq!(draft.entity_id(), conversation.entity_id());
+            assert!(panel.draft_has_content(&conversation, cx));
+            AgentSettings::override_global(
+                AgentSettings {
+                    max_idle_retained_threads: 0,
+                    ..AgentSettings::get_global(cx).clone()
+                },
+                cx,
+            );
+            panel.new_thread(&NewThread, window, cx);
+            panel.cleanup_retained_threads(cx);
+            // ADR-F36: a draft open in a tab is held by its tab rather than the retained threads.
+            let thread_id = conversation.read(cx).thread_id;
+            assert!(
+                panel.retained_threads.contains_key(&thread_id)
+                    || ThreadItem::is_open_in_a_tab(thread_id, cx)
+            );
+            conversation
+        });
+        cx.run_until_parked();
+        let current = panel.read_with(&cx, |panel, _| {
+            panel
+                .active_conversation_view()
+                .cloned()
+                .expect("replacement draft must exist")
+        });
+        assert_ne!(conversation.entity_id(), current.entity_id());
+        if remove_active {
+            panel.update_in(&mut cx, |panel, window, cx| {
+                panel.set_base_view(
+                    BaseView::AgentThread {
+                        conversation_view: conversation.clone(),
+                    },
+                    false,
+                    window,
+                    cx,
+                );
+            });
+        }
+        let workspace = panel.read_with(&cx, |panel, _| {
+            panel.workspace.upgrade().expect("workspace must exist")
+        });
+        cx.focus(&workspace);
+        let focused = cx.update(|window, cx| window.focused(cx));
+        let thread_id = conversation.read_with(&cx, |view, _| view.thread_id);
+        let removed = conversation.downgrade();
+        drop(conversation);
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.remove_thread(thread_id, window, cx);
+        });
+        cx.run_until_parked();
+        // ADR-F36: the draft's tab is let go of outside an update, so what it
+        // held is released with the next effect cycle.
+        cx.update(|_, _| {});
+        assert!(removed.upgrade().is_none());
+        release
+            .try_send(())
+            .expect("connection store must retain the startup gate");
+        cx.run_until_parked();
+        current.read_with(&cx, |view, cx| {
+            let thread = view
+                .active_thread()
+                .expect("replacement must be ready")
+                .read(cx);
+            assert!(thread.message_editor.read(cx).text(cx).is_empty());
+            assert!(thread.thread.read(cx).entries().is_empty());
+        });
+        assert_eq!(cx.update(|window, cx| window.focused(cx)), focused);
+    }
+
     #[gpui::test]
     async fn test_add_selection_to_terminal_thread_pastes_mention(cx: &mut TestAppContext) {
         init_test(cx);
@@ -12527,7 +12903,7 @@ mod tests {
                     store.save(
                         ThreadMetadata {
                             thread_id,
-                            session_id: Some(acp::SessionId::new(root.to_string())),
+                            session_id: Some(acp_v2::SessionId::new(root.to_string())),
                             agent_id: AgentId("zed".into()),
                             title: Some(root.into()),
                             title_override: None,
@@ -12997,7 +13373,7 @@ mod tests {
         assert!(
             persisted.iter().any(|block| matches!(
                 block,
-                acp::ContentBlock::Text(text) if text.text.contains("消えては困る下書き")
+                acp_v2::ContentBlock::Text(text) if text.text.contains("消えては困る下書き")
             )),
             "with what was in the box: {persisted:?}"
         );
@@ -14356,6 +14732,98 @@ mod tests {
             written,
             expected_terminal_drop_text(std::slice::from_ref(&image_path))
         );
+    }
+
+    #[gpui::test]
+    async fn test_dragged_terminal_tab_moves_into_agent_panel(cx: &mut TestAppContext) {
+        let (panel, mut cx) = setup_panel(cx).await;
+        cx.update(|_, cx| {
+            cx.update_flags(true, vec!["agent-panel-terminal".to_string()]);
+        });
+
+        let workspace = panel
+            .read_with(&cx, |panel, _cx| panel.workspace.upgrade())
+            .expect("workspace should still be open");
+        let (source_pane, terminal_view, dragged_tab) =
+            workspace.update_in(&mut cx, |workspace, window, cx| {
+                let source_pane = workspace.active_pane().clone();
+                let project = workspace.project().clone();
+                let settings = TerminalSettings::get_global(cx).clone();
+                let path_style = project.read(cx).path_style(cx);
+                let terminal = cx.new(|cx| {
+                    terminal::TerminalBuilder::new_display_only(
+                        settings.cursor_shape,
+                        settings.alternate_scroll,
+                        settings.max_scroll_history_lines,
+                        0,
+                        cx.background_executor(),
+                        path_style,
+                    )
+                    .subscribe(cx)
+                });
+                let terminal_view = cx.new(|cx| {
+                    let mut view = TerminalView::new(
+                        terminal,
+                        workspace.weak_handle(),
+                        workspace.database_id(),
+                        project.downgrade(),
+                        window,
+                        cx,
+                    );
+                    view.set_custom_title(Some("Moved Terminal".to_string()), cx);
+                    view
+                });
+                source_pane.update(cx, |pane, cx| {
+                    pane.add_item(
+                        Box::new(terminal_view.clone()),
+                        true,
+                        false,
+                        None,
+                        window,
+                        cx,
+                    );
+                });
+
+                let dragged_tab = DraggedTab {
+                    pane: source_pane.clone(),
+                    item: Box::new(terminal_view.clone()),
+                    ix: 0,
+                    detail: 0,
+                    is_active: true,
+                };
+                (source_pane, terminal_view, dragged_tab)
+            });
+
+        let handled = panel.update_in(&mut cx, |panel, window, cx| {
+            panel.handle_dragged_terminal_tab(&dragged_tab, window, cx)
+        });
+        assert!(
+            handled,
+            "terminal tab drop should be handled by the agent panel"
+        );
+
+        source_pane.read_with(&cx, |pane, _cx| {
+            assert_eq!(
+                pane.items_len(),
+                0,
+                "terminal should move out of source pane"
+            );
+        });
+        panel.read_with(&cx, |panel, cx| {
+            let terminal_id = panel
+                .active_terminal_id()
+                .expect("moved terminal should become active");
+            let terminal = panel
+                .terminals
+                .get(&terminal_id)
+                .expect("moved terminal should be registered");
+            assert_eq!(terminal.view.entity_id(), terminal_view.entity_id());
+            assert_eq!(
+                terminal.custom_title(cx).as_deref(),
+                Some("Moved Terminal"),
+                "custom title should be preserved"
+            );
+        });
     }
 
     #[gpui::test]
@@ -16001,7 +16469,7 @@ mod tests {
             language_model::LanguageModelRegistry::test(cx);
         });
 
-        let source_session_id = acp::SessionId::new("source-thread-session");
+        let source_session_id = acp_v2::SessionId::new("source-thread-session");
         let source_title: SharedString = "Source Thread Title".into();
         let db_thread = agent::DbThread {
             title: source_title.clone(),
@@ -16070,7 +16538,7 @@ mod tests {
         // Unknown session ids should still produce no content.
         let missing = cx.update(|cx| {
             AgentPanel::initial_content_for_thread_summary(
-                acp::SessionId::new("does-not-exist"),
+                acp_v2::SessionId::new("does-not-exist"),
                 cx,
             )
         });
@@ -18265,9 +18733,9 @@ mod tests {
     #[derive(Clone, Default)]
     struct DisassociationTrackingConnection {
         next_session_number: Arc<Mutex<usize>>,
-        sessions: Arc<Mutex<HashSet<acp::SessionId>>>,
-        closed_sessions: Arc<Mutex<Vec<acp::SessionId>>>,
-        missing_prompt_sessions: Arc<Mutex<Vec<acp::SessionId>>>,
+        sessions: Arc<Mutex<HashSet<acp_v2::SessionId>>>,
+        closed_sessions: Arc<Mutex<Vec<acp_v2::SessionId>>>,
+        missing_prompt_sessions: Arc<Mutex<Vec<acp_v2::SessionId>>>,
     }
 
     impl DisassociationTrackingConnection {
@@ -18277,7 +18745,7 @@ mod tests {
 
         fn create_session(
             self: Rc<Self>,
-            session_id: acp::SessionId,
+            session_id: acp_v2::SessionId,
             project: Entity<Project>,
             work_dirs: PathList,
             title: Option<SharedString>,
@@ -18296,10 +18764,10 @@ mod tests {
                     action_log,
                     session_id,
                     watch::Receiver::constant(
-                        acp::PromptCapabilities::new()
-                            .image(true)
-                            .audio(true)
-                            .embedded_context(true),
+                        acp_v2::PromptCapabilities::new()
+                            .image(acp_v2::PromptImageCapabilities::new())
+                            .audio(acp_v2::PromptAudioCapabilities::new())
+                            .embedded_context(acp_v2::PromptEmbeddedContextCapabilities::new()),
                     ),
                     cx,
                 )
@@ -18324,7 +18792,7 @@ mod tests {
         ) -> Task<Result<Entity<AcpThread>>> {
             let session_id = {
                 let mut next_session_number = self.next_session_number.lock();
-                let session_id = acp::SessionId::new(format!(
+                let session_id = acp_v2::SessionId::new(format!(
                     "disassociation-tracking-session-{}",
                     *next_session_number
                 ));
@@ -18341,7 +18809,7 @@ mod tests {
 
         fn load_session(
             self: Rc<Self>,
-            session_id: acp::SessionId,
+            session_id: acp_v2::SessionId,
             project: Entity<Project>,
             work_dirs: PathList,
             title: Option<SharedString>,
@@ -18375,7 +18843,7 @@ mod tests {
 
         fn close_session(
             self: Rc<Self>,
-            session_id: &acp::SessionId,
+            session_id: &acp_v2::SessionId,
             _cx: &mut App,
         ) -> Task<Result<()>> {
             self.sessions.lock().remove(session_id);
@@ -18383,28 +18851,33 @@ mod tests {
             Task::ready(Ok(()))
         }
 
-        fn auth_methods(&self) -> &[acp::AuthMethod] {
+        fn auth_methods(&self) -> &[acp_v2::AuthMethod] {
             &[]
         }
 
-        fn authenticate(&self, _method_id: acp::AuthMethodId, _cx: &mut App) -> Task<Result<()>> {
+        fn authenticate(
+            &self,
+            _method_id: acp_v2::AuthMethodId,
+            _cx: &mut App,
+        ) -> Task<Result<()>> {
             Task::ready(Ok(()))
         }
 
         fn prompt(
             &self,
-            params: acp::PromptRequest,
+            params: acp_v2::PromptRequest,
             _cx: &mut App,
         ) -> Task<Result<acp::PromptResponse>> {
-            if !self.sessions.lock().contains(&params.session_id) {
-                self.missing_prompt_sessions.lock().push(params.session_id);
+            let session_id = params.session_id;
+            if !self.sessions.lock().contains(&session_id) {
+                self.missing_prompt_sessions.lock().push(session_id);
                 return Task::ready(Err(anyhow!("Session not found")));
             }
 
             Task::ready(Ok(acp::PromptResponse::new(acp::StopReason::EndTurn)))
         }
 
-        fn cancel(&self, _session_id: &acp::SessionId, _cx: &mut App) {}
+        fn cancel(&self, _session_id: &acp_v2::SessionId, _cx: &mut App) {}
 
         fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
             self

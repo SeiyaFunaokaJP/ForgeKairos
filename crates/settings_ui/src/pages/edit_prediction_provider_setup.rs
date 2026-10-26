@@ -169,9 +169,7 @@ pub(crate) fn render_edit_prediction_setup_page(
 /// The endpoint the Copilot edit prediction provider signs in against: the
 /// enterprise URI when one is configured, and Copilot's own otherwise.
 fn copilot_edit_prediction_api_url(cx: &App) -> String {
-    AllLanguageSettings::get_global(cx)
-        .edit_predictions
-        .copilot
+    settings::CopilotSettings::get_global(cx)
         .enterprise_uri
         .clone()
         .filter(|uri| !uri.trim().is_empty())
@@ -1367,14 +1365,8 @@ mod tests {
             cx.update(|cx| {
                 cx.update_global::<settings::SettingsStore, _>(|store, cx| {
                     store.update_user_settings(cx, |settings| {
-                        settings
-                            .project
-                            .all_languages
-                            .edit_predictions
-                            .get_or_insert_default()
-                            .copilot
-                            .get_or_insert_default()
-                            .enterprise_uri = enterprise_uri.map(str::to_string);
+                        settings.copilot.get_or_insert_default().enterprise_uri =
+                            enterprise_uri.map(str::to_string);
                     });
                 });
                 let target = copilot_consent_target(None, cx)

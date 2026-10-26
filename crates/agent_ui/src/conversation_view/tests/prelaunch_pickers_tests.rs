@@ -11,32 +11,37 @@ enum Offers {
     Modes,
 }
 
-fn model_option(current: &str) -> acp_v1::SessionConfigOption {
-    acp_v1::SessionConfigOption::select(
+fn model_option(current: &str) -> acp_v2::SessionConfigOption {
+    acp_v2::SessionConfigOption::select(
         "model",
         "Model",
         current.to_string(),
         vec![
-            acp_v1::SessionConfigSelectOption::new("opus", "Opus"),
-            acp_v1::SessionConfigSelectOption::new("sonnet", "Sonnet"),
-            acp_v1::SessionConfigSelectOption::new("haiku", "Haiku"),
+            acp_v2::SessionConfigSelectOption::new("opus", "Opus"),
+            acp_v2::SessionConfigSelectOption::new("sonnet", "Sonnet"),
+            acp_v2::SessionConfigSelectOption::new("haiku", "Haiku"),
         ],
     )
-    .category(acp_v1::SessionConfigOptionCategory::Model)
+    .category(acp_v2::SessionConfigOptionCategory::Model)
 }
 
-fn fast_mode_option(current: bool) -> acp_v1::SessionConfigOption {
-    acp_v1::SessionConfigOption::boolean("fast", "Fast mode", current)
+fn fast_mode_option(current: bool) -> acp_v2::SessionConfigOption {
+    acp_v2::SessionConfigOption::boolean("fast", "Fast mode", current)
 }
 
-fn modes(current: &str) -> acp_v1::SessionModeState {
-    acp_v1::SessionModeState::new(
-        current.to_string(),
-        vec![
-            acp_v1::SessionMode::new("default", "Default"),
-            acp_v1::SessionMode::new("plan", "Plan"),
+struct PickerModes {
+    current_mode_id: acp_v2::SessionConfigValueId,
+    available_modes: Vec<acp_v2::SessionConfigSelectOption>,
+}
+
+fn modes(current: &str) -> PickerModes {
+    PickerModes {
+        current_mode_id: acp_v2::SessionConfigValueId::new(current.to_string()),
+        available_modes: vec![
+            acp_v2::SessionConfigSelectOption::new("default", "Default"),
+            acp_v2::SessionConfigSelectOption::new("plan", "Plan"),
         ],
-    )
+    }
 }
 
 /// What the agent was asked, in order.
@@ -52,7 +57,7 @@ struct PickerAgentServer {
     /// lets it go.
     hold_changes: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     default_config_options: Arc<Mutex<HashMap<String, AgentConfigOptionValue>>>,
-    default_mode: Arc<Mutex<Option<acp_v1::SessionModeId>>>,
+    default_mode: Arc<Mutex<Option<acp_v2::SessionConfigValueId>>>,
     /// ADR-F103: whether the agent's options may be read before its first
     /// thread has started.
     reads_options_before_start: bool,
@@ -171,13 +176,13 @@ impl AgentServer for PickerAgentServer {
         self
     }
 
-    fn default_mode(&self, _cx: &App) -> Option<acp_v1::SessionModeId> {
+    fn default_mode(&self, _cx: &App) -> Option<acp_v2::SessionConfigValueId> {
         self.default_mode.lock().clone()
     }
 
     fn set_default_mode(
         &self,
-        mode_id: Option<acp_v1::SessionModeId>,
+        mode_id: Option<acp_v2::SessionConfigValueId>,
         _fs: Arc<dyn Fs>,
         _cx: &mut App,
     ) {
@@ -205,8 +210,8 @@ impl AgentServer for PickerAgentServer {
 
 /// A session's options and modes, as the agent keeps them.
 struct PickerSession {
-    config_options: RefCell<Vec<acp_v1::SessionConfigOption>>,
-    modes: RefCell<acp_v1::SessionModeState>,
+    config_options: RefCell<Vec<acp_v2::SessionConfigOption>>,
+    modes: RefCell<PickerModes>,
     log: Log,
     hold_changes: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
 }
@@ -229,34 +234,34 @@ impl PickerSession {
 }
 
 impl acp_thread::AgentSessionConfigOptions for PickerSession {
-    fn config_options(&self) -> Vec<acp_v1::SessionConfigOption> {
+    fn config_options(&self) -> Vec<acp_v2::SessionConfigOption> {
         self.config_options.borrow().clone()
     }
 
     fn set_config_option(
         &self,
-        config_id: acp_v1::SessionConfigId,
-        value: acp_v1::SessionConfigOptionValue,
+        config_id: acp_v2::SessionConfigId,
+        value: acp_v2::SessionConfigOptionValue,
         cx: &mut App,
-    ) -> Task<Result<Vec<acp_v1::SessionConfigOption>>> {
+    ) -> Task<Result<Vec<acp_v2::SessionConfigOption>>> {
         let shown = match &value {
-            acp_v1::SessionConfigOptionValue::ValueId { value } => value.0.to_string(),
-            acp_v1::SessionConfigOptionValue::Boolean { value } => value.to_string(),
+            acp_v2::SessionConfigOptionValue::Id { value } => value.0.to_string(),
+            acp_v2::SessionConfigOptionValue::Boolean { value } => value.to_string(),
             _ => "?".to_string(),
         };
         self.log.lock().push(format!("set {}={shown}", config_id.0));
         for option in self.config_options.borrow_mut().iter_mut() {
-            if option.id != config_id {
+            if option.config_id != config_id {
                 continue;
             }
             match (&mut option.kind, &value) {
                 (
-                    acp_v1::SessionConfigKind::Select(select),
-                    acp_v1::SessionConfigOptionValue::ValueId { value },
+                    acp_v2::SessionConfigKind::Select(select),
+                    acp_v2::SessionConfigOptionValue::Id { value },
                 ) => select.current_value = value.clone(),
                 (
-                    acp_v1::SessionConfigKind::Boolean(boolean),
-                    acp_v1::SessionConfigOptionValue::Boolean { value },
+                    acp_v2::SessionConfigKind::Boolean(boolean),
+                    acp_v2::SessionConfigOptionValue::Boolean { value },
                 ) => boolean.current_value = *value,
                 _ => {}
             }
@@ -271,15 +276,15 @@ impl acp_thread::AgentSessionConfigOptions for PickerSession {
 }
 
 impl acp_thread::AgentSessionModes for PickerSession {
-    fn current_mode(&self) -> acp_v1::SessionModeId {
+    fn current_mode(&self) -> acp_v2::SessionConfigValueId {
         self.modes.borrow().current_mode_id.clone()
     }
 
-    fn all_modes(&self) -> Vec<acp_v1::SessionMode> {
+    fn all_modes(&self) -> Vec<acp_v2::SessionConfigSelectOption> {
         self.modes.borrow().available_modes.clone()
     }
 
-    fn set_mode(&self, mode: acp_v1::SessionModeId, cx: &mut App) -> Task<Result<()>> {
+    fn set_mode(&self, mode: acp_v2::SessionConfigValueId, cx: &mut App) -> Task<Result<()>> {
         self.log.lock().push(format!("mode {mode}"));
         self.modes.borrow_mut().current_mode_id = mode;
         self.answer(cx)
@@ -290,7 +295,7 @@ struct PickerConnection {
     offers: Offers,
     log: Log,
     hold_changes: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
-    sessions: Rc<RefCell<HashMap<acp_v1::SessionId, Rc<PickerSession>>>>,
+    sessions: Rc<RefCell<HashMap<acp_v2::SessionId, Rc<PickerSession>>>>,
     fail_reads: bool,
     hold_reads: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     read_sessions_released: Arc<AtomicUsize>,
@@ -312,7 +317,7 @@ impl AgentConnection for PickerConnection {
         cx: &mut App,
     ) -> Task<gpui::Result<Entity<AcpThread>>> {
         let session_id =
-            acp_v1::SessionId::new(format!("session-{}", self.sessions.borrow().len() + 1));
+            acp_v2::SessionId::new(format!("session-{}", self.sessions.borrow().len() + 1));
         self.sessions.borrow_mut().insert(
             session_id.clone(),
             Rc::new(PickerSession {
@@ -389,7 +394,7 @@ impl AgentConnection for PickerConnection {
 
     fn session_config_options(
         &self,
-        session_id: &acp_v1::SessionId,
+        session_id: &acp_v2::SessionId,
         _cx: &App,
     ) -> Option<Rc<dyn acp_thread::AgentSessionConfigOptions>> {
         if !matches!(self.offers, Offers::ConfigOptions) {
@@ -401,7 +406,7 @@ impl AgentConnection for PickerConnection {
 
     fn session_modes(
         &self,
-        session_id: &acp_v1::SessionId,
+        session_id: &acp_v2::SessionId,
         _cx: &App,
     ) -> Option<Rc<dyn acp_thread::AgentSessionModes>> {
         if !matches!(self.offers, Offers::Modes) {
@@ -411,13 +416,13 @@ impl AgentConnection for PickerConnection {
         Some(session)
     }
 
-    fn auth_methods(&self) -> &[acp_v1::AuthMethod] {
+    fn auth_methods(&self) -> &[acp_v2::AuthMethod] {
         &[]
     }
 
     fn authenticate(
         &self,
-        _method_id: acp_v1::AuthMethodId,
+        _method_id: acp_v2::AuthMethodId,
         _cx: &mut App,
     ) -> Task<gpui::Result<()>> {
         Task::ready(Ok(()))
@@ -425,14 +430,14 @@ impl AgentConnection for PickerConnection {
 
     fn prompt(
         &self,
-        params: acp_v1::PromptRequest,
+        params: acp_v2::PromptRequest,
         _cx: &mut App,
     ) -> Task<gpui::Result<acp_v1::PromptResponse>> {
         let text = params
             .prompt
             .iter()
             .filter_map(|block| match block {
-                acp_v1::ContentBlock::Text(text) => Some(text.text.clone()),
+                acp_v2::ContentBlock::Text(text) => Some(text.text.clone()),
                 _ => None,
             })
             .collect::<String>();
@@ -440,7 +445,7 @@ impl AgentConnection for PickerConnection {
         Task::ready(Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)))
     }
 
-    fn cancel(&self, _session_id: &acp_v1::SessionId, _cx: &mut App) {}
+    fn cancel(&self, _session_id: &acp_v2::SessionId, _cx: &mut App) {}
 
     fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
         self
@@ -602,14 +607,14 @@ fn prelaunch_options(
     })
 }
 
-fn current_value(options: &[acp_v1::SessionConfigOption], config_id: &str) -> String {
+fn current_value(options: &[acp_v2::SessionConfigOption], config_id: &str) -> String {
     let option = options
         .iter()
-        .find(|option| &*option.id.0 == config_id)
+        .find(|option| &*option.config_id.0 == config_id)
         .expect("the option is offered");
     match &option.kind {
-        acp_v1::SessionConfigKind::Select(select) => select.current_value.0.to_string(),
-        acp_v1::SessionConfigKind::Boolean(boolean) => boolean.current_value.to_string(),
+        acp_v2::SessionConfigKind::Select(select) => select.current_value.0.to_string(),
+        acp_v2::SessionConfigKind::Boolean(boolean) => boolean.current_value.to_string(),
         _ => panic!("an option of an unknown kind"),
     }
 }
@@ -618,7 +623,7 @@ fn current_value(options: &[acp_v1::SessionConfigOption], config_id: &str) -> St
 fn session_options(
     view: &Entity<ConversationView>,
     cx: &mut VisualTestContext,
-) -> Vec<acp_v1::SessionConfigOption> {
+) -> Vec<acp_v2::SessionConfigOption> {
     let thread_view = view
         .read_with(cx, |view, _| view.root_thread_view())
         .expect("a running thread");
@@ -707,8 +712,8 @@ async fn test_options_picked_before_the_start_reach_the_session_before_the_first
     cx.update(|_, cx| {
         acp_thread::AgentSessionConfigOptions::set_config_option(
             options.as_ref(),
-            acp_v1::SessionConfigId::new("model"),
-            acp_v1::SessionConfigOptionValue::value_id("sonnet"),
+            acp_v2::SessionConfigId::new("model"),
+            acp_v2::SessionConfigOptionValue::id("sonnet"),
             cx,
         )
     })
@@ -789,8 +794,8 @@ async fn test_a_pick_the_session_already_has_or_does_not_offer_is_left_out(
     cx.update(|_, cx| {
         acp_thread::AgentSessionConfigOptions::set_config_option(
             options.as_ref(),
-            acp_v1::SessionConfigId::new("model"),
-            acp_v1::SessionConfigOptionValue::value_id("opus"),
+            acp_v2::SessionConfigId::new("model"),
+            acp_v2::SessionConfigOptionValue::id("opus"),
             cx,
         )
     })
@@ -800,8 +805,8 @@ async fn test_a_pick_the_session_already_has_or_does_not_offer_is_left_out(
         cx.update(|_, cx| {
             acp_thread::AgentSessionConfigOptions::set_config_option(
                 options.as_ref(),
-                acp_v1::SessionConfigId::new("model"),
-                acp_v1::SessionConfigOptionValue::value_id("gpt"),
+                acp_v2::SessionConfigId::new("model"),
+                acp_v2::SessionConfigOptionValue::id("gpt"),
                 cx,
             )
         })
@@ -812,8 +817,8 @@ async fn test_a_pick_the_session_already_has_or_does_not_offer_is_left_out(
     cx.update(|_, cx| {
         acp_thread::AgentSessionConfigOptions::set_config_option(
             options.as_ref(),
-            acp_v1::SessionConfigId::new("fast"),
-            acp_v1::SessionConfigOptionValue::boolean(true),
+            acp_v2::SessionConfigId::new("fast"),
+            acp_v2::SessionConfigOptionValue::boolean(true),
             cx,
         )
     })
@@ -851,7 +856,7 @@ async fn test_a_mode_picked_before_the_start_reaches_the_session_first(cx: &mut 
     cx.update(|_, cx| {
         acp_thread::AgentSessionModes::set_mode(
             options.as_ref(),
-            acp_v1::SessionModeId::new("plan"),
+            acp_v2::SessionConfigValueId::new("plan"),
             cx,
         )
     })
@@ -909,7 +914,7 @@ async fn test_the_next_thread_offers_what_the_last_session_started_with(cx: &mut
             .connection()
             .session_modes(thread.session_id(), cx)
             .expect("the session has modes")
-            .set_mode(acp_v1::SessionModeId::new("plan"), cx)
+            .set_mode(acp_v2::SessionConfigValueId::new("plan"), cx)
             .detach();
     });
     announce_commands(&view, cx);
@@ -918,7 +923,7 @@ async fn test_the_next_thread_offers_what_the_last_session_started_with(cx: &mut
     let options = prelaunch_options(&view, cx).expect("the last session's modes");
     assert_eq!(
         acp_thread::AgentSessionModes::current_mode(options.as_ref()),
-        acp_v1::SessionModeId::new("default")
+        acp_v2::SessionConfigValueId::new("default")
     );
 }
 

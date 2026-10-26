@@ -233,11 +233,17 @@ msgstr "建议编辑"
 msgid "Suggestions at every keystroke, powered by Zeta, our open-source, open-data model. Included with Zed Pro and the Pro trial."
 msgstr "每次按键都提供建议，由我们开源、开放数据的模型 Zeta 驱动。包含在 Zed Pro 和 Pro 试用中。"
 
+msgid "Switch organizations or configure another provider to use edit predictions"
+msgstr "请切换组织或配置其他提供商以使用编辑预测"
+
 msgid "This Buffer"
 msgstr "此缓冲区"
 
 msgid "This file is excluded."
 msgstr "此文件已被排除。"
+
+msgid "This organization has no active subscription"
+msgstr "此组织没有有效的订阅"
 
 msgid "Training Data Collection"
 msgstr "训练数据收集"
@@ -262,6 +268,9 @@ msgstr "你有未结清的账单"
 
 msgid "Your GitHub account is less than 30 days old."
 msgstr "你的 GitHub 账户创建时间不足 30 天。"
+
+msgid "Zed AI"
+msgstr "Zed AI"
 
 msgid "Zed's edit predictions not included in the Free plan."
 msgstr "Free 套餐不包含 Zed 的编辑预测。"

@@ -233,11 +233,17 @@ msgstr "Ediciones sugeridas"
 msgid "Suggestions at every keystroke, powered by Zeta, our open-source, open-data model. Included with Zed Pro and the Pro trial."
 msgstr "Sugerencias en cada pulsación de tecla, con la tecnología de Zeta, nuestro modelo de código abierto y datos abiertos. Incluido en Zed Pro y en la prueba de Pro."
 
+msgid "Switch organizations or configure another provider to use edit predictions"
+msgstr "Cambie de organización o configure otro proveedor para usar las predicciones de edición"
+
 msgid "This Buffer"
 msgstr "Este búfer"
 
 msgid "This file is excluded."
 msgstr "Este archivo está excluido."
+
+msgid "This organization has no active subscription"
+msgstr "Esta organización no tiene una suscripción activa"
 
 msgid "Training Data Collection"
 msgstr "Recopilación de datos de entrenamiento"
@@ -262,6 +268,9 @@ msgstr "Tiene una factura pendiente"
 
 msgid "Your GitHub account is less than 30 days old."
 msgstr "Su cuenta de GitHub tiene menos de 30 días."
+
+msgid "Zed AI"
+msgstr "Zed AI"
 
 msgid "Zed's edit predictions not included in the Free plan."
 msgstr "Las predicciones de edición de Zed no están incluidas en el plan gratuito."

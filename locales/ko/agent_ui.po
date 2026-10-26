@@ -179,6 +179,9 @@ msgstr "에이전트가 이 요청에 대한 응답을 거부했습니다"
 msgid "Agent stopped at the output token limit"
 msgstr "에이전트가 출력 토큰 한도에 도달하여 중지되었습니다"
 
+msgid "Agent stopped because of an error"
+msgstr "오류로 인해 에이전트가 중지되었습니다"
+
 msgid "Agent stopped due to an error"
 msgstr "오류로 인해 에이전트가 중지되었습니다"
 
@@ -761,6 +764,12 @@ msgstr "버리기"
 
 msgid "Discard Interrupted Edit"
 msgstr "중단된 편집 버리기"
+
+msgid "Discard draft"
+msgstr "초안 버리기"
+
+msgid "Discard the unsupported draft before moving a queued message into the composer."
+msgstr "대기 중인 메시지를 입력란으로 옮기기 전에 지원되지 않는 초안을 버리세요."
 
 msgid "Dismiss"
 msgstr "닫기"
@@ -1965,6 +1974,9 @@ msgstr "하위 에이전트 실패"
 msgid "Subagent Output"
 msgstr "하위 에이전트 출력"
 
+msgid "Subagent: {title} ({session_id})"
+msgstr "하위 에이전트: {title} ({session_id})"
+
 msgid "Subagents Awaiting Permission:"
 msgstr "권한 대기 중인 하위 에이전트:"
 
@@ -2272,6 +2284,9 @@ msgstr "이 명령은 샌드박스를 만들 수 없었을 때 이전 버전에�
 msgid "This conversation is too long for the model's context window. Start a new thread or remove some attached files to continue."
 msgstr "이 대화가 모델의 컨텍스트 창에 비해 너무 깁니다. 계속하려면 새 스레드를 시작하거나 첨부 파일 일부를 제거하세요."
 
+msgid "This draft contains unsupported content and cannot be edited or sent. Discard the draft to write a new message."
+msgstr "이 초안에는 지원되지 않는 내용이 포함되어 있어 편집하거나 보낼 수 없습니다. 새 메시지를 작성하려면 초안을 버리세요."
+
 msgid "This extension has no settings to configure."
 msgstr "이 확장 프로그램에는 구성할 설정이 없습니다."
 
@@ -2298,6 +2313,15 @@ msgstr "이 모델은 사고 켜기/끄기만 지원합니다 (강도 수준은 
 
 msgid "This prompt was pre-filled by an external link. Read it carefully before you submit it to the model."
 msgstr "이 프롬프트는 외부 링크로 미리 채워졌습니다. 모델에 제출하기 전에 주의 깊게 읽어 보세요."
+
+msgid "This queued message contains unsupported content and cannot be edited."
+msgstr "이 대기 중인 메시지에는 지원되지 않는 내용이 포함되어 있어 편집할 수 없습니다."
+
+msgid "This saved submission cannot be restored into the composer. The original submission and draft have been kept."
+msgstr "저장된 제출 내용을 입력란으로 복원할 수 없습니다. 원래 제출 내용과 초안은 그대로 유지됩니다."
+
+msgid "This saved submission contains unsupported content and cannot be restored. The original submission has been kept."
+msgstr "저장된 제출 내용에 지원되지 않는 내용이 포함되어 있어 복원할 수 없습니다. 원래 제출 내용은 그대로 유지됩니다."
 
 msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
 msgstr "이 서버는 프로젝트 설정 파일(.zed/settings.json)에 정의되어 있습니다. 여기에서 저장하면 사용자 설정에 기록되지만 프로젝트의 정의가 우선하므로 효과가 없습니다. 설정 창의 MCP 서버 페이지에서 이를 정의하는 파일을 편집하세요."
@@ -2371,6 +2395,9 @@ msgstr "스레드 사이드바 전환"
 msgid "Tool Permissions"
 msgstr "도구 권한"
 
+msgid "Tool call: {id}"
+msgstr "도구 호출: {id}"
+
 msgid "Tools Unsupported"
 msgstr "도구 미지원"
 
@@ -2427,6 +2454,12 @@ msgstr "모델 즐겨찾기 해제"
 
 msgid "Unknown"
 msgstr "알 수 없음"
+
+msgid "Unknown permission subject"
+msgstr "알 수 없는 권한 대상"
+
+msgid "Unknown permission subject: {kind}"
+msgstr "알 수 없는 권한 대상: {kind}"
 
 msgid "Update"
 msgstr "업데이트"
@@ -2514,6 +2547,9 @@ msgstr "무엇이 잘못되었나요? 개선할 수 있도록 피드백을 공�
 
 msgid "When an API key is set, Claude Code uses it instead. To use your subscription, remove the key."
 msgstr "API 키가 설정되어 있으면 Claude Code는 대신 API 키를 사용합니다. 구독을 사용하려면 키를 제거하세요."
+
+msgid "Working directory: {path}"
+msgstr "작업 디렉터리: {path}"
 
 msgid "Write Access"
 msgstr "쓰기 액세스"

@@ -80,6 +80,8 @@ crates/fs/src/fs_watcher.rs	log	{} of this user's {limit} inotify watches are in
 crates/git_ui/src/text_diff_view.rs	log	There should always be at least one selection in Zed. This is a bug.
 crates/gpui/src/text_system.rs	identifier	Zed Plex Mono
 crates/gpui/src/text_system.rs	identifier	Zed Plex Sans
+crates/settings/src/settings_store.rs	identifier	Zed Plex Mono
+crates/settings/src/settings_store.rs	identifier	Zed Plex Sans
 crates/gpui_windows/src/platform.rs	identifier	Zed::PlatformWindow
 crates/gpui_windows/src/window.rs	identifier	Zed::Window
 crates/ide_server/src/assist_tools.rs	fact	 editor (a fork of the Zed editor) that the user is looking at.\nUse highlightCode / annotateCode to point at code in the user's editor instead of pasting it, and startCodeTour for step-by-step walkthroughs across files (the user steps with ‹ › buttons).\nUse getHover / findDefinition / findReferences / getDocumentSymbols / searchSymbols for precise, language-server-backed navigation (searchSymbols is a structural symbol search, not embeddings).\nUse getCallHierarchy before grep to find the callers of a function or the functions it calls.\nIn C and C++ getCallHierarchy also answers from a name index (even without a language server, and for a function name alone); calls with source nameIndex, macro or candidate are name matches, not resolved calls.\nUse getTypeLayout to see what a C or C++ struct, union, enum, typedef or macro contains before searching for its header.\nPaths may be absolute or relative to a workspace folder; lines are 1-based and inclusive.\nAnnotations are not saved, and calling a display tool again replaces what you showed before.

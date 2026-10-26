@@ -233,11 +233,17 @@ msgstr "제안된 편집"
 msgid "Suggestions at every keystroke, powered by Zeta, our open-source, open-data model. Included with Zed Pro and the Pro trial."
 msgstr "오픈 소스, 오픈 데이터 모델인 Zeta 기반으로 키를 입력할 때마다 제안합니다. Zed Pro 및 Pro 체험에 포함되어 있습니다."
 
+msgid "Switch organizations or configure another provider to use edit predictions"
+msgstr "편집 예측을 사용하려면 조직을 전환하거나 다른 프로바이더를 구성하세요"
+
 msgid "This Buffer"
 msgstr "이 버퍼"
 
 msgid "This file is excluded."
 msgstr "이 파일은 제외되었습니다."
+
+msgid "This organization has no active subscription"
+msgstr "이 조직에는 활성 구독이 없습니다"
 
 msgid "Training Data Collection"
 msgstr "학습 데이터 수집"
@@ -262,6 +268,9 @@ msgstr "미결제 청구서가 있습니다"
 
 msgid "Your GitHub account is less than 30 days old."
 msgstr "GitHub 계정을 만든 지 30일이 지나지 않았습니다."
+
+msgid "Zed AI"
+msgstr "Zed AI"
 
 msgid "Zed's edit predictions not included in the Free plan."
 msgstr "Zed의 편집 예측은 무료 플랜에 포함되어 있지 않습니다."

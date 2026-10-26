@@ -50,6 +50,9 @@ msgstr "디버그 어댑터"
 msgid "Dev extension '{extension_id}' is not installed."
 msgstr "개발 확장 프로그램 '{extension_id}'이(가) 설치되어 있지 않습니다."
 
+msgid "Disable Suggestions"
+msgstr "제안 비활성화"
+
 msgid "Do you want to install the recommended '{extension_id}' extension for '{file_name_or_extension}' files?"
 msgstr "권장되는 '{extension_id}' 확장 프로그램을 '{file_name_or_extension}' 파일용으로 설치하시겠습니까?"
 
@@ -70,6 +73,9 @@ msgstr "개발 확장 프로그램을 설치하지 못했습니다: {}"
 
 msgid "Failed to load extensions. Please check your connection and try again."
 msgstr "확장 프로그램을 로드하지 못했습니다. 연결을 확인하고 다시 시도하세요."
+
+msgid "Failed to load extensions. Showing installed extensions only."
+msgstr "확장 프로그램을 불러오지 못했습니다. 설치된 확장 프로그램만 표시합니다."
 
 msgid "Gemini CLI support is built-in to Zed!"
 msgstr "Gemini CLI 지원이 ForgeKairos에 내장되어 있습니다!"
@@ -160,6 +166,9 @@ msgstr "다시 빌드"
 
 msgid "Rebuild dev extension…"
 msgstr "개발 확장 프로그램 다시 빌드…"
+
+msgid "Retry"
+msgstr "다시 시도"
 
 msgid "Ruff (linter for Python) support is built-in to Zed!"
 msgstr "Ruff (Python 린터) 지원이 ForgeKairos에 내장되어 있습니다!"

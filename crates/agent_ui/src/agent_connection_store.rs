@@ -1402,7 +1402,7 @@ mod tests {
     use acp_thread::{
         AcpThread, SandboxProcessMonitor, SandboxProcessSource, SandboxProcessTracking,
     };
-    use agent_client_protocol::schema::v1 as acp;
+    use agent_client_protocol::schema::{v1 as acp, v2 as acp_v2};
     use fs::FakeFs;
     use gpui::TestAppContext;
     use project::AgentId;
@@ -1531,23 +1531,23 @@ mod tests {
             Task::ready(Err(anyhow::anyhow!("this test needs no thread")))
         }
 
-        fn auth_methods(&self) -> &[acp::AuthMethod] {
+        fn auth_methods(&self) -> &[acp_v2::AuthMethod] {
             &[]
         }
 
-        fn authenticate(&self, _method: acp::AuthMethodId, _cx: &mut App) -> Task<Result<()>> {
+        fn authenticate(&self, _method: acp_v2::AuthMethodId, _cx: &mut App) -> Task<Result<()>> {
             Task::ready(Ok(()))
         }
 
         fn prompt(
             &self,
-            _params: acp::PromptRequest,
+            _params: acp_v2::PromptRequest,
             _cx: &mut App,
         ) -> Task<Result<acp::PromptResponse>> {
             Task::ready(Ok(acp::PromptResponse::new(acp::StopReason::EndTurn)))
         }
 
-        fn cancel(&self, _session_id: &acp::SessionId, _cx: &mut App) {}
+        fn cancel(&self, _session_id: &acp_v2::SessionId, _cx: &mut App) {}
 
         fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
             self

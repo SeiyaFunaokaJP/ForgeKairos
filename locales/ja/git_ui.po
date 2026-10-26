@@ -778,6 +778,9 @@ msgstr "ブランチ「{name}」を作成しました。"
 msgid "Created tag \"{name}\"."
 msgstr "タグ「{name}」を付けました。"
 
+msgid "Created tag \"{tag_name}\" at {target}"
+msgstr "{target} にタグ「{tag_name}」を付けました"
+
 msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
 msgstr "MR ブランチ「{}」は作りましたが、一時ブランチ「{}」の上に残っています。"
 
@@ -837,6 +840,9 @@ msgstr "削除"
 msgid "Delete Branch"
 msgstr "ブランチを削除"
 
+msgid "Delete Local Tracking Branch"
+msgstr "手元の追跡ブランチを削除"
+
 msgid "Deleted on both the development branch and the MR branch."
 msgstr "開発ブランチでも MR ブランチでも削除されています。"
 
@@ -891,6 +897,9 @@ msgstr "{tracked_count} 件のファイルの変更を破棄しますか?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "このファイルの変更を破棄し、最後のコミットの内容に戻します"
+
+msgid "Does not delete the branch on the remote"
+msgstr "リモートのブランチは削除しません"
 
 msgid "Don't Show Again"
 msgstr "今後表示しない"
@@ -1033,6 +1042,9 @@ msgstr "ブランチを作成できませんでした"
 
 msgid "Failed to create remote"
 msgstr "リモートを作成できませんでした"
+
+msgid "Failed to create tag"
+msgstr "タグを付けられませんでした"
 
 msgid "Failed to drop stash"
 msgstr "スタッシュを破棄できませんでした"
@@ -1247,6 +1259,12 @@ msgstr "fixup の後に HEAD が動いたか別のブランチに切り替わっ
 
 msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
 msgstr "書き換えの後に HEAD が動いているため、ここからは戻せません。git reflog から手で戻してください。"
+
+msgid "Hide Commit Details"
+msgstr "コミットの詳細を隠す"
+
+msgid "Hide Commit Editor"
+msgstr "コミットエディターを隠す"
 
 msgid "History"
 msgstr "履歴"
@@ -2140,6 +2158,12 @@ msgstr "シャロークローンの境界: これより前の履歴が無いた�
 msgid "Show Changes Only"
 msgstr "変更箇所のみ表示"
 
+msgid "Show Commit Details"
+msgstr "コミットの詳細を表示"
+
+msgid "Show Commit Editor"
+msgstr "コミットエディターを表示"
+
 msgid "Show Flat View"
 msgstr "フラット表示に切り替え"
 
@@ -2389,6 +2413,9 @@ msgstr "タグ (特定のコミットに付けた目印)"
 
 msgid "Tag Here…"
 msgstr "ここにタグを付ける…"
+
+msgid "Tag name"
+msgstr "タグ名"
 
 msgid "Tag name (e.g. v1.2.3)"
 msgstr "タグ名 (例: v1.2.3)"
@@ -3182,6 +3209,10 @@ msgstr "MR の除外をやめる"
 msgctxt "commit button"
 msgid "Commit"
 msgstr "コミット"
+
+msgctxt "commit details"
+msgid "Message"
+msgstr "メッセージ"
 
 msgctxt "commit modal"
 msgid "Signoff"

@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, LazyLock};
 
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use browser_control::{
     BrowserCommand, BrowserControl, ElementTarget, NavigateTarget, ScrollDirection, ToolDefinition,
 };
@@ -454,15 +454,17 @@ fn show_output(output: &BrowserToolOutput, event_stream: &ToolCallEventStream) {
             text: &output.text,
         }
         .to_string();
-        content.push(acp::ToolCallContent::Content(acp::Content::new(text)));
+        content.push(acp::ToolCallContent::Content(Box::new(acp::Content::new(
+            text,
+        ))));
     }
     if let Some(image) = &output.image {
-        content.push(acp::ToolCallContent::Content(acp::Content::new(
+        content.push(acp::ToolCallContent::Content(Box::new(acp::Content::new(
             acp::ContentBlock::Image(acp::ImageContent::new(image.source.clone(), "image/png")),
-        )));
+        ))));
     }
     if !content.is_empty() {
-        event_stream.update_fields(acp::ToolCallUpdateFields::new().content(content));
+        event_stream.update_fields(|update| update.content(content));
     }
 }
 
@@ -766,7 +768,7 @@ mod tests {
         );
         let authorization = receiver.expect_authorization().await;
         assert_eq!(
-            authorization.tool_call.fields.title.as_deref(),
+            authorization.tool_call.title.value().map(String::as_str),
             Some("Navigate to `https://example.com/app`")
         );
         let context = authorization

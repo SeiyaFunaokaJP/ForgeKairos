@@ -13,7 +13,7 @@ use http_client::read_no_proxy_from_env;
 use project::{AgentId, Project, agent_server_store::AgentServerStore};
 
 use acp_thread::AgentConnection;
-use agent_client_protocol::schema::v1 as acp_schema;
+use agent_client_protocol::schema::v2 as acp_v2;
 use anyhow::Result;
 use gpui::{App, AppContext, Entity, Task};
 use settings::{AgentConfigOptionValue, SettingsStore};
@@ -25,7 +25,8 @@ pub use acp::test_support::{
 };
 pub use acp::{
     AcpConnection, AcpDebugMessage, AcpDebugMessageContent, AcpDebugMessageDirection,
-    GEMINI_TERMINAL_AUTH_METHOD_ID, McpOffer, SessionMcp, prelaunch_mcp_offer,
+    DecodedTerminalNotification, DecodedTerminalUpdate, GEMINI_TERMINAL_AUTH_METHOD_ID, McpOffer,
+    SessionMcp, prelaunch_mcp_offer, v2_terminal_client_builder,
 };
 
 pub struct AgentServerDelegate {
@@ -134,13 +135,13 @@ pub trait AgentServer: Send {
         false
     }
 
-    fn default_mode(&self, _cx: &App) -> Option<acp_schema::SessionModeId> {
+    fn default_mode(&self, _cx: &App) -> Option<acp_v2::SessionConfigValueId> {
         None
     }
 
     fn set_default_mode(
         &self,
-        _mode_id: Option<acp_schema::SessionModeId>,
+        _mode_id: Option<acp_v2::SessionConfigValueId>,
         _fs: Arc<dyn Fs>,
         _cx: &mut App,
     ) {
@@ -161,16 +162,16 @@ pub trait AgentServer: Send {
 
     fn favorite_config_option_value_ids(
         &self,
-        _config_id: &acp_schema::SessionConfigId,
+        _config_id: &acp_v2::SessionConfigId,
         _cx: &mut App,
-    ) -> HashSet<acp_schema::SessionConfigValueId> {
+    ) -> HashSet<acp_v2::SessionConfigValueId> {
         HashSet::default()
     }
 
     fn toggle_favorite_config_option_value(
         &self,
-        _config_id: acp_schema::SessionConfigId,
-        _value_id: acp_schema::SessionConfigValueId,
+        _config_id: acp_v2::SessionConfigId,
+        _value_id: acp_v2::SessionConfigValueId,
         _should_be_favorite: bool,
         _fs: Arc<dyn Fs>,
         _cx: &App,

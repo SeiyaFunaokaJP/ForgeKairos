@@ -32,7 +32,6 @@ i18n.workspace = true
 language.workspace = true
 log.workspace = true
 markdown.workspace = true
-num-format.workspace = true
 picker.workspace = true
 project.workspace = true
 release_channel.workspace = true

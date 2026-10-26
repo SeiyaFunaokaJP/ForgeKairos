@@ -512,6 +512,91 @@ pub fn build_remote_sandbox_command(
     inner_command: String,
     inner_args: Vec<String>,
 ) -> (String, Vec<String>) {
+    let args = remote_sandbox_helper_argv(
+        wrap,
+        network_ceiling,
+        cwd,
+        HelperEnvironment::Argv(environment),
+        readable_paths,
+        interactive,
+        ide_forward,
+        session_id,
+        inner_command,
+        inner_args,
+    );
+    // Packed as hex because on an SSH host this command line is parsed by the
+    // user's login shell, whose quoting (csh, rc, ...) the client can't match.
+    (
+        remote_binary.display(PathStyle::Unix).into_owned(),
+        sandbox::encode_remote_sandbox_helper_argv(&args).to_vec(),
+    )
+}
+
+/// [`build_remote_sandbox_command`] for an agent's own process, whose
+/// environment holds its secrets: like upstream #65174 does for a remote agent
+/// outside any sandbox, the environment goes to the helper on its standard
+/// input (the returned bytes, to be written before the agent's own traffic)
+/// instead of in its argv, which every account on the host can read.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one argument per part of what the helper is told about the command"
+)]
+pub fn build_remote_sandbox_agent_command(
+    remote_binary: &RelPath,
+    wrap: &SandboxWrap,
+    network_ceiling: Option<&[String]>,
+    cwd: Option<&Path>,
+    environment: &HashMap<String, String>,
+    readable_paths: &[String],
+    session_id: Option<&str>,
+    inner_command: String,
+    inner_args: Vec<String>,
+) -> Result<(String, Vec<String>, Vec<u8>)> {
+    let input = sandbox::encode_stdin_environment(&forwardable_environment(environment))?;
+    let args = remote_sandbox_helper_argv(
+        wrap,
+        network_ceiling,
+        cwd,
+        HelperEnvironment::StandardInput,
+        readable_paths,
+        false,
+        // ADR-F49 decision 24's IDE forward is the WSL backend's alone.
+        None,
+        session_id,
+        inner_command,
+        inner_args,
+    );
+    Ok((
+        remote_binary.display(PathStyle::Unix).into_owned(),
+        sandbox::encode_remote_sandbox_helper_argv(&args).to_vec(),
+        input,
+    ))
+}
+
+/// How the helper is given the command's environment.
+enum HelperEnvironment<'a> {
+    /// As `--setenv` arguments.
+    Argv(&'a HashMap<String, String>),
+    /// On its standard input ([`sandbox::SETENV_FROM_STDIN_FLAG`]).
+    StandardInput,
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one argument per part of what the helper is told about the command"
+)]
+fn remote_sandbox_helper_argv(
+    wrap: &SandboxWrap,
+    network_ceiling: Option<&[String]>,
+    cwd: Option<&Path>,
+    environment: HelperEnvironment<'_>,
+    readable_paths: &[String],
+    interactive: bool,
+    ide_forward: Option<&sandbox::IdeForward>,
+    session_id: Option<&str>,
+    inner_command: String,
+    inner_args: Vec<String>,
+) -> Vec<String> {
     let network = match &wrap.network {
         SandboxNetworkAccess::None => sandbox::RemoteSandboxNetwork::Blocked,
         SandboxNetworkAccess::All => sandbox::RemoteSandboxNetwork::AnyHost,
@@ -574,23 +659,31 @@ pub fn build_remote_sandbox_command(
             session_id.to_string(),
         ]);
     }
-    let mut environment = environment
-        .iter()
-        .filter(|(name, value)| can_forward_environment_variable(name, value))
-        .collect::<Vec<_>>();
-    environment.sort();
-    for (name, value) in environment {
-        args.extend(["--setenv".to_string(), name.clone(), value.clone()]);
+    match environment {
+        HelperEnvironment::Argv(environment) => {
+            for (name, value) in forwardable_environment(environment) {
+                args.extend(["--setenv".to_string(), name, value]);
+            }
+        }
+        HelperEnvironment::StandardInput => {
+            args.push(sandbox::SETENV_FROM_STDIN_FLAG.to_string());
+        }
     }
     args.extend(separator);
     args.push(inner_command);
     args.extend(inner_args);
-    // Packed as hex because on an SSH host this command line is parsed by the
-    // user's login shell, whose quoting (csh, rc, ...) the client can't match.
-    (
-        remote_binary.display(PathStyle::Unix).into_owned(),
-        sandbox::encode_remote_sandbox_helper_argv(&args).to_vec(),
-    )
+    args
+}
+
+/// The variables of `environment` the helper can be given, in a stable order.
+fn forwardable_environment(environment: &HashMap<String, String>) -> Vec<(String, String)> {
+    let mut environment = environment
+        .iter()
+        .filter(|(name, value)| can_forward_environment_variable(name, value))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect::<Vec<_>>();
+    environment.sort();
+    environment
 }
 
 /// Whether a variable may be forwarded into a sandbox at all: its name a
@@ -1361,7 +1454,7 @@ pub(crate) async fn prepare_sandbox_wrap(
 }
 
 pub struct Terminal {
-    id: acp_v1::TerminalId,
+    id: acp_v2::TerminalId,
     command: Entity<Markdown>,
     working_dir: Option<PathBuf>,
     terminal: Entity<terminal::Terminal>,
@@ -1384,7 +1477,7 @@ pub struct Terminal {
 }
 
 enum TerminalExecution {
-    Process(Shared<Task<acp_v1::TerminalExitStatus>>),
+    Process(Shared<Task<acp_v2::TerminalExitStatus>>),
     Display(DisplayTerminalState),
 }
 
@@ -1432,6 +1525,29 @@ pub struct DisplayTerminalOutput {
     pub meta: Option<acp_v2::Meta>,
 }
 
+/// Process snapshots are separate from agent-reported display output and wire response envelopes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProcessOutput {
+    pub output: String,
+    pub truncated: bool,
+    pub exit_status: Option<acp_v2::TerminalExitStatus>,
+}
+
+impl ProcessOutput {
+    pub fn new(output: impl Into<String>, truncated: bool) -> Self {
+        Self {
+            output: output.into(),
+            truncated,
+            exit_status: None,
+        }
+    }
+
+    pub fn exit_status(mut self, status: acp_v2::TerminalExitStatus) -> Self {
+        self.exit_status = Some(status);
+        self
+    }
+}
+
 pub struct TerminalOutput {
     pub ended_at: Instant,
     pub exit_status: acp_v2::TerminalExitStatus,
@@ -1442,7 +1558,7 @@ pub struct TerminalOutput {
 
 impl Terminal {
     pub fn new(
-        id: acp_v1::TerminalId,
+        id: acp_v2::TerminalId,
         command_label: &str,
         working_dir: Option<PathBuf>,
         output_byte_limit: Option<usize>,
@@ -1487,16 +1603,12 @@ impl Terminal {
             execution: TerminalExecution::Process(
                 cx.spawn(async move |this, cx| {
                     let exit_status = command_task.await.map(Self::transform_exit_status);
-                    let exit_status = acp_v1::TerminalExitStatus::new()
+                    let exit_status = acp_v2::TerminalExitStatus::new()
                         .exit_code(exit_status.as_ref().map(|status| status.0))
                         .signal(exit_status.and_then(|status| status.1));
 
                     this.update(cx, |this, cx| {
-                        this.cache_output(
-                            Self::exit_status_from_v1(exit_status.clone()),
-                            Instant::now(),
-                            cx,
-                        );
+                        this.cache_output(exit_status.clone(), Instant::now(), cx);
 
                         // ADR-F18: the helper failed closed, so the command
                         // never ran — or (ADR-F49) it could not hide the
@@ -1541,7 +1653,7 @@ impl Terminal {
     }
 
     pub fn new_display(
-        id: acp_v1::TerminalId,
+        id: acp_v2::TerminalId,
         command_label: Option<&str>,
         working_dir: Option<PathBuf>,
         output_byte_limit: Option<usize>,
@@ -1576,7 +1688,7 @@ impl Terminal {
         }
     }
 
-    pub fn id(&self) -> &acp_v1::TerminalId {
+    pub fn id(&self) -> &acp_v2::TerminalId {
         &self.id
     }
 
@@ -1585,7 +1697,7 @@ impl Terminal {
         matches!(self.execution, TerminalExecution::Process(_))
     }
 
-    pub fn wait_for_exit(&self) -> Result<Shared<Task<acp_v1::TerminalExitStatus>>> {
+    pub fn wait_for_exit(&self) -> Result<Shared<Task<acp_v2::TerminalExitStatus>>> {
         match &self.execution {
             TerminalExecution::Process(task) => Ok(task.clone()),
             TerminalExecution::Display(_) => {
@@ -1618,22 +1730,17 @@ impl Terminal {
         self.user_stopped.load(Ordering::SeqCst)
     }
 
-    pub fn current_output(&self, cx: &App) -> acp_v1::TerminalOutputResponse {
+    pub fn current_output(&self, cx: &App) -> ProcessOutput {
         if let Some(output) = self.output.as_ref() {
-            acp_v1::TerminalOutputResponse::new(
+            ProcessOutput::new(
                 output.content.clone(),
                 output.original_content_len > output.content.len(),
             )
-            .exit_status(
-                acp_v1::TerminalExitStatus::new()
-                    .exit_code(output.exit_status.exit_code)
-                    .signal(output.exit_status.signal.clone())
-                    .meta(output.exit_status.meta.clone()),
-            )
+            .exit_status(output.exit_status.clone())
         } else {
             let (current_content, original_len) = self.truncated_output(cx);
             let truncated = current_content.len() < original_len;
-            acp_v1::TerminalOutputResponse::new(current_content, truncated)
+            ProcessOutput::new(current_content, truncated)
         }
     }
 

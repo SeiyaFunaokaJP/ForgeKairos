@@ -477,6 +477,14 @@ msgctxt "GitPanelClickBehavior"
 msgid "View File"
 msgstr "ファイルを表示"
 
+msgctxt "GitPanelCommitEditor"
+msgid "Collapsed"
+msgstr "隠す"
+
+msgctxt "GitPanelCommitEditor"
+msgid "Expanded"
+msgstr "表示する"
+
 msgctxt "GitPanelGroupBy"
 msgid "None"
 msgstr "なし"
@@ -1782,6 +1790,10 @@ msgid "Command to automatically run when Zed creates a Terminal Thread shell in 
 msgstr "エージェントパネルでターミナルスレッドのシェルを作成したときに、自動的に実行するコマンドです。設定済みのシェルで実行されます。"
 
 msgctxt "settings"
+msgid "Commit Editor"
+msgstr "コミットメッセージの入力欄"
+
+msgctxt "settings"
 msgid "Commit Title Max Length"
 msgstr "コミットタイトルの最大長"
 
@@ -2458,6 +2470,10 @@ msgid "Extend Comment On Newline"
 msgstr "改行時にコメントを継続"
 
 msgctxt "settings"
+msgid "Extensions"
+msgstr "拡張機能"
+
+msgctxt "settings"
 msgid "External AI Providers You Consented To"
 msgstr "承諾済みの外部 AI プロバイダー"
 
@@ -2590,6 +2606,10 @@ msgid "Font fallbacks for terminal text. If not set, defaults to buffer font fal
 msgstr "ターミナルのテキストのフォールバックフォントです。未設定の場合はバッファーのフォールバックフォントを使います。"
 
 msgctxt "settings"
+msgid "Font family for Mermaid diagrams in the agent panel and markdown preview. Falls back to the UI font family."
+msgstr "エージェントパネルと Markdown プレビューの Mermaid 図のフォントファミリーです。未設定の場合は UI フォントファミリーを使います。"
+
+msgctxt "settings"
 msgid "Font family for UI elements."
 msgstr "UI 要素のフォントファミリーです。"
 
@@ -2652,6 +2672,10 @@ msgstr "UI 要素のフォントの太さです (100〜900)。"
 msgctxt "settings"
 msgid "Font weight for editor text (100-900)."
 msgstr "エディターのテキストのフォントの太さです (100〜900)。"
+
+msgctxt "settings"
+msgid "Font weight for headings in the markdown preview, in CSS units from 100 to 900."
+msgstr "Markdown プレビューの見出しのフォントの太さです (CSS の単位で 100〜900)。"
 
 msgctxt "settings"
 msgid "Font weight for terminal text in CSS weight units (100-900)."
@@ -2812,6 +2836,10 @@ msgstr "SSH のターミナルのシェルをリモートの ForgeKairos サー�
 msgctxt "settings"
 msgid "Hard Tabs"
 msgstr "タブ文字を使用"
+
+msgctxt "settings"
+msgid "Heading Font Weight"
+msgstr "見出しのフォントの太さ"
 
 msgctxt "settings"
 msgid "Hidden Files"
@@ -3378,6 +3406,10 @@ msgid "Menu Delay"
 msgstr "メニューの遅延"
 
 msgctxt "settings"
+msgid "Mermaid Font"
+msgstr "Mermaid のフォント"
+
+msgctxt "settings"
 msgid "Message Editor Min Lines"
 msgstr "メッセージエディターの最小行数"
 
@@ -3628,6 +3660,10 @@ msgstr "推奨の行の長さ"
 msgctxt "settings"
 msgid "Preferred debuggers for this language."
 msgstr "この言語で優先的に使うデバッガーです。"
+
+msgctxt "settings"
+msgid "Prefill Query From Selection"
+msgstr "選択範囲を検索語に入れる"
 
 msgctxt "settings"
 msgid "Prefix every line with `[YYYY-MM-DD HH:MM:SS] `. In a terminal that is recording, this can also be toggled from the recording bar."
@@ -4574,6 +4610,10 @@ msgid "Strip Control Sequences"
 msgstr "制御シーケンスを除去する"
 
 msgctxt "settings"
+msgid "Suggest Extensions"
+msgstr "拡張機能を提案する"
+
+msgctxt "settings"
 msgid "Suggest Missing Development Tools"
 msgstr "足りない開発ツールを知らせる"
 
@@ -5486,6 +5526,10 @@ msgid "Whether the browser panel should open on startup."
 msgstr "起動時にブラウザーパネルを開くかどうかを設定します。"
 
 msgctxt "settings"
+msgid "Whether the commit message editor is shown in the Git panel by default."
+msgstr "Git パネルにコミットメッセージの入力欄を既定で表示するかどうかです。"
+
+msgctxt "settings"
 msgid "Whether the cursor blinks in the editor."
 msgstr "エディターでカーソルを点滅させるかどうかを設定します。"
 
@@ -5730,6 +5774,10 @@ msgid "Whether to pop the completions menu while typing in an editor without exp
 msgstr "明示的に要求しなくても、エディターでの入力中に補完メニューを表示するかどうかを設定します。"
 
 msgctxt "settings"
+msgid "Whether to pre-fill the file finder's query with the text selected in the focused item (e.g. an editor or a terminal)."
+msgstr "フォーカスのある項目 (エディターやターミナルなど) で選択しているテキストを、ファイル検索の検索語にあらかじめ入れるかどうかです。"
+
+msgctxt "settings"
 msgid "Whether to pull for language server-powered diagnostics or not."
 msgstr "言語サーバーからプル型で診断を取得するかどうかを設定します。"
 
@@ -5804,6 +5852,10 @@ msgstr "親ディレクトリをプロジェクトパネルの上部に固定表
 msgctxt "settings"
 msgid "Whether to stick scopes to the top of the editor"
 msgstr "スコープをエディターの上部に固定表示するかどうかを設定します"
+
+msgctxt "settings"
+msgid "Whether to suggest installing extensions based on the files you open."
+msgstr "開いたファイルに応じて、拡張機能のインストールを提案するかどうかです。"
 
 msgctxt "settings"
 msgid "Whether to use additional LSP queries to format (and amend) the code after every \"trigger\" symbol input, defined by LSP server capabilities"

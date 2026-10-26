@@ -1312,6 +1312,9 @@ msgstr "Einstellungen @{{{settings}}}"
 msgid "Show Numbers"
 msgstr "Nummern anzeigen"
 
+msgid "Show Source"
+msgstr "Quelltext anzeigen"
+
 msgid "Show Values"
 msgstr "Werte anzeigen"
 

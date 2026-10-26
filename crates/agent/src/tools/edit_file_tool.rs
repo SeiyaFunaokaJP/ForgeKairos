@@ -7,7 +7,7 @@ use super::edit_session::{
 };
 use crate::{AgentTool, Thread, ToolCallEventStream, ToolInput, ToolInputPayload};
 use action_log::ActionLog;
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use anyhow::Result;
 use futures::FutureExt as _;
 use gpui::{App, AsyncApp, Entity, Task, WeakEntity};
@@ -288,6 +288,7 @@ impl AgentTool for EditFileTool {
 mod tests {
     use super::*;
     use crate::{ContextServerRegistry, Templates, ToolInputSender};
+    use agent_client_protocol::schema::MaybeUndefined;
     use fs::Fs as _;
     use futures::StreamExt as _;
     use gpui::{AppContext as _, TestAppContext, UpdateGlobal};
@@ -654,7 +655,11 @@ mod tests {
 
         event_rx.expect_update_fields().await;
         let auth = event_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
@@ -739,18 +744,17 @@ mod tests {
         ) -> Option<String> {
             use futures::StreamExt as _;
             while let Some(event) = receiver.next().await {
-                let Ok(crate::ThreadEvent::ToolCallUpdate(
-                    acp_thread::ToolCallUpdate::UpdateFields(update),
-                )) = event
+                let Ok(crate::ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::V2(update))) =
+                    event
                 else {
                     continue;
                 };
-                let Some(content) = update.fields.content else {
+                let Some(content) = update.content.take() else {
                     continue;
                 };
                 for item in content {
-                    if let acp::ToolCallContent::Content(c) = item
-                        && let acp::ContentBlock::Text(text) = c.content
+                    if let acp::ToolCallContent::Content(content) = item
+                        && let acp::ContentBlock::Text(text) = content.content
                     {
                         return Some(text.text);
                     }
@@ -915,6 +919,105 @@ mod tests {
         assert_eq!(
             new_text,
             "modified line 1\nline 2\nline 3\nline 4\nmodified line 5\n"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_streaming_edit_refreshes_match_after_buffer_change(cx: &mut TestAppContext) {
+        for (content, old_text, new_text, range, replacement, expected) in [
+            (
+                "prefix\nold value\nsuffix\n",
+                "old value",
+                "new value",
+                0..0,
+                "😀\n",
+                "😀\nprefix\nnew value\nsuffix\n",
+            ),
+            (
+                "prefix\nold value\nsuffix\n",
+                "old value",
+                "new value",
+                0..7,
+                "",
+                "new value\nsuffix\n",
+            ),
+            (
+                "prefix\n    old value\n        nested\nsuffix\n",
+                "old value\n    nested",
+                "new value\n    updated",
+                0..7,
+                "😀\n\n",
+                "😀\n\n    new value\n        updated\nsuffix\n",
+            ),
+        ] {
+            let (edit_tool, project, _action_log, _fs, _thread) =
+                setup_test(cx, json!({"file.txt": content})).await;
+            let (mut sender, input) = ToolInput::<EditFileToolInput>::test();
+            let (event_stream, _receiver) = ToolCallEventStream::test();
+            let task = cx.update(|cx| edit_tool.clone().run(input, event_stream, cx));
+            sender.send_partial(json!({"path": "root/file.txt"}));
+            cx.run_until_parked();
+            sender.send_partial(json!({
+                "path": "root/file.txt",
+                "edits": [{"old_text": old_text.split_inclusive('\n').next().unwrap()}]
+            }));
+            cx.run_until_parked();
+
+            let buffer = project.read_with(cx, |project, cx| {
+                let path = project.find_project_path("root/file.txt", cx).unwrap();
+                project.get_open_buffer(&path, cx).unwrap()
+            });
+            buffer.update(cx, |buffer, cx| {
+                buffer.edit([(range, replacement)], None, cx)
+            });
+            sender.send_full(json!({
+                "path": "root/file.txt",
+                "edits": [{"old_text": old_text, "new_text": new_text}]
+            }));
+            let EditFileToolOutput::Success { new_text, .. } = task.await.unwrap() else {
+                panic!("expected success");
+            };
+            assert_eq!(new_text, expected);
+            assert_eq!(buffer.read_with(cx, |buffer, _| buffer.text()), expected);
+        }
+    }
+
+    #[gpui::test]
+    async fn test_streaming_edit_detects_new_ambiguous_match(cx: &mut TestAppContext) {
+        let (edit_tool, project, _action_log, _fs, _thread) =
+            setup_test(cx, json!({"file.txt": "old value\n"})).await;
+        let (mut sender, input) = ToolInput::<EditFileToolInput>::test();
+        let (event_stream, _receiver) = ToolCallEventStream::test();
+        let task = cx.update(|cx| edit_tool.clone().run(input, event_stream, cx));
+        sender.send_partial(json!({"path": "root/file.txt"}));
+        cx.run_until_parked();
+        sender.send_partial(json!({
+            "path": "root/file.txt",
+            "edits": [{"old_text": "old "}]
+        }));
+        cx.run_until_parked();
+
+        let buffer = project.read_with(cx, |project, cx| {
+            let path = project.find_project_path("root/file.txt", cx).unwrap();
+            project.get_open_buffer(&path, cx).unwrap()
+        });
+        buffer.update(cx, |buffer, cx| {
+            buffer.edit([(0..0, "old value\n")], None, cx)
+        });
+        sender.send_full(json!({
+            "path": "root/file.txt",
+            "edits": [{"old_text": "old value", "new_text": "new value"}]
+        }));
+        let EditFileToolOutput::Error { error, .. } = task.await.unwrap_err() else {
+            panic!("expected ambiguous match error");
+        };
+        assert_eq!(
+            error,
+            "Edit 0 matched multiple locations in the file at lines: 1, 2. Please provide more context in old_text to uniquely identify the location."
+        );
+        assert_eq!(
+            buffer.read_with(cx, |buffer, _| buffer.text()),
+            "old value\nold value\n"
         );
     }
 
@@ -1394,8 +1497,8 @@ mod tests {
 
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
-            event.tool_call.fields.title,
-            Some("Edit `.zed/settings.json` (local settings)".into())
+            event.tool_call.title,
+            MaybeUndefined::Value("Edit `.zed/settings.json` (local settings)".into())
         );
 
         // Test 2: Path outside project should require confirmation
@@ -1405,8 +1508,8 @@ mod tests {
 
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
-            event.tool_call.fields.title,
-            Some("Edit `/etc/hosts` (outside the project)".into())
+            event.tool_call.title,
+            MaybeUndefined::Value("Edit `/etc/hosts` (outside the project)".into())
         );
 
         // Test 3: Relative path without .zed should not require confirmation
@@ -1423,8 +1526,8 @@ mod tests {
         });
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
-            event.tool_call.fields.title,
-            Some("Edit `root/.zed/tasks.json` (local settings)".into())
+            event.tool_call.title,
+            MaybeUndefined::Value("Edit `root/.zed/tasks.json` (local settings)".into())
         );
 
         // Test 5: When global default is allow, sensitive and outside-project
@@ -1441,8 +1544,8 @@ mod tests {
             .update(|cx| edit_tool.authorize(&PathBuf::from(".zed/settings.json"), &stream_tx, cx));
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
-            event.tool_call.fields.title,
-            Some("Edit `.zed/settings.json` (local settings)".into())
+            event.tool_call.title,
+            MaybeUndefined::Value("Edit `.zed/settings.json` (local settings)".into())
         );
 
         // 5.2: /etc/hosts is outside the project, and blanket approval covers
@@ -1452,8 +1555,8 @@ mod tests {
             cx.update(|cx| edit_tool.authorize(&PathBuf::from("/etc/hosts"), &stream_tx, cx));
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
-            event.tool_call.fields.title,
-            Some("Edit `/etc/hosts` (outside the project)".into())
+            event.tool_call.title,
+            MaybeUndefined::Value("Edit `/etc/hosts` (outside the project)".into())
         );
 
         // 5.3: Normal in-project path with allow — no confirmation needed
@@ -1476,8 +1579,8 @@ mod tests {
 
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
-            event.tool_call.fields.title,
-            Some("Edit `/etc/hosts` (outside the project)".into())
+            event.tool_call.title,
+            MaybeUndefined::Value("Edit `/etc/hosts` (outside the project)".into())
         );
 
         // 5.5: .agents/skills is a sensitive path — still prompts. The
@@ -1494,8 +1597,10 @@ mod tests {
         });
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
-            event.tool_call.fields.title,
-            Some("Edit `root/.agents/skills/my-skill/SKILL.md` (agent skills)".into())
+            event.tool_call.title,
+            MaybeUndefined::Value(
+                "Edit `root/.agents/skills/my-skill/SKILL.md` (agent skills)".into()
+            )
         );
         // Skills always prompt, so no "Always allow" option is offered.
         assert!(
@@ -1522,9 +1627,8 @@ mod tests {
         assert!(
             event
                 .tool_call
-                .fields
                 .title
-                .as_deref()
+                .value()
                 .is_some_and(|title| title.ends_with("(agent skills)"))
         );
     }
@@ -1563,12 +1667,11 @@ mod tests {
         assert!(
             event
                 .tool_call
-                .fields
                 .title
-                .as_deref()
+                .value()
                 .is_some_and(|title| title.ends_with("(agent skills)")),
             "`..` traversal into .agents/skills must still prompt: {:?}",
-            event.tool_call.fields.title,
+            event.tool_call.title,
         );
     }
 
@@ -1602,12 +1705,11 @@ mod tests {
         assert!(
             event
                 .tool_call
-                .fields
                 .title
-                .as_deref()
+                .value()
                 .is_some_and(|title| title.ends_with("(local settings)")),
             "`..` traversal into .zed must still prompt: {:?}",
-            event.tool_call.fields.title,
+            event.tool_call.title,
         );
     }
 
@@ -1645,12 +1747,11 @@ mod tests {
         assert!(
             event
                 .tool_call
-                .fields
                 .title
-                .as_deref()
+                .value()
                 .is_some_and(|title| title.ends_with("(local settings)")),
             "Intra-project symlink to .zed must still prompt: {:?}",
-            event.tool_call.fields.title,
+            event.tool_call.title,
         );
     }
 
@@ -1688,12 +1789,11 @@ mod tests {
         assert!(
             event
                 .tool_call
-                .fields
                 .title
-                .as_deref()
+                .value()
                 .is_some_and(|title| title.ends_with("(agent skills)")),
             "Intra-project symlink to .agents/skills must still prompt: {:?}",
-            event.tool_call.fields.title,
+            event.tool_call.title,
         );
     }
 
@@ -1723,9 +1823,8 @@ mod tests {
         assert!(
             event
                 .tool_call
-                .fields
                 .title
-                .as_deref()
+                .value()
                 .is_some_and(|title| title.contains("points outside the project")),
             "Expected symlink escape authorization for create under external symlink"
         );
@@ -1780,7 +1879,11 @@ mod tests {
         });
 
         let auth = stream_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("points outside the project"),
             "title should mention symlink escape, got: {title}"
@@ -2454,7 +2557,11 @@ mod tests {
 
         let _update = stream_rx.expect_update_fields().await;
         let auth = stream_rx.expect_authorization().await;
-        let content = auth.tool_call.fields.content.as_deref().unwrap_or(&[]);
+        let content = auth
+            .tool_call
+            .content
+            .value()
+            .expect("expected authorization content");
         let acp::ToolCallContent::Content(text) = content.first().expect("expected message body")
         else {
             panic!("expected text body, got: {:?}", content.first());
@@ -3096,7 +3203,7 @@ mod tests {
             language::LanguageConfig {
                 name: "Rust".into(),
                 matcher: (language::LanguageMatcher {
-                    path_suffixes: vec!["rs".to_string()],
+                    path_suffixes: vec!["rs".into()],
                     ..Default::default()
                 })
                 .into(),

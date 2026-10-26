@@ -372,6 +372,10 @@ impl LspAdapter for TyLspAdapter {
         Self::SERVER_NAME
     }
 
+    fn is_opt_in_for(&self, language: &LanguageName) -> bool {
+        language == "Python"
+    }
+
     async fn label_for_completion(
         &self,
         item: &lsp::CompletionItem,
@@ -673,6 +677,10 @@ impl LspAdapter for PyrightLspAdapter {
         _: &Arc<dyn LspAdapterDelegate>,
     ) -> Result<WorktreeCodePausedMode> {
         Ok(WorktreeCodePausedMode::Stopped)
+    }
+
+    fn is_opt_in_for(&self, language: &LanguageName) -> bool {
+        language == "Python"
     }
 
     async fn initialization_options(
@@ -1833,6 +1841,10 @@ impl LspAdapter for PyLspAdapter {
         _: &Arc<dyn LspAdapterDelegate>,
     ) -> Result<WorktreeCodePausedMode> {
         Ok(WorktreeCodePausedMode::Stopped)
+    }
+
+    fn is_opt_in_for(&self, language: &LanguageName) -> bool {
+        language == "Python"
     }
 
     async fn process_completions(&self, items: &mut [lsp::CompletionItem]) {

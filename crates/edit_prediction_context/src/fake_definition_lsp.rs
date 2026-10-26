@@ -36,6 +36,7 @@ pub fn register_fake_definition_server(
             },
             worktree_code_paused_mode: language::WorktreeCodePausedMode::Unaffected,
             is_extension: false,
+            opt_in_languages: Default::default(),
             capabilities: lsp::ServerCapabilities {
                 definition_provider: Some(lsp::OneOf::Left(true)),
                 type_definition_provider: Some(lsp::TypeDefinitionProviderCapability::Simple(true)),

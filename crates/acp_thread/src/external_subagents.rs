@@ -29,7 +29,7 @@ impl ExternalSubagentStatus {
 /// One `subagent_update` of the agent, already read off the wire.
 #[derive(Clone, Debug)]
 pub struct ExternalSubagentReport {
-    pub session_id: acp_v1::SessionId,
+    pub session_id: acp_v2::SessionId,
     pub title: Option<String>,
     pub description: Option<String>,
     pub status: ExternalSubagentStatus,
@@ -37,14 +37,14 @@ pub struct ExternalSubagentReport {
 }
 
 pub struct ExternalSubagent {
-    pub session_id: acp_v1::SessionId,
+    pub session_id: acp_v2::SessionId,
     pub title: Option<SharedString>,
     pub description: Option<SharedString>,
     pub status: ExternalSubagentStatus,
     pub error: Option<SharedString>,
     /// The parent's Agent / Task call that launched the child: the id of the
     /// first message the child was sent.
-    pub parent_tool_call_id: Option<acp_v1::ToolCallId>,
+    pub parent_tool_call_id: Option<acp_v2::ToolCallId>,
     pub work_started_at: Instant,
     pub work_ended_at: Option<Instant>,
     pub thread: Entity<AcpThread>,
@@ -71,8 +71,8 @@ pub(crate) struct ExternalSubagents {
 /// started is known: no client but JetBrains AIR is told how it ends.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackgroundShellTask {
-    pub session_id: acp_v1::SessionId,
-    pub tool_call_id: acp_v1::ToolCallId,
+    pub session_id: acp_v2::SessionId,
+    pub tool_call_id: acp_v2::ToolCallId,
     pub label: SharedString,
 }
 
@@ -161,7 +161,7 @@ impl AcpThread {
         &self.external_subagents.children
     }
 
-    pub fn external_subagent(&self, session_id: &acp_v1::SessionId) -> Option<&ExternalSubagent> {
+    pub fn external_subagent(&self, session_id: &acp_v2::SessionId) -> Option<&ExternalSubagent> {
         self.external_subagents
             .children
             .iter()
@@ -170,7 +170,7 @@ impl AcpThread {
 
     pub fn external_subagent_thread(
         &self,
-        session_id: &acp_v1::SessionId,
+        session_id: &acp_v2::SessionId,
     ) -> Option<&Entity<AcpThread>> {
         self.external_subagent(session_id)
             .map(|child| &child.thread)
@@ -227,8 +227,8 @@ impl AcpThread {
             }
             if let Some(title) = title {
                 child.thread.update(cx, |thread, cx| {
-                    if thread.title.as_ref() != Some(&title) {
-                        thread.title = Some(title);
+                    if thread.session_info.title.as_ref() != Some(&title) {
+                        thread.session_info.title = Some(title);
                         cx.emit(AcpThreadEvent::TitleUpdated);
                     }
                 });
@@ -239,8 +239,8 @@ impl AcpThread {
 
         let project = self.project.clone();
         let action_log = cx.new(|_| ActionLog::new(project.clone()));
-        let parent_session_id = self.session_id.clone();
-        let work_dirs = self.work_dirs.clone();
+        let parent_session_id = self.session_id().clone();
+        let work_dirs = self.work_dirs().cloned();
         let connection = self.connection.clone();
         let prompt_capabilities = self.prompt_capabilities.clone();
         let session_id = report.session_id.clone();
@@ -309,8 +309,8 @@ impl AcpThread {
     /// there.
     pub fn link_external_subagent_tool_call(
         &mut self,
-        session_id: &acp_v1::SessionId,
-        tool_call_id: acp_v1::ToolCallId,
+        session_id: &acp_v2::SessionId,
+        tool_call_id: acp_v2::ToolCallId,
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(child) = self
@@ -334,7 +334,7 @@ impl AcpThread {
     /// child's link and the call are there: called when either arrives.
     pub fn show_external_subagent_on_card(
         &mut self,
-        tool_call_id: &acp_v1::ToolCallId,
+        tool_call_id: &acp_v2::ToolCallId,
         cx: &mut Context<Self>,
     ) {
         let Some(session_id) = self
@@ -378,7 +378,7 @@ impl AcpThread {
                 && let Some(label) = background_shell_label(tool_call)
             {
                 tasks.push(BackgroundShellTask {
-                    session_id: self.session_id.clone(),
+                    session_id: self.session_id().clone(),
                     tool_call_id: tool_call.id.clone(),
                     label,
                 });

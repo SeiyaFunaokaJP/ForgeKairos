@@ -242,6 +242,9 @@ msgstr "设为可编辑标签页"
 msgid "Make Tab Read-Only"
 msgstr "设为只读标签页"
 
+msgid "More Options"
+msgstr "更多选项"
+
 msgid "Move to New Window"
 msgstr "移动到新窗口"
 

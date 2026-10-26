@@ -233,11 +233,17 @@ msgstr "Vorgeschlagene Bearbeitungen"
 msgid "Suggestions at every keystroke, powered by Zeta, our open-source, open-data model. Included with Zed Pro and the Pro trial."
 msgstr "Vorschläge bei jedem Tastenanschlag, bereitgestellt von Zeta, unserem Open-Source-Modell mit offenen Daten. Enthalten in Zed Pro und der Pro-Testversion."
 
+msgid "Switch organizations or configure another provider to use edit predictions"
+msgstr "Wechsle die Organisation oder konfiguriere einen anderen Anbieter, um Bearbeitungsvorhersagen zu nutzen"
+
 msgid "This Buffer"
 msgstr "Dieser Puffer"
 
 msgid "This file is excluded."
 msgstr "Diese Datei ist ausgeschlossen."
+
+msgid "This organization has no active subscription"
+msgstr "Diese Organisation hat kein aktives Abonnement"
 
 msgid "Training Data Collection"
 msgstr "Trainingsdaten-Erfassung"
@@ -262,6 +268,9 @@ msgstr "Sie haben eine ausstehende Rechnung"
 
 msgid "Your GitHub account is less than 30 days old."
 msgstr "Ihr GitHub-Konto ist weniger als 30 Tage alt."
+
+msgid "Zed AI"
+msgstr "Zed AI"
 
 msgid "Zed's edit predictions not included in the Free plan."
 msgstr "Die Bearbeitungsvorhersagen von Zed sind im kostenlosen Tarif nicht enthalten."

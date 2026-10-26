@@ -1,7 +1,7 @@
 use crate::diagnostics::{DiagnosticsOptions, codeblock_fence_for_path, collect_diagnostics};
 use acp_thread::{MentionUri, selection_name};
 use agent::{RepoMapTool, RepoMapToolInput, ThreadStore, outline};
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use agent_servers::{AgentServer, AgentServerDelegate};
 use agent_settings::{AgentSettings, ContextAttachmentSettings};
 use anyhow::{Context as _, Result, anyhow};

@@ -1118,7 +1118,7 @@ impl ScannedWorktrees {
                 snapshot
                     .path_style()
                     .strip_prefix(path, snapshot.abs_path().as_ref())
-                    .is_some()
+                    .is_ok()
             })
     }
 }
@@ -1560,7 +1560,7 @@ enum Spelling {
 
 impl Spelling {
     fn counts_without_entry(self, candidate: &str, path_style: PathStyle) -> bool {
-        let explicit = path_style.is_absolute(candidate)
+        let explicit = path_style.has_root(Path::new(candidate))
             || ["./", "../", ".\\", "..\\"]
                 .iter()
                 .any(|prefix| candidate.starts_with(prefix));
@@ -1962,13 +1962,16 @@ fn find_remote(
     spelling: Spelling,
 ) -> Option<Found> {
     let path_style = snapshot.path_style();
-    let absolute = if path_style.is_absolute(candidate) {
+    let absolute = if path_style.has_root(Path::new(candidate)) {
         candidate.to_string()
     } else {
         path_style.join(working_directory?, candidate)?
     };
     let absolute = normalize_lexically(&absolute, path_style);
-    let relative = path_style.strip_prefix(Path::new(&absolute), snapshot.abs_path().as_ref())?;
+    let relative = path_style
+        .strip_prefix(Path::new(&absolute), snapshot.abs_path().as_ref())
+        .ok()
+        .and_then(|path| RelPath::new(path, path_style).ok())?;
     let kind = match snapshot.entry_for_path(&relative) {
         Some(entry) if entry.is_dir() => FoundKind::Directory,
         Some(_) => FoundKind::RemoteFile,

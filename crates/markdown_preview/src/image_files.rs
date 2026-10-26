@@ -639,6 +639,7 @@ async fn find_remote_name(
             .request(proto::GetPathMetadata {
                 project_id: proto::REMOTE_SERVER_PROJECT_ID,
                 path: destination.absolute(&path)?,
+                canonicalize: false,
             })
             .await
             .context(i18n::t!("Failed to check the remote files."))?;

@@ -176,6 +176,9 @@ msgstr "エージェントがこのリクエストへの応答を拒否しまし
 msgid "Agent stopped at the output token limit"
 msgstr "エージェントは出力トークンの上限で停止しました"
 
+msgid "Agent stopped because of an error"
+msgstr "エラーによりエージェントが停止しました"
+
 msgid "Agent stopped due to an error"
 msgstr "エラーによりエージェントが停止しました"
 
@@ -758,6 +761,12 @@ msgstr "破棄"
 
 msgid "Discard Interrupted Edit"
 msgstr "中断された編集を破棄"
+
+msgid "Discard draft"
+msgstr "下書きを破棄"
+
+msgid "Discard the unsupported draft before moving a queued message into the composer."
+msgstr "キュー内のメッセージを入力欄に移す前に、サポートされていない内容を含む下書きを破棄してください。"
 
 msgid "Dismiss"
 msgstr "閉じる"
@@ -1962,6 +1971,9 @@ msgstr "サブエージェントが失敗しました"
 msgid "Subagent Output"
 msgstr "サブエージェントの出力"
 
+msgid "Subagent: {title} ({session_id})"
+msgstr "サブエージェント: {title} ({session_id})"
+
 msgid "Subagents Awaiting Permission:"
 msgstr "権限を待機中のサブエージェント:"
 
@@ -2269,6 +2281,9 @@ msgstr "以前のバージョンで、サンドボックスを作れなかった
 msgid "This conversation is too long for the model's context window. Start a new thread or remove some attached files to continue."
 msgstr "この会話はモデルのコンテキストウィンドウに対して長すぎます。続けるには、新しいスレッドを開始するか添付ファイルをいくつか削除してください。"
 
+msgid "This draft contains unsupported content and cannot be edited or sent. Discard the draft to write a new message."
+msgstr "この下書きにはサポートされていない内容が含まれているため、編集や送信はできません。新しいメッセージを書くには下書きを破棄してください。"
+
 msgid "This extension has no settings to configure."
 msgstr "この拡張機能には設定する項目がありません。"
 
@@ -2295,6 +2310,15 @@ msgstr "このモデルは思考のオン/オフのみ対応しています (レ
 
 msgid "This prompt was pre-filled by an external link. Read it carefully before you submit it to the model."
 msgstr "このプロンプトは外部リンクによってあらかじめ入力されました。モデルに送信する前によく確認してください。"
+
+msgid "This queued message contains unsupported content and cannot be edited."
+msgstr "このキュー内のメッセージにはサポートされていない内容が含まれているため、編集できません。"
+
+msgid "This saved submission cannot be restored into the composer. The original submission and draft have been kept."
+msgstr "保存された送信内容を入力欄に戻せません。元の送信内容と下書きはそのまま残しています。"
+
+msgid "This saved submission contains unsupported content and cannot be restored. The original submission has been kept."
+msgstr "保存された送信内容にはサポートされていない内容が含まれているため、戻せません。元の送信内容はそのまま残しています。"
 
 msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
 msgstr "このサーバーはプロジェクトの設定ファイル (.zed/settings.json) で定義されています。ここで保存するとユーザー設定に書き込まれますが、プロジェクトの定義が優先されるため反映されません。設定ウィンドウの「MCP サーバー」ページから、定義しているファイルを編集してください。"
@@ -2368,6 +2392,9 @@ msgstr "スレッドサイドバーの切り替え"
 msgid "Tool Permissions"
 msgstr "ツールの権限"
 
+msgid "Tool call: {id}"
+msgstr "ツール呼び出し: {id}"
+
 msgid "Tools Unsupported"
 msgstr "ツール非対応"
 
@@ -2424,6 +2451,12 @@ msgstr "お気に入りから削除"
 
 msgid "Unknown"
 msgstr "不明"
+
+msgid "Unknown permission subject"
+msgstr "不明な許可の対象"
+
+msgid "Unknown permission subject: {kind}"
+msgstr "不明な許可の対象: {kind}"
 
 msgid "Update"
 msgstr "更新"
@@ -2511,6 +2544,9 @@ msgstr "どこが問題でしたか? 改善のためフィードバックをお�
 
 msgid "When an API key is set, Claude Code uses it instead. To use your subscription, remove the key."
 msgstr "API キーが設定されているときは、Claude Code はそちらを優先します。サブスクリプションで使うにはキーを削除してください。"
+
+msgid "Working directory: {path}"
+msgstr "作業ディレクトリ: {path}"
 
 msgid "Write Access"
 msgstr "書き込みアクセス"

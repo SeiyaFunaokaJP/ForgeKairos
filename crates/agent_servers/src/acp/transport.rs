@@ -19,7 +19,12 @@ pub(super) struct StdioProcess {
 // The caller builds the command: whether the agent runs on the host, in the
 // local sandbox, in a WSL distribution or through the remote helper decides
 // its program, environment and egress proxy, so this only owns the pipes.
-pub(super) fn spawn_stdio(command: std::process::Command) -> Result<StdioProcess> {
+// `command_input` is what the remote launcher reads from stdin before the
+// agent's own traffic (upstream #65174: secrets stay out of its arguments).
+pub(super) fn spawn_stdio(
+    command: std::process::Command,
+    command_input: Option<Vec<u8>>,
+) -> Result<StdioProcess> {
     let mut child = Child::spawn(command, Stdio::piped(), Stdio::piped(), Stdio::piped())?;
 
     let stdout = child.stdout.take().context("Failed to take stdout")?;
@@ -42,13 +47,16 @@ pub(super) fn spawn_stdio(command: std::process::Command) -> Result<StdioProcess
         .boxed();
 
     let outgoing = Box::pin(futures::sink::unfold(
-        (Box::pin(stdin), debug_log.clone()),
-        async move |(mut writer, debug_log), line: String| {
+        (Box::pin(stdin), debug_log.clone(), command_input),
+        async move |(mut writer, debug_log, mut command_input), line: String| {
+            if let Some(input) = command_input.take() {
+                writer.write_all(&input).await?;
+            }
             debug_log.record_line(AcpDebugMessageDirection::Outgoing, &line);
             let mut bytes = line.into_bytes();
             bytes.push(b'\n');
             writer.write_all(&bytes).await?;
-            Ok::<_, io::Error>((writer, debug_log))
+            Ok::<_, io::Error>((writer, debug_log, command_input))
         },
     ));
 
@@ -122,19 +130,20 @@ mod tests {
         };
 
         for attempt in 0..2 {
+            let (host_command, command_input) = super::super::host_agent_command(
+                &project,
+                &command,
+                root_dir.as_ref(),
+                &mut cx.to_async(),
+            )
+            .expect("build host command");
             let StdioProcess {
                 mut child,
                 mut incoming,
                 mut outgoing,
                 stderr,
                 debug_log,
-            } = spawn_stdio(super::super::host_agent_command(
-                &project,
-                &command,
-                root_dir.as_ref(),
-                &mut cx.to_async(),
-            ))
-            .expect("spawn fresh transport");
+            } = spawn_stdio(host_command, command_input).expect("spawn fresh transport");
             let stderr_task = cx.background_executor.spawn(stderr);
             let params = serde_json::json!({ "attempt": attempt });
             let request = serde_json::json!({

@@ -33,7 +33,7 @@ fn still_running(
 fn root_session_of(
     view: &Entity<ConversationView>,
     cx: &mut VisualTestContext,
-) -> Option<acp_v1::SessionId> {
+) -> Option<acp_v2::SessionId> {
     view.read_with(cx, |view, _| view.root_session_id.clone())
 }
 
@@ -1151,7 +1151,7 @@ async fn test_a_thread_that_starts_as_it_opens_starts_in_the_sandbox(cx: &mut Te
         None,
         None,
         Some(AgentInitialContent::ContentBlock {
-            blocks: vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
+            blocks: vec![acp_v2::ContentBlock::Text(acp_v2::TextContent::new(
                 "Hello",
             ))],
             auto_submit: true,
@@ -1324,7 +1324,7 @@ async fn test_a_retry_of_a_thread_resumed_without_history_resumes_it(cx: &mut Te
     let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
     let connection_store =
         cx.update(|_window, cx| cx.new(|cx| AgentConnectionStore::new(project.clone(), cx)));
-    let session = acp_v1::SessionId::new("resume-session");
+    let session = acp_v2::SessionId::new("resume-session");
     let view = cx.update(|window, cx| {
         cx.new(|cx| {
             ConversationView::new(

@@ -45,7 +45,7 @@ actions!(
 );
 
 const COMMIT_TAG_LIST_WIDTH_IN_REMS: Rems = rems(10.);
-const CUSTOM_GIT_COMMANDS_DOCS_SLUG: &str = "tasks#custom-git-commands";
+pub(crate) const CUSTOM_GIT_COMMANDS_DOCS_SLUG: &str = "tasks#custom-git-commands";
 
 pub(crate) struct CommitContextMenuData {
     pub(crate) sha: Oid,
@@ -761,7 +761,7 @@ fn create_tag_at_commit(
             let message = input.message.trim().to_string();
             let message = (!message.is_empty()).then_some(message);
             let receiver = repository.update(cx, |repository, cx| {
-                repository.create_tag(name.clone(), sha.clone(), message, cx)
+                repository.create_tag_with_message(name.clone(), sha.clone(), message, cx)
             });
             report_command(
                 workspace,
@@ -2308,7 +2308,7 @@ impl Render for FixupModal {
     }
 }
 
-fn git_task_context(
+pub(crate) fn git_task_context(
     repository: &Option<WeakEntity<Repository>>,
     commit_sha: git::Oid,
     ref_name: Option<&str>,
@@ -2347,7 +2347,7 @@ fn git_task_context(
     })
 }
 
-fn git_context_menu_tasks(
+pub(crate) fn git_context_menu_tasks(
     task_context: Option<TaskContext>,
     workspace: &WeakEntity<Workspace>,
     cx: &App,

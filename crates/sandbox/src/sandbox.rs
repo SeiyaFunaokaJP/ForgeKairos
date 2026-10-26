@@ -2600,6 +2600,131 @@ pub(crate) fn expand_remote_sandbox_helper_argv(
     }
 }
 
+/// Tells the helper to read the command's environment from its standard input
+/// before anything else (see [`encode_stdin_environment`]), in addition to any
+/// `--setenv`. Upstream #65174 does the same for a remote agent that runs
+/// without a sandbox: an agent's environment holds its API keys, and on the
+/// remote host an argv is readable by every account through `/proc`, as it is
+/// on this machine in the arguments of the `ssh` that carries it.
+pub const SETENV_FROM_STDIN_FLAG: &str = "--setenv-stdin";
+
+/// Cap on [`encode_stdin_environment`]'s frame, matching the one upstream puts
+/// on the remote server's own stdin launcher.
+const MAX_STDIN_ENVIRONMENT_SIZE: usize = 16 * 1024 * 1024;
+
+/// Frames `environment` for [`SETENV_FROM_STDIN_FLAG`]: the length of what
+/// follows as a little-endian `u32`, then each name and each value as a
+/// little-endian `u32` length and that many bytes. Self-delimiting, so the
+/// helper reads exactly this much and the command gets everything after it.
+pub fn encode_stdin_environment(environment: &[(String, String)]) -> anyhow::Result<Vec<u8>> {
+    use anyhow::Context as _;
+    let mut body = Vec::new();
+    for (name, value) in environment {
+        for part in [name, value] {
+            let length = u32::try_from(part.len())
+                .context("an environment variable does not fit in the frame")?;
+            body.extend_from_slice(&length.to_le_bytes());
+            body.extend_from_slice(part.as_bytes());
+        }
+    }
+    anyhow::ensure!(
+        body.len() <= MAX_STDIN_ENVIRONMENT_SIZE,
+        "the environment exceeds 16 MiB"
+    );
+    let mut frame = Vec::with_capacity(size_of::<u32>() + body.len());
+    frame.extend_from_slice(&(body.len() as u32).to_le_bytes());
+    frame.extend_from_slice(&body);
+    Ok(frame)
+}
+
+/// Reads one frame written by [`encode_stdin_environment`], and nothing past
+/// it: `reader` must not buffer ahead, since what follows is the command's.
+pub fn read_stdin_environment(
+    reader: &mut impl std::io::Read,
+) -> anyhow::Result<Vec<(String, String)>> {
+    use anyhow::Context as _;
+    fn read_length(reader: &mut impl std::io::Read) -> anyhow::Result<usize> {
+        let mut length = [0; size_of::<u32>()];
+        reader.read_exact(&mut length)?;
+        Ok(u32::from_le_bytes(length) as usize)
+    }
+    let length = read_length(reader).context("reading the environment's length")?;
+    anyhow::ensure!(
+        length <= MAX_STDIN_ENVIRONMENT_SIZE,
+        "the environment exceeds 16 MiB"
+    );
+    let mut body = vec![0; length];
+    reader
+        .read_exact(&mut body)
+        .context("reading the environment")?;
+    let mut body = body.as_slice();
+    let mut environment = Vec::new();
+    while !body.is_empty() {
+        let name = take_stdin_environment_part(&mut body)?;
+        let value = take_stdin_environment_part(&mut body)?;
+        environment.push((name, value));
+    }
+    Ok(environment)
+}
+
+fn take_stdin_environment_part(body: &mut &[u8]) -> anyhow::Result<String> {
+    use anyhow::Context as _;
+    let mut length = [0; size_of::<u32>()];
+    std::io::Read::read_exact(body, &mut length).context("the environment frame is truncated")?;
+    let length = u32::from_le_bytes(length) as usize;
+    anyhow::ensure!(length <= body.len(), "the environment frame is truncated");
+    let (part, rest) = body.split_at(length);
+    *body = rest;
+    String::from_utf8(part.to_vec()).context("an environment variable is not UTF-8")
+}
+
+#[cfg(test)]
+mod stdin_environment_tests {
+    use super::*;
+
+    #[test]
+    fn the_environment_round_trips_and_leaves_what_follows_unread() -> anyhow::Result<()> {
+        let environment = vec![
+            ("API_KEY".to_string(), "sk-'\"\n$(id)\0".to_string()),
+            ("EMPTY".to_string(), String::new()),
+            ("PATH".to_string(), "/usr/bin:/bin".to_string()),
+        ];
+        let mut input = encode_stdin_environment(&environment)?;
+        let agent_traffic = b"{\"jsonrpc\":\"2.0\",\"id\":1}\n";
+        input.extend_from_slice(agent_traffic);
+        let mut reader = std::io::Cursor::new(input);
+        assert_eq!(read_stdin_environment(&mut reader)?, environment);
+        let mut rest = Vec::new();
+        std::io::Read::read_to_end(&mut reader, &mut rest)?;
+        assert_eq!(rest, agent_traffic);
+
+        let empty = encode_stdin_environment(&[])?;
+        assert_eq!(empty, 0u32.to_le_bytes());
+        assert!(read_stdin_environment(&mut empty.as_slice())?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_malformed_frame_is_refused() -> anyhow::Result<()> {
+        let frame = encode_stdin_environment(&[("NAME".to_string(), "value".to_string())])?;
+        for cut in 1..frame.len() {
+            assert!(
+                read_stdin_environment(&mut &frame[..cut]).is_err(),
+                "a frame cut at {cut} must not read"
+            );
+        }
+        // A name whose value is missing, inside a frame that is whole.
+        let mut name_only = Vec::new();
+        name_only.extend_from_slice(&8u32.to_le_bytes());
+        name_only.extend_from_slice(&4u32.to_le_bytes());
+        name_only.extend_from_slice(b"NAME");
+        assert!(read_stdin_environment(&mut name_only.as_slice()).is_err());
+        let oversized = ((MAX_STDIN_ENVIRONMENT_SIZE + 1) as u32).to_le_bytes();
+        assert!(read_stdin_environment(&mut oversized.as_slice()).is_err());
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod remote_sandbox_helper_hex_argv_tests {
     use super::*;

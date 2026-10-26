@@ -10,8 +10,6 @@ use std::{
     time::Duration,
 };
 
-use sysinfo::System;
-
 use release_channel::ReleaseChannel;
 
 const LOCALHOST: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
@@ -32,18 +30,23 @@ fn address() -> SocketAddr {
     // 34338, 34438, and 34538 for the preview, stable, and nightly channels,
     // respectively. User 502 will use ports 34339, 34439, and 34539 for the preview,
     // stable, and nightly channels, respectively.
-    let mut sys = System::new_all();
-    sys.refresh_all();
-    let user_id = sysinfo::get_current_pid().ok().and_then(|current_pid| {
-        sys.process(current_pid)
-            .and_then(|process| process.user_id())
-            .map(get_uid_as_u32)
-    });
+    let user_id = current_user_id();
 
     SocketAddr::V4(SocketAddrV4::new(
         LOCALHOST,
         instance_port(*release_channel::RELEASE_CHANNEL, user_id),
     ))
+}
+
+// Read directly rather than by enumerating processes, which slowed startup.
+#[cfg(target_os = "macos")]
+fn current_user_id() -> Option<u32> {
+    Some(nix::unistd::getuid().as_raw())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_user_id() -> Option<u32> {
+    None
 }
 
 // zed-jp-enhance: an official Zed (and this fork before it was renamed) owns
@@ -58,21 +61,6 @@ fn instance_port(channel: ReleaseChannel, user_id: Option<u32>) -> u16 {
         ReleaseChannel::Preview => ports.preview,
         ReleaseChannel::Stable => ports.stable,
     }
-}
-
-#[cfg(unix)]
-fn get_uid_as_u32(uid: &sysinfo::Uid) -> u32 {
-    *uid.clone()
-}
-
-#[cfg(windows)]
-fn get_uid_as_u32(uid: &sysinfo::Uid) -> u32 {
-    // Extract the RID which is an integer
-    uid.to_string()
-        .rsplit('-')
-        .next()
-        .and_then(|rid| rid.parse::<u32>().ok())
-        .unwrap_or(0)
 }
 
 fn instance_handshake() -> &'static str {

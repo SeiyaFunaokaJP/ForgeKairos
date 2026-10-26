@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use util::ResultExt as _;
 
-use super::{AcpSession, ClientContext, acp, handle_session_notification};
+use super::{AcpSession, ClientContext, acp, acp_v2, handle_session_notification};
 use crate::CLAUDE_AGENT_ID;
 use project::AgentId;
 
@@ -129,7 +129,7 @@ pub(super) enum IncomingSessionUpdate {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct SubagentNotification {
-    pub session_id: acp::SessionId,
+    pub session_id: acp_v2::SessionId,
     pub update: SubagentSessionUpdate,
 }
 
@@ -145,7 +145,7 @@ pub(super) enum SubagentSessionUpdate {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct SubagentUpdate {
-    pub session_id: acp::SessionId,
+    pub session_id: acp_v2::SessionId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -176,9 +176,9 @@ pub(super) struct SubagentError {
 pub(super) struct SessionMessage {
     pub message_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sender_session_id: Option<acp::SessionId>,
+    pub sender_session_id: Option<acp_v2::SessionId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recipient_session_id: Option<acp::SessionId>,
+    pub recipient_session_id: Option<acp_v2::SessionId>,
     #[serde(default)]
     pub content: Vec<acp::ContentBlock>,
 }
@@ -258,9 +258,9 @@ impl JsonRpcNotification for IncomingSessionUpdate {}
 
 pub(super) enum HeldUpdate {
     Session(acp::SessionNotification),
-    Message(acp::SessionId, SessionMessage),
+    Message(acp_v2::SessionId, SessionMessage),
     /// A grandchild reported on a child that is not announced yet.
-    Subagent(acp::SessionId, SubagentUpdate),
+    Subagent(acp_v2::SessionId, SubagentUpdate),
 }
 
 /// The routing of the children's sessions of one connection.
@@ -272,7 +272,7 @@ pub(super) struct SubagentRouting {
     /// children, and its unknown sessions are only ever late updates of
     /// closed ones.
     declared: bool,
-    held: RefCell<Vec<(acp::SessionId, Vec<HeldUpdate>)>>,
+    held: RefCell<Vec<(acp_v2::SessionId, Vec<HeldUpdate>)>>,
     /// Sessions that had a thread here. One of them without a thread now was
     /// closed, or its thread went away with its parent's, so what still comes
     /// for it is late, not early: it is dropped rather than held. Unless its
@@ -284,17 +284,17 @@ pub(super) struct SubagentRouting {
 #[derive(Default)]
 struct SeenSessions {
     /// A child's parent as it was when the child's thread was made.
-    parents: HashMap<acp::SessionId, Option<SeenParent>>,
-    oldest_first: VecDeque<acp::SessionId>,
+    parents: HashMap<acp_v2::SessionId, Option<SeenParent>>,
+    oldest_first: VecDeque<acp_v2::SessionId>,
 }
 
 struct SeenParent {
-    session_id: acp::SessionId,
+    session_id: acp_v2::SessionId,
     thread_id: EntityId,
 }
 
 impl SeenSessions {
-    fn remember(&mut self, session_id: &acp::SessionId, parent: Option<SeenParent>) {
+    fn remember(&mut self, session_id: &acp_v2::SessionId, parent: Option<SeenParent>) {
         match self.parents.get_mut(session_id) {
             Some(recorded) => {
                 if parent.is_some() {
@@ -319,8 +319,8 @@ impl SeenSessions {
     /// that is to be announced to a reloaded parent.
     fn is_late(
         &self,
-        session_id: &acp::SessionId,
-        live_thread_id: impl Fn(&acp::SessionId) -> Option<EntityId>,
+        session_id: &acp_v2::SessionId,
+        live_thread_id: impl Fn(&acp_v2::SessionId) -> Option<EntityId>,
     ) -> bool {
         let Some(mut parent) = self.parents.get(session_id) else {
             return false;
@@ -364,7 +364,7 @@ impl SubagentRouting {
     }
 
     /// Remembers that `session_id` has a thread here.
-    pub(super) fn note_live(&self, session_id: &acp::SessionId) {
+    pub(super) fn note_live(&self, session_id: &acp_v2::SessionId) {
         self.seen.borrow_mut().remember(session_id, None);
     }
 
@@ -372,8 +372,8 @@ impl SubagentRouting {
     /// `parent_thread_id` of the session `parent_session_id`.
     pub(super) fn note_child(
         &self,
-        session_id: &acp::SessionId,
-        parent_session_id: &acp::SessionId,
+        session_id: &acp_v2::SessionId,
+        parent_session_id: &acp_v2::SessionId,
         parent_thread_id: EntityId,
     ) {
         self.seen.borrow_mut().remember(
@@ -392,9 +392,9 @@ impl SubagentRouting {
     /// now, if any.
     pub(super) fn hold(
         &self,
-        session_id: &acp::SessionId,
+        session_id: &acp_v2::SessionId,
         update: HeldUpdate,
-        live_thread_id: impl Fn(&acp::SessionId) -> Option<EntityId>,
+        live_thread_id: impl Fn(&acp_v2::SessionId) -> Option<EntityId>,
     ) -> bool {
         if !self.declared {
             return false;
@@ -428,7 +428,7 @@ impl SubagentRouting {
         true
     }
 
-    fn take(&self, session_id: &acp::SessionId) -> Vec<HeldUpdate> {
+    fn take(&self, session_id: &acp_v2::SessionId) -> Vec<HeldUpdate> {
         let mut held = self.held.borrow_mut();
         match held.iter().position(|(id, _)| id == session_id) {
             Some(index) => held.remove(index).1,
@@ -437,7 +437,7 @@ impl SubagentRouting {
     }
 
     #[cfg(test)]
-    pub(super) fn held_count(&self, session_id: &acp::SessionId) -> usize {
+    pub(super) fn held_count(&self, session_id: &acp_v2::SessionId) -> usize {
         self.held
             .borrow()
             .iter()
@@ -446,18 +446,18 @@ impl SubagentRouting {
     }
 }
 
-fn session_is_known(ctx: &ClientContext, session_id: &acp::SessionId) -> bool {
+fn session_is_known(ctx: &ClientContext, session_id: &acp_v2::SessionId) -> bool {
     ctx.sessions.borrow().contains_key(session_id)
 }
 
-fn live_thread(ctx: &ClientContext, session_id: &acp::SessionId) -> Option<Entity<AcpThread>> {
+fn live_thread(ctx: &ClientContext, session_id: &acp_v2::SessionId) -> Option<Entity<AcpThread>> {
     ctx.sessions
         .borrow()
         .get(session_id)
         .and_then(|session| session.thread.upgrade())
 }
 
-fn live_thread_id(ctx: &ClientContext, session_id: &acp::SessionId) -> Option<EntityId> {
+fn live_thread_id(ctx: &ClientContext, session_id: &acp_v2::SessionId) -> Option<EntityId> {
     live_thread(ctx, session_id).map(|thread| thread.entity_id())
 }
 
@@ -494,7 +494,7 @@ fn route_session_notification(
     cx: &mut AsyncApp,
     ctx: &ClientContext,
 ) {
-    let session_id = notification.session_id.clone();
+    let session_id = acp_v2::SessionId::new(notification.session_id.0.clone());
     if !session_is_known(ctx, &session_id)
         && ctx.subagents.hold(
             &session_id,
@@ -506,8 +506,8 @@ fn route_session_notification(
         return;
     }
     let tool_call_id = match &notification.update {
-        acp::SessionUpdate::ToolCall(tool_call) => Some(tool_call.tool_call_id.clone()),
-        acp::SessionUpdate::ToolCallUpdate(update) => Some(update.tool_call_id.clone()),
+        acp::SessionUpdate::ToolCall(tool_call) => Some(tool_call.tool_call_id.0.clone()),
+        acp::SessionUpdate::ToolCallUpdate(update) => Some(update.tool_call_id.0.clone()),
         _ => None,
     };
     handle_session_notification(notification, cx, ctx);
@@ -518,13 +518,13 @@ fn route_session_notification(
     // A child's first message can come before the call that launched it.
     if let Some(tool_call_id) = tool_call_id {
         thread.update(cx, |thread, cx| {
-            thread.show_external_subagent_on_card(&tool_call_id, cx);
+            thread.show_external_subagent_on_card(&acp_v2::ToolCallId::new(tool_call_id), cx);
         });
     }
 }
 
 fn handle_subagent_update(
-    parent_session_id: acp::SessionId,
+    parent_session_id: acp_v2::SessionId,
     update: SubagentUpdate,
     cx: &mut AsyncApp,
     ctx: &ClientContext,
@@ -581,9 +581,9 @@ fn handle_subagent_update(
 /// let go of yet). A session open as a thread of its own stays where it is.
 fn register_child_session(
     ctx: &ClientContext,
-    parent_session_id: &acp::SessionId,
+    parent_session_id: &acp_v2::SessionId,
     parent_thread_id: EntityId,
-    session_id: acp::SessionId,
+    session_id: acp_v2::SessionId,
     thread: &Entity<AcpThread>,
     cx: &mut AsyncApp,
 ) {
@@ -599,7 +599,8 @@ fn register_child_session(
         );
         return;
     }
-    let sessions: Weak<RefCell<HashMap<acp::SessionId, AcpSession>>> = Rc::downgrade(&ctx.sessions);
+    let sessions: Weak<RefCell<HashMap<acp_v2::SessionId, AcpSession>>> =
+        Rc::downgrade(&ctx.sessions);
     let release_subscription = cx.update(|cx| {
         cx.observe_release(thread, {
             let session_id = session_id.clone();
@@ -624,6 +625,7 @@ fn register_child_session(
             suppress_abort_err: false,
             session_modes: None,
             config_options: None,
+            default_config_task: None,
             _release_subscription: release_subscription,
         },
     );
@@ -635,7 +637,7 @@ fn register_child_session(
 }
 
 fn handle_session_message(
-    session_id: acp::SessionId,
+    session_id: acp_v2::SessionId,
     mut message: SessionMessage,
     cx: &mut AsyncApp,
     ctx: &ClientContext,
@@ -679,7 +681,7 @@ fn handle_session_message(
         parent.update(cx, |parent, cx| {
             parent.link_external_subagent_tool_call(
                 &session_id,
-                acp::ToolCallId::new(message_id),
+                acp_v2::ToolCallId::new(message_id),
                 cx,
             );
         });

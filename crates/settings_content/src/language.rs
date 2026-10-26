@@ -162,7 +162,7 @@ pub struct EditPredictionSettingsContent {
     /// Provider support required.
     pub mode: Option<EditPredictionsMode>,
     /// Settings specific to GitHub Copilot.
-    pub copilot: Option<CopilotSettingsContent>,
+    pub copilot: Option<CopilotEditPredictionSettingsContent>,
     /// Settings specific to Codestral.
     pub codestral: Option<CodestralSettingsContent>,
     /// Settings specific to Ollama.
@@ -243,6 +243,15 @@ pub enum EditPredictionPromptFormatContent {
 #[with_fallible_options]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq)]
 pub struct CopilotSettingsContent {
+    /// Enterprise URI shared by Copilot Chat and edit predictions.
+    ///
+    /// Default: none
+    pub enterprise_uri: Option<String>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq)]
+pub struct CopilotEditPredictionSettingsContent {
     /// HTTP/HTTPS proxy to use for Copilot.
     ///
     /// Default: none
@@ -251,10 +260,6 @@ pub struct CopilotSettingsContent {
     ///
     /// Default: false
     pub proxy_no_verify: Option<bool>,
-    /// Enterprise URI for Copilot.
-    ///
-    /// Default: none
-    pub enterprise_uri: Option<String>,
     /// Whether the Copilot Next Edit Suggestions feature is enabled.
     ///
     /// Default: true
@@ -598,7 +603,7 @@ pub struct LanguageSettingsContent {
     pub indent_guides: Option<IndentGuideSettingsContent>,
     /// Whether or not to perform a buffer format before saving.
     ///
-    /// Default: on
+    /// Default: off
     pub format_on_save: Option<FormatOnSave>,
     /// Whether or not to remove any trailing whitespace from lines of a buffer
     /// before saving it.

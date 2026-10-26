@@ -168,7 +168,7 @@ fn markdown_language() -> Arc<language::Language> {
         language::LanguageConfig {
             name: "Markdown".into(),
             matcher: Arc::new(language::LanguageMatcher {
-                path_suffixes: vec!["md".to_string()],
+                path_suffixes: vec!["md".into()],
                 ..Default::default()
             }),
             ..Default::default()

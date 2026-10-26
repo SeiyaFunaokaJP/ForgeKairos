@@ -3142,7 +3142,7 @@ int use(alias_t *value)
             LanguageConfig {
                 name: "C".into(),
                 matcher: LanguageMatcher {
-                    path_suffixes: vec!["c".to_string()],
+                    path_suffixes: vec!["c".into()],
                     ..LanguageMatcher::default()
                 }
                 .into(),
@@ -5026,14 +5026,13 @@ static struct ring *ring_head;
         // With no room left below, the stack is drawn shorter rather than moved up.
         toggle(&mut cx, "in");
         drawn_popovers(&mut cx);
-        let bottom = cx.editor(|editor, _, _| {
-            editor
-                .last_bounds()
-                .expect("the editor is drawn")
-                .bottom()
-        });
+        let bottom =
+            cx.editor(|editor, _, _| editor.last_bounds().expect("the editor is drawn").bottom());
         let stack = drawn_popovers(&mut cx);
-        let stack_top = stack.iter().map(|bounds| bounds.top()).fold(bottom, Pixels::min);
+        let stack_top = stack
+            .iter()
+            .map(|bounds| bounds.top())
+            .fold(bottom, Pixels::min);
         let stack_bottom = stack
             .iter()
             .map(|bounds| bounds.bottom())

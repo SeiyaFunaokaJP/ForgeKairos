@@ -11,9 +11,6 @@ mod remote_editing_tests;
 #[cfg(test)]
 mod symbol_index_remote_tests;
 
-#[cfg(windows)]
-pub mod windows;
-
 pub use headless_project::{
     HeadlessAppState, HeadlessHost, HeadlessHostState, HeadlessProject, HeadlessProjectEvent,
 };
@@ -43,6 +40,8 @@ use paths::logs_dir;
 use project::{project_settings::ProjectSettings, trusted_worktrees};
 use proto::CrashReport;
 use release_channel::{AppCommitSha, AppVersion, RELEASE_CHANNEL, ReleaseChannel};
+#[cfg(unix)]
+use remote::command::RemoteCommand;
 use remote::{
     ProxyHttpRelay,
     json_log::LogRecord,
@@ -62,6 +61,11 @@ use smol::{
     Timer,
     channel::{Receiver, Sender},
     stream::StreamExt as _,
+};
+#[cfg(unix)]
+use std::os::{
+    fd::AsFd as _,
+    unix::{ffi::OsStrExt as _, process::CommandExt as _},
 };
 use std::{
     ffi::{OsStr, OsString},
@@ -101,6 +105,8 @@ pub enum Commands {
         #[command(subcommand)]
         command: terminal_session::TerminalSessionCommand,
     },
+    #[cfg(unix)]
+    Exec,
 }
 
 pub fn run(command: Commands) -> anyhow::Result<()> {
@@ -116,6 +122,8 @@ pub fn run(command: Commands) -> anyhow::Result<()> {
             identifier,
             reconnect,
         } => execute_proxy(identifier, reconnect).context("running proxy on the remote server"),
+        #[cfg(unix)]
+        Commands::Exec => execute_command(),
         Commands::Version => {
             let release_channel = *RELEASE_CHANNEL;
             match release_channel {
@@ -153,6 +161,105 @@ pub static VERSION: LazyLock<String> = LazyLock::new(|| match *RELEASE_CHANNEL {
         }
     }
 });
+
+#[cfg(unix)]
+fn execute_command() -> Result<()> {
+    let mut stdin = File::from(std::io::stdin().as_fd().try_clone_to_owned()?);
+    let descriptor = RemoteCommand::read(&mut stdin)?;
+    drop(stdin);
+
+    let working_dir = descriptor
+        .working_dir
+        .as_deref()
+        .map(|working_dir| shellexpand::tilde(working_dir).into_owned());
+    if let Some(working_dir) = &working_dir {
+        std::env::set_current_dir(working_dir)
+            .with_context(|| format!("Failed to change directory to {working_dir}"))?;
+    }
+    let error = exec_with_script_fallback(&descriptor, working_dir.as_deref(), |mut command| {
+        command.exec()
+    });
+    Err(error).with_context(|| format!("Failed to execute {}", descriptor.program))
+}
+
+#[cfg(unix)]
+fn exec_with_script_fallback(
+    descriptor: &RemoteCommand,
+    working_dir: Option<&str>,
+    mut exec: impl FnMut(std::process::Command) -> std::io::Error,
+) -> std::io::Error {
+    let error = exec(exec_command(
+        descriptor,
+        working_dir,
+        &descriptor.program,
+        &descriptor.args,
+    ));
+    if error.raw_os_error() != Some(libc::ENOEXEC) {
+        return error;
+    }
+    let path = descriptor
+        .env
+        .get("PATH")
+        .map(OsString::from)
+        .or_else(|| std::env::var_os("PATH"));
+    for candidate in script_candidates(&descriptor.program, path.as_deref()) {
+        let candidate_error = exec(exec_command(
+            descriptor,
+            working_dir,
+            &candidate,
+            &descriptor.args,
+        ));
+        match candidate_error.raw_os_error() {
+            Some(libc::ENOEXEC) => {
+                let args = std::iter::once(candidate.into_os_string())
+                    .chain(descriptor.args.iter().map(OsString::from))
+                    .collect::<Vec<_>>();
+                return exec(exec_command(descriptor, working_dir, "/bin/sh", &args));
+            }
+            Some(libc::ENOENT | libc::ENOTDIR | libc::EACCES) => {}
+            _ => return candidate_error,
+        }
+    }
+    error
+}
+
+#[cfg(unix)]
+fn script_candidates(program: &str, path: Option<&OsStr>) -> Vec<PathBuf> {
+    let explicit = |candidate: PathBuf| {
+        if candidate.is_absolute() {
+            candidate
+        } else {
+            Path::new(".").join(candidate)
+        }
+    };
+    if program.contains('/') {
+        return vec![explicit(PathBuf::from(program))];
+    }
+    path.unwrap_or(OsStr::new(DEFAULT_PATH))
+        .as_bytes()
+        .split(|byte| *byte == b':')
+        .map(|directory| explicit(Path::new(OsStr::from_bytes(directory)).join(program)))
+        .collect()
+}
+
+#[cfg(unix)]
+const DEFAULT_PATH: &str = "/usr/local/bin:/bin:/usr/bin";
+
+#[cfg(unix)]
+fn exec_command(
+    descriptor: &RemoteCommand,
+    working_dir: Option<&str>,
+    program: impl AsRef<OsStr>,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> std::process::Command {
+    let mut command = std::process::Command::new(program);
+    command.args(args);
+    if let Some(working_dir) = working_dir {
+        command.env("PWD", working_dir);
+    }
+    command.envs(&descriptor.env);
+    command
+}
 
 fn init_logging_proxy() {
     env_logger::builder()
@@ -296,8 +403,6 @@ fn init_logging_server(log_file_path: &Path) -> Result<Receiver<Vec<u8>>> {
         let thread_name = current_thread.name().unwrap_or("<unnamed>");
 
         let msg = format!("thread '{thread_name}' panicked at {location}:\n{message}\n{backtrace}");
-        // NOTE: This log never reaches the client, as the communication is handled on a main thread task
-        // which will never run once we panic.
         log::error!("{msg}");
         old_hook(info);
     }));
@@ -1483,21 +1588,22 @@ async fn wait_for_daemon(
 
 #[cfg(windows)]
 fn spawn_daemon_windows(binary_name: &Path, paths: &DaemonPaths) -> Result<(), SpawnServerError> {
-    let binary_path = binary_name.to_string_lossy().to_string();
-    let parameters = format!(
-        "daemon --log-file \"{}\" --state-dir \"{}\"",
-        paths.log_file.to_string_lossy(),
-        paths.state_dir.to_string_lossy()
-    );
-
-    let directory = binary_name
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    crate::windows::shell_execute_from_explorer(&binary_path, &parameters, &directory)
-        .map_err(|e| SpawnServerError::ProcessStatus(std::io::Error::other(e)))?;
-
+    use smol::process::windows::CommandExt;
+    // Detach from the console and break away from sshd's job so closing the SSH session doesn't kill the daemon.
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+    smol::process::Command::new(binary_name)
+        .stdin(util::command::Stdio::null())
+        .stdout(util::command::Stdio::null())
+        .stderr(util::command::Stdio::null())
+        .arg("daemon")
+        .arg("--log-file")
+        .arg(&paths.log_file)
+        .arg("--state-dir")
+        .arg(&paths.state_dir)
+        .creation_flags(DETACHED_PROCESS | CREATE_BREAKAWAY_FROM_JOB)
+        .spawn()
+        .map_err(SpawnServerError::ProcessStatus)?;
     Ok(())
 }
 
@@ -1561,6 +1667,10 @@ fn write_pid_file(path: &Path, pid: u32) -> Result<()> {
     std::fs::write(path, pid.to_string()).context("Failed to write PID file")
 }
 
+/// How many log chunks the proxy holds for a client that is slow to read its
+/// stderr before it starts dropping them.
+const PROXY_LOG_CHUNKS_IN_FLIGHT: usize = 1024;
+
 async fn forward_stdio(connection: UnixStream) -> Result<(), ExecuteProxyError> {
     forward(
         connection,
@@ -1602,6 +1712,25 @@ where
         }
     });
 
+    // A client that stops reading stderr must not hold up the replies queued
+    // behind the log (upstream #65011), so the log goes out on its own task.
+    // What that task cannot take is dropped rather than buffered without
+    // bound: the daemon's log file keeps all of it.
+    let (log_tx, log_rx) = smol::channel::bounded::<Vec<u8>>(PROXY_LOG_CHUNKS_IN_FLIGHT);
+    let _stderr_task = smol::spawn(async move {
+        while let Ok(chunk) = log_rx.recv().await {
+            let written = async {
+                stderr.write_all(&chunk).await?;
+                stderr.flush().await
+            }
+            .await;
+            if let Err(error) = written {
+                log::warn!("stopped forwarding the server log to stderr: {error:#}");
+                break;
+            }
+        }
+    });
+
     let stdout_task: smol::Task<Result<()>> = smol::spawn(async move {
         let mut buffer = Vec::new();
         loop {
@@ -1615,10 +1744,12 @@ where
                         .context("failed to write message to stdout")?;
                     stdout.flush().await?;
                 }
-                DaemonFrameKind::Log => {
-                    stderr.write_all(&buffer).await?;
-                    stderr.flush().await?;
-                }
+                DaemonFrameKind::Log => match log_tx.try_send(buffer.clone()) {
+                    Ok(()) | Err(smol::channel::TrySendError::Closed(_)) => {}
+                    Err(smol::channel::TrySendError::Full(_)) => {
+                        log::debug!("dropped a server log chunk the client is not reading");
+                    }
+                },
             }
         }
     });
@@ -1932,7 +2063,7 @@ fn is_file_in_use(file_name: &OsStr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::daemon::test_support::memory_stream_pair;
+    use crate::daemon::test_support::{memory_stream_pair, memory_stream_pair_with_capacity};
     use remote::protocol::{decode_envelope, read_message, write_envelope_frame, write_message};
     use rpc::proto::EnvelopedMessage as _;
     use std::cell::RefCell;
@@ -2458,6 +2589,199 @@ mod tests {
                 .expect("the client should read the log from stderr");
             assert_eq!(log, b"log line\n");
 
+            drop(client_stdin);
+            assert!(matches!(
+                forwarding.await,
+                Err(ExecuteProxyError::StdinTask(_))
+            ));
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn script_candidates_never_start_with_a_dash() {
+        assert_eq!(
+            script_candidates("agent", Some(OsStr::new("/usr/bin:bin::-bin"))),
+            [
+                PathBuf::from("/usr/bin/agent"),
+                PathBuf::from("./bin/agent"),
+                PathBuf::from("./agent"),
+                PathBuf::from("./-bin/agent"),
+            ]
+        );
+        assert_eq!(
+            script_candidates("-a", Some(OsStr::new("/opt/bin"))),
+            [PathBuf::from("/opt/bin/-a")]
+        );
+        assert_eq!(
+            script_candidates("-x/agent", Some(OsStr::new("/opt/bin"))),
+            [PathBuf::from("./-x/agent")]
+        );
+        assert_eq!(
+            script_candidates("/srv/agent", Some(OsStr::new("/opt/bin"))),
+            [PathBuf::from("/srv/agent")]
+        );
+        assert_eq!(
+            script_candidates("agent", Some(OsStr::from_bytes(b"/not-utf8-\xff"))),
+            [PathBuf::from(OsStr::from_bytes(b"/not-utf8-\xff/agent"))]
+        );
+        assert_eq!(
+            script_candidates("agent", None),
+            [
+                PathBuf::from("/usr/local/bin/agent"),
+                PathBuf::from("/bin/agent"),
+                PathBuf::from("/usr/bin/agent"),
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn script_fallback_runs_option_like_wrapper_instead_of_its_arguments() {
+        use std::cell::RefCell;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().expect("create temp dir");
+        let missing_directory = directory.path().join("missing");
+        let binary_directory = directory.path().join("bin");
+        std::fs::create_dir(&binary_directory).expect("create bin dir");
+        let wrapper = binary_directory.join("-a");
+        std::fs::write(
+            &wrapper,
+            "printf 'WRAPPER_RAN|%s|%s|%s|%s\\n' \"$TOKEN\" \"$#\" \"$1\" \"$2\"\n",
+        )
+        .expect("write wrapper");
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod wrapper");
+        let descriptor = RemoteCommand {
+            program: String::from("-a"),
+            args: vec![
+                String::from("spoofed-argv0"),
+                String::from("/usr/bin/printf"),
+                String::from("OPTION_INTERPRETED"),
+            ],
+            env: HashMap::from_iter([
+                (String::from("TOKEN"), String::from("controlled")),
+                (
+                    String::from("PATH"),
+                    format!(
+                        "{}:{}",
+                        missing_directory.display(),
+                        binary_directory.display()
+                    ),
+                ),
+            ]),
+            working_dir: None,
+        };
+
+        let attempts = RefCell::new(Vec::new());
+        let shell_output = RefCell::new(None);
+        let error = exec_with_script_fallback(&descriptor, None, |command| {
+            let program = command.get_program().to_owned();
+            if program == "/bin/sh" {
+                let output = smol::block_on(smol::process::Command::from(command).output())
+                    .expect("run /bin/sh");
+                *shell_output.borrow_mut() = Some(output);
+                return std::io::Error::from_raw_os_error(libc::EIO);
+            }
+            attempts.borrow_mut().push(program.clone());
+            if program == "-a" || program == wrapper.as_os_str() {
+                std::io::Error::from_raw_os_error(libc::ENOEXEC)
+            } else {
+                std::io::Error::from_raw_os_error(libc::ENOENT)
+            }
+        });
+        assert_eq!(error.raw_os_error(), Some(libc::EIO));
+        assert_eq!(
+            attempts.into_inner(),
+            [
+                OsString::from("-a"),
+                missing_directory.join("-a").into_os_string(),
+                wrapper.into_os_string(),
+            ]
+        );
+        let shell_output = shell_output.into_inner().expect("shell fallback ran");
+        assert_eq!(
+            String::from_utf8_lossy(&shell_output.stderr),
+            "",
+            "{shell_output:?}"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&shell_output.stdout),
+            "WRAPPER_RAN|controlled|3|spoofed-argv0|/usr/bin/printf\n"
+        );
+        assert_eq!(shell_output.status.code(), Some(0));
+
+        let attempts = RefCell::new(0);
+        let error = exec_with_script_fallback(&descriptor, None, |_| {
+            *attempts.borrow_mut() += 1;
+            std::io::Error::from_raw_os_error(libc::EACCES)
+        });
+        assert_eq!(error.raw_os_error(), Some(libc::EACCES));
+        assert_eq!(attempts.into_inner(), 1);
+
+        let error = exec_with_script_fallback(&descriptor, None, |command| {
+            if command.get_program() == "-a" {
+                std::io::Error::from_raw_os_error(libc::ENOEXEC)
+            } else {
+                std::io::Error::from_raw_os_error(libc::ELOOP)
+            }
+        });
+        assert_eq!(error.raw_os_error(), Some(libc::ELOOP));
+    }
+
+    #[test]
+    fn the_proxy_answers_while_the_client_leaves_the_log_unread() {
+        smol::block_on(async {
+            let (mut daemon_end, proxy_connection) = memory_stream_pair();
+            let (mut client_stdin, proxy_stdin) = memory_stream_pair();
+            let (proxy_stdout, mut client_stdout) = memory_stream_pair();
+            let (proxy_stderr, client_stderr) = memory_stream_pair_with_capacity(Some(16));
+            let forwarding = smol::spawn(forward(
+                proxy_connection,
+                proxy_stdin,
+                proxy_stdout,
+                proxy_stderr,
+            ));
+
+            let mut buffer = Vec::new();
+            for _ in 0..4 {
+                write_daemon_frame(&mut daemon_end, DaemonFrameKind::Log, &[b'x'; 64 * 1024])
+                    .await
+                    .expect("the daemon logs");
+            }
+            let ack = proto::Ack {}.into_envelope(2, Some(1), None);
+            write_envelope_frame(&mut daemon_end, &mut buffer, ack.clone())
+                .await
+                .expect("the daemon answers");
+            daemon_end.flush().await.expect("flush the daemon's end");
+
+            futures::select! {
+                answer = read_message(&mut client_stdout, &mut buffer).fuse() => {
+                    assert_eq!(answer.expect("the client reads the answer"), ack);
+                }
+                _ = sleep(Duration::from_secs(5)).fuse() => {
+                    panic!("the answer is stuck behind a log the client does not read");
+                }
+            }
+
+            let ping = proto::Ping {}.into_envelope(3, None, None);
+            write_message(&mut client_stdin, &mut buffer, ping.clone())
+                .await
+                .expect("the client writes to the proxy's stdin");
+            client_stdin.flush().await.expect("flush stdin");
+            assert_eq!(
+                read_daemon_frame(&mut daemon_end, &mut buffer)
+                    .await
+                    .expect("the daemon should receive a frame"),
+                DaemonFrameKind::Envelope
+            );
+            assert_eq!(
+                decode_envelope(&buffer).expect("the frame carries the envelope"),
+                ping
+            );
+
+            drop(client_stderr);
             drop(client_stdin);
             assert!(matches!(
                 forwarding.await,

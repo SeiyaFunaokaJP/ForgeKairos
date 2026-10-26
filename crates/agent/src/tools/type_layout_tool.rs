@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use gpui::{App, Entity, SharedString, Task};
 use ide_query::{
     LinePosition, MAX_OTHER_TYPE_CANDIDATES, TypeIndexUnavailable, TypeIndexUnavailableReason,
@@ -150,7 +150,7 @@ impl AgentTool for TypeLayoutTool {
                     });
                     if !locations.is_empty() {
                         event_stream
-                            .update_fields(acp::ToolCallUpdateFields::new().locations(locations));
+                            .update_fields(|update| update.locations(locations));
                     }
                     Ok(project.read_with(cx, |project, cx| {
                         format_type_layout(project, &report, cx)
@@ -158,7 +158,7 @@ impl AgentTool for TypeLayoutTool {
                 }
                 Err(error) => {
                     if let Some(unavailable) = error.downcast_ref::<TypeIndexUnavailable>() {
-                        event_stream.update_fields(acp::ToolCallUpdateFields::new().title(
+                        event_stream.update_fields(|update| update.title(
                             i18n::t!("{} (no name index)", type_layout_title(&input)),
                         ));
                         return Ok(index_unavailable_message(unavailable, &input));

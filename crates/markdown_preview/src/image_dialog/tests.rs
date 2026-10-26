@@ -715,7 +715,7 @@ fn register_markdown_language(project: &Entity<Project>, cx: &mut TestAppContext
         language::LanguageConfig {
             name: "Markdown".into(),
             matcher: Arc::new(language::LanguageMatcher {
-                path_suffixes: vec!["md".to_string()],
+                path_suffixes: vec!["md".into()],
                 ..Default::default()
             }),
             ..Default::default()
@@ -2258,7 +2258,7 @@ fn a_linux_host_is_read_with_its_own_path_rules() {
         Some(r"images\a.png"),
         "a backslash is part of a file name on the host, not a separator"
     );
-    assert!(!PathStyle::Unix.is_absolute(r"C:\Users\a.png"));
+    assert!(!PathStyle::Unix.has_root(Path::new(r"C:\Users\a.png")));
     assert_eq!(
         relative_path("/home/u/docs", "/home/u/docs/Images/A.png", PathStyle::Unix).as_deref(),
         Some("Images/A.png")

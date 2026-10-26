@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{AgentTool, ToolCallEventStream, ToolInput};
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use anyhow::Result;
 use cloud_llm_client::WebSearchResponse;
 use futures::FutureExt as _;
@@ -109,7 +109,7 @@ impl AgentTool for WebSearchTool {
                         Ok(response) => response,
                         Err(err) => {
                             event_stream
-                                .update_fields(acp::ToolCallUpdateFields::new().title(i18n::t!("Web Search Failed")));
+                                .update_fields(|update| update.title(i18n::t!("Web Search Failed")));
                             return Err(WebSearchToolOutput::Error { error: err.to_string() });
                         }
                     }
@@ -139,8 +139,8 @@ impl AgentTool for WebSearchTool {
 }
 
 fn emit_update(response: &WebSearchResponse, event_stream: &ToolCallEventStream) {
-    event_stream.update_fields(
-        acp::ToolCallUpdateFields::new()
+    event_stream.update_fields(|update| {
+        update
             .title(i18n::tn!(
                 response.results.len(),
                 "Searched the web: {count} result",
@@ -151,15 +151,13 @@ fn emit_update(response: &WebSearchResponse, event_stream: &ToolCallEventStream)
                     .results
                     .iter()
                     .map(|result| {
-                        acp::ToolCallContent::Content(acp::Content::new(
-                            acp::ContentBlock::ResourceLink(
-                                acp::ResourceLink::new(result.title.clone(), result.url.clone())
-                                    .title(result.title.clone())
-                                    .description(result.text.clone()),
-                            ),
+                        acp::ToolCallContent::from(acp::ContentBlock::ResourceLink(
+                            acp::ResourceLink::new(result.title.clone(), result.url.clone())
+                                .title(result.title.clone())
+                                .description(result.text.clone()),
                         ))
                     })
                     .collect::<Vec<_>>(),
-            ),
-    );
+            )
+    });
 }

@@ -179,6 +179,9 @@ msgstr "代理拒絕回應此要求"
 msgid "Agent stopped at the output token limit"
 msgstr "代理已因達到輸出 Token 上限而停止"
 
+msgid "Agent stopped because of an error"
+msgstr "代理因發生錯誤而停止"
+
 msgid "Agent stopped due to an error"
 msgstr "代理因錯誤而停止"
 
@@ -761,6 +764,12 @@ msgstr "捨棄"
 
 msgid "Discard Interrupted Edit"
 msgstr "捨棄已中斷的編輯"
+
+msgid "Discard draft"
+msgstr "捨棄草稿"
+
+msgid "Discard the unsupported draft before moving a queued message into the composer."
+msgstr "將佇列訊息移至輸入框之前，請先捨棄含有不支援內容的草稿。"
 
 msgid "Dismiss"
 msgstr "關閉"
@@ -1965,6 +1974,9 @@ msgstr "子代理失敗"
 msgid "Subagent Output"
 msgstr "子代理輸出"
 
+msgid "Subagent: {title} ({session_id})"
+msgstr "子代理：{title}（{session_id}）"
+
 msgid "Subagents Awaiting Permission:"
 msgstr "等待授權的子代理："
 
@@ -2272,6 +2284,9 @@ msgstr "此命令是在無法建立沙箱時，由較早的版本允許在沒有
 msgid "This conversation is too long for the model's context window. Start a new thread or remove some attached files to continue."
 msgstr "此對話對模型的上下文視窗來說太長。若要繼續，請開始新的會話或移除部分附加的檔案。"
 
+msgid "This draft contains unsupported content and cannot be edited or sent. Discard the draft to write a new message."
+msgstr "此草稿含有不支援的內容，無法編輯或傳送。請捨棄草稿以撰寫新訊息。"
+
 msgid "This extension has no settings to configure."
 msgstr "此擴充功能沒有可設定的項目。"
 
@@ -2298,6 +2313,15 @@ msgstr "此模型只支援開啟或關閉思考（不支援思考深度層級）
 
 msgid "This prompt was pre-filled by an external link. Read it carefully before you submit it to the model."
 msgstr "此提示由外部連結預先填入。送出給模型前，請仔細閱讀內容。"
+
+msgid "This queued message contains unsupported content and cannot be edited."
+msgstr "此佇列訊息含有不支援的內容，無法編輯。"
+
+msgid "This saved submission cannot be restored into the composer. The original submission and draft have been kept."
+msgstr "無法將此已儲存的送出內容還原至輸入框。原始送出內容與草稿均已保留。"
+
+msgid "This saved submission contains unsupported content and cannot be restored. The original submission has been kept."
+msgstr "此已儲存的送出內容含有不支援的內容，無法還原。原始送出內容已保留。"
 
 msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
 msgstr "此伺服器定義於專案的設定檔案（.zed/settings.json）中。在此儲存會寫入您的使用者設定，但專案的定義優先，因此不會生效。請從設定視窗的「MCP 伺服器」頁面編輯定義它的檔案。"
@@ -2371,6 +2395,9 @@ msgstr "切換會話側邊欄"
 msgid "Tool Permissions"
 msgstr "工具權限"
 
+msgid "Tool call: {id}"
+msgstr "工具呼叫：{id}"
+
 msgid "Tools Unsupported"
 msgstr "不支援工具"
 
@@ -2427,6 +2454,12 @@ msgstr "將模型從最愛移除"
 
 msgid "Unknown"
 msgstr "未知"
+
+msgid "Unknown permission subject"
+msgstr "未知的權限對象"
+
+msgid "Unknown permission subject: {kind}"
+msgstr "未知的權限對象：{kind}"
 
 msgid "Update"
 msgstr "更新"
@@ -2514,6 +2547,9 @@ msgstr "出了什麼問題？分享意見以協助我們改善。"
 
 msgid "When an API key is set, Claude Code uses it instead. To use your subscription, remove the key."
 msgstr "設定了 API 金鑰時，Claude Code 會改用該金鑰。若要使用您的訂閱，請移除金鑰。"
+
+msgid "Working directory: {path}"
+msgstr "工作目錄：{path}"
 
 msgid "Write Access"
 msgstr "寫入權限"

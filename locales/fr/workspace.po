@@ -242,6 +242,9 @@ msgstr "Rendre l'onglet modifiable"
 msgid "Make Tab Read-Only"
 msgstr "Rendre l'onglet en lecture seule"
 
+msgid "More Options"
+msgstr "Plus d'options"
+
 msgid "Move to New Window"
 msgstr "Déplacer vers une nouvelle fenêtre"
 

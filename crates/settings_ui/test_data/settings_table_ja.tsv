@@ -103,36 +103,36 @@ p1.i23[markdown_preview.code_font_family].title	コードのフォントファ�
 p1.i23[markdown_preview.code_font_family].description	Markdown プレビュー内のコードブロックのフォントファミリーです。未設定の場合はエディターのフォントファミリーを使います。
 p1.i24[markdown_preview.font_size].title	フォントサイズ
 p1.i24[markdown_preview.font_size].description	Markdown プレビューのフォントサイズです。未設定の場合はエディターのフォントサイズを使います。
-p1.i25.header	テキストの描画
-p1.i26[text_rendering_mode].title	テキストの描画モード
-p1.i26[text_rendering_mode].description	使用するテキストの描画モードです。
-p1.i27.header	カーソル
-p1.i28[multi_cursor_modifier].title	複数カーソルの修飾キー
-p1.i28[multi_cursor_modifier].description	カーソルを追加するときの修飾キーです。
-p1.i29[cursor_blink].title	カーソルの点滅
-p1.i29[cursor_blink].description	エディターでカーソルを点滅させるかどうかを設定します。
-p1.i31[cursor_shape].title	カーソルの形状
-p1.i31[cursor_shape].description	エディターのカーソルの形状です。
-p1.i32[hide_mouse].title	マウスカーソルを隠す
-p1.i32[hide_mouse].description	マウスカーソルを隠すタイミングです。
-p1.i33[reduce_motion].title	モーションを減らす
-p1.i33[reduce_motion].description	読み込み中のスピナーなど、必須ではないアニメーションを静止状態で描画して減らすかどうかを設定します。
-p1.i34.header	ハイライト
-p1.i35[unnecessary_code_fade].title	未使用コードの淡色化
-p1.i35[unnecessary_code_fade].description	未使用のコードをどの程度淡く表示するかを設定します (0.0〜0.9)。
-p1.i36[current_line_highlight].title	現在の行のハイライト
-p1.i36[current_line_highlight].description	現在の行をどのようにハイライトするかを設定します。
-p1.i37[selection_highlight].title	選択テキストのハイライト
-p1.i37[selection_highlight].description	選択したテキストと一致するすべての箇所をハイライトします。
-p1.i38[rounded_selection].title	選択範囲の角丸
-p1.i38[rounded_selection].description	テキストの選択範囲の角を丸くするかどうかを設定します。
-p1.i39[minimum_contrast_for_highlights].title	ハイライトの最小コントラスト
-p1.i39[minimum_contrast_for_highlights].description	ハイライトの背景の上にテキストを描画するときに保つ、APCA 知覚コントラストの最小値です。
-p1.i40.header	ガイド
-p1.i41[show_wrap_guides].title	折り返しガイドを表示
-p1.i41[show_wrap_guides].description	折り返しガイド (縦のルーラー) を表示します。
-p1.i42[wrap_guides].title	折り返しガイド
-p1.i42[wrap_guides].description	折り返しガイドを表示する文字数です。
+p1.i28.header	テキストの描画
+p1.i29[text_rendering_mode].title	テキストの描画モード
+p1.i29[text_rendering_mode].description	使用するテキストの描画モードです。
+p1.i30.header	カーソル
+p1.i31[multi_cursor_modifier].title	複数カーソルの修飾キー
+p1.i31[multi_cursor_modifier].description	カーソルを追加するときの修飾キーです。
+p1.i32[cursor_blink].title	カーソルの点滅
+p1.i32[cursor_blink].description	エディターでカーソルを点滅させるかどうかを設定します。
+p1.i34[cursor_shape].title	カーソルの形状
+p1.i34[cursor_shape].description	エディターのカーソルの形状です。
+p1.i35[hide_mouse].title	マウスカーソルを隠す
+p1.i35[hide_mouse].description	マウスカーソルを隠すタイミングです。
+p1.i36[reduce_motion].title	モーションを減らす
+p1.i36[reduce_motion].description	読み込み中のスピナーなど、必須ではないアニメーションを静止状態で描画して減らすかどうかを設定します。
+p1.i37.header	ハイライト
+p1.i38[unnecessary_code_fade].title	未使用コードの淡色化
+p1.i38[unnecessary_code_fade].description	未使用のコードをどの程度淡く表示するかを設定します (0.0〜0.9)。
+p1.i39[current_line_highlight].title	現在の行のハイライト
+p1.i39[current_line_highlight].description	現在の行をどのようにハイライトするかを設定します。
+p1.i40[selection_highlight].title	選択テキストのハイライト
+p1.i40[selection_highlight].description	選択したテキストと一致するすべての箇所をハイライトします。
+p1.i41[rounded_selection].title	選択範囲の角丸
+p1.i41[rounded_selection].description	テキストの選択範囲の角を丸くするかどうかを設定します。
+p1.i42[minimum_contrast_for_highlights].title	ハイライトの最小コントラスト
+p1.i42[minimum_contrast_for_highlights].description	ハイライトの背景の上にテキストを描画するときに保つ、APCA 知覚コントラストの最小値です。
+p1.i43.header	ガイド
+p1.i44[show_wrap_guides].title	折り返しガイドを表示
+p1.i44[show_wrap_guides].description	折り返しガイド (縦のルーラー) を表示します。
+p1.i45[wrap_guides].title	折り返しガイド
+p1.i45[wrap_guides].description	折り返しガイドを表示する文字数です。
 p2.title	キーマップ
 p2.i0.header	キーバインド
 p2.i1.action	キーバインドの編集
@@ -523,19 +523,19 @@ p5.i14[file_finder.file_icons].title	ファイルアイコン
 p5.i14[file_finder.file_icons].description	ファイル検索にファイルアイコンを表示します。
 p5.i15[file_finder.skip_focus_for_active_in_search].title	検索結果でアクティブなファイルを飛ばす
 p5.i15[file_finder.skip_focus_for_active_in_search].description	ファイル検索の結果で、アクティブなファイルにはフォーカスを合わせないようにするかどうかを設定します。
-p5.i16.header	ファイルスキャン
-p5.i17[file_scan_exclusions].title	ファイルスキャンの除外
-p5.i17[file_scan_exclusions].description	ForgeKairos が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます
-p5.i18[file_scan_inclusions].title	ファイルスキャンの対象
-p5.i18[file_scan_inclusions].description	git に無視されていても ForgeKairos が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は ForgeKairos のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます
-p5.i19[file_scan_depth].title	ファイルスキャンの深さ
-p5.i19[file_scan_depth].description	git リポジトリの外側で先読みインデックスを作成するディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点でインデックスされます。この深さより浅い位置にあるリポジトリは常に完全にインデックスされます。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします
-p5.i20[scan_symlinks].title	シンボリックリンクをスキャン
-p5.i20[scan_symlinks].description	リンク先のディレクトリの内容をスキャンするタイミングです
-p5.i21[restore_on_file_reopen].title	ファイルの状態を復元
-p5.i21[restore_on_file_reopen].description	ファイルを再度開いたときに前回の状態を復元します。
-p5.i22[close_on_file_delete].title	ファイル削除時に閉じる
-p5.i22[close_on_file_delete].description	削除されたファイルを自動的に閉じます。
+p5.i17.header	ファイルスキャン
+p5.i18[file_scan_exclusions].title	ファイルスキャンの除外
+p5.i18[file_scan_exclusions].description	ForgeKairos が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます
+p5.i19[file_scan_inclusions].title	ファイルスキャンの対象
+p5.i19[file_scan_inclusions].description	git に無視されていても ForgeKairos が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は ForgeKairos のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます
+p5.i20[file_scan_depth].title	ファイルスキャンの深さ
+p5.i20[file_scan_depth].description	git リポジトリの外側で先読みインデックスを作成するディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点でインデックスされます。この深さより浅い位置にあるリポジトリは常に完全にインデックスされます。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします
+p5.i21[scan_symlinks].title	シンボリックリンクをスキャン
+p5.i21[scan_symlinks].description	リンク先のディレクトリの内容をスキャンするタイミングです
+p5.i22[restore_on_file_reopen].title	ファイルの状態を復元
+p5.i22[restore_on_file_reopen].description	ファイルを再度開いたときに前回の状態を復元します。
+p5.i23[close_on_file_delete].title	ファイル削除時に閉じる
+p5.i23[close_on_file_delete].description	削除されたファイルを自動的に閉じます。
 p6.title	ウィンドウとレイアウト
 p6.i0.header	ステータスバー
 p6.i1[project_panel.button].title	プロジェクトパネルのボタン
@@ -770,39 +770,39 @@ p7.i60[git_panel.diff_stats].title	差分の統計
 p7.i60[git_panel.diff_stats].description	Git パネルの各ファイルの横に、追加・削除の行数を表示するかどうかを設定します。
 p7.i61[git_panel.entry_primary_click_action].title	クリック時の動作
 p7.i61[git_panel.entry_primary_click_action].description	Git パネルで変更されたファイルをクリックしたときの既定の動作です。
-p7.i62[git_panel.show_count_badge].title	件数バッジを表示
-p7.i62[git_panel.show_count_badge].description	git パネルのアイコンに、未コミットの変更数のバッジを表示するかどうかを設定します。
-p7.i63[git_panel.commit_title_max_length].title	コミットタイトルの最大長
-p7.i63[git_panel.commit_title_max_length].description	警告を表示するまでのコミットメッセージのタイトルの最大長です。0 で無効になります。
-p7.i64[git_panel.scrollbar.show].title	スクロールバー
-p7.i64[git_panel.scrollbar.show].description	スクロールバーをどのように、いつ表示するかを設定します。
-p7.i65.header	デバッガーパネル
-p7.i66[debugger.dock].title	デバッガーパネルのドック位置
-p7.i66[debugger.dock].description	デバッグパネルをドッキングする位置です。
-p7.i67.header	コラボレーションパネル
-p7.i68[collaboration_panel.button].title	コラボレーションパネルのボタン
-p7.i68[collaboration_panel.button].description	ステータスバーにコラボレーションパネルのボタンを表示します。
-p7.i69[collaboration_panel.dock].title	コラボレーションパネルのドック位置
-p7.i69[collaboration_panel.dock].description	コラボレーションパネルをドッキングする位置です。
-p7.i70[collaboration_panel.dock].title	コラボレーションパネルの既定の幅
-p7.i70[collaboration_panel.dock].description	コラボレーションパネルの既定の幅 (ピクセル) です。
-p7.i71.header	エージェントパネル
-p7.i72[agent.button].title	エージェントパネルのボタン
-p7.i72[agent.button].description	ステータスバーにエージェントパネルのボタンを表示するかどうかを設定します。
-p7.i73[agent.dock].title	エージェントパネルのドック位置
-p7.i73[agent.dock].description	エージェントパネルをドッキングする位置です。
-p7.i74[agent.starts_open].title	起動時に開く
-p7.i74[agent.starts_open].description	起動時にエージェントパネルを開くかどうかを設定します。
-p7.i75[agent.flexible].title	エージェントパネルの可変サイズ
-p7.i75[agent.flexible].description	左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。有効にすると既定の幅はパネルの幅に影響せず、パネルをリセットすると既定の比率に戻ります。
-p7.i76[agent.default_width].title	エージェントパネルの既定の幅
-p7.i76[agent.default_width].description	エージェントパネルを左右にドッキングし、可変サイズを無効にしているときの既定の固定幅です。
-p7.i77[agent.default_height].title	エージェントパネルの既定の高さ
-p7.i77[agent.default_height].description	エージェントパネルを下にドッキングしたときの既定の高さです。
-p7.i78[agent.limit_content_width].title	内容の幅を制限
-p7.i78[agent.limit_content_width].description	読みやすさのために、エージェントパネルの内容を最大幅に制限し、パネルがそれより広いときは中央に寄せるかどうかを設定します。
-p7.i78.v1.f0[agent.max_content_width].title	内容の最大幅
-p7.i78.v1.f0[agent.max_content_width].description	内容の最大幅 (ピクセル) です。パネルがこの値より広いときは内容を中央に寄せます。
+p7.i63[git_panel.show_count_badge].title	件数バッジを表示
+p7.i63[git_panel.show_count_badge].description	git パネルのアイコンに、未コミットの変更数のバッジを表示するかどうかを設定します。
+p7.i64[git_panel.commit_title_max_length].title	コミットタイトルの最大長
+p7.i64[git_panel.commit_title_max_length].description	警告を表示するまでのコミットメッセージのタイトルの最大長です。0 で無効になります。
+p7.i65[git_panel.scrollbar.show].title	スクロールバー
+p7.i65[git_panel.scrollbar.show].description	スクロールバーをどのように、いつ表示するかを設定します。
+p7.i66.header	デバッガーパネル
+p7.i67[debugger.dock].title	デバッガーパネルのドック位置
+p7.i67[debugger.dock].description	デバッグパネルをドッキングする位置です。
+p7.i68.header	コラボレーションパネル
+p7.i69[collaboration_panel.button].title	コラボレーションパネルのボタン
+p7.i69[collaboration_panel.button].description	ステータスバーにコラボレーションパネルのボタンを表示します。
+p7.i70[collaboration_panel.dock].title	コラボレーションパネルのドック位置
+p7.i70[collaboration_panel.dock].description	コラボレーションパネルをドッキングする位置です。
+p7.i71[collaboration_panel.dock].title	コラボレーションパネルの既定の幅
+p7.i71[collaboration_panel.dock].description	コラボレーションパネルの既定の幅 (ピクセル) です。
+p7.i72.header	エージェントパネル
+p7.i73[agent.button].title	エージェントパネルのボタン
+p7.i73[agent.button].description	ステータスバーにエージェントパネルのボタンを表示するかどうかを設定します。
+p7.i74[agent.dock].title	エージェントパネルのドック位置
+p7.i74[agent.dock].description	エージェントパネルをドッキングする位置です。
+p7.i75[agent.starts_open].title	起動時に開く
+p7.i75[agent.starts_open].description	起動時にエージェントパネルを開くかどうかを設定します。
+p7.i76[agent.flexible].title	エージェントパネルの可変サイズ
+p7.i76[agent.flexible].description	左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。有効にすると既定の幅はパネルの幅に影響せず、パネルをリセットすると既定の比率に戻ります。
+p7.i77[agent.default_width].title	エージェントパネルの既定の幅
+p7.i77[agent.default_width].description	エージェントパネルを左右にドッキングし、可変サイズを無効にしているときの既定の固定幅です。
+p7.i78[agent.default_height].title	エージェントパネルの既定の高さ
+p7.i78[agent.default_height].description	エージェントパネルを下にドッキングしたときの既定の高さです。
+p7.i79[agent.limit_content_width].title	内容の幅を制限
+p7.i79[agent.limit_content_width].description	読みやすさのために、エージェントパネルの内容を最大幅に制限し、パネルがそれより広いときは中央に寄せるかどうかを設定します。
+p7.i79.v1.f0[agent.max_content_width].title	内容の最大幅
+p7.i79.v1.f0[agent.max_content_width].description	内容の最大幅 (ピクセル) です。パネルがこの値より広いときは内容を中央に寄せます。
 p8.title	デバッガー
 p8.i0.header	全般
 p8.i1[debugger.stepping_granularity].title	ステップ実行の粒度

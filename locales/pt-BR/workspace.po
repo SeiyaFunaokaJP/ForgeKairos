@@ -242,6 +242,9 @@ msgstr "Tornar aba editável"
 msgid "Make Tab Read-Only"
 msgstr "Tornar aba somente leitura"
 
+msgid "More Options"
+msgstr "Mais opções"
+
 msgid "Move to New Window"
 msgstr "Mover para nova janela"
 

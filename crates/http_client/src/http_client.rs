@@ -8,7 +8,6 @@ mod proxy_relay;
 
 pub use anyhow::{Result, anyhow};
 pub use async_body::{AsyncBody, Inner, Json};
-use derive_more::Deref;
 pub use egress::{
     AllowlistedHttpClient, BUILTIN_ALLOWLIST, BuiltinAllow, EGRESS_DENIED_MARKER, EgressDenied,
     EgressLane, EgressPolicy, EgressPolicyHandle, HostPattern, HostPatternError, LaneHttpClient,
@@ -30,7 +29,7 @@ use parking_lot::Mutex;
 use serde::Serialize;
 #[cfg(feature = "test-support")]
 use std::{any::type_name, fmt};
-use std::{sync::Arc, time::Duration};
+use std::{ops::Deref, sync::Arc, time::Duration};
 pub use url::{Host, Url};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
@@ -202,9 +201,7 @@ pub trait HttpClient: 'static + Send + Sync {
 }
 
 /// An [`HttpClient`] that may have a proxy.
-#[derive(Deref)]
 pub struct HttpClientWithProxy {
-    #[deref]
     client: Arc<dyn HttpClient>,
     proxy: Option<Url>,
 }
@@ -223,6 +220,15 @@ impl HttpClientWithProxy {
             client,
             proxy: proxy_url,
         }
+    }
+}
+
+impl Deref for HttpClientWithProxy {
+    type Target = Arc<dyn HttpClient>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.client
     }
 }
 
@@ -253,14 +259,12 @@ impl HttpClient for HttpClientWithProxy {
 }
 
 /// An [`HttpClient`] that has a base URL.
-#[derive(Deref)]
 pub struct HttpClientWithUrl {
     /// Shared so that [`HttpClientWithUrl::with_transport`] can hand out a
     /// second handle onto the *same* base URL — `set_base_url` is called at
     /// runtime when the `server_url` setting changes, and a copy would go
     /// stale.
     base_url: Arc<Mutex<String>>,
-    #[deref]
     client: HttpClientWithProxy,
 }
 
@@ -378,6 +382,15 @@ impl HttpClientWithUrl {
             &format!("{}{}", base_api_url, path),
             query,
         )?)
+    }
+}
+
+impl Deref for HttpClientWithUrl {
+    type Target = HttpClientWithProxy;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.client
     }
 }
 

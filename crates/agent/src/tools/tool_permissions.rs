@@ -2,7 +2,7 @@ use crate::{
     Thread, ToolCallEventStream, ToolPermissionContext, ToolPermissionDecision,
     decide_permission_for_path,
 };
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use agent_skills::is_agents_skills_path;
 use anyhow::{Result, anyhow};
 use fs::Fs;
@@ -742,7 +742,7 @@ pub(crate) fn resolve_new_path_in_the_project(
 ) -> Option<NewPathPlacement> {
     let path_style = project.path_style(cx);
     let path_text = path.to_str()?;
-    if path_text.is_empty() || util::paths::is_absolute(path_text, path_style) {
+    if path_text.is_empty() || path_style.has_root(path) {
         return None;
     }
 
