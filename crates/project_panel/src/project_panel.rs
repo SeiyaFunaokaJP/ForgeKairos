@@ -1,6 +1,7 @@
 pub mod project_panel_settings;
 mod undo;
 mod utils;
+mod watch_priority;
 
 use anyhow::{Context as _, Result};
 use client::{ErrorCode, ErrorExt};
@@ -166,6 +167,8 @@ pub struct ProjectPanel {
     update_visible_entries_task: UpdateVisibleEntriesTask,
     undo_manager: UndoManager,
     state: State,
+    /// ADR-F104: what each worktree's directories were last reported as.
+    watch_priority_directories: HashMap<WorktreeId, Vec<Arc<RelPath>>>,
 }
 
 struct UpdateVisibleEntriesTask {
@@ -972,6 +975,7 @@ impl ProjectPanel {
                     project.read(cx).is_via_collab(),
                     &cx,
                 ),
+                watch_priority_directories: HashMap::default(),
             };
             this.update_visible_entries(None, false, false, window, cx);
 
@@ -5010,6 +5014,7 @@ impl ProjectPanel {
                 .await;
             this.update_in(cx, |this, window, cx| {
                 this.state = new_state;
+                this.update_watch_priority(cx);
                 if let Some((worktree_id, entry_id)) = new_selected_entry {
                     this.selection = Some(SelectedEntry {
                         worktree_id,

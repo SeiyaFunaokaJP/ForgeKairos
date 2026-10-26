@@ -3,14 +3,14 @@ use gpui::{BackgroundExecutor, Task};
 use notify::{Event, EventKind};
 use parking_lot::{Condvar, Mutex};
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::{HashMap, HashSet, hash_map::Entry},
     hash::{DefaultHasher, Hash, Hasher},
     ops::DerefMut,
-    path::Path,
+    path::{Path, PathBuf},
     pin::Pin,
     sync::{
         Arc, LazyLock, Weak,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -27,9 +27,9 @@ pub use diagnostics::{
 };
 use fallback_watcher::{FallbackEventSink, FallbackWatcher, PollPacer, sweep_operation_budget};
 use watch_budget::{
-    MAINTENANCE_INTERVAL, PROMOTION_INTERVAL, PROMOTIONS_PER_MEASUREMENT, ProcfsBudgetSource,
-    WatchBudget, native_watches_over_learned_limit, native_watches_over_share, promotion_capacity,
-    should_yield_native_watches,
+    MAINTENANCE_INTERVAL, MAX_PRIORITY_NATIVE_WATCHES, PROMOTION_INTERVAL,
+    PROMOTIONS_PER_MEASUREMENT, ProcfsBudgetSource, WatchBudget, native_watches_over_learned_limit,
+    native_watches_over_share, promotion_capacity, should_yield_native_watches,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
@@ -134,6 +134,9 @@ pub struct FsWatcher {
     pending_path_events: Arc<Mutex<Vec<PathEvent>>>,
     registrations: Arc<Mutex<HashMap<WatchKey, FsWatcherRegistration>>>,
     pending_registrations: Arc<Mutex<HashMap<Arc<std::path::Path>, Task<()>>>>,
+    /// Which of the native watcher's priority sets is this watcher's: one native watcher
+    /// serves every worktree of the filesystem, and each sends its own set.
+    priority_source: PrioritySourceId,
 }
 
 #[derive(Clone)]
@@ -165,6 +168,7 @@ impl FsWatcher {
             pending_path_events,
             registrations: Default::default(),
             pending_registrations: Default::default(),
+            priority_source: PrioritySourceId::next(),
         }
     }
 
@@ -223,6 +227,8 @@ impl FsWatcher {
 impl Drop for FsWatcher {
     fn drop(&mut self) {
         self.pending_registrations.lock().clear();
+        self.native_watcher
+            .set_priority_paths(self.priority_source, Vec::new(), |_| false);
 
         let mut registrations = HashMap::new();
         {
@@ -281,6 +287,15 @@ impl Watcher for FsWatcher {
             registration.os_watcher.remove(registration.id);
         }
         Ok(())
+    }
+
+    // Only the native watcher can run out of watches; the poll watcher serves volumes that
+    // can't be watched natively at all.
+    fn set_priority_paths(&self, paths: Vec<PathBuf>) {
+        self.native_watcher
+            .set_priority_paths(self.priority_source, paths, |path| {
+                !self.fs.is_path_case_sensitive(path)
+            });
     }
 }
 
@@ -1361,6 +1376,9 @@ struct PathRegistrationState {
     /// Set when a native watch failed for a reason other than the watch limit, so promotion
     /// stops retrying it.
     native_unavailable: bool,
+    /// Whether the native watch is held for a priority path beyond the share (ADR-F104), so
+    /// trimming leaves it alone and releasing it gives back a priority slot.
+    held_for_priority: bool,
 }
 
 // Deep directories are handed to the poller first and shallow ones taken back first, so the
@@ -1432,6 +1450,12 @@ impl WatchPaths {
         }
     }
 
+    fn set_held_for_priority(&mut self, key: &WatchKey, held_for_priority: bool) {
+        if let Some(registration) = self.entries.get_mut(key) {
+            registration.held_for_priority = held_for_priority;
+        }
+    }
+
     fn mark_native_unavailable(&mut self, key: &WatchKey) {
         if let Some(registration) = self.entries.get_mut(key) {
             registration.native_unavailable = true;
@@ -1460,6 +1484,7 @@ impl WatchPaths {
                 registration.has_os_watcher
                     && registration.polled_by_fallback == polled_by_fallback
                     && !registration.native_unavailable
+                    && !registration.held_for_priority
             })
             .map(|(key, registration)| {
                 (
@@ -1521,6 +1546,7 @@ impl WatchPaths {
 struct RemovedWatch {
     watched_path: Arc<SanitizedPath>,
     polled_by_fallback: bool,
+    held_for_priority: bool,
 }
 
 struct WatcherState {
@@ -1569,6 +1595,7 @@ impl WatcherState {
         callback: Arc<dyn Fn(&notify::Event) + Send + Sync>,
         has_os_watcher: bool,
         polled_by_fallback: bool,
+        held_for_priority: bool,
     ) -> WatcherRegistrationId {
         let id = self.last_registration;
         self.last_registration = WatcherRegistrationId(id.0 + 1);
@@ -1586,6 +1613,7 @@ impl WatcherState {
             watched_path: path,
             polled_by_fallback,
             native_unavailable: false,
+            held_for_priority,
         });
         id
     }
@@ -1602,6 +1630,7 @@ impl WatcherState {
         path_state.has_os_watcher.then_some(RemovedWatch {
             watched_path: path_state.watched_path,
             polled_by_fallback: path_state.polled_by_fallback,
+            held_for_priority: path_state.held_for_priority,
         })
     }
 }
@@ -1644,6 +1673,35 @@ pub struct OsWatcher {
     key_locks: [Mutex<()>; KEY_LOCK_STRIPES],
     /// Only the native watcher of a real filesystem has one (ADR-F43).
     fallback: Option<NativeFallback>,
+    // A leaf lock: nothing else is locked while it is held.
+    priority: Mutex<PriorityPaths>,
+    /// Set when the priority set changes, so the next maintenance promotes right away instead
+    /// of waiting for the promotion round, which is also when refused paths are retried.
+    priority_changed: AtomicBool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct PrioritySourceId(u64);
+
+impl PrioritySourceId {
+    fn next() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// The directories the user is looking at (ADR-F104), as each `FsWatcher` sent them.
+#[derive(Default)]
+struct PriorityPaths {
+    by_source: HashMap<PrioritySourceId, PrioritySource>,
+    /// The keys of every source together, which is what the watcher acts on.
+    keys: Arc<HashSet<WatchKey>>,
+}
+
+struct PrioritySource {
+    #[cfg(any(test, feature = "test-support"))]
+    paths: Vec<PathBuf>,
+    keys: Vec<WatchKey>,
 }
 
 /// What lets the native watcher stay within Zed's share of the user's inotify watches: paths
@@ -1737,6 +1795,8 @@ const BACKGROUND_THREAD_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum WatchOutcome {
     Backend,
+    /// A native watch of a priority path that the share had no room for.
+    PriorityBackend,
     Fallback,
     /// The native watch-limit cooldown of a watcher without a fallback poller is active.
     Skipped,
@@ -1752,6 +1812,15 @@ enum PromotionOutcome {
     Skipped,
     BudgetExhausted,
     WatchLimitReached(Arc<SanitizedPath>),
+}
+
+/// How a promotion counts the native watch it is about to add.
+#[derive(Clone, Copy)]
+enum PromotionReservation {
+    WithinShare,
+    /// Within the share if there is room, and beyond it within `MAX_PRIORITY_NATIVE_WATCHES`
+    /// otherwise.
+    Priority,
 }
 
 struct MaintenanceSchedule {
@@ -1841,6 +1910,8 @@ impl OsWatcher {
             _dispatch_task: dispatch_task,
             diagnostics,
             key_locks: std::array::from_fn(|_| Mutex::new(())),
+            priority: Default::default(),
+            priority_changed: AtomicBool::new(false),
         })
     }
 
@@ -1916,6 +1987,7 @@ impl OsWatcher {
                     callback,
                     has_os_watcher,
                     false,
+                    false,
                 )));
             }
         }
@@ -1923,13 +1995,16 @@ impl OsWatcher {
         let NewWatch {
             outcome,
             hit_watch_limit,
-        } = self.watch_new_path(&path);
+        } = self.watch_new_path(&path, &key);
         let registered_outcome = outcome.as_ref().ok().copied();
+        let polled_priority_path =
+            registered_outcome == Some(WatchOutcome::Fallback) && self.is_priority_key(&key);
         let registration = outcome.map(|outcome| {
-            let polled_by_fallback = match outcome {
+            let (polled_by_fallback, held_for_priority) = match outcome {
                 WatchOutcome::Skipped => return None,
-                WatchOutcome::Backend => false,
-                WatchOutcome::Fallback => true,
+                WatchOutcome::Backend => (false, false),
+                WatchOutcome::PriorityBackend => (false, true),
+                WatchOutcome::Fallback => (true, false),
             };
             Some(self.state.lock().register_watcher(
                 key,
@@ -1937,6 +2012,7 @@ impl OsWatcher {
                 callback,
                 true,
                 polled_by_fallback,
+                held_for_priority,
             ))
         });
         drop(key_guard);
@@ -1954,9 +2030,15 @@ impl OsWatcher {
         {
             fallback.background.request_maintenance();
         }
+        // The kernel refused it, so it has to be polled on every pass from now on.
+        if polled_priority_path {
+            fallback.background.request_maintenance();
+        }
         let needs_background_thread = match registered_outcome {
             Some(WatchOutcome::Fallback) => true,
-            Some(WatchOutcome::Backend) => fallback.budget.is_enabled(),
+            Some(WatchOutcome::Backend | WatchOutcome::PriorityBackend) => {
+                fallback.budget.is_enabled()
+            }
             Some(WatchOutcome::Skipped) | None => false,
         };
         if needs_background_thread {
@@ -1968,7 +2050,7 @@ impl OsWatcher {
     /// Starts watching a path that has no registration yet. With a fallback poller, paths
     /// that can't get a native watch are polled instead of being skipped, so they never have
     /// to be retried (ADR-F43).
-    fn watch_new_path(&self, path: &SanitizedPath) -> NewWatch {
+    fn watch_new_path(&self, path: &SanitizedPath, key: &WatchKey) -> NewWatch {
         let Some(fallback) = &self.fallback else {
             if self.kind == OsWatcherKind::Native
                 && self.state.lock().is_native_watch_limit_cooldown_active()
@@ -2004,17 +2086,21 @@ impl OsWatcher {
             };
         };
 
-        if !fallback.budget.try_reserve_native() {
+        let held_for_priority = if fallback.budget.try_reserve_native() {
+            false
+        } else if self.is_priority_key(key) && fallback.budget.try_reserve_priority_native() {
+            true
+        } else {
             return NewWatch {
                 outcome: self.watch_fallback(fallback, path),
                 hit_watch_limit: false,
             };
-        }
+        };
 
         // Creating the inotify instance fails once the user's instance limit is reached; the
         // path is still polled then.
         if let Err(error) = self.ensure_backend() {
-            fallback.budget.release_native();
+            fallback.release_native(held_for_priority);
             static LOGGED: AtomicBool = AtomicBool::new(false);
             if !LOGGED.swap(true, Ordering::Relaxed) {
                 log::warn!("native file watching is unavailable, polling instead: {error:#}");
@@ -2027,11 +2113,15 @@ impl OsWatcher {
 
         match self.watch(path.as_path()) {
             Ok(()) => NewWatch {
-                outcome: Ok(WatchOutcome::Backend),
+                outcome: Ok(if held_for_priority {
+                    WatchOutcome::PriorityBackend
+                } else {
+                    WatchOutcome::Backend
+                }),
                 hit_watch_limit: false,
             },
             Err(error) if is_max_files_watch_error(&error) => {
-                fallback.budget.release_native();
+                fallback.release_native(held_for_priority);
                 NewWatch {
                     outcome: self.watch_fallback(fallback, path),
                     hit_watch_limit: true,
@@ -2040,7 +2130,7 @@ impl OsWatcher {
             // Includes a volume without native watching, which `register_existing_path`
             // answers with the poll watcher.
             Err(error) => {
-                fallback.budget.release_native();
+                fallback.release_native(held_for_priority);
                 NewWatch {
                     outcome: Err(error),
                     hit_watch_limit: false,
@@ -2112,7 +2202,7 @@ impl OsWatcher {
             _ => {
                 self.unwatch(removed.watched_path.as_path()).log_err();
                 if let Some(fallback) = &self.fallback {
-                    fallback.budget.release_native();
+                    fallback.release_native(removed.held_for_priority);
                 }
             }
         }
@@ -2300,19 +2390,34 @@ impl OsWatcher {
         let Some(learned_limit) = fallback.budget.learned_limit() else {
             return;
         };
-        let excess =
-            native_watches_over_learned_limit(fallback.budget.native_watches(), learned_limit);
+        let excess = native_watches_over_learned_limit(
+            fallback.budget.share_native_watches(),
+            learned_limit,
+        );
         if excess > 0 {
-            self.demote_native_watches(fallback, excess);
+            self.demote_native_watches(fallback, excess, false);
         }
     }
 
-    fn demote_native_watches(&self, fallback: &NativeFallback, max_demotions: usize) -> usize {
-        let candidates = self
+    /// Priority paths are taken last, and not at all with `keep_priority_paths`; watches held
+    /// for them beyond the share are never taken, since they don't count against it.
+    fn demote_native_watches(
+        &self,
+        fallback: &NativeFallback,
+        max_demotions: usize,
+        keep_priority_paths: bool,
+    ) -> usize {
+        let priority_keys = self.priority_keys();
+        let (mut candidates, priority_candidates): (Vec<_>, Vec<_>) = self
             .state
             .lock()
             .paths
-            .transition_candidates(false, TransitionOrder::DeepestFirst);
+            .transition_candidates(false, TransitionOrder::DeepestFirst)
+            .into_iter()
+            .partition(|key| !priority_keys.contains(key));
+        if !keep_priority_paths {
+            candidates.extend(priority_candidates);
+        }
         let mut demoted = 0;
         for key in candidates {
             if demoted >= max_demotions {
@@ -2330,8 +2435,17 @@ impl OsWatcher {
 
     fn demote_native_watch(&self, fallback: &NativeFallback, key: &WatchKey) -> bool {
         let _key_guard = self.lock_key(key);
-        let Some(watched_path) = self.state.lock().paths.watched_path(key, false) else {
-            return false;
+        let (watched_path, held_for_priority) = {
+            let state = self.state.lock();
+            let Some(watched_path) = state.paths.watched_path(key, false) else {
+                return false;
+            };
+            let held_for_priority = state
+                .paths
+                .entries
+                .get(key)
+                .is_some_and(|registration| registration.held_for_priority);
+            (watched_path, held_for_priority)
         };
         // The poller takes its baseline before the native watch goes away, so that no change
         // can fall between the two.
@@ -2342,9 +2456,13 @@ impl OsWatcher {
             );
             return false;
         }
-        self.state.lock().paths.set_polled_by_fallback(key, true);
+        {
+            let mut state = self.state.lock();
+            state.paths.set_polled_by_fallback(key, true);
+            state.paths.set_held_for_priority(key, false);
+        }
         self.unwatch(watched_path.as_path()).log_err();
-        fallback.budget.release_native();
+        fallback.release_native(held_for_priority);
         true
     }
 
@@ -2366,12 +2484,12 @@ impl OsWatcher {
                 let reading = fallback.budget.measure();
                 if reading
                     .limit
-                    .is_none_or(|limit| promotion_capacity(reading.usage, limit) == 0)
+                    .is_none_or(|limit| promotion_capacity(reading.share_usage, limit) == 0)
                 {
                     break;
                 }
             }
-            match self.promote_fallback_watch(fallback, &key) {
+            match self.promote_fallback_watch(fallback, &key, PromotionReservation::WithinShare) {
                 PromotionOutcome::Promoted => promoted += 1,
                 PromotionOutcome::Skipped => {}
                 PromotionOutcome::BudgetExhausted => break,
@@ -2395,6 +2513,7 @@ impl OsWatcher {
         &self,
         fallback: &NativeFallback,
         key: &WatchKey,
+        reservation: PromotionReservation,
     ) -> PromotionOutcome {
         let _key_guard = self.lock_key(key);
         let Some(watched_path) = self.state.lock().paths.watched_path(key, true) else {
@@ -2403,12 +2522,22 @@ impl OsWatcher {
         if fallback.poller.has_vanished(watched_path.as_path()) {
             return PromotionOutcome::Skipped;
         }
-        if !fallback.budget.try_reserve_native() {
+        let held_for_priority = if fallback.budget.try_reserve_native() {
+            false
+        } else if matches!(reservation, PromotionReservation::Priority)
+            && fallback.budget.try_reserve_priority_native()
+        {
+            true
+        } else {
             return PromotionOutcome::BudgetExhausted;
-        }
+        };
         match self.watch(watched_path.as_path()) {
             Ok(()) => {
-                self.state.lock().paths.set_polled_by_fallback(key, false);
+                {
+                    let mut state = self.state.lock();
+                    state.paths.set_polled_by_fallback(key, false);
+                    state.paths.set_held_for_priority(key, held_for_priority);
+                }
                 // Changes made since the poller's last pass happened before the native watch
                 // existed; one last poll reports them.
                 fallback.poller.poll_path(watched_path.as_path());
@@ -2416,11 +2545,11 @@ impl OsWatcher {
                 PromotionOutcome::Promoted
             }
             Err(error) if is_max_files_watch_error(&error) => {
-                fallback.budget.release_native();
+                fallback.release_native(held_for_priority);
                 PromotionOutcome::WatchLimitReached(watched_path)
             }
             Err(error) => {
-                fallback.budget.release_native();
+                fallback.release_native(held_for_priority);
                 log::debug!("keeping {:?} on polling: {error:#}", watched_path.as_path());
                 self.state.lock().paths.mark_native_unavailable(key);
                 PromotionOutcome::Skipped
@@ -2451,6 +2580,7 @@ impl OsWatcher {
         if promote || fallback.budget.measurement_due(Instant::now()) {
             fallback.budget.measure();
         }
+        self.return_priority_watches_to_share(fallback);
         // Trimming to a limit learned from ENOSPC comes first, since that is what makes room
         // below the limit.
         self.demote_native_watches_over_learned_limit(fallback);
@@ -2458,6 +2588,8 @@ impl OsWatcher {
         let Some(limit) = reading.limit else {
             return;
         };
+        let promote_priority_paths =
+            promote || self.priority_changed.swap(false, Ordering::Relaxed);
         let native_watches = fallback.budget.native_watches();
         if should_yield_native_watches(reading.usage, limit) {
             if native_watches > 0 {
@@ -2467,29 +2599,233 @@ impl OsWatcher {
                         limit.saturating_sub(reading.usage)
                     );
                 }
-                self.demote_native_watches(fallback, usize::MAX);
+                // The directories the user is looking at keep theirs: they are few, and
+                // they are where a late change shows.
+                self.demote_native_watches(fallback, usize::MAX, true);
             }
+            // Other programs are about to run out, so no watch is added, not even for a
+            // priority path; those that stay polled are polled on every pass instead.
+            self.maintain_priority_paths(fallback, false);
             return;
         }
 
-        let over_share = native_watches_over_share(reading.usage, limit, native_watches);
+        let over_share = native_watches_over_share(
+            reading.share_usage,
+            limit,
+            fallback.budget.share_native_watches(),
+        );
         if over_share > 0 {
             log::info!(
                 "{} of this user's {limit} inotify watches are in use, well over Zed's share; moving {over_share} watched paths to polling",
                 reading.usage
             );
-            self.demote_native_watches(fallback, over_share);
+            self.demote_native_watches(fallback, over_share, false);
+            self.maintain_priority_paths(fallback, promote_priority_paths);
             return;
         }
 
+        self.maintain_priority_paths(fallback, promote_priority_paths);
+
         if promote && fallback_paths > 0 {
-            let capacity = promotion_capacity(reading.usage, limit);
+            let capacity = promotion_capacity(reading.share_usage, limit);
             if capacity > 0 {
                 let promoted = self.promote_fallback_watches(fallback, capacity);
                 if promoted > 0 {
                     log::info!("moved {promoted} polled paths back to inotify watches");
                     fallback.budget.end_episode();
                 }
+            }
+        }
+    }
+
+    /// Whether this watcher keeps the priority paths it is given on native watches first; only
+    /// a native watcher that can run out of watches does (ADR-F43).
+    fn uses_priority_paths(&self) -> bool {
+        self.fallback
+            .as_ref()
+            .is_some_and(|fallback| fallback.budget.is_enabled())
+    }
+
+    /// Replaces the priority paths `source` sent before (ADR-F104). Moving watches is left to
+    /// the background thread, since the caller can be a worktree's scanner.
+    pub(crate) fn set_priority_paths(
+        &self,
+        source: PrioritySourceId,
+        paths: Vec<PathBuf>,
+        case_insensitive: impl Fn(&Path) -> bool,
+    ) {
+        let uses_priority_paths = self.uses_priority_paths();
+        let keys = if uses_priority_paths {
+            paths
+                .iter()
+                .map(|path| {
+                    WatchKey::for_registration(SanitizedPath::new(path), case_insensitive(path))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        {
+            let mut priority = self.priority.lock();
+            if paths.is_empty() {
+                if priority.by_source.remove(&source).is_none() {
+                    return;
+                }
+            } else {
+                // Callers resend the set they last sent (a scanner after every scan request
+                // while an external directory is unresolved), and each change runs a whole
+                // maintenance pass over every registration.
+                let unchanged = priority
+                    .by_source
+                    .get(&source)
+                    .is_some_and(|existing| existing.keys == keys);
+                priority.by_source.insert(
+                    source,
+                    PrioritySource {
+                        #[cfg(any(test, feature = "test-support"))]
+                        paths,
+                        keys,
+                    },
+                );
+                if unchanged {
+                    return;
+                }
+            }
+            priority.keys = Arc::new(
+                priority
+                    .by_source
+                    .values()
+                    .flat_map(|source| source.keys.iter().cloned())
+                    .collect(),
+            );
+        }
+        if uses_priority_paths && let Some(fallback) = &self.fallback {
+            self.priority_changed.store(true, Ordering::Relaxed);
+            fallback.background.request_maintenance();
+        }
+    }
+
+    /// The priority paths as each source last sent them, in the order the sources were made.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn priority_paths_by_source(&self) -> Vec<(PrioritySourceId, Vec<PathBuf>)> {
+        let mut sources = self
+            .priority
+            .lock()
+            .by_source
+            .iter()
+            .map(|(source, paths)| (*source, paths.paths.clone()))
+            .collect::<Vec<_>>();
+        sources.sort_by_key(|(source, _)| *source);
+        sources
+    }
+
+    fn priority_keys(&self) -> Arc<HashSet<WatchKey>> {
+        self.priority.lock().keys.clone()
+    }
+
+    fn is_priority_key(&self, key: &WatchKey) -> bool {
+        self.priority.lock().keys.contains(key)
+    }
+
+    /// Promotes the polled priority paths, beyond the share if need be, and has the poller poll
+    /// the ones that stay polled on every pass.
+    fn maintain_priority_paths(&self, fallback: &NativeFallback, promote: bool) {
+        let priority_keys = self.priority_keys();
+        let candidates = {
+            let state = self.state.lock();
+            let mut candidates = priority_keys
+                .iter()
+                .filter_map(|key| {
+                    let registration = state.paths.entries.get(key)?;
+                    (registration.has_os_watcher && registration.polled_by_fallback).then(|| {
+                        (
+                            registration.watched_path.as_path().components().count(),
+                            registration.watched_path.clone(),
+                            registration.native_unavailable,
+                            key.clone(),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+            // Like ordinary promotion, shallow directories first, so that the order doesn't
+            // depend on the set's hashing.
+            candidates.sort_by(|left, right| {
+                left.0
+                    .cmp(&right.0)
+                    .then_with(|| left.1.as_path().cmp(right.1.as_path()))
+            });
+            candidates
+        };
+
+        let mut pinned = HashSet::new();
+        let mut promoting = promote;
+        let mut refused_path = None;
+        for (_, watched_path, native_unavailable, key) in candidates {
+            if promoting && !native_unavailable {
+                match self.promote_fallback_watch(fallback, &key, PromotionReservation::Priority) {
+                    PromotionOutcome::Promoted => continue,
+                    PromotionOutcome::Skipped => {}
+                    // Beyond the cap the remaining priority paths are ordinary ones.
+                    PromotionOutcome::BudgetExhausted if fallback.budget.priority_cap_reached() => {
+                        break;
+                    }
+                    // Too few watches are left for other programs to add one; like a path the
+                    // kernel refused, the rest stay polled on every pass.
+                    PromotionOutcome::BudgetExhausted => promoting = false,
+                    PromotionOutcome::WatchLimitReached(path) => {
+                        refused_path = Some(path);
+                        promoting = false;
+                    }
+                }
+            }
+            if pinned.len() >= MAX_PRIORITY_NATIVE_WATCHES {
+                break;
+            }
+            pinned.insert(watched_path.as_path().to_path_buf());
+        }
+        fallback.poller.set_pinned(pinned);
+
+        if let Some(refused_path) = refused_path
+            && fallback
+                .budget
+                .learn_limit_from_watch_limit_error(refused_path.as_path())
+        {
+            self.demote_native_watches_over_learned_limit(fallback);
+        }
+    }
+
+    /// Watches held beyond the share for paths that have left the priority set count against
+    /// the share again, where trimming can take them.
+    fn return_priority_watches_to_share(&self, fallback: &NativeFallback) {
+        if fallback.budget.priority_watches() == 0 {
+            return;
+        }
+        let priority_keys = self.priority_keys();
+        let leaving = self
+            .state
+            .lock()
+            .paths
+            .entries
+            .iter()
+            .filter(|(key, registration)| {
+                registration.held_for_priority && !priority_keys.contains(*key)
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for key in leaving {
+            let _key_guard = self.lock_key(&key);
+            let was_held = {
+                let mut state = self.state.lock();
+                match state.paths.get_mut(&key) {
+                    Some(registration) if registration.held_for_priority => {
+                        registration.held_for_priority = false;
+                        true
+                    }
+                    _ => false,
+                }
+            };
+            if was_held {
+                fallback.budget.move_priority_native_into_share();
             }
         }
     }
@@ -2557,6 +2893,14 @@ impl NativeFallback {
             background: Arc::new(FallbackBackground::new()),
             spawn_background_thread: options.spawn_background_thread,
             this,
+        }
+    }
+
+    fn release_native(&self, held_for_priority: bool) {
+        if held_for_priority {
+            self.budget.release_priority_native();
+        } else {
+            self.budget.release_native();
         }
     }
 }
@@ -2893,6 +3237,8 @@ mod tests {
             _dispatch_task: Task::ready(()),
             diagnostics: Default::default(),
             key_locks: std::array::from_fn(|_| Mutex::new(())),
+            priority: Default::default(),
+            priority_changed: AtomicBool::new(false),
             fallback: fallback.map(|(sink, budget)| {
                 NativeFallback::new(
                     sink,
@@ -4401,6 +4747,263 @@ mod tests {
             .expect("the first paths are watched natively");
         watcher.remove(native.id);
         assert_eq!(budget.native_watches(), 9);
+    }
+
+    fn set_priority(watcher: &OsWatcher, paths: &[PathBuf]) {
+        watcher.set_priority_paths(PrioritySourceId(0), paths.to_vec(), |_| false);
+    }
+
+    fn polled_directories(
+        watcher: &OsWatcher,
+        registrations: &[TestRegistration],
+        directories: &[PathBuf],
+    ) -> Vec<PathBuf> {
+        registrations
+            .iter()
+            .zip(directories)
+            .filter(|(registration, _)| {
+                registration_kind(watcher, registration.id) == Some(OsWatcherKind::Fallback)
+            })
+            .map(|(_, directory)| directory.clone())
+            .collect()
+    }
+
+    #[test]
+    fn polled_priority_paths_are_promoted_beyond_the_share() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = make_directories(
+            temp_dir.path(),
+            (0..20).map(|index| format!("dir-{index:02}")),
+        );
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        // A quarter of the limit of 40 is 10 watches, and trimming starts above 12.
+        let budget_source = FakeBudgetSource::new(Some(40), native_backend.clone());
+        let (watcher, _fallback_events) =
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
+        let registrations = watch_all(&watcher, &directories, |_| {});
+        let polled = polled_directories(&watcher, &registrations, &directories);
+        assert_eq!(polled.len(), 10);
+
+        set_priority(&watcher, &polled);
+        watcher.run_budget_maintenance(false);
+        let budget = &watcher.fallback_for_test().budget;
+        assert_eq!(
+            native_watched_paths(&native_backend),
+            HashSet::from_iter(directories.iter().cloned())
+        );
+        assert_eq!(budget.native_watches(), 20);
+        assert_eq!(budget.priority_watches(), 10);
+
+        // The watches held for them don't count against the share, so a measurement and the
+        // next rounds of maintenance trim nothing.
+        budget.measure();
+        for _ in 0..2 {
+            watcher.run_budget_maintenance(true);
+            assert_eq!(native_watched_paths(&native_backend).len(), 20);
+        }
+
+        // Once they leave the set they count against the share again, and trimming takes the
+        // excess back.
+        set_priority(&watcher, &[]);
+        watcher.run_budget_maintenance(false);
+        assert_eq!(budget.priority_watches(), 0);
+        assert_eq!(native_watched_paths(&native_backend).len(), 10);
+        assert_eq!(budget.native_watches(), 10);
+    }
+
+    #[test]
+    fn trimming_and_yielding_keep_the_priority_paths() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = directories_of_increasing_depth(temp_dir.path(), 10);
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let budget_source = FakeBudgetSource::new(Some(40), native_backend.clone());
+        let (watcher, _fallback_events) =
+            test_os_watcher_with_budget(native_backend.clone(), budget_source.clone());
+        watch_all(&watcher, &directories, |_| {});
+        assert_eq!(native_watched_paths(&native_backend).len(), 10);
+        // Trimming starts with the deepest paths, so these would go first.
+        let priority = directories[8..].to_vec();
+        set_priority(&watcher, &priority);
+
+        // Other programs push the user's usage to 18, above the share of 10 and the overshoot.
+        *budget_source.other_programs_usage.lock() = 8;
+        watcher.fallback_for_test().budget.measure();
+        watcher.run_budget_maintenance(false);
+        assert_eq!(
+            native_watched_paths(&native_backend),
+            HashSet::from_iter(priority.iter().cloned())
+        );
+
+        // And when other programs are about to run out, only the priority paths keep theirs.
+        *budget_source.other_programs_usage.lock() = 0;
+        watcher.fallback_for_test().budget.measure();
+        watcher.run_budget_maintenance(true);
+        assert_eq!(native_watched_paths(&native_backend).len(), 10);
+        yield_native_watches(&watcher, &budget_source);
+        assert_eq!(
+            native_watched_paths(&native_backend),
+            HashSet::from_iter(priority.iter().cloned())
+        );
+    }
+
+    #[test]
+    fn a_priority_path_the_kernel_refuses_is_polled_on_every_pass() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = make_directories(
+            temp_dir.path(),
+            (0..30).map(|index| format!("dir-{index:02}")),
+        );
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend {
+            max_watches: Some(2),
+            ..Default::default()
+        }));
+        // A share of 2 watches, which is also all the kernel gives.
+        let budget_source = FakeBudgetSource::new(Some(8), native_backend.clone());
+        let (watcher, fallback_events) =
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
+        let (fired, callback) = path_recorder();
+        let registrations = watch_all(&watcher, &directories, callback);
+        let priority = directories[29].clone();
+        let ordinary = directories[15].clone();
+        let priority_registration = &registrations[29];
+        assert_eq!(priority_registration.kind, Some(OsWatcherKind::Fallback));
+
+        set_priority(&watcher, std::slice::from_ref(&priority));
+        watcher.run_budget_maintenance(false);
+        assert_eq!(
+            registration_kind(&watcher, priority_registration.id),
+            Some(OsWatcherKind::Fallback)
+        );
+        assert!(!native_watched_paths(&native_backend).contains(&priority));
+
+        let priority_file = priority.join("created.txt");
+        write_settled_file(&priority_file);
+        write_settled_file(&ordinary.join("created.txt"));
+        // A pass whose sweep is spent before it gets anywhere near either directory.
+        watcher
+            .fallback_for_test()
+            .poller
+            .poll_pass(Some(1), &mut |_| {});
+        deliver_fallback_events(&watcher, &fallback_events);
+        assert_eq!(*fired.lock(), vec![priority_file]);
+    }
+
+    #[test]
+    fn a_priority_path_takes_no_watch_other_programs_are_about_to_need() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = make_directories(
+            temp_dir.path(),
+            (0..30).map(|index| format!("dir-{index:02}")),
+        );
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        // Other programs leave exactly an eighth of the limit free: Zed doesn't yield yet, but
+        // one more watch would make it.
+        let budget_source = FakeBudgetSource::new(Some(80), native_backend.clone());
+        *budget_source.other_programs_usage.lock() = 70;
+        let (watcher, fallback_events) =
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
+        let priority = directories[29].clone();
+        set_priority(&watcher, std::slice::from_ref(&priority));
+
+        let (fired, callback) = path_recorder();
+        let registrations = watch_all(&watcher, &directories, callback);
+        assert_eq!(registrations[29].kind, Some(OsWatcherKind::Fallback));
+
+        watcher.run_budget_maintenance(true);
+        assert!(native_watched_paths(&native_backend).is_empty());
+        assert_eq!(watcher.fallback_for_test().budget.priority_watches(), 0);
+
+        // It is polled on every pass instead.
+        let priority_file = priority.join("created.txt");
+        write_settled_file(&priority_file);
+        watcher
+            .fallback_for_test()
+            .poller
+            .poll_pass(Some(1), &mut |_| {});
+        deliver_fallback_events(&watcher, &fallback_events);
+        assert_eq!(*fired.lock(), vec![priority_file]);
+    }
+
+    #[test]
+    fn resending_the_same_priority_paths_asks_for_no_maintenance() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = make_directories(
+            temp_dir.path(),
+            (0..2).map(|index| format!("dir-{index:02}")),
+        );
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let budget_source = FakeBudgetSource::new(Some(40), native_backend.clone());
+        let (watcher, _fallback_events) =
+            test_os_watcher_with_budget(native_backend, budget_source);
+
+        set_priority(&watcher, &directories);
+        assert!(watcher.priority_changed.swap(false, Ordering::Relaxed));
+        set_priority(&watcher, &directories);
+        assert!(!watcher.priority_changed.load(Ordering::Relaxed));
+        set_priority(&watcher, &directories[..1]);
+        assert!(watcher.priority_changed.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn a_priority_path_registered_after_the_share_is_used_up_is_watched_natively() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let directories = make_directories(
+            temp_dir.path(),
+            (0..20).map(|index| format!("dir-{index:02}")),
+        );
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let budget_source = FakeBudgetSource::new(Some(40), native_backend.clone());
+        let (watcher, _fallback_events) =
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
+        set_priority(&watcher, &directories[15..16]);
+
+        let registrations = watch_all(&watcher, &directories, |_| {});
+        assert_eq!(registrations[15].kind, Some(OsWatcherKind::Native));
+        assert_eq!(registrations[16].kind, Some(OsWatcherKind::Fallback));
+        assert_eq!(native_watched_paths(&native_backend).len(), 11);
+        let budget = &watcher.fallback_for_test().budget;
+        assert_eq!(budget.priority_watches(), 1);
+
+        // Removing it gives the slot back.
+        watcher.remove(registrations[15].id);
+        assert_eq!(budget.priority_watches(), 0);
+        assert_eq!(budget.native_watches(), 10);
+    }
+
+    #[test]
+    fn priority_paths_beyond_the_cap_stay_ordinary() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let count = MAX_PRIORITY_NATIVE_WATCHES + 50;
+        let directories = make_directories(
+            temp_dir.path(),
+            (0..count).map(|index| format!("dir-{index:05}")),
+        );
+        let native_backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        // Other programs use the whole share, but leave plenty of watches free.
+        let budget_source = FakeBudgetSource::new(Some(100_000), native_backend.clone());
+        *budget_source.other_programs_usage.lock() = 25_000;
+        let (watcher, _fallback_events) =
+            test_os_watcher_with_budget(native_backend.clone(), budget_source);
+        let registrations = watch_all(&watcher, &directories, |_| {});
+        assert!(
+            registrations
+                .iter()
+                .all(|registration| registration.kind == Some(OsWatcherKind::Fallback))
+        );
+
+        set_priority(&watcher, &directories);
+        watcher.run_budget_maintenance(false);
+        watcher.run_budget_maintenance(true);
+        let budget = &watcher.fallback_for_test().budget;
+        assert_eq!(
+            native_watched_paths(&native_backend).len(),
+            MAX_PRIORITY_NATIVE_WATCHES
+        );
+        assert_eq!(budget.priority_watches(), MAX_PRIORITY_NATIVE_WATCHES);
+        assert_eq!(
+            watched_path_counts(&watcher),
+            (MAX_PRIORITY_NATIVE_WATCHES, 50)
+        );
     }
 
     #[test]

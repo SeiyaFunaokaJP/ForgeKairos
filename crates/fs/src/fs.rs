@@ -78,6 +78,12 @@ use std::ffi::OsStr;
 pub trait Watcher: Send + Sync {
     fn add(&self, path: &Path) -> Result<()>;
     fn remove(&self, path: &Path) -> Result<()>;
+
+    /// ADR-F104: the directories the user is looking at (open in the project
+    /// panel, or holding open files), replacing the previous set. Watchers
+    /// that can't watch every path natively keep these on native watches
+    /// first. Paths that aren't registered yet take effect once they are.
+    fn set_priority_paths(&self, _paths: Vec<PathBuf>) {}
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -2869,6 +2875,15 @@ impl FakeFs {
             .watch_roots
             .iter()
             .filter_map(|(path, watcher)| (watcher.strong_count() > 0).then_some(path.clone()))
+            .collect()
+    }
+
+    /// The priority paths (ADR-F104) each live watcher last sent, oldest watcher first.
+    pub fn watch_priority_paths(&self) -> Vec<Vec<PathBuf>> {
+        self.native_watcher
+            .priority_paths_by_source()
+            .into_iter()
+            .map(|(_, paths)| paths)
             .collect()
     }
 

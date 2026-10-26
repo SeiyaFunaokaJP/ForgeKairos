@@ -4,7 +4,7 @@ use notify::{
 };
 use parking_lot::Mutex;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     ffi::OsString,
     fs, io,
     ops::Bound,
@@ -41,6 +41,9 @@ struct FallbackEntries {
     next_generation: u64,
     /// Where the round-robin sweep over the paths that haven't changed lately resumes.
     sweep_cursor: Option<PathBuf>,
+    /// Paths polled on every pass like the recently changed ones: priority paths the kernel
+    /// would not give a native watch (ADR-F104). May name paths that aren't watched.
+    pinned: HashSet<PathBuf>,
 }
 
 struct FallbackEntry {
@@ -221,6 +224,11 @@ impl FallbackWatcher {
         Ok(())
     }
 
+    /// Replaces the paths polled on every pass.
+    pub(super) fn set_pinned(&self, pinned: HashSet<PathBuf>) {
+        self.entries.lock().pinned = pinned;
+    }
+
     pub(super) fn has_vanished(&self, path: &Path) -> bool {
         self.entries
             .lock()
@@ -263,7 +271,7 @@ impl FallbackWatcher {
             let mut cold = Vec::new();
             for (path, entry) in ordered {
                 let target = (path.clone(), entry.generation);
-                if is_hot(entry) {
+                if is_hot(entry) || entries.pinned.contains(path) {
                     hot.push(target);
                 } else {
                     cold.push(target);

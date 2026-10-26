@@ -7105,6 +7105,113 @@ async fn test_deferred_watch_repository_above_root(
 }
 
 #[gpui::test]
+async fn test_watch_priority_reaches_the_watcher(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.background_executor.clone());
+    fs.insert_tree(
+        path!("/root"),
+        json!({
+            "project": {
+                "deps": {},
+                "src": {
+                    "nested": {
+                        "a.rs": "",
+                    },
+                },
+            },
+            "outside": {
+                "lib": {
+                    "b.rs": "",
+                },
+            },
+        }),
+    )
+    .await;
+    fs.create_symlink(
+        path!("/root/project/deps/outside").as_ref(),
+        "../../outside".into(),
+    )
+    .await
+    .unwrap();
+
+    let tree = Worktree::local(
+        Path::new(path!("/root/project")),
+        true,
+        fs.clone(),
+        Default::default(),
+        true,
+        WorktreeId::from_proto(0),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+    cx.read(|cx| tree.read(cx).as_local().unwrap().scan_complete())
+        .await;
+    cx.run_until_parked();
+
+    let latest_priority_paths = |fs: &FakeFs| {
+        fs.watch_priority_paths()
+            .last()
+            .cloned()
+            .unwrap_or_default()
+    };
+    let priority = vec![
+        Arc::from(rel_path("src/nested")),
+        Arc::from(rel_path("deps/outside/lib")),
+    ];
+    tree.update(cx, |tree, cx| tree.set_watch_priority(priority.clone(), cx));
+    cx.run_until_parked();
+    // The external directory isn't loaded yet, so it has no watched path to name.
+    assert_eq!(
+        latest_priority_paths(&fs),
+        vec![PathBuf::from(path!("/root/project/src/nested"))]
+    );
+
+    // Loading it watches its canonical path, which is the one the watcher is given.
+    tree.read_with(cx, |tree, _| {
+        tree.as_local()
+            .unwrap()
+            .refresh_entries_for_paths(vec![rel_path("deps/outside/lib").into()])
+    })
+    .recv()
+    .await;
+    cx.run_until_parked();
+    assert_eq!(
+        latest_priority_paths(&fs),
+        vec![
+            PathBuf::from(path!("/root/project/src/nested")),
+            PathBuf::from(path!("/root/outside/lib")),
+        ]
+    );
+
+    // A restarted scanner has a new watcher, which is given the set again; the old one, dropped
+    // with its scanner, no longer contributes.
+    let sources_before_restart = fs.watch_priority_paths().len();
+    tree.update(cx, |tree, cx| {
+        tree.as_local_mut().unwrap().set_defer_watch(true, cx);
+    });
+    cx.read(|cx| tree.read(cx).as_local().unwrap().scan_complete())
+        .await;
+    cx.run_until_parked();
+    assert_eq!(fs.watch_priority_paths().len(), sources_before_restart);
+    assert!(
+        latest_priority_paths(&fs).contains(&PathBuf::from(path!("/root/project/src/nested"))),
+        "{:?}",
+        fs.watch_priority_paths()
+    );
+    tree.read_with(cx, |tree, _| {
+        assert_eq!(
+            tree.as_local().unwrap().watch_priority_paths(),
+            &priority[..]
+        );
+    });
+
+    tree.update(cx, |tree, cx| tree.set_watch_priority(Vec::new(), cx));
+    cx.run_until_parked();
+    assert_eq!(fs.watch_priority_paths(), Vec::<Vec<PathBuf>>::new());
+}
+
+#[gpui::test]
 async fn test_deferred_watch_symlinks_pointing_outside(cx: &mut TestAppContext) {
     init_test(cx);
     let fs = FakeFs::new(cx.background_executor.clone());

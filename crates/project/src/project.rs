@@ -30,6 +30,7 @@ pub mod telemetry_snapshot;
 pub mod terminals;
 pub mod toolchain_store;
 pub mod trusted_worktrees;
+pub mod watch_priority;
 pub mod worktree_code_execution;
 pub mod worktree_store;
 
@@ -284,6 +285,8 @@ pub struct Project {
     worktree_code_execution: Entity<WorktreeCodeExecution>,
     /// ADR-F68: the name-based symbol index of the project's C and C++ files.
     symbol_index_store: Entity<SymbolIndexStore>,
+    /// ADR-F104: `None` for a collaborator's project, whose host decides.
+    watch_priority: Option<Entity<watch_priority::WatchPriority>>,
 }
 
 struct DownloadingFile {
@@ -1418,6 +1421,11 @@ impl Project {
             });
 
             cx.subscribe(&lsp_store, Self::on_lsp_store_event).detach();
+            let watch_priority = Some(watch_priority::WatchPriority::new(
+                &worktree_store,
+                &buffer_store,
+                cx,
+            ));
 
             Self {
                 buffer_ordered_messages_tx: tx,
@@ -1466,6 +1474,7 @@ impl Project {
                 _remote_launch_requests: None,
                 worktree_code_execution,
                 symbol_index_store,
+                watch_priority,
             }
         })
     }
@@ -1690,6 +1699,11 @@ impl Project {
                     cx,
                 )
             });
+            let watch_priority = Some(watch_priority::WatchPriority::new(
+                &worktree_store,
+                &buffer_store,
+                cx,
+            ));
 
             let this = Self {
                 buffer_ordered_messages_tx: tx,
@@ -1754,6 +1768,7 @@ impl Project {
                 _remote_launch_requests: Some(remote_launch_requests.clone()),
                 worktree_code_execution,
                 symbol_index_store,
+                watch_priority,
             };
 
             // remote server -> local machine handlers
@@ -2070,6 +2085,7 @@ impl Project {
                 _remote_launch_requests: None,
                 worktree_code_execution,
                 symbol_index_store,
+                watch_priority: None,
             };
             project.set_role(role, cx);
             for worktree in worktrees {
@@ -3086,6 +3102,21 @@ impl Project {
             })?;
             Ok(())
         }))
+    }
+
+    /// ADR-F104: the directories of `worktree_id` that the project panel shows
+    /// expanded, replacing the previous ones. Ignored in a collaborator's project.
+    pub fn set_panel_watch_priority(
+        &mut self,
+        worktree_id: WorktreeId,
+        directories: Vec<Arc<RelPath>>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(watch_priority) = &self.watch_priority {
+            watch_priority.update(cx, |watch_priority, cx| {
+                watch_priority.set_panel_directories(worktree_id, directories, cx)
+            });
+        }
     }
 
     /// Re-reads every visible worktree from disk to pick up changes that the

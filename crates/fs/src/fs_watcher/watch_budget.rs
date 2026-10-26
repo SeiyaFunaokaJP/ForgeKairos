@@ -36,6 +36,10 @@ const LEARNED_LIMIT_LIFETIME: Duration = Duration::from_secs(30 * 60);
 const ACCURATE_REPORT_PERCENT: usize = 90;
 const INOTIFY_LINK_TARGET: &str = "anon_inode:inotify";
 const LIMIT_OVERRIDE_VARIABLE: &str = "ZED_INOTIFY_MAX_USER_WATCHES";
+/// How many native watches the process may hold beyond its share for the directories the user
+/// is looking at (ADR-F104). The set is normally a few dozen; the cap keeps a project panel with
+/// thousands of expanded directories from taking the watches other programs were left.
+pub(super) const MAX_PRIORITY_NATIVE_WATCHES: usize = 1024;
 
 pub(super) fn native_watch_allowed(estimated_usage: usize, limit: usize) -> bool {
     estimated_usage.saturating_add(1) <= limit / NATIVE_SHARE_DIVISOR
@@ -224,6 +228,9 @@ pub(super) fn parse_effective_uid(status: &str) -> Option<u32> {
 pub(super) struct BudgetReading {
     pub(super) limit: Option<usize>,
     pub(super) usage: usize,
+    /// `usage` without the watches held for priority paths beyond the share, which is what
+    /// the share is held against.
+    pub(super) share_usage: usize,
 }
 
 /// Tracks this process's native watches against the user's inotify limit.
@@ -236,7 +243,11 @@ pub(super) struct WatchBudget {
 
 #[derive(Default)]
 struct BudgetState {
+    /// Every native watch of the process, including `priority_watches`: `/proc` counts them
+    /// all, so the estimate between measurements has to as well.
     native_watches: usize,
+    /// The native watches held for priority paths although the share was used up.
+    priority_watches: usize,
     measurement: Option<Measurement>,
     initial_measurement_taken: bool,
     reported_limit: Option<usize>,
@@ -277,10 +288,15 @@ impl BudgetState {
         }
     }
 
+    fn share_usage(&self) -> usize {
+        self.estimated_usage().saturating_sub(self.priority_watches)
+    }
+
     fn reading(&self) -> BudgetReading {
         BudgetReading {
             limit: self.effective_limit(),
             usage: self.estimated_usage(),
+            share_usage: self.share_usage(),
         }
     }
 
@@ -338,6 +354,20 @@ impl WatchBudget {
         self.state.lock().native_watches
     }
 
+    /// The native watches that count against the share.
+    pub(super) fn share_native_watches(&self) -> usize {
+        let state = self.state.lock();
+        state.native_watches.saturating_sub(state.priority_watches)
+    }
+
+    pub(super) fn priority_watches(&self) -> usize {
+        self.state.lock().priority_watches
+    }
+
+    pub(super) fn priority_cap_reached(&self) -> bool {
+        self.enabled && self.state.lock().priority_watches >= MAX_PRIORITY_NATIVE_WATCHES
+    }
+
     pub(super) fn learned_limit(&self) -> Option<usize> {
         self.state.lock().learned.map(|learned| learned.limit)
     }
@@ -358,7 +388,7 @@ impl WatchBudget {
         }
         let mut state = self.state.lock();
         if let Some(limit) = state.effective_limit() {
-            let usage = state.estimated_usage();
+            let usage = state.share_usage();
             if !native_watch_allowed(usage, limit) {
                 let first_denial = !state.denial_logged;
                 state.denial_logged = true;
@@ -379,6 +409,46 @@ impl WatchBudget {
         if self.enabled {
             let mut state = self.state.lock();
             state.native_watches = state.native_watches.saturating_sub(1);
+        }
+    }
+
+    /// Counts a native watch for a priority path that the share has no room for, or returns
+    /// false once [`MAX_PRIORITY_NATIVE_WATCHES`] are held that way, or while the watch would
+    /// leave other programs so few that Zed yields its own.
+    pub(super) fn try_reserve_priority_native(&self) -> bool {
+        if !self.enabled {
+            return true;
+        }
+        let mut state = self.state.lock();
+        if state.priority_watches >= MAX_PRIORITY_NATIVE_WATCHES {
+            return false;
+        }
+        // Maintenance takes every ordinary watch back at that point; adding one here instead
+        // would take a watch other programs are about to need.
+        if let Some(limit) = state.effective_limit()
+            && should_yield_native_watches(state.estimated_usage().saturating_add(1), limit)
+        {
+            return false;
+        }
+        state.priority_watches += 1;
+        state.native_watches += 1;
+        true
+    }
+
+    pub(super) fn release_priority_native(&self) {
+        if self.enabled {
+            let mut state = self.state.lock();
+            state.priority_watches = state.priority_watches.saturating_sub(1);
+            state.native_watches = state.native_watches.saturating_sub(1);
+        }
+    }
+
+    /// A watch held for a path that is no longer a priority path counts against the share from
+    /// now on, where trimming can take it.
+    pub(super) fn move_priority_native_into_share(&self) {
+        if self.enabled {
+            let mut state = self.state.lock();
+            state.priority_watches = state.priority_watches.saturating_sub(1);
         }
     }
 
