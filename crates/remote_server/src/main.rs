@@ -88,7 +88,11 @@ fn main() -> anyhow::Result<()> {
         res
     } else {
         std::io::stderr()
-            .write_all(b"usage: remote <daemon|proxy|version|terminal-session>\n")
+            .write_all(if cfg!(unix) {
+                b"usage: remote <daemon|proxy|version|terminal-session|exec>\n"
+            } else {
+                b"usage: remote <daemon|proxy|version|terminal-session>\n"
+            })
             .ok();
         std::process::exit(1);
     }

@@ -1383,7 +1383,7 @@ fn host_project_path(project: &Project, text: &str, cx: &App) -> Result<ProjectP
             "{text} contains `..`, so it can't be used. Give the path from a root."
         )));
     }
-    if util::paths::is_absolute(&path_text, path_style) {
+    if path_style.has_root(&path) {
         return project
             .find_project_path(&path, cx)
             .ok_or_else(|| client_error(outside_message(text)));

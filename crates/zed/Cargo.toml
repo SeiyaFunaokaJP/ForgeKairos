@@ -2,7 +2,7 @@
 description = "ForgeKairos, a fork of the Zed code editor."
 edition.workspace = true
 name = "zed"
-version = "1.24.4"
+version = "1.25.3"
 publish.workspace = true
 license = "GPL-3.0-or-later"
 authors = ["Zed Team <hi@zed.dev>"]

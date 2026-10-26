@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use gpui::{App, AsyncApp, Entity, SharedString, Task};
 use ide_query::{
     AssistSource, CallCandidates, CallDirection, CallExpansion, CallHierarchy, CallHierarchyAnswer,
@@ -386,7 +386,7 @@ impl AgentTool for CallHierarchyTool {
                         call_hierarchy_locations(project, [&hierarchy.root], cx)
                     });
                     event_stream
-                        .update_fields(acp::ToolCallUpdateFields::new().locations(locations));
+                        .update_fields(|update| update.locations(locations));
                     Ok(project.read_with(cx, |project, cx| {
                         format_call_hierarchy(project, &hierarchy, cx)
                     }))
@@ -396,7 +396,7 @@ impl AgentTool for CallHierarchyTool {
                         call_hierarchy_locations(project, &candidates.candidates, cx)
                     });
                     event_stream
-                        .update_fields(acp::ToolCallUpdateFields::new().locations(locations));
+                        .update_fields(|update| update.locations(locations));
                     Ok(project.read_with(cx, |project, cx| {
                         format_call_candidates(project, &candidates, cx)
                     }))
@@ -1963,7 +1963,7 @@ mod tests {
         let title = receiver.expect_update_fields().await.title;
         assert!(
             title
-                .as_deref()
+                .value()
                 .is_some_and(|title| title.contains("(no language server)")),
             "{title:?}"
         );
@@ -2393,10 +2393,11 @@ mod tests {
             .expect_update_fields()
             .await
             .locations
+            .take()
             .expect("the card links to the results");
         let linked = locations
             .iter()
-            .map(|location| (location.path.clone(), location.line))
+            .map(|location| (location.path.0.clone(), location.line))
             .collect::<Vec<_>>();
         assert_eq!(
             linked,
@@ -2437,7 +2438,7 @@ mod tests {
         assert!(output.contains("no language server is running"), "{output}");
         let title = receiver.expect_update_fields().await.title;
         assert_eq!(
-            title.as_deref(),
+            title.value().map(String::as_str),
             Some("Callers of `run` (no language server)")
         );
 
@@ -2796,11 +2797,12 @@ mod tests {
             .expect_update_fields()
             .await
             .locations
+            .take()
             .expect("the card links to the results");
         assert_eq!(
             locations
                 .iter()
-                .map(|location| (location.path.clone(), location.line))
+                .map(|location| (location.path.0.clone(), location.line))
                 .collect::<Vec<_>>(),
             [
                 (PathBuf::from(path!("/root/src/main.c")), Some(0)),

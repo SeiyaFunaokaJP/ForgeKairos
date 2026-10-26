@@ -7,7 +7,7 @@ use acp_thread::{BackgroundShellTask, ExternalSubagentStatus, requested_model_an
 use super::*;
 
 struct SubagentRow {
-    session_id: acp_v1::SessionId,
+    session_id: acp_v2::SessionId,
     name: SharedString,
     description: Option<SharedString>,
     status: ExternalSubagentStatus,

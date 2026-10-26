@@ -1,6 +1,6 @@
 use super::deserialize_maybe_stringified;
 use crate::{AgentTool, Thread, ToolCallEventStream, ToolInput};
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use anyhow::{Context as _, Result, anyhow};
 use collections::HashMap;
 use gpui::{App, AsyncApp, Entity, SharedString, Task, WeakEntity};
@@ -577,9 +577,9 @@ mod tests {
         let authorization = receiver.expect_authorization().await;
         let title = authorization
             .tool_call
-            .fields
             .title
             .clone()
+            .take()
             .unwrap_or_default();
         assert!(title.contains("git commit -m 'Fix it'"), "{title}");
         let context = authorization

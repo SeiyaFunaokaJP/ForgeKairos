@@ -695,7 +695,7 @@ mod tests {
     fn thread(title: &str, updated_at: DateTime<Utc>) -> ThreadMetadata {
         ThreadMetadata {
             thread_id: ThreadId::new(),
-            session_id: Some(agent_client_protocol::schema::v1::SessionId::new(
+            session_id: Some(agent_client_protocol::schema::v2::SessionId::new(
                 title.to_string(),
             )),
             agent_id: AgentId("zed".into()),

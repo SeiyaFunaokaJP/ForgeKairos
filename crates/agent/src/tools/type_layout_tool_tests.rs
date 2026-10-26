@@ -128,7 +128,7 @@ async fn run(
     setup: &Setup,
     input: TypeLayoutToolInput,
     cx: &mut TestAppContext,
-) -> (Result<String, String>, Vec<acp::ToolCallUpdateFields>) {
+) -> (Result<String, String>, Vec<acp::ToolCallUpdate>) {
     let tool = Arc::new(TypeLayoutTool::new(setup.project.clone()));
     let (event_stream, mut receiver) = ToolCallEventStream::test();
     // Paths are shown with the platform's separators; the expected texts use `/`.
@@ -138,11 +138,10 @@ async fn run(
         .map(|output| output.replace('\\', "/"));
     let mut updates = Vec::new();
     while let Ok(event) = receiver.try_recv() {
-        if let Ok(crate::ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::UpdateFields(
-            update,
-        ))) = event
+        if let Ok(crate::ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::V2(update))) =
+            event
         {
-            updates.push(update.fields);
+            updates.push(update);
         }
     }
     (output, updates)
@@ -172,12 +171,12 @@ async fn test_the_output_names_the_match_the_markers_and_the_other_definitions(
     );
     let locations = updates
         .iter()
-        .find_map(|update| update.locations.clone())
+        .find_map(|update| update.locations.clone().take())
         .expect("the card lists the definitions");
     assert_eq!(
         locations
             .iter()
-            .map(|location| (location.path.clone(), location.line))
+            .map(|location| (location.path.0.clone(), location.line))
             .collect::<Vec<_>>(),
         vec![
             (Path::new(path!("/root/inc/types.h")).to_path_buf(), Some(6)),
@@ -277,7 +276,7 @@ async fn test_what_the_agent_may_not_read_is_refused_or_hidden(cx: &mut TestAppC
         let error = output.expect_err("a private file is refused");
         assert!(error.contains("`private_files`"), "{error}");
         assert!(!error.contains("password_member"), "{error}");
-        assert!(updates.iter().all(|update| update.locations.is_none()));
+        assert!(updates.iter().all(|update| update.locations.is_undefined()));
     }
 
     let (output, _) = run(&setup, by_name(""), cx).await;
@@ -297,8 +296,10 @@ async fn test_without_an_index_the_tool_says_what_to_do_instead(cx: &mut TestApp
         "{output}"
     );
     assert!(
-        updates.iter().any(|update| update.title.as_deref()
-            == Some("Type layout of `struct outer` (no name index)")),
+        updates
+            .iter()
+            .any(|update| update.title.value().map(String::as_str)
+                == Some("Type layout of `struct outer` (no name index)")),
         "{updates:?}"
     );
 

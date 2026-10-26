@@ -2,7 +2,7 @@ use std::{ops::Range, sync::Arc};
 
 use acp_thread::{AcpThread, AgentThreadEntry, AssistantMessageChunk, ToolCall};
 use agent::ThreadStore;
-use agent_client_protocol::schema::v1 as acp_v1;
+use agent_client_protocol::schema::v2 as acp_v2;
 use agent_settings::AgentSettings;
 use collections::{HashMap, HashSet};
 use editor::{
@@ -24,6 +24,10 @@ use ui::{Context, TextSize};
 use workspace::Workspace;
 
 use crate::message_editor::{MessageEditor, MessageEditorEvent, SharedSessionCapabilities};
+
+/// Top padding, in rems, inside agent terminals. The tool card adds it to the
+/// scrollable terminal's height so the number of visible rows doesn't change.
+pub(crate) const TERMINAL_CONTENT_TOP_PADDING: f32 = 0.5;
 
 /// Maps an entry index through the removal of `removed` (a contiguous range of
 /// entries), returning `None` if the index referred to a removed entry.
@@ -48,8 +52,8 @@ pub struct EntryViewState {
     auto_expanded_thinking_block: Option<(usize, usize)>,
     user_toggled_thinking_blocks: HashSet<(usize, usize)>,
     expanded_compactions: HashSet<usize>,
-    expanded_tool_calls: HashSet<acp_v1::ToolCallId>,
-    auto_expanded_terminal: Option<acp_v1::ToolCallId>,
+    expanded_tool_calls: HashSet<acp_v2::ToolCallId>,
+    auto_expanded_terminal: Option<acp_v2::ToolCallId>,
 }
 
 impl EntryViewState {
@@ -76,7 +80,7 @@ impl EntryViewState {
         }
     }
 
-    pub(crate) fn is_tool_call_expanded(&self, tool_call_id: &acp_v1::ToolCallId) -> bool {
+    pub(crate) fn is_tool_call_expanded(&self, tool_call_id: &acp_v2::ToolCallId) -> bool {
         self.expanded_tool_calls.contains(tool_call_id)
     }
 
@@ -84,17 +88,17 @@ impl EntryViewState {
         self.is_tool_call_expanded(&tool_call.id) || tool_call.authorization_id().is_some()
     }
 
-    pub(crate) fn expand_tool_call(&mut self, tool_call_id: acp_v1::ToolCallId) {
+    pub(crate) fn expand_tool_call(&mut self, tool_call_id: acp_v2::ToolCallId) {
         self.expanded_tool_calls.insert(tool_call_id);
     }
 
-    pub(crate) fn collapse_tool_call(&mut self, tool_call_id: &acp_v1::ToolCallId) {
+    pub(crate) fn collapse_tool_call(&mut self, tool_call_id: &acp_v2::ToolCallId) {
         self.expanded_tool_calls.remove(tool_call_id);
     }
 
     /// Expands a new terminal card and collapses the one expanded this way
     /// before it, so a long run of commands doesn't leave every output open.
-    pub(crate) fn auto_expand_terminal(&mut self, tool_call_id: acp_v1::ToolCallId) {
+    pub(crate) fn auto_expand_terminal(&mut self, tool_call_id: acp_v2::ToolCallId) {
         if let Some(previous) = self.auto_expanded_terminal.take()
             && previous != tool_call_id
         {
@@ -104,7 +108,7 @@ impl EntryViewState {
         self.auto_expanded_terminal = Some(tool_call_id);
     }
 
-    pub(crate) fn toggle_tool_call_expansion(&mut self, tool_call_id: &acp_v1::ToolCallId) {
+    pub(crate) fn toggle_tool_call_expansion(&mut self, tool_call_id: &acp_v2::ToolCallId) {
         // Once the user has toggled the card, leave it as they set it.
         if self.auto_expanded_terminal.as_ref() == Some(tool_call_id) {
             self.auto_expanded_terminal = None;
@@ -260,16 +264,15 @@ impl EntryViewState {
 
         match thread_entry {
             AgentThreadEntry::UserMessage(message) => {
-                let can_rewind = thread.read(cx).supports_truncate(cx);
-                let has_client_id = message.client_id.is_some();
-                let is_subagent = thread.read(cx).parent_session_id().is_some();
+                let can_rewind = thread
+                    .read(cx)
+                    .can_rewind_to(message.client_id.as_ref(), cx);
                 let source_blocks = message.content.source_blocks();
                 let source_version = message.content.source_version();
                 let source_is_representable = source_blocks
                     .iter()
                     .all(acp_thread::content::can_convert_to_v1);
-                let is_editable =
-                    can_rewind && has_client_id && !is_subagent && source_is_representable;
+                let is_editable = can_rewind && source_is_representable;
                 if let Some(Entry::UserMessage {
                     editor,
                     synced_source_version,
@@ -573,9 +576,9 @@ pub struct EntryViewEvent {
 }
 
 pub enum ViewEvent {
-    NewDiff(acp_v1::ToolCallId),
-    NewTerminal(acp_v1::ToolCallId),
-    TerminalMovedToBackground(acp_v1::ToolCallId),
+    NewDiff(acp_v2::ToolCallId),
+    NewTerminal(acp_v2::ToolCallId),
+    TerminalMovedToBackground(acp_v2::ToolCallId),
     MessageEditorEvent(Entity<MessageEditor>, MessageEditorEvent),
     OpenDiffLocation {
         path: String,
@@ -759,6 +762,7 @@ fn create_terminal(
             cx,
         );
 
+        view.set_content_top_padding(gpui::rems(TERMINAL_CONTENT_TOP_PADDING), cx);
         view.set_embedded_mode(Some(1000), cx);
         view
     })
@@ -999,9 +1003,7 @@ mod tests {
                 .request_elicitation(
                     acp_v2::CreateElicitationRequest::new(
                         acp_v2::ElicitationFormMode::new(
-                            acp_v2::ElicitationSessionScope::new(acp_v2::SessionId::new(
-                                session_id.0.clone(),
-                            )),
+                            acp_v2::ElicitationSessionScope::new(session_id.clone()),
                             acp_v2::ElicitationSchema::new().string("name", true),
                         ),
                         "Provide a name",
@@ -1069,9 +1071,9 @@ mod tests {
             )
         });
 
-        let first = acp_v1::ToolCallId::new("first");
-        let second = acp_v1::ToolCallId::new("second");
-        let third = acp_v1::ToolCallId::new("third");
+        let first = acp_v2::ToolCallId::new("first");
+        let second = acp_v2::ToolCallId::new("second");
+        let third = acp_v2::ToolCallId::new("third");
 
         view_state.update(cx, |state, _cx| {
             state.auto_expand_terminal(first.clone());

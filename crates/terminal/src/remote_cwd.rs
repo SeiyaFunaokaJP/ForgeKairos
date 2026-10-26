@@ -189,7 +189,8 @@ fn parse_file_url(payload: &[u8], path_style: PathStyle) -> Option<(String, Path
         PathStyle::Windows => decoded.strip_prefix('/').unwrap_or(&decoded),
         PathStyle::Unix => &decoded,
     };
-    if !path_style.is_absolute(path) || path.chars().any(|character| character.is_control()) {
+    if !path_style.has_root(Path::new(path)) || path.chars().any(|character| character.is_control())
+    {
         return None;
     }
     Some((host.to_string(), PathBuf::from(path)))

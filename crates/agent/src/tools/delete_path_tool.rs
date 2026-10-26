@@ -7,7 +7,7 @@ use crate::{
     authorize_with_sensitive_settings, decide_permission_for_path,
 };
 use action_log::ActionLog;
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use agent_settings::AgentSettings;
 use futures::{FutureExt as _, SinkExt, StreamExt, channel::mpsc};
 use gpui::{App, AppContext, Entity, SharedString, Task};
@@ -346,7 +346,11 @@ mod tests {
         });
 
         let auth = event_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
@@ -503,7 +507,11 @@ mod tests {
         });
 
         let auth = event_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("points outside the project") || title.contains("symlink"),
             "Authorization title should mention symlink escape, got: {title}",
@@ -633,7 +641,11 @@ mod tests {
         });
 
         let auth = event_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("points outside the project") || title.contains("symlink"),
             "Authorization title should mention symlink escape, got: {title}",

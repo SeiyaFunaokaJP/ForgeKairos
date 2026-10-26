@@ -1,5 +1,5 @@
 use action_log::ActionLog;
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use anyhow::{Context as _, Result, anyhow};
 use futures::FutureExt as _;
 use gpui::{App, Entity, SharedString, Task};
@@ -109,10 +109,12 @@ async fn read_global_skill_file(
 ) -> Result<LanguageModelToolResultContent, LanguageModelToolResultContent> {
     let content = fs.load(canonical_path).await.map_err(tool_content_err)?;
 
-    event_stream.update_fields(acp::ToolCallUpdateFields::new().locations(vec![
-        acp::ToolCallLocation::new(canonical_path)
-            .line(start_line.map(|line| line.saturating_sub(1))),
-    ]));
+    event_stream.update_fields(|update| {
+        update.locations(vec![
+            acp::ToolCallLocation::new(canonical_path.to_path_buf())
+                .line(start_line.map(|line| line.saturating_sub(1))),
+        ])
+    });
 
     let (raw_text, first_line_number) = if start_line.is_some() || end_line.is_some() {
         // `split_inclusive` keeps each line's terminator attached, so CRLF stays
@@ -134,9 +136,7 @@ async fn read_global_skill_file(
         text: &result_text,
     }
     .to_string();
-    event_stream.update_fields(acp::ToolCallUpdateFields::new().content(vec![
-        acp::ToolCallContent::Content(acp::Content::new(markdown)),
-    ]));
+    event_stream.update_fields(|update| update.content(vec![markdown.into()]));
 
     Ok(result_text.into())
 }
@@ -364,8 +364,8 @@ impl AgentTool for ReadFileTool {
             let file_path = input.path.clone();
 
             cx.update(|_cx| {
-                event_stream.update_fields(acp::ToolCallUpdateFields::new().locations(vec![
-                    acp::ToolCallLocation::new(&abs_path)
+                event_stream.update_fields(|update| update.locations(vec![
+                    acp::ToolCallLocation::new(abs_path.clone())
                         .line(input.start_line.map(|line| line.saturating_sub(1))),
                 ]));
             });
@@ -392,10 +392,12 @@ impl AgentTool for ReadFileTool {
                     .context("processing image")
                     .map_err(tool_content_err)?;
 
-                event_stream.update_fields(acp::ToolCallUpdateFields::new().content(vec![
-                    acp::ToolCallContent::Content(acp::Content::new(acp::ContentBlock::Image(
-                        acp::ImageContent::new(language_model_image.source.clone(), "image/png"),
-                    ))),
+                event_stream.update_fields(|update| update.content(vec![
+                    acp::ContentBlock::Image(acp::ImageContent::new(
+                        language_model_image.source.clone(),
+                        "image/png",
+                    ))
+                    .into(),
                 ]));
 
                 return Ok(language_model_image.into());
@@ -511,9 +513,9 @@ impl AgentTool for ReadFileTool {
                     // so highlighting would be both expensive and incorrect.
                     let tag: &str = if is_outline_response { "" } else { &input.path };
                     let markdown = MarkdownCodeBlock { tag, text }.to_string();
-                    event_stream.update_fields(acp::ToolCallUpdateFields::new().content(vec![
-                        acp::ToolCallContent::Content(acp::Content::new(markdown)),
-                    ]));
+                    event_stream.update_fields(
+                        |update| update.content(vec![markdown.into()]),
+                    );
                 }
             });
 
@@ -534,9 +536,7 @@ impl AgentTool for ReadFileTool {
                 text: &text,
             }
             .to_string();
-            event_stream.update_fields(acp::ToolCallUpdateFields::new().content(vec![
-                acp::ToolCallContent::Content(acp::Content::new(markdown)),
-            ]));
+            event_stream.update_fields(|update| update.content(vec![markdown.into()]));
         }
 
         Ok(())
@@ -782,7 +782,10 @@ mod test {
         // markdown content destined for the tool-call UI.
         let _location_update = rx.expect_update_fields().await;
         let content_update = rx.expect_update_fields().await;
-        let content_blocks = content_update.content.expect("expected content update");
+        let content_blocks = content_update
+            .content
+            .take()
+            .expect("expected content update");
         let acp::ToolCallContent::Content(content) = content_blocks
             .first()
             .expect("expected at least one content block")
@@ -838,7 +841,10 @@ mod test {
 
         let _location_update = rx.expect_update_fields().await;
         let content_update = rx.expect_update_fields().await;
-        let content_blocks = content_update.content.expect("expected content update");
+        let content_blocks = content_update
+            .content
+            .take()
+            .expect("expected content update");
         let acp::ToolCallContent::Content(content) = content_blocks
             .first()
             .expect("expected at least one content block")
@@ -1291,9 +1297,8 @@ mod test {
         assert!(
             authorization
                 .tool_call
-                .fields
                 .title
-                .as_deref()
+                .value()
                 .is_some_and(|title| title.contains("points outside the project")),
             "Expected symlink escape authorization before reading the image"
         );
@@ -1586,7 +1591,11 @@ mod test {
         });
 
         let auth = event_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("points outside the project"),
             "title: {title}"
@@ -2163,7 +2172,7 @@ mod test {
     // directory. The model may name a file as a bare worktree-relative path,
     // as `<root name>/<file>`, or as a POSIX absolute path; all three have to
     // resolve. `Path::is_absolute` is false for `/home/...` on Windows, so
-    // this can only work through `util::paths::is_absolute` + the project's
+    // this can only work through `PathStyle::has_root` + the project's
     // `PathStyle`.
     #[gpui::test]
     async fn test_read_file_posix_worktree_path_forms(cx: &mut TestAppContext) {

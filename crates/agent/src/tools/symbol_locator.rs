@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use agent_client_protocol::schema::v1 as acp;
 use gpui::{App, AsyncApp, Entity};
 use language::{Buffer, Location};
 use project::{CodeAction, Project};
@@ -62,9 +61,7 @@ pub fn no_language_server_message(action: &str, file_path: &str) -> String {
 /// found nothing — and this is a state only the user can fix (install the
 /// language server, or allow its download).
 pub fn mark_card_missing_language_server(event_stream: &ToolCallEventStream, title: &str) {
-    event_stream.update_fields(
-        acp::ToolCallUpdateFields::new().title(i18n::t!("{title} (no language server)")),
-    );
+    event_stream.update_fields(|update| update.title(i18n::t!("{title} (no language server)")));
 }
 
 /// Whether any language server that could answer a request for `buffer` is

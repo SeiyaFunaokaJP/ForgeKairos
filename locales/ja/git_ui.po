@@ -840,6 +840,9 @@ msgstr "削除"
 msgid "Delete Branch"
 msgstr "ブランチを削除"
 
+msgid "Delete Local Tracking Branch"
+msgstr "手元の追跡ブランチを削除"
+
 msgid "Deleted on both the development branch and the MR branch."
 msgstr "開発ブランチでも MR ブランチでも削除されています。"
 
@@ -894,6 +897,9 @@ msgstr "{tracked_count} 件のファイルの変更を破棄しますか?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "このファイルの変更を破棄し、最後のコミットの内容に戻します"
+
+msgid "Does not delete the branch on the remote"
+msgstr "リモートのブランチは削除しません"
 
 msgid "Don't Show Again"
 msgstr "今後表示しない"

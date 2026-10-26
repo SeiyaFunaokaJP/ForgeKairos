@@ -1580,14 +1580,15 @@ async fn japanese_search_finds_words_in_the_middle_of_titles_and_descriptions(
             // "保存時に末尾へ改行を確保"
             "改行",
             &["Editor/languages.$(language).ensure_final_newline_on_save"][..],
-            // No section header says it, so the first page that has a match.
-            "Editor",
+            // No section header says it; the sidebar follows the first match
+            // to the section it is in.
+            "Formatting",
         ),
         (
             // "...のシェルをリモートの Zed サーバーに預けます。" in a description.
             "預け",
             &["Terminal/terminal.remote_persistence.enabled"][..],
-            "Terminal",
+            "Remote Terminal Persistence",
         ),
     ] {
         let (rows, best_match) = search_results(settings_window, query, cx);
@@ -1612,15 +1613,15 @@ async fn english_search_still_matches_the_start_of_words(cx: &mut TestAppContext
     // with the table, but "ine" and "mat" would find more if ASCII matched
     // inside words ("line", "format").
     for (query, expected_count, expected_best_match) in [
-        ("line", 58, "Appearance"),
+        ("line", 58, "Buffer Font"),
         ("font size", 15, "Font"),
-        ("tab", 44, "Preview Tabs"),
+        ("tab", 44, "Tab Bar"),
         ("index", 12, "Symbol Index"),
         ("save", 18, "Auto Save"),
         ("vim", 20, "Vim"),
-        ("mat", 21, "General"),
+        ("mat", 21, "General Settings"),
         ("ine", 0, "General"),
-        ("new", 27, "General"),
+        ("new", 27, "General Settings"),
     ] {
         let (rows, best_match) = search_results(settings_window, query, cx);
         assert_eq!(

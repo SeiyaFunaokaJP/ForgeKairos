@@ -176,6 +176,9 @@ msgstr "エージェントがこのリクエストへの応答を拒否しまし
 msgid "Agent stopped at the output token limit"
 msgstr "エージェントは出力トークンの上限で停止しました"
 
+msgid "Agent stopped because of an error"
+msgstr "エラーによりエージェントが停止しました"
+
 msgid "Agent stopped due to an error"
 msgstr "エラーによりエージェントが停止しました"
 

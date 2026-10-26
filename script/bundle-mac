@@ -94,7 +94,12 @@ script/generate-licenses
 rustup target add $target_triple
 
 echo "Compiling zed binaries"
-cargo --config .cargo/bundle-config.toml build ${build_flag} ${zed_features} --package zed --package cli --target $target_triple
+if [[ "$target_dir" = "release" ]]; then
+    cargo --config .cargo/bundle-config.toml rustc ${build_flag} ${zed_features} --package zed --bin ForgeKairos --target $target_triple -- -C 'link-arg=-Wl,-unexported_symbol,__R*'
+    cargo --config .cargo/bundle-config.toml build ${build_flag} --package cli --target $target_triple
+else
+    cargo --config .cargo/bundle-config.toml build ${build_flag} ${zed_features} --package zed --package cli --target $target_triple
+fi
 # cargo names these binaries after crates/branding (EDITOR_CARGO_BIN_NAME and
 # CLI_CARGO_BIN_NAME). The app bundle keeps upstream's names inside it, which
 # cargo-bundle and the CLI's bundle lookup expect.

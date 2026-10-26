@@ -3,7 +3,7 @@ use super::tool_permissions::{
     resolve_creatable_global_skill_path, resolve_one_new_path_in_the_project,
     sensitive_settings_kind,
 };
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::schema::v2 as acp;
 use agent_settings::AgentSettings;
 use futures::FutureExt as _;
 use gpui::{App, AppContext as _, AsyncApp, Entity, SharedString, Task};
@@ -580,7 +580,11 @@ mod tests {
         });
 
         let auth = event_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
@@ -693,7 +697,11 @@ mod tests {
         });
 
         let auth = event_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("points outside the project") || title.contains("symlink"),
             "Authorization title should mention symlink escape, got: {title}",
@@ -816,7 +824,11 @@ mod tests {
         });
 
         let auth = event_rx.expect_authorization().await;
-        let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
+        let title = auth
+            .tool_call
+            .title
+            .value()
+            .expect("expected authorization title");
         assert!(
             title.contains("points outside the project") || title.contains("symlink"),
             "Authorization title should mention symlink escape, got: {title}",
@@ -943,8 +955,10 @@ mod tests {
         });
 
         let auth = event_rx.expect_authorization().await;
-        let details = acp_thread::sandbox_authorization_details_from_meta(&auth.tool_call.meta)
-            .expect("out-of-project create should request a sandbox write grant");
+        let details = acp_thread::sandbox_authorization_details_from_meta(
+            &auth.tool_call.meta.clone().take(),
+        )
+        .expect("out-of-project create should request a sandbox write grant");
         // The grant is for exactly the new directory, not its parent, and
         // carries the resolved canonical established when it was created.
         let expected_canonical = scratch.path().canonicalize().unwrap().join("new_grant_dir");

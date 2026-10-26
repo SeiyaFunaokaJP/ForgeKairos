@@ -14,7 +14,7 @@ use crate::{
 };
 use acp_thread::{AcpThread, AgentThreadEntry, MentionUri};
 use agent::ThreadStore;
-use agent_client_protocol::schema::{v1 as acp_v1, v2 as acp_v2};
+use agent_client_protocol::schema::v2 as acp_v2;
 use agent_settings::AgentSettings;
 use anyhow::{Result, anyhow};
 use base64::Engine as _;
@@ -757,6 +757,7 @@ impl MessageEditor {
                 padding_left: false,
                 padding_right: false,
                 tooltip: None,
+                text_edits: None,
                 resolve_state: project::ResolveState::Resolved,
             },
         ))
@@ -764,7 +765,7 @@ impl MessageEditor {
 
     pub fn insert_thread_summary(
         &mut self,
-        session_id: acp_v1::SessionId,
+        session_id: acp_v2::SessionId,
         title: Option<SharedString>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -2838,7 +2839,7 @@ mod tests {
     use super::PromptLocalCommand;
     use acp_thread::{AgentConnection as _, MentionUri};
     use agent::{ThreadStore, outline};
-    use agent_client_protocol::schema::{v1 as acp_v1, v2 as acp_v2};
+    use agent_client_protocol::schema::v2 as acp_v2;
     use base64::Engine as _;
     use editor::{
         AnchorRangeExt as _, Editor, EditorMode, MultiBufferOffset, SelectionEffects,
@@ -4419,7 +4420,7 @@ mod tests {
 
         let thread_store = Some(cx.new(|cx| ThreadStore::new(cx)));
 
-        let session_id = acp_v1::SessionId::new("thread-123");
+        let session_id = acp_v2::SessionId::new("thread-123");
         let title = Some("Previous Conversation".into());
 
         let message_editor = cx.update(|window, cx| {
@@ -4507,7 +4508,7 @@ mod tests {
                     cx,
                 );
                 editor.insert_thread_summary(
-                    acp_v1::SessionId::new("thread-123"),
+                    acp_v2::SessionId::new("thread-123"),
                     Some("Previous Conversation".into()),
                     window,
                     cx,
@@ -5122,7 +5123,8 @@ mod tests {
                     id: acp_thread::ContextCompactionId("compaction".into()),
                     status: acp_thread::ContextCompactionStatus::Completed,
                     error: None,
-                    summary: Vec::new(),
+                    summary: acp_thread::MessageContent::default(),
+                    meta: None,
                 },
                 cx,
             );

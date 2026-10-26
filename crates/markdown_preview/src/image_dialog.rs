@@ -1420,7 +1420,7 @@ pub(crate) fn resolve_source(input: &str, location: &DocumentLocation) -> Resolv
 
     let style = location.path_style;
     let directory = location.directory.as_deref();
-    let (absolute, relative) = if style.is_absolute(input) {
+    let (absolute, relative) = if style.has_root(Path::new(input)) {
         if split_absolute(input, style).is_none() {
             // `/images/a.png` on Windows names no drive, so it cannot be looked
             // up; it is written as it is, which the preview and GitHub both
@@ -2865,7 +2865,7 @@ impl ImageDialog {
         let path = self.path_text(cx);
         let path = path.trim();
         is_url(path)
-            || self.location.path_style.is_absolute(path)
+            || self.location.path_style.has_root(Path::new(path))
             || self.picked_local(cx).is_some()
     }
 

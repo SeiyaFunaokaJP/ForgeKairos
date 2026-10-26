@@ -501,6 +501,12 @@ impl Render for EditPredictionButton {
 
                 let show_editor_predictions = self.editor_show_predictions;
                 let user = self.user_store.read(cx).current_user();
+                let zed_cloud_has_no_active_subscription =
+                    matches!(provider, EditPredictionProvider::Zed)
+                        && self
+                            .user_store
+                            .read(cx)
+                            .current_organization_has_no_active_subscription();
                 let excluded_from_plan = edit_prediction::zed_edit_predictions_excluded_from_plan(
                     self.user_store.read(cx),
                     cx,
@@ -511,7 +517,11 @@ impl Render for EditPredictionButton {
                         |ep_store| ep_store.read(cx).mercury_has_payment_required_error(),
                     );
 
-                let indicator_color = if missing_token || mercury_has_error || awaits_consent {
+                let indicator_color = if missing_token
+                    || mercury_has_error
+                    || zed_cloud_has_no_active_subscription
+                    || awaits_consent
+                {
                     Some(Color::Error)
                 } else if excluded_from_plan {
                     Some(Color::Muted)
@@ -527,8 +537,11 @@ impl Render for EditPredictionButton {
 
                 let zed_cloud_needs_sign_in =
                     matches!(provider, EditPredictionProvider::Zed) && user.is_none();
-                let provider_unavailable =
-                    missing_token || mercury_has_error || zed_cloud_needs_sign_in || awaits_consent;
+                let provider_unavailable = missing_token
+                    || mercury_has_error
+                    || zed_cloud_needs_sign_in
+                    || zed_cloud_has_no_active_subscription
+                    || awaits_consent;
 
                 let icon_button = IconButton::new("zed-predict-pending-button", ep_icon)
                     .shape(IconButtonShape::Square)
@@ -544,6 +557,8 @@ impl Render for EditPredictionButton {
                                 i18n::t!("Disabled For This File")
                             } else if zed_cloud_needs_sign_in {
                                 i18n::t!("Sign In Or Configure a Provider")
+                            } else if zed_cloud_has_no_active_subscription {
+                                i18n::t!("This organization has no active subscription")
                             } else if excluded_from_plan {
                                 i18n::t!("Configure a Provider")
                             } else if provider_unavailable || show_editor_predictions {
@@ -637,6 +652,8 @@ impl EditPredictionButton {
 
         cx.observe_global::<EditPredictionStore>(move |_, cx| cx.notify())
             .detach();
+
+        cx.observe(&user_store, |_, _, cx| cx.notify()).detach();
 
         let mercury_api_token_task = edit_prediction::mercury::load_mercury_api_token(cx);
         let open_ai_compatible_api_token_task =
@@ -1109,22 +1126,34 @@ impl EditPredictionButton {
         }
 
         if let Some(editor_focus_handle) = self.editor_focus_handle.clone() {
+            let zed_cloud_has_no_active_subscription =
+                all_language_settings(None, cx).edit_predictions.provider
+                    == EditPredictionProvider::Zed
+                    && self
+                        .user_store
+                        .read(cx)
+                        .current_organization_has_no_active_subscription();
             menu = menu
                 .separator()
                 .header(i18n::t!("Actions"))
-                .entry(
-                    i18n::t!("Predict Edit at Cursor"),
-                    Some(Box::new(ShowEditPrediction)),
-                    {
-                        let editor_focus_handle = editor_focus_handle.clone();
-                        move |window, cx| {
-                            telemetry::event!(
-                                "Edit Prediction Menu Action",
-                                action = "predict_at_cursor",
-                            );
-                            editor_focus_handle.dispatch_action(&ShowEditPrediction, window, cx);
-                        }
-                    },
+                .item(
+                    ContextMenuEntry::new(i18n::t!("Predict Edit at Cursor"))
+                        .action(Box::new(ShowEditPrediction))
+                        .disabled(zed_cloud_has_no_active_subscription)
+                        .handler({
+                            let editor_focus_handle = editor_focus_handle.clone();
+                            move |window, cx| {
+                                telemetry::event!(
+                                    "Edit Prediction Menu Action",
+                                    action = "predict_at_cursor",
+                                );
+                                editor_focus_handle.dispatch_action(
+                                    &ShowEditPrediction,
+                                    window,
+                                    cx,
+                                );
+                            }
+                        }),
                 )
                 .context(editor_focus_handle)
                 .when(
@@ -1322,7 +1351,30 @@ impl EditPredictionButton {
                         .separator();
                 }
 
-                if edit_prediction::zed_edit_predictions_excluded_from_plan(
+                let zed_cloud_has_no_active_subscription =
+                    matches!(provider, EditPredictionProvider::Zed)
+                        && self
+                            .user_store
+                            .read(cx)
+                            .current_organization_has_no_active_subscription();
+
+                if zed_cloud_has_no_active_subscription {
+                    menu = menu
+                        .header(i18n::t!("Zed AI"))
+                        .item(
+                            ContextMenuEntry::new(i18n::t!(
+                                "This organization has no active subscription"
+                            ))
+                            .disabled(true),
+                        )
+                        .item(
+                            ContextMenuEntry::new(i18n::t!(
+                                "Switch organizations or configure another provider to use edit predictions"
+                            ))
+                            .disabled(true),
+                        )
+                        .separator();
+                } else if edit_prediction::zed_edit_predictions_excluded_from_plan(
                     self.user_store.read(cx),
                     cx,
                 ) {
