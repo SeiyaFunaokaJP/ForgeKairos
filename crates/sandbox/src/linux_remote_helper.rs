@@ -1436,12 +1436,37 @@ const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/s
 /// terminal. A fixed list rather than the login shell's `PATH`: running the
 /// shell would bring back everything else C-1 keeps out.
 ///
-/// Only directories in [`UNIX_PROTECTED_HOME_RELATIVE`] belong here. The
-/// helper looks the command's program up on this `PATH`, so a directory a
-/// sandboxed command can write — any of them, when the worktree is the home —
-/// would let one run leave a program there that a later run, perhaps with the
-/// network open, starts by name.
-const HOME_TOOL_DIRECTORIES: &[&str] = &[".local/bin", ".cargo/bin"];
+/// Only directories at or below an entry of [`UNIX_PROTECTED_HOME_RELATIVE`]
+/// belong here. The helper looks the command's program up on this `PATH`, so a
+/// directory a sandboxed command can write — any of them, when the worktree is
+/// the home — would let one run leave a program there that a later run,
+/// perhaps with the network open, starts by name. Some programs here run code
+/// kept elsewhere that is not protected — rustup's proxies in `.cargo/bin` run
+/// `~/.rustup/toolchains`, pipx's links in `.local/bin` lead into its venvs,
+/// `go/bin/go1.x` runs `~/sdk`, a `deno install` wrapper the module cache,
+/// corepack's shims its own cache — which is the same as in the user's own
+/// terminal, where those are on `PATH` as well.
+const HOME_TOOL_DIRECTORIES: &[&str] = &[
+    ".local/bin",
+    ".cargo/bin",
+    "go/bin",
+    ".bun/bin",
+    ".deno/bin",
+    ".volta/bin",
+];
+
+/// nvm's directory, whose default version's `bin` goes on the `PATH` after
+/// [`HOME_TOOL_DIRECTORIES`] ([`nvm_default_bin`]). Protected whole, like
+/// them: the alias files pick which directory that is.
+const NVM_DIRECTORY: &str = ".nvm";
+
+/// How long an nvm alias file may be. One holds a version or another alias's
+/// name; anything longer is not one.
+const NVM_ALIAS_MAX_BYTES: usize = 256;
+
+/// How many aliases [`nvm_default_bin`] follows (`default` → `lts/*` →
+/// `lts/jod` → a version is three), so that a loop of them ends.
+const NVM_ALIAS_MAX_HOPS: usize = 8;
 
 /// The system-wide counterparts of [`HOME_TOOL_DIRECTORIES`]: added to a
 /// login's `PATH` by `/etc/profile.d` or the installer's instructions, not by
@@ -1451,6 +1476,144 @@ const SYSTEM_TOOL_DIRECTORIES: &[&str] = &[
     "/snap/bin",
     "/home/linuxbrew/.linuxbrew/bin",
 ];
+
+/// The `bin` of the Node version nvm's `default` alias names, which is what
+/// `nvm.sh` puts on a login's `PATH`: an alias may name another alias
+/// (`lts/*` → `lts/jod`), a version (`v22.3.0`) or a prefix of one (`22`, the
+/// newest `v22.x.y`), and `node` / `stable` the newest installed. `system`
+/// means no nvm version at all. Where nvm would put none on `PATH` either —
+/// no `default`, one that names nothing installed, a loop of aliases — this
+/// takes the newest installed instead: a command that finds some `node` is of
+/// more use to an agent than one that finds none.
+fn nvm_default_bin(home: &Path) -> Option<PathBuf> {
+    let nvm = home.join(NVM_DIRECTORY);
+    let versions_directory = nvm.join("versions/node");
+    // Real directories only, from `.nvm` down to the `bin`: a symbolic link
+    // anywhere below it could lead the `PATH` out of the protected `.nvm`.
+    let is_real_directory =
+        |path: &Path| std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
+    if !is_real_directory(&nvm.join("versions")) || !is_real_directory(&versions_directory) {
+        return None;
+    }
+    let mut installed: Vec<([u64; 3], String)> = std::fs::read_dir(&versions_directory)
+        .ok()?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name().into_string().ok()?;
+            let version = parse_node_version(&name)?;
+            (is_real_directory(&entry.path()) && is_real_directory(&entry.path().join("bin")))
+                .then_some((version, name))
+        })
+        .collect();
+    installed.sort_unstable();
+    let newest = |prefix: Option<&str>| {
+        installed
+            .iter()
+            .rev()
+            .find(|(_, name)| prefix.is_none_or(|prefix| node_version_has_prefix(name, prefix)))
+            .map(|(_, name)| versions_directory.join(name).join("bin"))
+    };
+
+    let mut target = read_nvm_alias(&nvm, "default");
+    let mut hops = 0;
+    while let Some(name) = target {
+        match name.as_str() {
+            "system" => return None,
+            "node" | "stable" => break,
+            _ => {}
+        }
+        if hops < NVM_ALIAS_MAX_HOPS
+            && let Some(next) = read_nvm_alias(&nvm, &name)
+        {
+            target = Some(next);
+            hops += 1;
+            continue;
+        }
+        if let Some(bin) = newest(Some(&name)) {
+            return Some(bin);
+        }
+        break;
+    }
+    newest(None)
+}
+
+/// The first line of the alias file `name` under nvm's `alias` directory, as
+/// nvm reads it. The helper reads it before the command starts, so a name that
+/// leaves that directory, a path through a symbolic link, or a file that is not
+/// a short regular one — a FIFO that would block the open, `/dev/zero` that
+/// never ends — is no alias.
+fn read_nvm_alias(nvm: &Path, name: &str) -> Option<String> {
+    use std::io::Read as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    let relative = Path::new(name);
+    if name.is_empty()
+        || !relative
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_)))
+    {
+        return None;
+    }
+    // A link before the last component would let the open reach a device,
+    // which opening alone can act on (a terminal, a tape drive).
+    let mut path = nvm.join("alias");
+    for component in std::iter::once(None).chain(relative.components().map(Some)) {
+        if let Some(component) = component {
+            path.push(component);
+        }
+        if std::fs::symlink_metadata(&path)
+            .ok()?
+            .file_type()
+            .is_symlink()
+        {
+            return None;
+        }
+    }
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(&path)
+        .ok()?;
+    if !file.metadata().ok()?.is_file() {
+        return None;
+    }
+    let mut contents = Vec::new();
+    file.take(NVM_ALIAS_MAX_BYTES as u64 + 1)
+        .read_to_end(&mut contents)
+        .ok()?;
+    if contents.len() > NVM_ALIAS_MAX_BYTES {
+        return None;
+    }
+    String::from_utf8(contents)
+        .ok()?
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_string)
+}
+
+/// `v22.3.0` as `[22, 3, 0]`, for the directories nvm installs versions in.
+fn parse_node_version(name: &str) -> Option<[u64; 3]> {
+    let mut parts = name.strip_prefix('v')?.split('.');
+    let version = [
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    ];
+    parts.next().is_none().then_some(version)
+}
+
+/// Whether the installed version `name` (`v22.3.0`) is what the alias
+/// `prefix` names: the whole version, or its leading parts up to a dot, so
+/// that `2` is not `v20.1.0`.
+fn node_version_has_prefix(name: &str, prefix: &str) -> bool {
+    let version = name.strip_prefix('v').unwrap_or(name);
+    let prefix = prefix.strip_prefix('v').unwrap_or(prefix);
+    !prefix.is_empty()
+        && version
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
+}
 
 /// The command's `PATH` when the client names none: [`DEFAULT_PATH`], then
 /// whichever tool directories exist. Called inside the filesystem jail, so on
@@ -1465,6 +1628,7 @@ fn default_command_path(home: Option<&Path>) -> OsString {
                 .iter()
                 .map(|relative| home.join(relative)),
         );
+        directories.extend(nvm_default_bin(home));
     }
     directories.extend(SYSTEM_TOOL_DIRECTORIES.iter().map(PathBuf::from));
 
@@ -6700,6 +6864,18 @@ mod tests {
             ]
         );
 
+        std::fs::create_dir_all(nvm_bin(home, "v22.3.0")).expect("create directory");
+        std::fs::create_dir_all(home.join("go/bin")).expect("create directory");
+        assert_eq!(
+            in_home(&entries(default_command_path(Some(home)))),
+            vec![
+                home.join(".local/bin").to_string_lossy().into_owned(),
+                home.join(".cargo/bin").to_string_lossy().into_owned(),
+                home.join("go/bin").to_string_lossy().into_owned(),
+                nvm_bin(home, "v22.3.0").to_string_lossy().into_owned(),
+            ]
+        );
+
         // Without a home only the system-wide directories can be added.
         assert!(in_home(&entries(default_command_path(None))).is_empty());
 
@@ -6720,9 +6896,218 @@ mod tests {
     fn every_home_tool_directory_is_protected() {
         for directory in HOME_TOOL_DIRECTORIES {
             assert!(
-                UNIX_PROTECTED_HOME_RELATIVE.contains(directory),
+                UNIX_PROTECTED_HOME_RELATIVE
+                    .iter()
+                    .any(|protected| Path::new(directory).starts_with(protected)),
                 "{directory} is on the sandbox's PATH but not protected"
             );
+        }
+        assert!(UNIX_PROTECTED_HOME_RELATIVE.contains(&NVM_DIRECTORY));
+    }
+
+    /// A home with nvm's `versions/node/<version>/bin` for each of `versions`.
+    fn nvm_home(versions: &[&str]) -> tempfile::TempDir {
+        let home = tempfile::tempdir().expect("tempdir");
+        for version in versions {
+            std::fs::create_dir_all(nvm_bin(home.path(), version)).expect("create directory");
+        }
+        std::fs::create_dir_all(home.path().join(".nvm/alias/lts")).expect("create directory");
+        home
+    }
+
+    fn nvm_bin(home: &Path, version: &str) -> PathBuf {
+        home.join(".nvm/versions/node").join(version).join("bin")
+    }
+
+    fn write_nvm_alias(home: &Path, name: &str, contents: &str) {
+        std::fs::write(home.join(".nvm/alias").join(name), contents).expect("write alias");
+    }
+
+    /// The `default` alias picks the version as nvm does: through other
+    /// aliases, by prefix (the newest match, compared as numbers), and with
+    /// the newest installed when it names nothing installed.
+    #[test]
+    fn nvm_default_resolves_like_nvm() {
+        let home = nvm_home(&["v20.11.1", "v22.3.0", "v22.10.0", "v22.9.5", "v23.0.0"]);
+        let home = home.path();
+
+        // No alias at all.
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v23.0.0")));
+
+        write_nvm_alias(home, "default", "22\n");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v22.10.0")));
+        write_nvm_alias(home, "default", "v22.9");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v22.9.5")));
+        // The first line that isn't blank, as nvm reads it.
+        write_nvm_alias(home, "default", "\n  v22.9 \nv20.11.1\n");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v22.9.5")));
+        write_nvm_alias(home, "default", "v20.11.1");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v20.11.1")));
+
+        write_nvm_alias(home, "default", "lts/*");
+        write_nvm_alias(home, "lts/*", "lts/jod");
+        write_nvm_alias(home, "lts/jod", "v22.3.0");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v22.3.0")));
+
+        for newest in ["node", "stable", "18", "nonexistent-alias"] {
+            write_nvm_alias(home, "default", newest);
+            assert_eq!(
+                nvm_default_bin(home),
+                Some(nvm_bin(home, "v23.0.0")),
+                "{newest}"
+            );
+        }
+
+        write_nvm_alias(home, "default", "system");
+        assert_eq!(nvm_default_bin(home), None);
+
+        // A loop of aliases ends.
+        write_nvm_alias(home, "default", "a");
+        write_nvm_alias(home, "a", "default");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v23.0.0")));
+
+        // No nvm at all.
+        let empty = tempfile::tempdir().expect("tempdir");
+        assert_eq!(nvm_default_bin(empty.path()), None);
+    }
+
+    /// A prefix matches up to a dot only: `2` is `v2.x.y`, never the newer
+    /// `v20.x.y`.
+    #[test]
+    fn an_nvm_prefix_ends_at_a_dot() {
+        let home = nvm_home(&["v2.5.0", "v20.1.0", "v22.0.0"]);
+        let home = home.path();
+        write_nvm_alias(home, "default", "2");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v2.5.0")));
+        write_nvm_alias(home, "default", "v2.5");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v2.5.0")));
+        write_nvm_alias(home, "default", "20.1");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v20.1.0")));
+
+        assert!(!node_version_has_prefix("v20.1.0", "2"));
+        assert!(!node_version_has_prefix("v2.5.0", "2.5.0.1"));
+        assert!(!node_version_has_prefix("v2.5.0", ""));
+        assert!(!node_version_has_prefix("v2.5.0", "v"));
+        assert!(node_version_has_prefix("v2.5.0", "v2"));
+        assert!(node_version_has_prefix("v2.5.0", "2.5.0"));
+    }
+
+    /// Every alias below would pick `v20.0.0` if it were read; read as no
+    /// alias, the newest (`v22.0.0`) is used instead.
+    #[test]
+    fn nvm_aliases_are_short_regular_files_under_the_alias_directory() {
+        let home = nvm_home(&["v20.0.0", "v22.0.0"]);
+        let home = home.path();
+        let alias_directory = home.join(".nvm/alias");
+        let newest = Some(nvm_bin(home, "v22.0.0"));
+        let picks_v20 = home.join("picks-v20");
+        std::fs::write(&picks_v20, "v20.0.0").expect("write file");
+        let reset = || {
+            std::fs::remove_file(alias_directory.join("default")).expect("remove alias");
+        };
+
+        // The fixture is right: read, it picks v20.
+        write_nvm_alias(home, "default", "v20.0.0");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v20.0.0")));
+        reset();
+
+        // A symbolic link, even to a file that would do.
+        std::os::unix::fs::symlink(&picks_v20, alias_directory.join("default")).expect("symlink");
+        assert_eq!(nvm_default_bin(home), newest);
+        reset();
+
+        // Too long, though it would trim to a version.
+        write_nvm_alias(home, "default", &format!("v20.0.0{}", " ".repeat(300)));
+        assert_eq!(nvm_default_bin(home), newest);
+        // Up to the limit is read.
+        write_nvm_alias(
+            home,
+            "default",
+            &format!(
+                "v20.0.0{}",
+                " ".repeat(NVM_ALIAS_MAX_BYTES - "v20.0.0".len())
+            ),
+        );
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v20.0.0")));
+
+        // A name that leaves the alias directory: absolute, or through `..`.
+        write_nvm_alias(home, "default", &picks_v20.to_string_lossy());
+        assert_eq!(nvm_default_bin(home), newest);
+        write_nvm_alias(home, "default", "../../picks-v20");
+        assert_eq!(nvm_default_bin(home), newest);
+        write_nvm_alias(home, "default", "lts/../../../picks-v20");
+        assert_eq!(nvm_default_bin(home), newest);
+
+        // A path through a directory link, here to a character device that
+        // never ends, and to an alias that would do.
+        std::os::unix::fs::symlink("/dev", alias_directory.join("dev")).expect("symlink");
+        write_nvm_alias(home, "default", "dev/zero");
+        assert_eq!(nvm_default_bin(home), newest);
+        let linked = home.join("linked-aliases");
+        std::fs::create_dir_all(&linked).expect("create directory");
+        std::fs::write(linked.join("picks"), "v20.0.0").expect("write file");
+        std::os::unix::fs::symlink(&linked, alias_directory.join("linked")).expect("symlink");
+        write_nvm_alias(home, "default", "linked/picks");
+        assert_eq!(nvm_default_bin(home), newest);
+        reset();
+
+        // A FIFO with no writer, which a plain open would wait on forever.
+        nix::unistd::mkfifo(
+            &alias_directory.join("default"),
+            nix::sys::stat::Mode::from_bits_truncate(0o600),
+        )
+        .expect("mkfifo");
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let home_for_thread = home.to_path_buf();
+        std::thread::spawn(move || {
+            sender
+                .send(nvm_default_bin(&home_for_thread))
+                .expect("send result");
+        });
+        assert_eq!(
+            receiver
+                .recv_timeout(Duration::from_secs(10))
+                .expect("reading a FIFO alias must not block"),
+            newest
+        );
+    }
+
+    /// A version directory or its `bin` that is a symbolic link is not put on
+    /// the `PATH`.
+    #[test]
+    fn nvm_versions_must_be_real_directories() {
+        let home = nvm_home(&["v20.0.0"]);
+        let home = home.path();
+        let elsewhere = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(elsewhere.path().join("bin")).expect("create directory");
+        let versions = home.join(".nvm/versions/node");
+        std::os::unix::fs::symlink(elsewhere.path(), versions.join("v22.0.0")).expect("symlink");
+        std::fs::create_dir_all(versions.join("v21.0.0")).expect("create directory");
+        std::os::unix::fs::symlink(elsewhere.path().join("bin"), versions.join("v21.0.0/bin"))
+            .expect("symlink");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v20.0.0")));
+        write_nvm_alias(home, "default", "22");
+        assert_eq!(nvm_default_bin(home), Some(nvm_bin(home, "v20.0.0")));
+
+        // Nor anything below a linked `versions` or `versions/node`.
+        for linked in ["versions", "versions/node"] {
+            let home = nvm_home(&[]);
+            let home = home.path();
+            let elsewhere = tempfile::tempdir().expect("tempdir");
+            let target = elsewhere.path().join("target");
+            std::fs::create_dir_all(target.join("node/v22.0.0/bin")).expect("create directory");
+            std::fs::create_dir_all(target.join("v22.0.0/bin")).expect("create directory");
+            let link = home.join(".nvm").join(linked);
+            std::fs::create_dir_all(link.parent().expect("parent")).expect("create directory");
+            std::os::unix::fs::symlink(&target, &link).expect("symlink");
+            assert_eq!(
+                std::fs::metadata(nvm_bin(home, "v22.0.0"))
+                    .map(|metadata| metadata.is_dir())
+                    .ok(),
+                Some(true),
+                "the fixture is right: through {linked} the version is there"
+            );
+            assert_eq!(nvm_default_bin(home), None, "{linked}");
         }
     }
 
