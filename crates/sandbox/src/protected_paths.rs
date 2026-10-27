@@ -126,9 +126,26 @@ pub const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
         ".local/share/",
         branding::ZED_JP_ENHANCE.app_directory_name_lowercase
     ),
-    // Binaries already on `PATH` for the next interactive shell.
+    // Binaries already on `PATH` for the next interactive shell. The sandbox
+    // puts these on a command's own `PATH` as well, so they must stay out of
+    // a command's reach for that alone (`HOME_TOOL_DIRECTORIES` in the helper).
     ".cargo/bin",
     ".local/bin",
+    "go/bin",
+    ".deno/bin",
+    // What the programs in these run: a global package's command in
+    // `.bun/bin` is a link into `install/global`, and `.bunfig.toml`'s
+    // `preload` runs on every `bun run`. Not the rest of `.bun`: `bun install`
+    // in a project writes its cache there.
+    ".bun/bin",
+    ".bun/install/global",
+    ".bunfig.toml",
+    // Whole: every program in `.volta/bin` is a shim that runs the version
+    // under `tools/image` which `tools/user` picks.
+    ".volta",
+    // Whole, for the same reason, and because `nvm.sh` is sourced by the next
+    // interactive shell.
+    ".nvm",
     // Shell init: written once, executed on every later login.
     ".bashrc",
     ".bash_aliases",
