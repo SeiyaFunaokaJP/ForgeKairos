@@ -761,7 +761,15 @@ mod stdio_e2e {
                 "the command gets what the client asked for, the default PATH, the locale and \
                  the sandbox's own settings",
                 has("AGENT_SETTING=from the client")
-                    && has("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+                    // The host's per-user tool directories may follow it.
+                    && variables.iter().any(|variable| {
+                        variable
+                            .strip_prefix(
+                                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                            )
+                            .is_some_and(|rest| rest.is_empty() || rest.starts_with(':'))
+                            && !variable.contains("/session/only")
+                    })
                     && has("LANG=en_US.UTF-8")
                     && variables
                         .iter()

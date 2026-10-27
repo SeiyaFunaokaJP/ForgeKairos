@@ -1429,6 +1429,89 @@ fn apply_filesystem_backend(
 /// gets on any Linux, and nothing else.
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
+/// Where per-user installers put their programs, relative to the account's
+/// home. They only reach a login's `PATH` through the shell's startup files,
+/// which the sandbox never runs (ADR-F46 C-1), so without these `cargo` or
+/// `uv` are "not found" inside the sandbox while working in the user's own
+/// terminal. A fixed list rather than the login shell's `PATH`: running the
+/// shell would bring back everything else C-1 keeps out.
+///
+/// Only directories in [`UNIX_PROTECTED_HOME_RELATIVE`] belong here. The
+/// helper looks the command's program up on this `PATH`, so a directory a
+/// sandboxed command can write — any of them, when the worktree is the home —
+/// would let one run leave a program there that a later run, perhaps with the
+/// network open, starts by name.
+const HOME_TOOL_DIRECTORIES: &[&str] = &[".local/bin", ".cargo/bin"];
+
+/// The system-wide counterparts of [`HOME_TOOL_DIRECTORIES`]: added to a
+/// login's `PATH` by `/etc/profile.d` or the installer's instructions, not by
+/// the default.
+const SYSTEM_TOOL_DIRECTORIES: &[&str] = &[
+    "/usr/local/go/bin",
+    "/snap/bin",
+    "/home/linuxbrew/.linuxbrew/bin",
+];
+
+/// The command's `PATH` when the client names none: [`DEFAULT_PATH`], then
+/// whichever tool directories exist. Called inside the filesystem jail, so on
+/// the backends that cover hidden directories those are left out. They come
+/// after the system's own directories so that none of them changes which `git`
+/// or `sh` a command gets.
+fn default_command_path(home: Option<&Path>) -> OsString {
+    let mut directories: Vec<PathBuf> = Vec::new();
+    if let Some(home) = home {
+        directories.extend(
+            HOME_TOOL_DIRECTORIES
+                .iter()
+                .map(|relative| home.join(relative)),
+        );
+    }
+    directories.extend(SYSTEM_TOOL_DIRECTORIES.iter().map(PathBuf::from));
+
+    let mut path = OsString::from(DEFAULT_PATH);
+    for directory in directories {
+        // A `:` would split the entry in two.
+        if directory.as_os_str().as_bytes().contains(&b':') || !directory.is_dir() {
+            continue;
+        }
+        path.push(":");
+        path.push(directory.as_os_str());
+    }
+    path
+}
+
+/// The variable bash imports an exported function from (the format of the
+/// Shellshock fixes). bash calls `command_not_found_handle` when a name isn't
+/// found on `PATH`.
+const COMMAND_NOT_FOUND_FUNCTION_VARIABLE: &str = "BASH_FUNC_command_not_found_handle%%";
+
+/// What `command_not_found_handle` does inside the sandbox: bash's usual
+/// message, then why the program may be missing here and what to do about it.
+/// Without it an agent reads a bare "command not found", takes it for a wrong
+/// path and keeps guessing others, when the answer is that the sandbox's
+/// `PATH` is not the login shell's. It looks for the name one directory level
+/// below the usual install roots, so the agent can run it by its full path.
+/// bash runs the handler in a subshell, so its `shopt` changes (an unmatched
+/// candidate must vanish even under the caller's `failglob`) stay there. One
+/// line, without tabs, so it passes through anything that frames the
+/// environment.
+const COMMAND_NOT_FOUND_FUNCTION: &str = branding::concat_const!(
+    r#"() { printf '%s: %s: command not found\n' "${0##*/}" "$1" >&2; "#,
+    r#"printf '%s\n' ""#,
+    branding::CURRENT.product_name,
+    r#" sandbox: commands here run with a fixed PATH, not the login shell's: $PATH" >&2; "#,
+    r#"shopt -s nullglob; shopt -u failglob; local candidate found=0; "#,
+    r#"for candidate in "$HOME"/bin/"$1" "$HOME"/.*/bin/"$1" "$HOME"/*/bin/"$1" "$HOME"/.nvm/versions/node/*/bin/"$1" /opt/*/bin/"$1" /usr/local/*/bin/"$1"; do "#,
+    r#"if [ "$found" -lt 3 ] && [ -f "$candidate" ] && [ -x "$candidate" ]; then "#,
+    r#"if [ "$found" -eq 0 ]; then printf 'Found outside that PATH:\n' >&2; fi; "#,
+    r#"printf '  %s\n' "$candidate" >&2; found=$((found + 1)); fi; done; "#,
+    r#"printf '%s\n' "Run the program by its full path, or set \"terminal.env.PATH\" in the "#,
+    branding::CURRENT.product_name,
+    r#" settings to the PATH above plus its folder (the setting replaces the whole PATH). "#,
+    r#"An agent should ask the user to do this rather than keep guessing other paths." >&2; "#,
+    r#"return 127; }"#
+);
+
 /// The command's whole environment, built from nothing (ADR-F46 C-1).
 ///
 /// Whatever started the helper has an environment of its own — an SSH session's
@@ -1440,7 +1523,10 @@ const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/s
 ///
 /// * what the client asked for (`--setenv`), which is the project's own
 ///   settings and the agent's, resolved outside the sandbox;
-/// * a default `PATH`, so a command still finds the system's own programs;
+/// * a default `PATH`, so a command still finds the system's own programs, and
+///   the per-user tool directories that exist ([`default_command_path`]);
+/// * bash's `command_not_found_handle`, which says why a program is missing
+///   here ([`COMMAND_NOT_FOUND_FUNCTION`]);
 /// * `HOME` / `USER` / `LOGNAME` from the account database — never from the
 ///   environment, which is the session's — so that `git`, `npm` and `cargo`
 ///   find their configuration and caches. The client on a remote host does not
@@ -1465,17 +1551,24 @@ fn command_environment(
             None => environment.push((name.to_os_string(), value)),
         }
     };
+    // Before the client's `--setenv`, so that a value the client sends
+    // explicitly (a test, a `HOME` an agent wants elsewhere, the user's
+    // `terminal.env.PATH`) wins over the account database. Read from the
+    // account this process acts as, not from its environment: on WSL that is
+    // the Windows side's, and on any host a `HOME` inherited from the session
+    // is the very thing the sandbox drops.
+    let account = account_from_passwd();
     set(
         &mut environment,
         OsStr::new("PATH"),
-        OsString::from(DEFAULT_PATH),
+        default_command_path(account.as_ref().map(|account| account.home.as_path())),
     );
-    // Before the client's `--setenv`, so that a value the client sends
-    // explicitly (a test, a `HOME` an agent wants elsewhere) wins over the
-    // account database. Read from the account this process acts as, not from
-    // its environment: on WSL that is the Windows side's, and on any host a
-    // `HOME` inherited from the session is the very thing the sandbox drops.
-    if let Some(account) = account_from_passwd() {
+    set(
+        &mut environment,
+        OsStr::new(COMMAND_NOT_FOUND_FUNCTION_VARIABLE),
+        OsString::from(COMMAND_NOT_FOUND_FUNCTION),
+    );
+    if let Some(account) = account {
         set(
             &mut environment,
             OsStr::new("HOME"),
@@ -6523,7 +6616,10 @@ mod tests {
                 .map(|(_, value)| value.clone())
         };
         assert_eq!(value("HOME"), Some(account.home.clone().into_os_string()));
-        assert_eq!(value("PATH"), Some(OsString::from(DEFAULT_PATH)));
+        assert_eq!(
+            value("PATH"),
+            Some(default_command_path(Some(&account.home)))
+        );
         if account.name.is_empty() {
             assert_eq!(value("USER"), None);
             assert_eq!(value("LOGNAME"), None);
@@ -6559,6 +6655,211 @@ mod tests {
                 "{name} appears once"
             );
         }
+    }
+
+    /// The default `PATH` adds the per-user tool directories that exist, after
+    /// the system's own.
+    #[test]
+    fn the_default_path_adds_the_tool_directories_that_exist() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let home = home.path();
+        std::fs::create_dir_all(home.join(".cargo/bin")).expect("create directory");
+        // `.local` without `bin`: left out.
+        std::fs::create_dir_all(home.join(".local")).expect("create directory");
+        let entries = |path: OsString| -> Vec<String> {
+            path.to_str()
+                .expect("utf-8 path")
+                .split(':')
+                .map(str::to_string)
+                .collect()
+        };
+        let in_home = |path: &[String]| -> Vec<String> {
+            path.iter()
+                .filter(|entry| entry.starts_with(&*home.to_string_lossy()))
+                .cloned()
+                .collect()
+        };
+
+        let path = entries(default_command_path(Some(home)));
+        assert!(
+            path.join(":").starts_with(&format!("{DEFAULT_PATH}:"))
+                || path.join(":") == DEFAULT_PATH,
+            "the system's directories come first: {path:?}"
+        );
+        assert_eq!(
+            in_home(&path),
+            vec![home.join(".cargo/bin").to_string_lossy().into_owned()]
+        );
+
+        std::fs::create_dir_all(home.join(".local/bin")).expect("create directory");
+        assert_eq!(
+            in_home(&entries(default_command_path(Some(home)))),
+            vec![
+                home.join(".local/bin").to_string_lossy().into_owned(),
+                home.join(".cargo/bin").to_string_lossy().into_owned(),
+            ]
+        );
+
+        // Without a home only the system-wide directories can be added.
+        assert!(in_home(&entries(default_command_path(None))).is_empty());
+
+        // A directory whose name holds `:` would split into two entries.
+        let colon = tempfile::tempdir().expect("tempdir");
+        let colon_home = colon.path().join("a:b");
+        std::fs::create_dir_all(colon_home.join(".cargo/bin")).expect("create directory");
+        assert!(
+            !default_command_path(Some(&colon_home))
+                .to_string_lossy()
+                .contains("a:b")
+        );
+    }
+
+    /// The helper looks a command's program up on this `PATH`, so a home
+    /// directory on it must be one no sandboxed command can write.
+    #[test]
+    fn every_home_tool_directory_is_protected() {
+        for directory in HOME_TOOL_DIRECTORIES {
+            assert!(
+                UNIX_PROTECTED_HOME_RELATIVE.contains(directory),
+                "{directory} is on the sandbox's PATH but not protected"
+            );
+        }
+    }
+
+    /// The product name is pasted into a double-quoted shell string; anything
+    /// bash would expand there breaks the function's import.
+    #[test]
+    fn the_product_name_is_safe_inside_the_not_found_function() {
+        assert!(
+            branding::CURRENT
+                .product_name
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric()
+                    || matches!(character, ' ' | '.' | '_' | '-')),
+            "{:?}",
+            branding::CURRENT.product_name
+        );
+    }
+
+    /// The client's `PATH` (the user's `terminal.env.PATH`) replaces the
+    /// default whole, and the client can unset the not-found function.
+    #[test]
+    fn the_clients_path_replaces_the_default() {
+        let tmpdir = PathBuf::from("/tmp/zed-remote-sandbox-1");
+        let mut invocation = invocation_writing(&[]);
+        invocation.set_environment = vec![(OsString::from("PATH"), OsString::from("/only/this"))];
+        invocation.unset_environment = vec![OsString::from(COMMAND_NOT_FOUND_FUNCTION_VARIABLE)];
+        let environment = command_environment(&invocation, &tmpdir, None);
+        let values = |name: &str| -> Vec<&OsString> {
+            environment
+                .iter()
+                .filter(|(existing, _)| existing == OsStr::new(name))
+                .map(|(_, value)| value)
+                .collect()
+        };
+        assert_eq!(values("PATH"), vec![&OsString::from("/only/this")]);
+        assert!(values(COMMAND_NOT_FOUND_FUNCTION_VARIABLE).is_empty());
+
+        let default = command_environment(&invocation_writing(&[]), &tmpdir, None);
+        assert!(
+            default.iter().any(|(name, value)| {
+                name == OsStr::new(COMMAND_NOT_FOUND_FUNCTION_VARIABLE)
+                    && value == OsStr::new(COMMAND_NOT_FOUND_FUNCTION)
+            }),
+            "the function is there by default"
+        );
+    }
+
+    /// bash imports the function from the environment and, for a name not on
+    /// `PATH`, prints its usual message, why, where the program is (three
+    /// places at most), and what to do — still exiting 127, even under the
+    /// caller's `failglob`.
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test runs a real bash to see it import the function"
+    )]
+    fn bash_explains_a_command_that_is_not_found() {
+        let bash = Path::new("/bin/bash");
+        if !bash.exists() {
+            eprintln!("skipped: no /bin/bash on this host");
+            return;
+        }
+        let home = tempfile::tempdir().expect("tempdir");
+        let place = |relative: &str, name: &str| -> PathBuf {
+            let directory = home.path().join(relative);
+            std::fs::create_dir_all(&directory).expect("create directory");
+            let program = directory.join(name);
+            std::fs::write(&program, "#!/bin/sh\n").expect("write program");
+            std::fs::set_permissions(
+                &program,
+                std::os::unix::fs::PermissionsExt::from_mode(0o755),
+            )
+            .expect("chmod");
+            program
+        };
+        let program = place(".sometool/bin", "forgekairos-missing-tool");
+        for relative in ["bin", ".a/bin", ".b/bin", "c/bin"] {
+            place(relative, "forgekairos-everywhere");
+        }
+
+        let run = |script: &str| {
+            Command::new(bash)
+                .args(["-c", script])
+                .env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .env("HOME", home.path())
+                .env(
+                    COMMAND_NOT_FOUND_FUNCTION_VARIABLE,
+                    COMMAND_NOT_FOUND_FUNCTION,
+                )
+                .output()
+                .expect("run bash")
+        };
+
+        let output = run("forgekairos-missing-tool");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(127), "{stderr}");
+        assert!(
+            stderr.contains("bash: forgekairos-missing-tool: command not found"),
+            "{stderr}"
+        );
+        assert!(
+            stderr.contains(
+                "commands here run with a fixed PATH, not the login shell's: /usr/bin:/bin"
+            ),
+            "{stderr}"
+        );
+        assert!(
+            stderr.contains(&format!(
+                "Found outside that PATH:\n  {}\n",
+                program.display()
+            )),
+            "{stderr}"
+        );
+        assert!(stderr.contains("\"terminal.env.PATH\""), "{stderr}");
+        assert!(stderr.contains("replaces the whole PATH"), "{stderr}");
+
+        // Found in four places: three are listed.
+        let output = run("forgekairos-everywhere");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(127), "{stderr}");
+        assert_eq!(
+            stderr
+                .lines()
+                .filter(|line| line.starts_with("  ") && line.ends_with("/forgekairos-everywhere"))
+                .count(),
+            3,
+            "{stderr}"
+        );
+
+        // Nothing to find, under `failglob`: no "Found" line, the rest the
+        // same, and the unmatched candidates don't abort the handler.
+        let output = run("shopt -s failglob; forgekairos-nowhere-at-all");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(127), "{stderr}");
+        assert!(!stderr.contains("Found outside"), "{stderr}");
+        assert!(stderr.contains("\"terminal.env.PATH\""), "{stderr}");
     }
 
     /// ADR-F49 decision 24: the proxy variables point at the in-namespace
