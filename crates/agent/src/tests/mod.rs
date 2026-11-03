@@ -107,7 +107,10 @@ pub(crate) struct FakeTerminalHandle {
     stopped_by_user: Arc<AtomicBool>,
     exit_sender: std::cell::RefCell<Option<futures::channel::oneshot::Sender<()>>>,
     wait_for_exit: Shared<Task<acp_v2::TerminalExitStatus>>,
-    output: ProcessOutput,
+    output: std::cell::RefCell<ProcessOutput>,
+    /// What `output_tail` returns when it differs from `output`, as it does
+    /// once `output` is cut to the output limit.
+    tail: std::cell::RefCell<Option<String>>,
     id: acp_v2::TerminalId,
 }
 
@@ -131,7 +134,11 @@ impl FakeTerminalHandle {
             stopped_by_user,
             exit_sender: std::cell::RefCell::new(Some(exit_sender)),
             wait_for_exit,
-            output: ProcessOutput::new("partial output".to_string(), false),
+            output: std::cell::RefCell::new(ProcessOutput::new(
+                "partial output".to_string(),
+                false,
+            )),
+            tail: std::cell::RefCell::new(None),
             id: acp_v2::TerminalId::new("fake_terminal".to_string()),
         }
     }
@@ -150,14 +157,26 @@ impl FakeTerminalHandle {
             stopped_by_user,
             exit_sender: std::cell::RefCell::new(Some(exit_sender)),
             wait_for_exit,
-            output: ProcessOutput::new("command output".to_string(), false),
+            output: std::cell::RefCell::new(ProcessOutput::new(
+                "command output".to_string(),
+                false,
+            )),
+            tail: std::cell::RefCell::new(None),
             id: acp_v2::TerminalId::new("fake_terminal".to_string()),
         }
     }
 
     pub(crate) fn with_output(mut self, output: ProcessOutput) -> Self {
-        self.output = output;
+        *self.output.get_mut() = output;
         self
+    }
+
+    pub(crate) fn set_output(&self, output: &str) {
+        *self.output.borrow_mut() = ProcessOutput::new(output.to_string(), false);
+    }
+
+    pub(crate) fn set_tail(&self, tail: &str) {
+        *self.tail.borrow_mut() = Some(tail.to_string());
     }
 
     pub(crate) fn was_killed(&self) -> bool {
@@ -181,7 +200,15 @@ impl crate::TerminalHandle for FakeTerminalHandle {
     }
 
     fn current_output(&self, _cx: &AsyncApp) -> Result<ProcessOutput> {
-        Ok(self.output.clone())
+        Ok(self.output.borrow().clone())
+    }
+
+    fn output_tail(&self, _max_bytes: usize, _cx: &AsyncApp) -> Result<String> {
+        Ok(self
+            .tail
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| self.output.borrow().output.clone()))
     }
 
     fn wait_for_exit(&self, _cx: &AsyncApp) -> Result<Shared<Task<acp_v2::TerminalExitStatus>>> {
@@ -465,6 +492,226 @@ async fn test_terminal_tool_timeout_kills_handle(cx: &mut TestAppContext) {
         cx.run_until_parked();
         cx.background_executor.timer(Duration::from_millis(1)).await;
     }
+}
+
+/// Starts the terminal tool on a command that never exits and returns its
+/// task with the fake terminal it runs in.
+async fn start_never_ending_terminal_command(
+    output: &str,
+    timeout_ms: Option<u64>,
+    cx: &mut TestAppContext,
+) -> (
+    Rc<FakeTerminalHandle>,
+    Pin<Box<Fuse<Task<Result<String, String>>>>>,
+) {
+    init_test(cx);
+    always_allow_tools(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    let project = Project::test(fs, [], cx).await;
+
+    let environment = Rc::new(cx.update(|cx| {
+        FakeThreadEnvironment::default().with_terminal(FakeTerminalHandle::new_never_exits(cx))
+    }));
+    let handle = environment.terminal_handle.clone().unwrap();
+    handle.set_output(output);
+
+    #[allow(clippy::arc_with_non_send_sync)]
+    let tool = Arc::new(crate::TerminalTool::new(project, environment));
+    let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+
+    let task = cx.update(|cx| {
+        tool.run(
+            ToolInput::resolved(crate::TerminalToolInput {
+                command: "some-installer".to_string(),
+                cd: ".".to_string(),
+                timeout_ms,
+                ..Default::default()
+            }),
+            event_stream,
+            cx,
+        )
+    });
+
+    approve_unsandboxed_terminal_command(rx.expect_authorization().await);
+    rx.expect_update_fields().await;
+    (handle, Box::pin(task.fuse()))
+}
+
+/// Runs the terminal tool on a command that never exits and whose output is
+/// `output`, lets `elapsed` pass, and returns whether the command was killed
+/// and the tool's result if it finished.
+async fn run_stalling_terminal_command(
+    output: &str,
+    timeout_ms: Option<u64>,
+    elapsed: Duration,
+    cx: &mut TestAppContext,
+) -> (bool, Option<String>) {
+    let (handle, mut task) = start_never_ending_terminal_command(output, timeout_ms, cx).await;
+    let step = Duration::from_millis(500);
+    let mut waited = Duration::ZERO;
+    while waited < elapsed {
+        cx.executor().advance_clock(step);
+        cx.run_until_parked();
+        waited += step;
+        if let Some(result) = task.as_mut().now_or_never() {
+            return (
+                handle.was_killed(),
+                Some(result.expect("terminal tool task should complete")),
+            );
+        }
+    }
+    (handle.was_killed(), None)
+}
+
+#[gpui::test]
+async fn test_terminal_tool_stops_a_command_waiting_for_input(cx: &mut TestAppContext) {
+    let (killed, result) = run_stalling_terminal_command(
+        "Downloading...\nOverwrite existing files? [y/N]",
+        None,
+        Duration::from_secs(10),
+        cx,
+    )
+    .await;
+    let result = result.expect("a command stopped at a prompt should finish the tool call");
+    assert!(killed, "the command waiting for input should be killed");
+    assert!(
+        result.contains("waiting for input") && result.contains("Overwrite existing files? [y/N]"),
+        "expected the result to name the prompt, got: {result}"
+    );
+}
+
+#[gpui::test]
+async fn test_terminal_tool_stops_at_a_prompt_even_with_a_timeout(cx: &mut TestAppContext) {
+    let (killed, result) = run_stalling_terminal_command(
+        "[sudo] password for me:",
+        Some(60 * 60 * 1000),
+        Duration::from_secs(10),
+        cx,
+    )
+    .await;
+    assert!(
+        killed,
+        "an explicit timeout should not keep a password prompt waiting"
+    );
+    assert!(result.is_some_and(|result| result.contains("waiting for input")));
+}
+
+#[gpui::test]
+async fn test_terminal_tool_waits_on_a_question_like_line_with_a_timeout(cx: &mut TestAppContext) {
+    let (killed, result) = run_stalling_terminal_command(
+        "Resolving dependencies:",
+        Some(60 * 60 * 1000),
+        Duration::from_secs(60),
+        cx,
+    )
+    .await;
+    assert!(
+        !killed,
+        "a line that only ends like a question should not stop a command given a timeout"
+    );
+    assert!(result.is_none());
+}
+
+#[gpui::test]
+async fn test_terminal_tool_stops_on_a_question_like_line_without_a_timeout(
+    cx: &mut TestAppContext,
+) {
+    let (killed, result) =
+        run_stalling_terminal_command("Project name:", None, Duration::from_secs(40), cx).await;
+    assert!(killed);
+    assert!(result.is_some_and(|result| result.contains("`Project name:`")));
+}
+
+#[gpui::test]
+async fn test_terminal_tool_stops_a_silent_command_without_a_timeout(cx: &mut TestAppContext) {
+    let (killed, result) =
+        run_stalling_terminal_command("Running tests", None, Duration::from_secs(11 * 60), cx)
+            .await;
+    assert!(
+        killed,
+        "a command printing nothing new for 10 minutes should be killed"
+    );
+    let result = result.expect("the silent command should finish the tool call");
+    assert!(
+        result.contains("printing nothing new for 10 minutes") && result.contains("timeout_ms"),
+        "expected the result to explain the silence limit, got: {result}"
+    );
+}
+
+#[gpui::test]
+async fn test_terminal_tool_lets_a_silent_command_run_with_a_timeout(cx: &mut TestAppContext) {
+    let (killed, result) = run_stalling_terminal_command(
+        "Running tests",
+        Some(60 * 60 * 1000),
+        Duration::from_secs(11 * 60),
+        cx,
+    )
+    .await;
+    assert!(!killed, "an explicit timeout should lift the silence limit");
+    assert!(result.is_none());
+}
+
+#[gpui::test]
+async fn test_terminal_tool_restarts_the_quiet_time_when_the_output_changes(
+    cx: &mut TestAppContext,
+) {
+    let (handle, mut task) = start_never_ending_terminal_command("Continue? [y/N]", None, cx).await;
+
+    for _ in 0..4 {
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+    }
+    handle.set_output("Downloading...\nContinue? [y/N]");
+    for _ in 0..5 {
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+    }
+    assert!(
+        task.as_mut().now_or_never().is_none(),
+        "the prompt has been quiet only 4 seconds since the output changed"
+    );
+    assert!(!handle.was_killed());
+
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+    assert!(task.as_mut().now_or_never().is_some());
+    assert!(handle.was_killed());
+}
+
+#[gpui::test]
+async fn test_terminal_tool_watches_the_output_past_the_output_limit(cx: &mut TestAppContext) {
+    // The output the tool returns is cut to its limit and keeps the start, so
+    // it ends on whatever line the cut fell on and then stops changing.
+    let (handle, mut task) =
+        start_never_ending_terminal_command("warning: unused import\nCaused by:", None, cx).await;
+
+    for second in 0..(11 * 60) {
+        handle.set_tail(&format!("Compiling crate_{second}"));
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+    }
+    assert!(
+        task.as_mut().now_or_never().is_none(),
+        "a command still printing past the output limit should keep running"
+    );
+    assert!(!handle.was_killed());
+
+    handle.set_tail("Compiling crate_last\nOverwrite? [y/N]");
+    for _ in 0..6 {
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+    }
+    let result = task
+        .as_mut()
+        .now_or_never()
+        .expect("a prompt printed past the output limit should be noticed")
+        .expect("terminal tool task should complete");
+    assert!(handle.was_killed());
+    assert!(
+        result.contains("`Overwrite? [y/N]`"),
+        "expected the prompt from the end of the output, got: {result}"
+    );
 }
 
 #[gpui::test]

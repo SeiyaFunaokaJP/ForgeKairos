@@ -36,11 +36,11 @@ const COMMAND_OUTPUT_LIMIT: u64 = 16 * 1024;
 ///
 /// Do not use this tool for commands that run indefinitely, such as servers (like `npm run start`, `npm run dev`, `python -m http.server`, etc) or file watchers that don't terminate on their own.
 ///
-/// For potentially long-running commands, prefer specifying `timeout_ms` to bound runtime and prevent indefinite hangs.
+/// For potentially long-running commands, prefer specifying `timeout_ms` to bound runtime and prevent indefinite hangs. Without `timeout_ms`, a command that prints nothing new for 10 minutes is stopped; set `timeout_ms` for a command expected to stay quiet longer.
 ///
 /// Remember that each invocation of this tool will spawn a new shell process, so you can't rely on any state from previous invocations.
 ///
-/// The terminal is an interactive pty, so any command that blocks waiting for input will hang the tool until it times out. To avoid this:
+/// The terminal is an interactive pty, but nothing can type into it: a command that stops at a prompt for input is stopped, usually within seconds. To avoid this:
 ///
 /// - Always insert `--no-pager` immediately after `git` for any read-only git command, including `git log`, `git diff`, `git show`, `git blame`, and `git stash show`. Example: `git --no-pager log -n 5` (NOT `git log -n 5`).
 /// - Prefer Git flags that avoid optional metadata writes when possible, such as `git --no-optional-locks status` instead of `git status`.
@@ -57,7 +57,7 @@ pub struct TerminalToolInput {
     /// Optional: omit it (or pass `.`) to run in the project's root directory. Only a workspace with more than one root directory requires it.
     #[serde(default)]
     pub cd: String,
-    /// Optional maximum runtime (in milliseconds). If exceeded, the running terminal task is killed.
+    /// Optional maximum runtime (in milliseconds). If exceeded, the running terminal task is killed. Setting it also lifts the 10-minute limit on printing nothing new.
     pub timeout_ms: Option<u64>,
     /// Return only the first N lines of terminal output to the model after the command finishes. Do not pipe output to `head`; use this parameter instead so the user can still see live output. Avoid requesting too many lines, or the response may waste tokens or exceed the context window.
     #[serde(default)]
@@ -81,11 +81,11 @@ pub struct TerminalToolInput {
 ///
 /// Do not use this tool for commands that run indefinitely, such as servers (like `npm run start`, `npm run dev`, `python -m http.server`, etc) or file watchers that don't terminate on their own.
 ///
-/// For potentially long-running commands, prefer specifying `timeout_ms` to bound runtime and prevent indefinite hangs.
+/// For potentially long-running commands, prefer specifying `timeout_ms` to bound runtime and prevent indefinite hangs. Without `timeout_ms`, a command that prints nothing new for 10 minutes is stopped; set `timeout_ms` for a command expected to stay quiet longer.
 ///
 /// Remember that each invocation of this tool will spawn a new shell process, so you can't rely on any state from previous invocations.
 ///
-/// The terminal is an interactive pty, so any command that blocks waiting for input will hang the tool until it times out. To avoid this:
+/// The terminal is an interactive pty, but nothing can type into it: a command that stops at a prompt for input is stopped, usually within seconds. To avoid this:
 ///
 /// - Always insert `--no-pager` immediately after `git` for any read-only git command, including `git log`, `git diff`, `git show`, `git blame`, and `git stash show`. Example: `git --no-pager log -n 5` (NOT `git log -n 5`).
 /// - Prefer Git flags that avoid optional metadata writes when possible, such as `git --no-optional-locks status` instead of `git status`.
@@ -102,7 +102,7 @@ pub struct SandboxedTerminalToolInput {
     /// Optional: omit it (or pass `.`) to run in the project's root directory. Only a workspace with more than one root directory requires it.
     #[serde(default)]
     pub cd: String,
-    /// Optional maximum runtime (in milliseconds). If exceeded, the running terminal task is killed.
+    /// Optional maximum runtime (in milliseconds). If exceeded, the running terminal task is killed. Setting it also lifts the 10-minute limit on printing nothing new.
     pub timeout_ms: Option<u64>,
     /// Return only the first N lines of terminal output to the model after the command finishes. Do not pipe output to `head`; use this parameter instead so the user can still see live output. Avoid requesting too many lines, or the response may waste tokens or exceed the context window.
     #[serde(default)]
@@ -1037,36 +1037,36 @@ async fn run_terminal_tool(
     let timeout = input.timeout_ms.map(Duration::from_millis);
 
     let mut timed_out = false;
+    let mut stalled = None;
     let mut user_stopped_via_signal = false;
     let wait_for_exit = terminal.wait_for_exit(cx).map_err(|e| e.to_string())?;
-
-    match timeout {
-        Some(timeout) => {
-            let timeout_task = cx.background_executor().timer(timeout);
-
-            futures::select! {
-                _ = wait_for_exit.clone().fuse() => {},
-                _ = timeout_task.fuse() => {
-                    timed_out = true;
-                    terminal.kill(cx).map_err(|e| e.to_string())?;
-                    wait_for_exit.await;
-                }
-                _ = event_stream.cancelled_by_user().fuse() => {
-                    user_stopped_via_signal = true;
-                    terminal.kill(cx).map_err(|e| e.to_string())?;
-                    wait_for_exit.await;
-                }
+    let timeout_task = {
+        let executor = cx.background_executor().clone();
+        async move {
+            match timeout {
+                Some(timeout) => executor.timer(timeout).await,
+                None => futures::future::pending().await,
             }
         }
-        None => {
-            futures::select! {
-                _ = wait_for_exit.clone().fuse() => {},
-                _ = event_stream.cancelled_by_user().fuse() => {
-                    user_stopped_via_signal = true;
-                    terminal.kill(cx).map_err(|e| e.to_string())?;
-                    wait_for_exit.await;
-                }
-            }
+    };
+    let stall_task = wait_for_stalled_command(terminal.clone(), timeout.is_some(), cx.clone());
+
+    futures::select! {
+        _ = wait_for_exit.clone().fuse() => {},
+        _ = timeout_task.fuse() => {
+            timed_out = true;
+            terminal.kill(cx).map_err(|e| e.to_string())?;
+            wait_for_exit.await;
+        }
+        stall = stall_task.fuse() => {
+            stalled = Some(stall);
+            terminal.kill(cx).map_err(|e| e.to_string())?;
+            wait_for_exit.await;
+        }
+        _ = event_stream.cancelled_by_user().fuse() => {
+            user_stopped_via_signal = true;
+            terminal.kill(cx).map_err(|e| e.to_string())?;
+            wait_for_exit.await;
         }
     };
 
@@ -1076,6 +1076,14 @@ async fn run_terminal_tool(
 
     let output = terminal.current_output(cx).map_err(|e| e.to_string())?;
 
+    if let Some(stall) = stalled.filter(|_| !user_stopped) {
+        return Ok(stalled_command_content(
+            output,
+            &input.command,
+            &stall,
+            selection,
+        ));
+    }
     Ok(process_content(
         output,
         &input.command,
@@ -1083,6 +1091,140 @@ async fn run_terminal_tool(
         user_stopped,
         selection,
     ))
+}
+
+/// How often a running command's output is compared with what it was, to
+/// notice a command that has stopped making progress.
+const STALL_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// How long a command may sit on a line that is plainly a request for input
+/// (`[y/N]`, a password prompt) before it is stopped. Nothing can answer it:
+/// the model has no way to type into the terminal.
+const INPUT_PROMPT_QUIET_LIMIT: Duration = Duration::from_secs(5);
+/// The same for a line that only ends the way a question does (`?`, `:`).
+/// Longer, because a progress label such as `Downloading:` ends that way too.
+const POSSIBLE_PROMPT_QUIET_LIMIT: Duration = Duration::from_secs(30);
+/// How long a command the model gave no `timeout_ms` may print nothing new.
+/// Without it, a command stuck without a recognizable prompt would hold the
+/// turn until the user noticed.
+const SILENCE_LIMIT: Duration = Duration::from_secs(10 * 60);
+/// How much of the end of a command's output is compared between polls.
+const STALL_OUTPUT_TAIL_BYTES: usize = 4 * 1024;
+
+/// Why a still-running command was stopped by [`wait_for_stalled_command`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum StalledCommand {
+    WaitingForInput { prompt: String },
+    Silent,
+}
+
+/// Resolves once the command's output has stopped changing for long enough
+/// that it is clearly not going to finish by itself; never resolves while the
+/// output keeps changing or after the command has exited.
+async fn wait_for_stalled_command(
+    terminal: Rc<dyn crate::TerminalHandle>,
+    has_explicit_timeout: bool,
+    cx: AsyncApp,
+) -> StalledCommand {
+    let mut last_output = String::new();
+    let mut quiet_for = Duration::ZERO;
+    loop {
+        cx.background_executor().timer(STALL_POLL_INTERVAL).await;
+        let output = match terminal.output_tail(STALL_OUTPUT_TAIL_BYTES, &cx) {
+            Ok(output) => output,
+            Err(error) => {
+                log::debug!("stopped watching an agent command for stalls: {error:#}");
+                return futures::future::pending().await;
+            }
+        };
+        if output != last_output {
+            last_output = output;
+            quiet_for = Duration::ZERO;
+            continue;
+        }
+        quiet_for += STALL_POLL_INTERVAL;
+        if let Some(stall) = stalled_command(&last_output, quiet_for, has_explicit_timeout) {
+            return stall;
+        }
+    }
+}
+
+/// Whether a command whose output has been `output` for `quiet_for` should be
+/// stopped. An explicit `timeout_ms` is the model saying the command may run
+/// quietly for long, so it lifts the silence limit and the guess from a
+/// question-like last line, but not a plain request for input.
+fn stalled_command(
+    output: &str,
+    quiet_for: Duration,
+    has_explicit_timeout: bool,
+) -> Option<StalledCommand> {
+    let last_line = output.trim_end().lines().last().unwrap_or_default().trim();
+    let waiting_for_input = || StalledCommand::WaitingForInput {
+        prompt: last_line.chars().take(200).collect(),
+    };
+    if quiet_for >= INPUT_PROMPT_QUIET_LIMIT && is_input_prompt(last_line) {
+        return Some(waiting_for_input());
+    }
+    if has_explicit_timeout {
+        return None;
+    }
+    if quiet_for >= POSSIBLE_PROMPT_QUIET_LIMIT && last_line.ends_with(['?', ':']) {
+        return Some(waiting_for_input());
+    }
+    (quiet_for >= SILENCE_LIMIT).then_some(StalledCommand::Silent)
+}
+
+fn is_input_prompt(line: &str) -> bool {
+    const CHOICES: &[&str] = &[
+        "[y/n]",
+        "(y/n)",
+        "[y/n/",
+        "(y/n/",
+        "[yes/no]",
+        "(yes/no)",
+        "(yes/no/",
+        "(default is \"",
+        "press any key",
+        "press enter",
+        "press return",
+    ];
+    // Words that also appear in ordinary log lines (`using password: NO`),
+    // so they count only on a line that ends the way a question does.
+    const CREDENTIALS: &[&str] = &["password", "passphrase", "username for "];
+    let line = line.to_lowercase();
+    CHOICES.iter().any(|choice| line.contains(choice))
+        || (line.ends_with([':', '?'])
+            && CREDENTIALS
+                .iter()
+                .any(|credential| line.contains(credential)))
+}
+
+fn stalled_command_content(
+    output: ProcessOutput,
+    command: &str,
+    stall: &StalledCommand,
+    selection: TerminalOutputSelection,
+) -> String {
+    let content = select_terminal_output_lines(output.output.trim(), selection);
+    let reason = match stall {
+        StalledCommand::WaitingForInput { prompt } => format!(
+            "Command \"{command}\" was stopped because it seemed to be waiting for input, \
+             which this tool can't type. Its last line was: `{prompt}`. Run it without prompts \
+             (for example with a `--yes` or `--non-interactive` flag, or by passing the value as \
+             an argument), or ask the user to run it themselves."
+        ),
+        StalledCommand::Silent => format!(
+            "Command \"{command}\" was stopped after printing nothing new for {} minutes. \
+             It may still have been working; if it is expected to run quietly for longer, \
+             run it again with `timeout_ms` set.",
+            SILENCE_LIMIT.as_secs() / 60
+        ),
+    };
+    let result = if content.is_empty() {
+        format!("{reason} No output was captured.")
+    } else {
+        format!("{reason} Output captured before stopping:\n\n```\n{content}\n```")
+    };
+    with_read_hiding_note(result, &output.output)
 }
 
 /// Resolve model-requested write paths into absolute paths.
@@ -2147,6 +2289,126 @@ mod tests {
             "Expected 'No output was captured', got: {}",
             result
         );
+    }
+
+    #[test]
+    fn a_plain_prompt_stops_a_command_after_a_few_quiet_seconds() {
+        for prompt in [
+            "Proceed? [Y/n]",
+            "Terminate batch job (Y/N)?",
+            "Are you sure you want to continue connecting (yes/no/[fingerprint])?",
+            "Enter passphrase for key '/home/me/.ssh/id_ed25519':",
+            "Username for 'https://github.com':",
+            "Press any key to continue . . .",
+            "[sudo] password for me:",
+            "[Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is \"Y\"):",
+        ] {
+            let output = format!("some output\n{prompt}\n\n");
+            assert_eq!(
+                stalled_command(&output, Duration::from_secs(4), true),
+                None,
+                "{prompt}"
+            );
+            assert_eq!(
+                stalled_command(&output, INPUT_PROMPT_QUIET_LIMIT, true),
+                Some(StalledCommand::WaitingForInput {
+                    prompt: prompt.to_string()
+                }),
+                "{prompt}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_log_line_naming_a_password_is_not_a_prompt() {
+        for line in [
+            "ERROR 1045: Access denied for user 'root' (using password: NO)",
+            "Unlocking keychain with passphrase from the environment",
+            "password: ****",
+        ] {
+            assert_eq!(
+                stalled_command(
+                    line,
+                    POSSIBLE_PROMPT_QUIET_LIMIT - STALL_POLL_INTERVAL,
+                    true
+                ),
+                None,
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_question_like_line_stops_a_command_only_without_a_timeout() {
+        let output = "Package name:";
+        assert_eq!(
+            stalled_command(output, Duration::from_secs(29), false),
+            None
+        );
+        assert_eq!(
+            stalled_command(output, POSSIBLE_PROMPT_QUIET_LIMIT, false),
+            Some(StalledCommand::WaitingForInput {
+                prompt: output.to_string()
+            })
+        );
+        assert_eq!(stalled_command(output, SILENCE_LIMIT, true), None);
+    }
+
+    #[test]
+    fn silence_stops_a_command_only_without_a_timeout() {
+        let output = "Compiling foo v0.1.0";
+        assert_eq!(
+            stalled_command(output, POSSIBLE_PROMPT_QUIET_LIMIT, false),
+            None
+        );
+        assert_eq!(
+            stalled_command(output, SILENCE_LIMIT - STALL_POLL_INTERVAL, false),
+            None
+        );
+        assert_eq!(
+            stalled_command(output, SILENCE_LIMIT, false),
+            Some(StalledCommand::Silent)
+        );
+        assert_eq!(stalled_command(output, SILENCE_LIMIT * 6, true), None);
+        assert_eq!(
+            stalled_command("", SILENCE_LIMIT, false),
+            Some(StalledCommand::Silent)
+        );
+    }
+
+    #[test]
+    fn a_long_prompt_is_cut_on_a_character_boundary() {
+        let output = format!("{}? [y/N]", "確認".repeat(150));
+        let Some(StalledCommand::WaitingForInput { prompt }) =
+            stalled_command(&output, INPUT_PROMPT_QUIET_LIMIT, false)
+        else {
+            panic!("expected a prompt");
+        };
+        assert_eq!(prompt.chars().count(), 200);
+    }
+
+    #[test]
+    fn a_stalled_command_result_tells_the_model_what_to_do() {
+        let result = stalled_command_content(
+            ProcessOutput::new("Overwrite? [y/N]".to_string(), false),
+            "npx create-thing",
+            &StalledCommand::WaitingForInput {
+                prompt: "Overwrite? [y/N]".to_string(),
+            },
+            TerminalOutputSelection::default(),
+        );
+        assert!(result.starts_with("Command \"npx create-thing\" was stopped"));
+        assert!(result.contains("`--yes`"));
+        assert!(result.contains("```\nOverwrite? [y/N]\n```"));
+
+        let result = stalled_command_content(
+            ProcessOutput::new(String::new(), false),
+            "cargo test",
+            &StalledCommand::Silent,
+            TerminalOutputSelection::default(),
+        );
+        assert!(result.contains("10 minutes"));
+        assert!(result.ends_with("No output was captured."));
     }
 
     #[test]
