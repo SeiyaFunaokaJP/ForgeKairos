@@ -445,7 +445,9 @@ impl AgentConnection for PickerConnection {
         Task::ready(Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)))
     }
 
-    fn cancel(&self, _session_id: &acp_v2::SessionId, _cx: &mut App) {}
+    fn cancel(&self, _session_id: &acp_v2::SessionId, _cx: &mut App) -> Result<()> {
+        Ok(())
+    }
 
     fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
         self

@@ -694,6 +694,7 @@ pub struct LanguageModelEffortLevel {
     pub name: SharedString,
     pub value: SharedString,
     pub is_default: bool,
+    pub supports_disabling_thinking: Option<bool>,
 }
 
 impl LanguageModelEffortLevel {
@@ -884,6 +885,7 @@ mod tests {
             name: "XHigh".into(),
             value: "xhigh".into(),
             is_default: false,
+            supports_disabling_thinking: None,
         };
         assert_eq!(standard.display_name(), "Extra High");
         {
@@ -897,6 +899,7 @@ mod tests {
             name: "Ultra".into(),
             value: "ultra".into(),
             is_default: false,
+            supports_disabling_thinking: None,
         };
         assert_eq!(custom.display_name(), "Ultra");
     }

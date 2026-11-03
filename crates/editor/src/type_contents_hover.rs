@@ -5,7 +5,7 @@
 //! server's popover where it was when it arrives later. Members expand in place, one level at a
 //! time, for as long as the popover is open.
 
-use std::{ops::Range, sync::Arc, time::Duration};
+use std::{ffi::OsStr, ops::Range, path::Path, sync::Arc, time::Duration};
 
 use collections::HashMap;
 use futures::{
@@ -2125,11 +2125,13 @@ fn location_label(path: &ProjectPath, position: Point, labels: &PathLabels) -> (
         ),
         None => relative.into_owned(),
     };
-    let (folder, file) = labels.path_style.split(&shown);
-    (
-        folder.unwrap_or_default().to_string(),
-        format!("{file}:{}", position.row + 1),
-    )
+    let file = labels
+        .path_style
+        .file_name(Path::new(&shown))
+        .and_then(OsStr::to_str)
+        .unwrap_or(&shown);
+    let folder = shown.strip_suffix(file).unwrap_or_default();
+    (folder.to_string(), format!("{file}:{}", position.row + 1))
 }
 
 fn code_block(text: &str, language_name: &LanguageName) -> String {

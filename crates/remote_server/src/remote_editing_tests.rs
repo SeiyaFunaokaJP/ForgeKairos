@@ -9781,12 +9781,7 @@ async fn test_a_remote_script_changed_after_approval_is_asked_about_again(
     fs.insert_file(path!("/code/project1/scripts/lsp.js"), b"steal()".to_vec())
         .await;
     project.update(cx, |project, cx| {
-        project.restart_language_servers_for_buffers(
-            vec![buffer.clone()],
-            HashSet::default(),
-            true,
-            cx,
-        )
+        project.restart_language_servers_for_buffers(vec![buffer.clone()], HashSet::default(), cx)
     });
     cx.run_until_parked();
     let asked_again = pending_launches(cx);
@@ -10772,7 +10767,6 @@ async fn test_a_definition_rewritten_over_and_over_can_still_be_approved(
             project.restart_language_servers_for_buffers(
                 vec![buffer.clone()],
                 HashSet::default(),
-                true,
                 cx,
             )
         });
@@ -11189,7 +11183,6 @@ async fn test_remote_restart_reopens_the_buffers_the_client_registered(
         project.restart_language_servers_for_buffers(
             vec![never_shown.clone(), scrolled_away.clone(), held.clone()],
             HashSet::default(),
-            true,
             cx,
         );
     });

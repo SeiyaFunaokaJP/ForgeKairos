@@ -635,6 +635,7 @@ fn thinking_effort_levels(model: &ollama::Model) -> Vec<LanguageModelEffortLevel
                 .map_or_else(|_| level.clone().into(), |effort| effort.label().into()),
             value: level.clone().into(),
             is_default: default_level.is_some_and(|default| default == level),
+            supports_disabling_thinking: None,
         })
         .collect()
 }

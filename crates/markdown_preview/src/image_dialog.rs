@@ -1369,7 +1369,12 @@ fn is_within(directory: &str, path: &str, style: PathStyle) -> bool {
 
 fn join_path(directory: &str, relative: &str, style: PathStyle) -> Option<String> {
     let joined = style.join(directory, relative)?;
-    Some(style.normalize(&joined))
+    Some(
+        style
+            .normalize_lexically(&joined)
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// What the path field points at.
@@ -1432,7 +1437,15 @@ pub(crate) fn resolve_source(input: &str, location: &DocumentLocation) -> Resolv
             });
         }
         let relative = directory.and_then(|directory| relative_path(directory, input, style));
-        (Some(style.normalize(input)), relative)
+        (
+            Some(
+                style
+                    .normalize_lexically(input)
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            relative,
+        )
     } else {
         let mut relative = if style.is_windows() {
             input.replace('\\', "/")

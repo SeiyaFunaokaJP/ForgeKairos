@@ -1,4 +1,4 @@
-use std::{cmp::Reverse, rc::Rc, sync::Arc};
+use std::{rc::Rc, sync::Arc};
 
 use acp_thread::{
     AgentModelIcon, AgentModelId, AgentModelInfo, AgentModelList, AgentModelSelector,
@@ -7,13 +7,12 @@ use acp_thread::{
 use anyhow::Result;
 use collections::{HashMap, HashSet, IndexMap};
 use futures::FutureExt;
-use fuzzy::{StringMatchCandidate, match_strings};
+use fuzzy_nucleo::StringMatchCandidate;
 use gpui::{
     Action, AsyncWindowContext, BackgroundExecutor, DismissEvent, FocusHandle, Focusable,
     Subscription, Task, TaskExt, WeakEntity,
 };
 use itertools::Itertools;
-use ordered_float::OrderedFloat;
 use picker::{Picker, PickerDelegate, ScrollBehavior};
 use project::{AgentId, Project};
 use settings::SettingsStore;
@@ -27,6 +26,7 @@ use crate::ai_choices::{
     choice_search_text, choice_transition, gather_ai_choice_inputs, render_ai_choice_picker_row,
     vendor_label,
 };
+use crate::model_search;
 use crate::ui::{
     ModelSelectorFooter, ModelSelectorGroupHeader, ModelSelectorHeader, ModelSelectorListItem,
     documentation_aside_side,
@@ -487,13 +487,6 @@ pub(crate) fn refresh_rows_after_fold<D: PickerDelegate>(
 /// Lets a query name the group as well as the entry (「ollama」 lists the
 /// Ollama models), the way the inline assistant's selector matches
 /// `provider/model`.
-pub(crate) fn grouped_search_text(group_name: Option<&str>, name: &str) -> String {
-    match group_name {
-        Some(group_name) => format!("{group_name}/{name}"),
-        None => name.to_string(),
-    }
-}
-
 pub(crate) fn render_group_header<T>(
     rows: &[PickerRow<T>],
     ix: usize,
@@ -600,14 +593,14 @@ pub(crate) async fn filter_agent_launch_entries(
                 .map(move |choice| choice_search_text(section.vendor, choice))
         })
         .enumerate()
-        .map(|(ix, text)| StringMatchCandidate::new(ix, &text))
+        .map(|(ix, text)| StringMatchCandidate::new(ix, text))
         .collect::<Vec<_>>();
-    let matched = match_strings(
+    let matched = fuzzy_nucleo::match_strings_async(
         &candidates,
         query,
-        false,
-        true,
-        100,
+        fuzzy_nucleo::Case::Ignore,
+        fuzzy_nucleo::LengthPenalty::On,
+        candidates.len(),
         &Default::default(),
         executor,
     )
@@ -1128,36 +1121,20 @@ async fn fuzzy_search(
         query: &str,
         executor: BackgroundExecutor,
     ) -> Vec<AgentModelInfo> {
-        let candidates = model_list
-            .iter()
-            .enumerate()
-            .map(|(ix, model)| {
+        model_search::search(model_list, query, executor, move |index, model| {
+            (
+                StringMatchCandidate::new(index, model.name.clone()),
                 StringMatchCandidate::new(
-                    ix,
-                    &grouped_search_text(group_name.as_deref(), &model.name),
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut matches = match_strings(
-            &candidates,
-            query,
-            false,
-            true,
-            100,
-            &Default::default(),
-            executor,
-        )
-        .await;
-
-        matches.sort_unstable_by_key(|mat| {
-            let candidate = &candidates[mat.candidate_id];
-            (Reverse(OrderedFloat(mat.score)), candidate.id)
-        });
-
-        matches
-            .into_iter()
-            .map(|mat| model_list[mat.candidate_id].clone())
-            .collect()
+                    index,
+                    format!(
+                        "{} {}",
+                        model.name,
+                        group_name.as_deref().unwrap_or_default()
+                    ),
+                ),
+            )
+        })
+        .await
     }
 
     match model_list {
@@ -1477,6 +1454,53 @@ mod tests {
         // Fuzzy search - test with specific model name
         let results = fuzzy_search(models.clone(), "mistral".into(), cx.executor()).await;
         assert_models_eq(results, vec![("ollama", vec!["mistral"])]);
+
+        let models = create_model_list(vec![
+            ("OpenAI", vec!["GPT-5.6 Sol"]),
+            ("Anthropic", vec!["Claude Sonnet 4"]),
+        ]);
+        let results = fuzzy_search(models.clone(), "GPT 5.6".into(), cx.executor()).await;
+        assert_models_eq(results, vec![("OpenAI", vec!["GPT-5.6 Sol"])]);
+
+        let results = fuzzy_search(models.clone(), "openai 5.6".into(), cx.executor()).await;
+        assert_models_eq(results, vec![("OpenAI", vec!["GPT-5.6 Sol"])]);
+
+        let results = fuzzy_search(models, "openai".into(), cx.executor()).await;
+        assert_models_eq(results, vec![("OpenAI", vec!["GPT-5.6 Sol"])]);
+    }
+
+    #[gpui::test]
+    async fn test_fuzzy_match_prioritizes_names_over_group(cx: &mut TestAppContext) {
+        let models = create_model_list(vec![(
+            "High Provider",
+            vec!["Reasoner", "Extra High", "High"],
+        )]);
+
+        let results = fuzzy_search(models, "high".into(), cx.executor()).await;
+        assert_models_eq(
+            results,
+            vec![("High Provider", vec!["High", "Extra High", "Reasoner"])],
+        );
+    }
+
+    #[gpui::test(iterations = 20)]
+    async fn test_model_search_builds_candidates_in_background(executor: BackgroundExecutor) {
+        let background_executor = executor.clone();
+        let results = model_search::search(
+            vec!["High".to_string()],
+            "high",
+            executor,
+            move |index, name| {
+                assert!(!background_executor.is_main_thread());
+                (
+                    StringMatchCandidate::new(index, name.clone()),
+                    StringMatchCandidate::new(index, name.clone()),
+                )
+            },
+        )
+        .await;
+
+        assert_eq!(results, ["High"]);
     }
 
     #[gpui::test]

@@ -57,9 +57,9 @@ use editor::markdown_actions::MermaidFenceTarget;
 use editor::{Editor, EditorEvent};
 use gpui::{
     App, Context, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, Focusable,
-    ImageSource, ParsedSvg, Pixels, RenderImage, SMOOTH_SVG_SCALE_FACTOR, ScrollDelta,
-    ScrollHandle, ScrollWheelEvent, Size, Subscription, Task, TextStyleRefinement, WeakEntity,
-    Window, canvas, img, px, relative, size,
+    ImageSource, ParsedSvg, Pixels, RenderImage, SMOOTH_SVG_SCALE_FACTOR, ScrollDelta, ScrollEvent,
+    ScrollHandle, Size, Subscription, Task, TextStyleRefinement, WeakEntity, Window, canvas, img,
+    px, relative, size,
 };
 use mermaid_render::flowchart_model::{
     ArrowKind, CLICK_CLASS, EDGE_STYLE_PRESETS, FlowDirection, FlowchartClassDef,
@@ -1558,7 +1558,7 @@ impl MermaidEditor {
 
     fn zoom_preview_on_wheel(
         &mut self,
-        event: &ScrollWheelEvent,
+        event: &ScrollEvent,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -2941,13 +2941,13 @@ impl MermaidEditor {
                 .flex_none()
                 .w(shown.width)
                 .h(shown.height)
-                .on_scroll_wheel(cx.listener(Self::zoom_preview_on_wheel))
+                .on_scroll(cx.listener(Self::zoom_preview_on_wheel))
                 .child(img(ImageSource::Render(image.clone())).size_full());
             let content = div()
                 .id("mermaid-preview-scroll")
                 .size_full()
                 .p(PREVIEW_MARGIN)
-                .on_scroll_wheel(cx.listener(Self::zoom_preview_on_wheel));
+                .on_scroll(cx.listener(Self::zoom_preview_on_wheel));
             let content = if fits_in_room {
                 content
                     .flex()

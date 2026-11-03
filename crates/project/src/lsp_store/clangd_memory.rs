@@ -26,7 +26,7 @@ use util::ResultExt as _;
 use worktree::WorktreeId;
 
 use crate::{
-    lsp_store::{LocalLspStore, LspStore, clangd_ext::CLANGD_SERVER_NAME},
+    lsp_store::{LanguageServerStartMode, LocalLspStore, LspStore, clangd_ext::CLANGD_SERVER_NAME},
     project_settings::ClangdSettings,
 };
 
@@ -849,11 +849,14 @@ impl LspStore {
                 // Chosen after the stop, not before, as a restart chooses them.
                 let open_buffers = lsp_store.buffer_store.read(cx).buffers().collect();
                 let buffers = lsp_store.buffers_to_reopen_after_restart(open_buffers, cx);
+                let Some(local) = lsp_store.as_local_mut() else {
+                    return;
+                };
                 for buffer in buffers {
-                    lsp_store.register_buffer_with_language_servers(
+                    local.register_buffer_with_language_servers(
                         &buffer,
                         HashSet::from_iter([LanguageServerSelector::Name(CLANGD_SERVER_NAME)]),
-                        true,
+                        LanguageServerStartMode::Automatic,
                         cx,
                     );
                 }

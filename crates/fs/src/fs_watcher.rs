@@ -1744,6 +1744,9 @@ pub struct OsWatcher {
     /// Set when the priority set changes, so the next maintenance promotes right away instead
     /// of waiting for the promotion round, which is also when refused paths are retried.
     priority_changed: AtomicBool,
+    // Closing the event channel can wake the dispatch task. Keep its scheduler
+    // alive through channel and task teardown, even when our owner drops first.
+    _executor: BackgroundExecutor,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -1978,6 +1981,7 @@ impl OsWatcher {
             key_locks: std::array::from_fn(|_| Mutex::new(())),
             priority: Default::default(),
             priority_changed: AtomicBool::new(false),
+            _executor: executor,
         })
     }
 
@@ -3319,6 +3323,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn watcher_retains_scheduler_until_teardown() {
+        let dispatcher = Arc::new(gpui::TestDispatcher::new(0));
+        let scheduler = Arc::downgrade(dispatcher.scheduler());
+        let executor = BackgroundExecutor::new(dispatcher.clone());
+        let watcher = OsWatcher::new(OsWatcherKind::Native, executor.clone());
+        executor.run_until_parked();
+        drop(executor);
+
+        drop(dispatcher);
+        assert!(scheduler.upgrade().is_some());
+        drop(watcher);
+        assert!(scheduler.upgrade().is_none());
+    }
+
     /// Reports the fake native backend's watches plus a configurable number used by other
     /// programs, the way `/proc` reports every inotify watch of the user.
     struct FakeBudgetSource {
@@ -3385,6 +3404,7 @@ mod tests {
                     Weak::new(),
                 )
             }),
+            _executor: BackgroundExecutor::new(Arc::new(gpui::TestDispatcher::new(0))),
         }
     }
 

@@ -5,7 +5,15 @@ use futures::{
     future::BoxFuture, io::BufReader, stream::BoxStream,
 };
 use std::{io, pin::Pin, process::Stdio};
-use util::process::Child;
+use util::{ResultExt as _, process::Child};
+
+pub(super) struct OwnedChild(pub Child);
+
+impl Drop for OwnedChild {
+    fn drop(&mut self) {
+        self.0.kill().log_err();
+    }
+}
 
 pub(super) struct StdioProcess {
     pub child: Child,

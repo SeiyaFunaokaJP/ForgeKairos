@@ -236,7 +236,7 @@ impl OpenPathDelegate {
             DirectoryState::None { .. } => return None,
         };
         let resolved = self.lister.resolve_tilde(parent_path, cx);
-        Some(PathBuf::from(self.path_style.normalize(resolved.as_ref())))
+        Some(self.path_style.normalize_lexically(resolved.as_ref()))
     }
 
     /// Picks the directory whose contents are listed, closing the prompt. Shared
@@ -1239,7 +1239,10 @@ fn path_candidates(
 /// `.` or `..` components in it lands where those components actually point,
 /// rather than one literal segment back.
 fn parent_directory_query(dir: &str, path_style: PathStyle, prompt_root: &str) -> Option<String> {
-    let normalized = path_style.normalize(dir);
+    let normalized = path_style
+        .normalize_lexically(dir)
+        .to_string_lossy()
+        .into_owned();
     if normalized == prompt_root {
         return None;
     }
