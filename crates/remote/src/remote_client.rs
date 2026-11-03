@@ -913,25 +913,30 @@ impl RemoteClient {
             // an answer nobody takes holds up every message behind it.
             // The language shown now, which may have changed since the
             // connection before; the server takes it up from here on.
-            let wire_revision =
-                jp_wire_revision::confirm(&client, jp_wire_revision::display_language(cx));
+            let (handshaken_tx, handshaken_rx) = oneshot::channel::<()>();
+            let wire_revision = jp_wire_revision::confirm_after_handshake(
+                &client,
+                jp_wire_revision::display_language(cx),
+                async move {
+                    // A handshake that fails fails the reconnect by itself.
+                    handshaken_rx.await.ok();
+                },
+            );
             let resync = client.resync(RESYNC_TIMEOUT);
-            let (resynced, wire_revision) = futures::join!(
+            // Either one failing fails the reconnect without waiting on the other.
+            if let Err(error) = futures::try_join!(
                 async {
                     connection_ready_rx
                         .with_timeout(RECONNECT_HANDSHAKE_TIMEOUT, cx.background_executor())
                         .await
                         .context("Timed out waiting for remote connection")?
                         .context("Remote connection closed before becoming ready")?;
+                    handshaken_tx.send(()).ok();
 
                     resync.await
                 },
                 wire_revision
-            );
-            if let Err(error) = resynced {
-                failed!(error, attempts, remote_connection, delegate);
-            };
-            if let Err(error) = wire_revision {
+            ) {
                 failed!(error, attempts, remote_connection, delegate);
             }
 

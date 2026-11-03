@@ -122,6 +122,12 @@ msgstr "계정"
 msgid "Actions"
 msgstr "작업"
 
+msgid "Activity unconfirmed"
+msgstr "활동 미확인"
+
+msgid "Activity unknown"
+msgstr "활동 알 수 없음"
+
 msgid "Add API Key…"
 msgstr "API 키 추가…"
 
@@ -172,6 +178,9 @@ msgstr "에이전트 프로필"
 
 msgid "Agent Update Available"
 msgstr "에이전트 업데이트 있음"
+
+msgid "Agent connection lost. Reconnect to restore the conversation."
+msgstr "에이전트와의 연결이 끊어졌습니다. 다시 연결하면 대화를 복원할 수 있습니다."
 
 msgid "Agent refused to respond to this request"
 msgstr "에이전트가 이 요청에 대한 응답을 거부했습니다"
@@ -531,6 +540,9 @@ msgstr "서버 연결 중…"
 msgid "Connection Interrupted"
 msgstr "연결이 중단됨"
 
+msgid "Connection lost; message acceptance is unknown"
+msgstr "연결이 끊어졌습니다. 메시지가 접수되었는지 알 수 없습니다"
+
 msgid "Context"
 msgstr "컨텍스트"
 
@@ -561,6 +573,9 @@ msgstr "오류 메시지 복사"
 msgid "Copy Link"
 msgstr "링크 복사"
 
+msgid "Copy Saved Input"
+msgstr "저장된 입력 복사"
+
 msgid "Copy This Agent Response"
 msgstr "이 에이전트 응답 복사"
 
@@ -569,6 +584,9 @@ msgstr "Markdown으로 복사"
 
 msgid "Copy into an empty composer. The saved submission is kept until discarded."
 msgstr "빈 입력란에 복사합니다. 저장된 제출 내용은 버릴 때까지 유지됩니다."
+
+msgid "Copy the original content and receipt evidence as JSON"
+msgstr "원래 내용과 접수 기록을 JSON으로 복사합니다"
 
 msgid "Cost"
 msgstr "비용"
@@ -765,8 +783,14 @@ msgstr "버리기"
 msgid "Discard Interrupted Edit"
 msgstr "중단된 편집 버리기"
 
+msgid "Discard Saved Submissions"
+msgstr "저장된 제출 내용 버리기"
+
 msgid "Discard draft"
 msgstr "초안 버리기"
+
+msgid "Discard local copies only; does not cancel agent work"
+msgstr "로컬 사본만 버립니다. 에이전트의 작업은 취소되지 않습니다"
 
 msgid "Discard the unsupported draft before moving a queued message into the composer."
 msgstr "대기 중인 메시지를 입력란으로 옮기기 전에 지원되지 않는 초안을 버리세요."
@@ -909,6 +933,9 @@ msgstr "{} 프로바이더 인증 실패"
 
 msgid "Failed to convert image"
 msgstr "이미지를 변환하지 못했습니다"
+
+msgid "Failed to copy saved input: {error}"
+msgstr "저장된 입력을 복사하지 못했습니다: {error}"
 
 msgid "Failed to decode clipboard content (expected base64)"
 msgstr "클립보드 내용을 디코딩하지 못했습니다 (base64가 필요함)"
@@ -1205,6 +1232,9 @@ msgstr "AI 연결 관리…"
 
 msgid "Message"
 msgstr "메시지"
+
+msgid "Message accepted; agent connection lost"
+msgstr "메시지가 접수되었습니다. 에이전트와의 연결이 끊어졌습니다"
 
 msgid "Message cancelled"
 msgstr "메시지 전송이 취소됨"
@@ -1623,6 +1653,9 @@ msgstr "다시 연결"
 msgid "Reconnect Now"
 msgstr "지금 다시 연결"
 
+msgid "Reconnecting requires full history replay. Saved input has been kept."
+msgstr "다시 연결하려면 전체 기록을 다시 불러와야 합니다. 저장된 입력은 그대로 유지됩니다."
+
 msgid "Regenerate Thread Title"
 msgstr "스레드 제목 다시 생성"
 
@@ -1652,6 +1685,9 @@ msgstr "요청 실패"
 
 msgid "Request Refused"
 msgstr "요청 거부됨"
+
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "중지 요청 (활동 미확인)"
 
 msgid "Required"
 msgstr "필수"
@@ -1884,6 +1920,9 @@ msgstr "패널에 스레드 기록 표시"
 msgid "Sign In…"
 msgstr "로그인…"
 
+msgid "Sign-in did not complete: {message}"
+msgstr "로그인이 완료되지 않았습니다: {message}"
+
 msgid "Skill Failed to Load"
 msgstr "스킬을 로드하지 못했습니다"
 
@@ -2073,6 +2112,9 @@ msgstr "에이전트가 저장소를 읽을 수는 있지만 변경할 수는 �
 msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
 msgstr "에이전트가 훅을 끄고 네트워크 액세스 없이 스테이징, 커밋, 브랜치 전환 등을 할 수 있습니다. 각 명령은 git 도구 권한을 따릅니다. 클릭하면 이 스레드에서 끕니다."
 
+msgid "The agent can't currently tell whether it is working. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "에이전트가 지금 작업 중인지 판단할 수 없습니다. 수동으로는 보낼 수 있으며, 자동 전송은 대기 상태가 확인될 때까지 기다립니다."
+
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "에이전트가 `getDiagnostics`를 사용할 수 없어 편집기에 표시되는 오류와 경고를 볼 수 없습니다. {reason}"
 
@@ -2182,6 +2224,9 @@ msgstr "이 연결 유형에서는 아직 샌드박스 Claude Code를 사용할 
 msgid "The sandboxed Claude Code is not available yet on this OS."
 msgstr "이 OS에서는 아직 샌드박스 Claude Code를 사용할 수 없습니다."
 
+msgid "The session is attached, but the agent has not reported its activity. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "세션은 연결되었지만 에이전트가 활동 상태를 알려 주지 않았습니다. 수동으로는 보낼 수 있으며, 자동 전송은 대기 상태가 확인될 때까지 기다립니다."
+
 msgid "The session's terminal was closed right after it opened."
 msgstr "세션의 터미널이 열린 직후 닫혔습니다."
 
@@ -2220,6 +2265,9 @@ msgstr "사고 과정"
 
 msgid "Thinking Effort"
 msgstr "사고 강도"
+
+msgid "Thinking is always on at this effort level. Select a lower effort level to make it optional."
+msgstr "이 사고 강도에서는 사고가 항상 켜져 있습니다. 끌 수 있게 하려면 더 낮은 강도를 선택하세요."
 
 msgid "Thinking: Off"
 msgstr "사고: 꺼짐"
@@ -2394,9 +2442,6 @@ msgstr "스레드 사이드바 전환"
 
 msgid "Tool Permissions"
 msgstr "도구 권한"
-
-msgid "Tool call: {id}"
-msgstr "도구 호출: {id}"
 
 msgid "Tools Unsupported"
 msgstr "도구 미지원"

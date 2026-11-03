@@ -21408,6 +21408,11 @@ mod tests {
         discard_row(&panel, "untracked.txt", Section::Unstaged, &mut cx);
 
         assert!(!fs.is_file(path!("/project/untracked.txt").as_ref()).await);
+        // Into the trash, where it can be restored from, rather than deleted.
+        assert_eq!(
+            fs.trashed_paths(),
+            [PathBuf::from(path!("/project/untracked.txt"))]
+        );
     }
 
     #[gpui::test]

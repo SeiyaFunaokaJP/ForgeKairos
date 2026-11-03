@@ -116,6 +116,9 @@ msgstr "重命名会话"
 msgid "Rename Title"
 msgstr "重命名标题"
 
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "请求停止（活动未确认）"
+
 msgid "Search threads…"
 msgstr "搜索会话…"
 

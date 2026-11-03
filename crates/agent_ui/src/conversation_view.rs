@@ -4652,7 +4652,15 @@ impl ConversationView {
         cx.spawn(async move |_, cx| {
             let subagent_thread = subagent_thread_task.await?;
             let registered = parent_thread.update(cx, |parent_thread, cx| {
-                parent_thread.register_subagent(subagent_thread, cx);
+                // ADR-F97: the agent may have announced the child while it
+                // loaded, and the thread made then is the one it updates.
+                let session_id = subagent_thread.read(cx).session_id().clone();
+                if parent_thread
+                    .external_subagent_thread(&session_id)
+                    .is_none()
+                {
+                    parent_thread.register_subagent(subagent_thread, cx);
+                }
             });
             if registered.is_err() {
                 log::debug!("Subagent parent was released while its session loaded");
@@ -11839,6 +11847,56 @@ pub(crate) mod tests {
             created_views.borrow().as_slice(),
             &[restored_view.entity_id()]
         );
+    }
+
+    /// ADR-F97: an external agent announcing a child while its session loads
+    /// keeps the one thread the announcement made.
+    #[gpui::test]
+    async fn test_subagent_load_yields_to_an_external_child_announced_meanwhile(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let (conversation_view, cx) = setup_conversation_view(FakeAcpAgentServer::new(), cx).await;
+        let root_thread =
+            active_thread(&conversation_view, cx).read_with(cx, |view, _| view.thread.clone());
+        let root_session_id = root_thread.read_with(cx, |thread, _| thread.session_id().clone());
+        let child_session_id = acp_v2::SessionId::new("external-child");
+
+        conversation_view.update(cx, |view, cx| {
+            view.load_subagent_session(child_session_id.clone(), root_session_id.clone(), cx);
+        });
+        let announced = root_thread.update(cx, |thread, cx| {
+            thread
+                .apply_external_subagent_report(
+                    acp_thread::ExternalSubagentReport {
+                        session_id: child_session_id.clone(),
+                        title: Some("Explore".to_string()),
+                        description: None,
+                        status: acp_thread::ExternalSubagentStatus::Running,
+                        error: None,
+                    },
+                    cx,
+                )
+                .expect("the first report makes the child's thread")
+        });
+        cx.run_until_parked();
+
+        root_thread.read_with(cx, |thread, _| {
+            assert!(
+                thread.subagent(&child_session_id).is_none(),
+                "the loaded session must not become a second child"
+            );
+        });
+        conversation_view.read_with(cx, |view, cx| {
+            let child_view = view
+                .thread_view(&child_session_id)
+                .expect("the announced child has a view");
+            assert_eq!(
+                child_view.read(cx).thread.entity_id(),
+                announced.entity_id()
+            );
+        });
     }
 
     #[gpui::test]

@@ -122,6 +122,12 @@ msgstr "Conta"
 msgid "Actions"
 msgstr "Ações"
 
+msgid "Activity unconfirmed"
+msgstr "Atividade não confirmada"
+
+msgid "Activity unknown"
+msgstr "Atividade desconhecida"
+
 msgid "Add API Key…"
 msgstr "Adicionar chave de API…"
 
@@ -172,6 +178,9 @@ msgstr "Perfis do agente"
 
 msgid "Agent Update Available"
 msgstr "Atualização do agente disponível"
+
+msgid "Agent connection lost. Reconnect to restore the conversation."
+msgstr "A conexão com o agente foi perdida. Reconecte para restaurar a conversa."
 
 msgid "Agent refused to respond to this request"
 msgstr "O agente recusou-se a responder a esta solicitação"
@@ -532,6 +541,9 @@ msgstr "Conectando ao servidor…"
 msgid "Connection Interrupted"
 msgstr "Conexão interrompida"
 
+msgid "Connection lost; message acceptance is unknown"
+msgstr "Conexão perdida; não se sabe se a mensagem foi aceita"
+
 msgid "Context"
 msgstr "Contexto"
 
@@ -562,6 +574,9 @@ msgstr "Copiar mensagem de erro"
 msgid "Copy Link"
 msgstr "Copiar link"
 
+msgid "Copy Saved Input"
+msgstr "Copiar entrada salva"
+
 msgid "Copy This Agent Response"
 msgstr "Copiar esta resposta do agente"
 
@@ -570,6 +585,9 @@ msgstr "Copiar como Markdown"
 
 msgid "Copy into an empty composer. The saved submission is kept until discarded."
 msgstr "Copia para um campo de mensagem vazio. O envio salvo é mantido até ser descartado."
+
+msgid "Copy the original content and receipt evidence as JSON"
+msgstr "Copia o conteúdo original e o comprovante de recebimento como JSON"
 
 msgid "Cost"
 msgstr "Custo"
@@ -766,8 +784,14 @@ msgstr "Descartar"
 msgid "Discard Interrupted Edit"
 msgstr "Descartar edição interrompida"
 
+msgid "Discard Saved Submissions"
+msgstr "Descartar envios salvos"
+
 msgid "Discard draft"
 msgstr "Descartar rascunho"
+
+msgid "Discard local copies only; does not cancel agent work"
+msgstr "Descarta apenas as cópias locais; não cancela o trabalho do agente"
 
 msgid "Discard the unsupported draft before moving a queued message into the composer."
 msgstr "Descarte o rascunho sem suporte antes de mover uma mensagem da fila para o campo de mensagem."
@@ -911,6 +935,9 @@ msgstr "Falha ao autenticar com o provedor {}"
 
 msgid "Failed to convert image"
 msgstr "Falha ao converter a imagem"
+
+msgid "Failed to copy saved input: {error}"
+msgstr "Falha ao copiar a entrada salva: {error}"
 
 msgid "Failed to decode clipboard content (expected base64)"
 msgstr "Falha ao decodificar o conteúdo da área de transferência (esperado base64)"
@@ -1209,6 +1236,9 @@ msgstr "Gerenciar conexões de IA…"
 
 msgid "Message"
 msgstr "Mensagem"
+
+msgid "Message accepted; agent connection lost"
+msgstr "Mensagem aceita; conexão com o agente perdida"
 
 msgid "Message cancelled"
 msgstr "Mensagem cancelada"
@@ -1627,6 +1657,9 @@ msgstr "Reconectar"
 msgid "Reconnect Now"
 msgstr "Reconectar agora"
 
+msgid "Reconnecting requires full history replay. Saved input has been kept."
+msgstr "Para reconectar é preciso reproduzir todo o histórico. A entrada salva foi mantida."
+
 msgid "Regenerate Thread Title"
 msgstr "Gerar título da conversa novamente"
 
@@ -1656,6 +1689,9 @@ msgstr "Solicitação falhou"
 
 msgid "Request Refused"
 msgstr "Solicitação recusada"
+
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "Solicitar parada (atividade não confirmada)"
 
 msgid "Required"
 msgstr "Obrigatório"
@@ -1888,6 +1924,9 @@ msgstr "Mostrar histórico de conversas no painel"
 msgid "Sign In…"
 msgstr "Entrar…"
 
+msgid "Sign-in did not complete: {message}"
+msgstr "O login não foi concluído: {message}"
+
 msgid "Skill Failed to Load"
 msgstr "Falha ao carregar a habilidade"
 
@@ -2077,6 +2116,9 @@ msgstr "O agente pode ler o repositório, mas não alterá-lo. Clique para ativa
 msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
 msgstr "O agente pode preparar, fazer commit, trocar de branch etc., com os hooks desativados e sem acesso à rede. Cada comando segue as permissões da ferramenta git. Clique para desativar isso nesta conversa."
 
+msgid "The agent can't currently tell whether it is working. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "O agente não consegue saber agora se está trabalhando. Você pode enviar manualmente; os envios automáticos aguardam a confirmação do estado Ocioso."
+
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "O agente não pode usar `getDiagnostics`, então não vê os erros e avisos que o editor mostra. {reason}"
 
@@ -2187,6 +2229,9 @@ msgstr "O Claude Code em sandbox ainda não está disponível para este tipo de 
 msgid "The sandboxed Claude Code is not available yet on this OS."
 msgstr "O Claude Code em sandbox ainda não está disponível neste sistema operacional."
 
+msgid "The session is attached, but the agent has not reported its activity. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "A sessão está conectada, mas o agente não informou sua atividade. Você pode enviar manualmente; os envios automáticos aguardam a confirmação do estado Ocioso."
+
 msgid "The session's terminal was closed right after it opened."
 msgstr "O terminal da sessão foi fechado logo após ser aberto."
 
@@ -2225,6 +2270,9 @@ msgstr "Raciocinando"
 
 msgid "Thinking Effort"
 msgstr "Profundidade de raciocínio"
+
+msgid "Thinking is always on at this effort level. Select a lower effort level to make it optional."
+msgstr "Nesta profundidade, o raciocínio fica sempre ativado. Selecione uma profundidade menor para poder desativá-lo."
 
 msgid "Thinking: Off"
 msgstr "Raciocínio: desativado"
@@ -2399,9 +2447,6 @@ msgstr "Alternar barra lateral de conversas"
 
 msgid "Tool Permissions"
 msgstr "Permissões de ferramentas"
-
-msgid "Tool call: {id}"
-msgstr "Chamada de ferramenta: {id}"
 
 msgid "Tools Unsupported"
 msgstr "Ferramentas não suportadas"

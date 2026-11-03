@@ -218,6 +218,9 @@ msgstr "Ocultar botón"
 msgid "Hide {icon_tooltip}"
 msgstr "Ocultar {icon_tooltip}"
 
+msgid "Home directory not available"
+msgstr "El directorio personal no está disponible"
+
 msgid "Language servers from running"
 msgstr "Que se ejecuten los servidores de lenguaje"
 

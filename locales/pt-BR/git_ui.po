@@ -230,6 +230,9 @@ msgstr "Aplicar o arquivo de patch {}?"
 msgid "Are you sure you want to discard changes to {}?"
 msgstr "Tem certeza de que deseja descartar as alterações em {}?"
 
+msgid "Are you sure you want to discard unstaged changes to {}?"
+msgstr "Tem certeza de que deseja descartar as alterações não preparadas em {}?"
+
 msgid "Are you sure you want to restore {}?"
 msgstr "Tem certeza de que deseja restaurar {}?"
 
@@ -911,6 +914,12 @@ msgstr "Descartar as alterações em {tracked_count} arquivos e mover {untracked
 
 msgid "Discard changes to {tracked_count} files?"
 msgstr "Descartar as alterações em {tracked_count} arquivos?"
+
+msgid "Discard unstaged changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "Descartar as alterações não preparadas em {tracked_count} arquivos e mover {untracked_count} arquivos para a lixeira?"
+
+msgid "Discard unstaged changes to {tracked_count} files?"
+msgstr "Descartar as alterações não preparadas em {tracked_count} arquivos?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Descarta as alterações deste arquivo e o retorna ao conteúdo do último commit"

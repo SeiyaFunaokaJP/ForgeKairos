@@ -122,6 +122,12 @@ msgstr "帳戶"
 msgid "Actions"
 msgstr "動作"
 
+msgid "Activity unconfirmed"
+msgstr "活動未確認"
+
+msgid "Activity unknown"
+msgstr "活動不明"
+
 msgid "Add API Key…"
 msgstr "新增 API 金鑰…"
 
@@ -172,6 +178,9 @@ msgstr "代理設定檔"
 
 msgid "Agent Update Available"
 msgstr "有代理更新可用"
+
+msgid "Agent connection lost. Reconnect to restore the conversation."
+msgstr "與代理的連線已中斷。重新連線即可還原對話。"
 
 msgid "Agent refused to respond to this request"
 msgstr "代理拒絕回應此要求"
@@ -531,6 +540,9 @@ msgstr "正在連線至伺服器…"
 msgid "Connection Interrupted"
 msgstr "連線中斷"
 
+msgid "Connection lost; message acceptance is unknown"
+msgstr "連線已中斷；無法得知訊息是否已被接受"
+
 msgid "Context"
 msgstr "上下文"
 
@@ -561,6 +573,9 @@ msgstr "複製錯誤訊息"
 msgid "Copy Link"
 msgstr "複製連結"
 
+msgid "Copy Saved Input"
+msgstr "複製已儲存的輸入"
+
 msgid "Copy This Agent Response"
 msgstr "複製此代理回應"
 
@@ -569,6 +584,9 @@ msgstr "複製為 Markdown"
 
 msgid "Copy into an empty composer. The saved submission is kept until discarded."
 msgstr "複製到空白的輸入框。已儲存的送出內容會保留到捨棄為止。"
+
+msgid "Copy the original content and receipt evidence as JSON"
+msgstr "以 JSON 格式複製原始內容與接收憑據"
 
 msgid "Cost"
 msgstr "費用"
@@ -765,8 +783,14 @@ msgstr "捨棄"
 msgid "Discard Interrupted Edit"
 msgstr "捨棄已中斷的編輯"
 
+msgid "Discard Saved Submissions"
+msgstr "捨棄已儲存的送出內容"
+
 msgid "Discard draft"
 msgstr "捨棄草稿"
+
+msgid "Discard local copies only; does not cancel agent work"
+msgstr "只捨棄本機副本；不會取消代理的工作"
 
 msgid "Discard the unsupported draft before moving a queued message into the composer."
 msgstr "將佇列訊息移至輸入框之前，請先捨棄含有不支援內容的草稿。"
@@ -909,6 +933,9 @@ msgstr "無法向 {} 提供者進行驗證"
 
 msgid "Failed to convert image"
 msgstr "無法轉換影像"
+
+msgid "Failed to copy saved input: {error}"
+msgstr "無法複製已儲存的輸入：{error}"
 
 msgid "Failed to decode clipboard content (expected base64)"
 msgstr "無法解碼剪貼簿內容（預期為 base64）"
@@ -1205,6 +1232,9 @@ msgstr "管理 AI 連線…"
 
 msgid "Message"
 msgstr "訊息"
+
+msgid "Message accepted; agent connection lost"
+msgstr "訊息已被接受；與代理的連線已中斷"
 
 msgid "Message cancelled"
 msgstr "已取消傳送訊息"
@@ -1623,6 +1653,9 @@ msgstr "重新連線"
 msgid "Reconnect Now"
 msgstr "立即重新連線"
 
+msgid "Reconnecting requires full history replay. Saved input has been kept."
+msgstr "重新連線需要重播完整的歷程記錄。已儲存的輸入已保留。"
+
 msgid "Regenerate Thread Title"
 msgstr "重新產生會話標題"
 
@@ -1652,6 +1685,9 @@ msgstr "要求失敗"
 
 msgid "Request Refused"
 msgstr "要求遭拒"
+
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "要求停止（活動未確認）"
 
 msgid "Required"
 msgstr "必填"
@@ -1884,6 +1920,9 @@ msgstr "在面板中顯示會話歷程"
 msgid "Sign In…"
 msgstr "登入…"
 
+msgid "Sign-in did not complete: {message}"
+msgstr "登入未完成：{message}"
+
 msgid "Skill Failed to Load"
 msgstr "技能載入失敗"
 
@@ -2073,6 +2112,9 @@ msgstr "代理可以讀取儲存庫，但無法變更。按一下以為此會話
 msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
 msgstr "代理可以暫存、提交、切換分支等（Hook 已停用，且無網路存取）。每個命令都依循 git 工具的權限。按一下以為此會話關閉此功能。"
 
+msgid "The agent can't currently tell whether it is working. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "代理目前無法判斷自己是否正在工作。您可以手動送出；自動送出會等到確認為閒置狀態後才進行。"
+
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "代理無法使用 `getDiagnostics`，因此看不到編輯器所顯示的錯誤與警告。{reason}"
 
@@ -2182,6 +2224,9 @@ msgstr "此類型的連線尚無法使用沙箱化的 Claude Code。"
 msgid "The sandboxed Claude Code is not available yet on this OS."
 msgstr "此作業系統尚無法使用沙箱化的 Claude Code。"
 
+msgid "The session is attached, but the agent has not reported its activity. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "工作階段已連接，但代理尚未回報其活動狀態。您可以手動送出；自動送出會等到確認為閒置狀態後才進行。"
+
 msgid "The session's terminal was closed right after it opened."
 msgstr "工作階段的終端機在開啟後立即被關閉。"
 
@@ -2220,6 +2265,9 @@ msgstr "思考中"
 
 msgid "Thinking Effort"
 msgstr "思考深度"
+
+msgid "Thinking is always on at this effort level. Select a lower effort level to make it optional."
+msgstr "在此思考深度下，思考一律開啟。若要能夠關閉思考，請選擇較低的思考深度。"
 
 msgid "Thinking: Off"
 msgstr "思考：關閉"
@@ -2394,9 +2442,6 @@ msgstr "切換會話側邊欄"
 
 msgid "Tool Permissions"
 msgstr "工具權限"
-
-msgid "Tool call: {id}"
-msgstr "工具呼叫：{id}"
 
 msgid "Tools Unsupported"
 msgstr "不支援工具"

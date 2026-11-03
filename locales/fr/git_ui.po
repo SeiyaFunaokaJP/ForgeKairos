@@ -230,6 +230,9 @@ msgstr "Appliquer le fichier patch {} ?"
 msgid "Are you sure you want to discard changes to {}?"
 msgstr "Voulez-vous vraiment abandonner les modifications apportées à {} ?"
 
+msgid "Are you sure you want to discard unstaged changes to {}?"
+msgstr "Voulez-vous vraiment abandonner les modifications non indexées apportées à {} ?"
+
 msgid "Are you sure you want to restore {}?"
 msgstr "Voulez-vous vraiment restaurer {} ?"
 
@@ -911,6 +914,12 @@ msgstr "Abandonner les modifications de {tracked_count} fichiers et mettre {untr
 
 msgid "Discard changes to {tracked_count} files?"
 msgstr "Abandonner les modifications de {tracked_count} fichiers ?"
+
+msgid "Discard unstaged changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "Abandonner les modifications non indexées de {tracked_count} fichiers et mettre {untracked_count} fichiers à la corbeille ?"
+
+msgid "Discard unstaged changes to {tracked_count} files?"
+msgstr "Abandonner les modifications non indexées de {tracked_count} fichiers ?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Abandonne les modifications de ce fichier et rétablit son contenu de la dernière validation"

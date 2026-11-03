@@ -380,7 +380,9 @@ pub struct AcpConnection {
     agent_capabilities: acp::AgentCapabilities,
     request_elicitations: Entity<ElicitationStore>,
     defaults: AcpConnectionDefaults,
-    _child: Option<transport::OwnedChild>,
+    /// The agent's process, until [`AgentConnection::shutdown`] or the
+    /// connection's drop kills it (on Windows with its whole job).
+    child: RefCell<Option<transport::OwnedChild>>,
     /// ADR-F49 第 2a 段: how the agent was started in its sandbox, for its
     /// turns and its sign-in; `None` when it runs outside one.
     sandbox_session: Option<Rc<AgentSandboxSession>>,
@@ -430,7 +432,7 @@ pub struct AcpConnection {
     session_list: Option<Rc<AcpSessionList>>,
     debug_log: AcpDebugLog,
     _settings_subscription: Subscription,
-    _runtime: runtime::ClientRuntime,
+    runtime: RefCell<Option<runtime::ClientRuntime>>,
     dispatch_tx: mpsc::UnboundedSender<ForegroundWork>,
     _wait_task: Task<()>,
     _stderr_task: Shared<Task<()>>,
@@ -1483,11 +1485,11 @@ impl AcpConnection {
             session_list,
             debug_log,
             _settings_subscription: settings_subscription,
-            _runtime: runtime,
+            runtime: RefCell::new(Some(runtime)),
             dispatch_tx,
             _wait_task: wait_task,
             _stderr_task: stderr_task,
-            _child: Some(child),
+            child: RefCell::new(Some(child)),
             sandbox_session,
             sandbox_processes,
             _agent_sandbox: agent_sandbox,
@@ -2017,7 +2019,7 @@ impl AcpConnection {
             agent_capabilities,
             request_elicitations,
             defaults,
-            _child: None,
+            child: RefCell::new(None),
             sandbox_session: None,
             sandbox_processes: None,
             _agent_sandbox: None,
@@ -2032,11 +2034,11 @@ impl AcpConnection {
             session_list: None,
             debug_log: AcpDebugLog::default(),
             _settings_subscription: settings_subscription,
-            _runtime: runtime::ClientRuntime::from_test_tasks(
+            runtime: RefCell::new(Some(runtime::ClientRuntime::from_test_tasks(
                 dispatch_tx.clone(),
                 io_task,
                 dispatch_task,
-            ),
+            ))),
             dispatch_tx,
             _wait_task: Task::ready(()),
             _stderr_task: Task::ready(()).shared(),
@@ -4471,6 +4473,14 @@ fn meta_terminal_auth_task(
 }
 
 impl AgentConnection for AcpConnection {
+    /// Ends the agent when its owner goes (the app quitting, the project
+    /// closing), even while a thread still holds this connection: closes the
+    /// protocol as upstream's v2 adapter does, then kills the process.
+    fn shutdown(&self) {
+        drop(self.runtime.borrow_mut().take());
+        drop(self.child.borrow_mut().take());
+    }
+
     fn agent_id(&self) -> AgentId {
         self.id.clone()
     }
@@ -11562,6 +11572,57 @@ mod tests {
         connection_rx
             .await
             .expect("failed to receive ACP connection")
+    }
+
+    /// The connection store shuts its connections down when the app quits,
+    /// and a thread may still hold one then: the agent must not outlive it.
+    #[gpui::test]
+    async fn shutdown_kills_the_agent_process_while_the_connection_is_held(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+        });
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/", serde_json::json!({ "a": {} })).await;
+        let project = project::Project::test(fs, [std::path::Path::new("/a")], cx).await;
+        let harness = test_support::connect_fake_acp_connection(project, cx).await;
+
+        cx.executor().allow_parking();
+        // Ends successfully on its own after half a minute, which is what
+        // a process that was not killed does.
+        #[cfg(unix)]
+        let command = {
+            let mut command = std::process::Command::new("/bin/sh");
+            command.args(["-c", "sleep 30"]);
+            command
+        };
+        #[cfg(windows)]
+        let command = {
+            let mut command = std::process::Command::new("ping");
+            command.args(["-n", "30", "127.0.0.1"]);
+            command
+        };
+        let mut child = transport::OwnedChild(
+            util::process::Child::spawn(
+                command,
+                std::process::Stdio::null(),
+                std::process::Stdio::null(),
+                std::process::Stdio::null(),
+            )
+            .expect("spawn a long-running agent stand-in"),
+        );
+        let status = child.0.status();
+        *harness.connection.child.borrow_mut() = Some(child);
+
+        harness.connection.shutdown();
+        assert!(harness.connection.child.borrow().is_none());
+        assert!(harness.connection.runtime.borrow().is_none());
+
+        let status = status.await.expect("wait for the agent");
+        assert!(!status.success(), "the agent outlived its shutdown");
+        assert_eq!(Rc::strong_count(&harness.connection), 1);
     }
 
     #[gpui::test]

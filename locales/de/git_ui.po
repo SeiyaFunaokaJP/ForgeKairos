@@ -230,6 +230,9 @@ msgstr "Patchdatei {} anwenden?"
 msgid "Are you sure you want to discard changes to {}?"
 msgstr "Möchten Sie die Änderungen an {} wirklich verwerfen?"
 
+msgid "Are you sure you want to discard unstaged changes to {}?"
+msgstr "Möchten Sie die nicht gestagten Änderungen an {} wirklich verwerfen?"
+
 msgid "Are you sure you want to restore {}?"
 msgstr "Möchten Sie {} wirklich wiederherstellen?"
 
@@ -911,6 +914,12 @@ msgstr "Änderungen an {tracked_count} Dateien verwerfen und {untracked_count} D
 
 msgid "Discard changes to {tracked_count} files?"
 msgstr "Änderungen an {tracked_count} Dateien verwerfen?"
+
+msgid "Discard unstaged changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "Nicht gestagte Änderungen an {tracked_count} Dateien verwerfen und {untracked_count} Dateien in den Papierkorb verschieben?"
+
+msgid "Discard unstaged changes to {tracked_count} files?"
+msgstr "Nicht gestagte Änderungen an {tracked_count} Dateien verwerfen?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Verwirft die Änderungen dieser Datei und setzt sie auf ihren Inhalt im letzten Commit zurück"

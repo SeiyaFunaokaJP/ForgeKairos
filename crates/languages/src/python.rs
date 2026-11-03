@@ -2804,6 +2804,15 @@ impl LspAdapter for PyreflyLspAdapter {
         Self::SERVER_NAME
     }
 
+    /// ADR-F50: Pyrefly runs the project's Python interpreter (the
+    /// `pythonPath` below) to find where imports resolve, as Pyright does.
+    async fn worktree_code_paused_mode(
+        self: Arc<Self>,
+        _: &Arc<dyn LspAdapterDelegate>,
+    ) -> Result<WorktreeCodePausedMode> {
+        Ok(WorktreeCodePausedMode::Stopped)
+    }
+
     async fn process_completions(&self, _items: &mut [lsp::CompletionItem]) {}
 
     async fn label_for_completion(

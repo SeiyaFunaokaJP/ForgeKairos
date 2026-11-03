@@ -221,6 +221,9 @@ msgstr "パッチファイル {} を適用しますか?"
 msgid "Are you sure you want to discard changes to {}?"
 msgstr "{} への変更を破棄しますか?"
 
+msgid "Are you sure you want to discard unstaged changes to {}?"
+msgstr "{} への未ステージの変更を破棄しますか?"
+
 msgid "Are you sure you want to restore {}?"
 msgstr "{} を元に戻しますか?"
 
@@ -894,6 +897,12 @@ msgstr "{tracked_count} 件のファイルの変更を破棄し、{untracked_cou
 
 msgid "Discard changes to {tracked_count} files?"
 msgstr "{tracked_count} 件のファイルの変更を破棄しますか?"
+
+msgid "Discard unstaged changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "{tracked_count} 件のファイルの未ステージの変更を破棄し、{untracked_count} 件のファイルをゴミ箱へ移動しますか?"
+
+msgid "Discard unstaged changes to {tracked_count} files?"
+msgstr "{tracked_count} 件のファイルの未ステージの変更を破棄しますか?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "このファイルの変更を破棄し、最後のコミットの内容に戻します"

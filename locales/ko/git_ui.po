@@ -224,6 +224,9 @@ msgstr "패치 파일 {}을(를) 적용하시겠습니까?"
 msgid "Are you sure you want to discard changes to {}?"
 msgstr "{}의 변경 사항을 버리시겠습니까?"
 
+msgid "Are you sure you want to discard unstaged changes to {}?"
+msgstr "{}의 스테이징되지 않은 변경 사항을 버리시겠습니까?"
+
 msgid "Are you sure you want to restore {}?"
 msgstr "{}을(를) 복원하시겠습니까?"
 
@@ -897,6 +900,12 @@ msgstr "파일 {tracked_count}개의 변경 사항을 버리고 파일 {untracke
 
 msgid "Discard changes to {tracked_count} files?"
 msgstr "파일 {tracked_count}개의 변경 사항을 버리시겠습니까?"
+
+msgid "Discard unstaged changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "파일 {tracked_count}개의 스테이징되지 않은 변경 사항을 버리고 파일 {untracked_count}개를 휴지통으로 이동하시겠습니까?"
+
+msgid "Discard unstaged changes to {tracked_count} files?"
+msgstr "파일 {tracked_count}개의 스테이징되지 않은 변경 사항을 버리시겠습니까?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "이 파일의 변경 사항을 버리고 마지막 커밋의 내용으로 되돌립니다"

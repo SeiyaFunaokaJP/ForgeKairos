@@ -224,6 +224,9 @@ msgstr "应用补丁文件 {}？"
 msgid "Are you sure you want to discard changes to {}?"
 msgstr "确定要放弃对 {} 的更改吗？"
 
+msgid "Are you sure you want to discard unstaged changes to {}?"
+msgstr "确定要放弃对 {} 的未暂存更改吗？"
+
 msgid "Are you sure you want to restore {}?"
 msgstr "确定要还原 {} 吗？"
 
@@ -897,6 +900,12 @@ msgstr "放弃对 {tracked_count} 个文件的更改，并将 {untracked_count} 
 
 msgid "Discard changes to {tracked_count} files?"
 msgstr "放弃对 {tracked_count} 个文件的更改？"
+
+msgid "Discard unstaged changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "放弃对 {tracked_count} 个文件的未暂存更改，并将 {untracked_count} 个文件移至回收站？"
+
+msgid "Discard unstaged changes to {tracked_count} files?"
+msgstr "放弃对 {tracked_count} 个文件的未暂存更改？"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "放弃此文件的更改，并将其恢复为最后一次提交中的内容"
