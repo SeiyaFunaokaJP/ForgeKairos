@@ -4170,6 +4170,12 @@ impl TerminalHandle for AcpTerminalHandle {
             .read_with(cx, |term, cx| term.current_output(cx)))
     }
 
+    fn output_tail(&self, max_bytes: usize, cx: &AsyncApp) -> Result<String> {
+        Ok(self.terminal.read_with(cx, |term, cx| {
+            term.inner().read(cx).last_lines_within_bytes(max_bytes)
+        }))
+    }
+
     fn kill(&self, cx: &AsyncApp) -> Result<()> {
         cx.update(|cx| {
             self.terminal.update(cx, |terminal, cx| {

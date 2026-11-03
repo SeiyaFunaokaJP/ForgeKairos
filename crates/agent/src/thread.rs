@@ -787,6 +787,11 @@ pub enum AgentMessageContent {
 pub trait TerminalHandle {
     fn id(&self, cx: &AsyncApp) -> Result<acp_v2::TerminalId>;
     fn current_output(&self, cx: &AsyncApp) -> Result<ProcessOutput>;
+    /// The last lines of everything printed so far, within `max_bytes`.
+    /// Unlike [`Self::current_output`], never cut to the output limit, which
+    /// keeps the start: past that limit it stops changing however much the
+    /// command prints.
+    fn output_tail(&self, max_bytes: usize, cx: &AsyncApp) -> Result<String>;
     fn wait_for_exit(&self, cx: &AsyncApp) -> Result<Shared<Task<acp_v2::TerminalExitStatus>>>;
     fn kill(&self, cx: &AsyncApp) -> Result<()>;
     fn was_stopped_by_user(&self, cx: &AsyncApp) -> Result<bool>;
