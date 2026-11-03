@@ -119,6 +119,12 @@ msgstr "アカウント"
 msgid "Actions"
 msgstr "アクション"
 
+msgid "Activity unconfirmed"
+msgstr "動作状況は未確認"
+
+msgid "Activity unknown"
+msgstr "動作状況は不明"
+
 msgid "Add API Key…"
 msgstr "API キーを追加…"
 
@@ -169,6 +175,9 @@ msgstr "エージェントプロファイル"
 
 msgid "Agent Update Available"
 msgstr "エージェントの更新があります"
+
+msgid "Agent connection lost. Reconnect to restore the conversation."
+msgstr "エージェントとの接続が切れました。再接続すると会話を復元できます。"
 
 msgid "Agent refused to respond to this request"
 msgstr "エージェントがこのリクエストへの応答を拒否しました"
@@ -528,6 +537,9 @@ msgstr "サーバーに接続しています…"
 msgid "Connection Interrupted"
 msgstr "接続が中断されました"
 
+msgid "Connection lost; message acceptance is unknown"
+msgstr "接続が切れました。メッセージが受け付けられたかは不明です"
+
 msgid "Context"
 msgstr "コンテキスト"
 
@@ -558,6 +570,9 @@ msgstr "エラーメッセージをコピー"
 msgid "Copy Link"
 msgstr "リンクをコピー"
 
+msgid "Copy Saved Input"
+msgstr "保存された入力をコピー"
+
 msgid "Copy This Agent Response"
 msgstr "このエージェントの応答をコピー"
 
@@ -566,6 +581,9 @@ msgstr "Markdown としてコピー"
 
 msgid "Copy into an empty composer. The saved submission is kept until discarded."
 msgstr "空の入力欄にコピーします。保存された送信内容は破棄するまで残ります。"
+
+msgid "Copy the original content and receipt evidence as JSON"
+msgstr "元の内容と受け付けの記録を JSON でコピーします"
 
 msgid "Cost"
 msgstr "コスト"
@@ -762,8 +780,14 @@ msgstr "破棄"
 msgid "Discard Interrupted Edit"
 msgstr "中断された編集を破棄"
 
+msgid "Discard Saved Submissions"
+msgstr "保存された送信内容を破棄"
+
 msgid "Discard draft"
 msgstr "下書きを破棄"
+
+msgid "Discard local copies only; does not cancel agent work"
+msgstr "手元の控えだけを破棄します。エージェントの作業は取り消しません"
 
 msgid "Discard the unsupported draft before moving a queued message into the composer."
 msgstr "キュー内のメッセージを入力欄に移す前に、サポートされていない内容を含む下書きを破棄してください。"
@@ -906,6 +930,9 @@ msgstr "プロバイダー {} の認証に失敗しました"
 
 msgid "Failed to convert image"
 msgstr "画像を変換できませんでした"
+
+msgid "Failed to copy saved input: {error}"
+msgstr "保存された入力をコピーできませんでした: {error}"
 
 msgid "Failed to decode clipboard content (expected base64)"
 msgstr "クリップボードの内容をデコードできませんでした (base64 が必要です)。"
@@ -1202,6 +1229,9 @@ msgstr "AI の接続を管理…"
 
 msgid "Message"
 msgstr "メッセージ"
+
+msgid "Message accepted; agent connection lost"
+msgstr "メッセージは受け付けられました。エージェントとの接続が切れました"
 
 msgid "Message cancelled"
 msgstr "メッセージの送信はキャンセルされました"
@@ -1620,6 +1650,9 @@ msgstr "再接続"
 msgid "Reconnect Now"
 msgstr "今すぐ再接続"
 
+msgid "Reconnecting requires full history replay. Saved input has been kept."
+msgstr "再接続には履歴全体を読み込み直す必要があります。保存された入力はそのまま残しています。"
+
 msgid "Regenerate Thread Title"
 msgstr "スレッドタイトルを再生成"
 
@@ -1649,6 +1682,9 @@ msgstr "リクエストに失敗しました"
 
 msgid "Request Refused"
 msgstr "リクエストが拒否されました"
+
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "停止を要求 (動作状況は未確認)"
 
 msgid "Required"
 msgstr "必須"
@@ -1881,6 +1917,9 @@ msgstr "パネル内のスレッド履歴を表示"
 msgid "Sign In…"
 msgstr "サインイン…"
 
+msgid "Sign-in did not complete: {message}"
+msgstr "サインインが完了しませんでした: {message}"
+
 msgid "Skill Failed to Load"
 msgstr "スキルの読み込みに失敗しました"
 
@@ -2070,6 +2109,9 @@ msgstr "エージェントはリポジトリを読めますが、変更はでき
 msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
 msgstr "エージェントはステージ・コミット・ブランチの切り替えなどを行えます (フックは無効、ネットワークへの接続なし)。各コマンドは git ツールの権限設定に従います。クリックすると、このスレッドでオフにします。"
 
+msgid "The agent can't currently tell whether it is working. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "エージェントは今、作業中かどうかを判断できません。手動では送信できます。自動送信は待機中と確認できるまで待ちます。"
+
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"
 
@@ -2179,6 +2221,9 @@ msgstr "この接続方法では、サンドボックスの Claude Code はま�
 msgid "The sandboxed Claude Code is not available yet on this OS."
 msgstr "この OS では、サンドボックスの Claude Code はまだ使えません。"
 
+msgid "The session is attached, but the agent has not reported its activity. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "セッションには接続済みですが、エージェントから動作状況の報告がありません。手動では送信できます。自動送信は待機中と確認できるまで待ちます。"
+
 msgid "The session's terminal was closed right after it opened."
 msgstr "セッションのターミナルが開いた直後に閉じられました。"
 
@@ -2217,6 +2262,9 @@ msgstr "思考中"
 
 msgid "Thinking Effort"
 msgstr "思考の深さ"
+
+msgid "Thinking is always on at this effort level. Select a lower effort level to make it optional."
+msgstr "この思考の深さでは思考が常にオンです。オフにできるようにするには、より浅い深さを選んでください。"
 
 msgid "Thinking: Off"
 msgstr "思考: オフ"
@@ -2391,9 +2439,6 @@ msgstr "スレッドサイドバーの切り替え"
 
 msgid "Tool Permissions"
 msgstr "ツールの権限"
-
-msgid "Tool call: {id}"
-msgstr "ツール呼び出し: {id}"
 
 msgid "Tools Unsupported"
 msgstr "ツール非対応"

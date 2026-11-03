@@ -230,6 +230,9 @@ msgstr "¿Aplicar el archivo de parche {}?"
 msgid "Are you sure you want to discard changes to {}?"
 msgstr "¿Está seguro de que desea descartar los cambios de {}?"
 
+msgid "Are you sure you want to discard unstaged changes to {}?"
+msgstr "¿Está seguro de que desea descartar los cambios sin preparar de {}?"
+
 msgid "Are you sure you want to restore {}?"
 msgstr "¿Está seguro de que desea restaurar {}?"
 
@@ -911,6 +914,12 @@ msgstr "¿Descartar los cambios de {tracked_count} archivos y mover {untracked_c
 
 msgid "Discard changes to {tracked_count} files?"
 msgstr "¿Descartar los cambios de {tracked_count} archivos?"
+
+msgid "Discard unstaged changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "¿Descartar los cambios sin preparar de {tracked_count} archivos y mover {untracked_count} archivos a la papelera?"
+
+msgid "Discard unstaged changes to {tracked_count} files?"
+msgstr "¿Descartar los cambios sin preparar de {tracked_count} archivos?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Descarta los cambios de este archivo y lo devuelve a su contenido del último commit"

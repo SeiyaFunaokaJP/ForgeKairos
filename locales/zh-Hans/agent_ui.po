@@ -122,6 +122,12 @@ msgstr "账户"
 msgid "Actions"
 msgstr "操作"
 
+msgid "Activity unconfirmed"
+msgstr "活动未确认"
+
+msgid "Activity unknown"
+msgstr "活动未知"
+
 msgid "Add API Key…"
 msgstr "添加 API 密钥…"
 
@@ -172,6 +178,9 @@ msgstr "智能体配置文件"
 
 msgid "Agent Update Available"
 msgstr "智能体有可用更新"
+
+msgid "Agent connection lost. Reconnect to restore the conversation."
+msgstr "与智能体的连接已断开。重新连接即可恢复对话。"
 
 msgid "Agent refused to respond to this request"
 msgstr "智能体拒绝回应此请求"
@@ -531,6 +540,9 @@ msgstr "正在连接服务器…"
 msgid "Connection Interrupted"
 msgstr "连接中断"
 
+msgid "Connection lost; message acceptance is unknown"
+msgstr "连接已断开；不确定消息是否已被接受"
+
 msgid "Context"
 msgstr "上下文"
 
@@ -561,6 +573,9 @@ msgstr "复制错误消息"
 msgid "Copy Link"
 msgstr "复制链接"
 
+msgid "Copy Saved Input"
+msgstr "复制已保存的输入"
+
 msgid "Copy This Agent Response"
 msgstr "复制此智能体响应"
 
@@ -569,6 +584,9 @@ msgstr "复制为 Markdown"
 
 msgid "Copy into an empty composer. The saved submission is kept until discarded."
 msgstr "复制到空的输入框。已保存的提交内容会一直保留，直到被放弃。"
+
+msgid "Copy the original content and receipt evidence as JSON"
+msgstr "以 JSON 格式复制原始内容和接收凭据"
 
 msgid "Cost"
 msgstr "费用"
@@ -765,8 +783,14 @@ msgstr "放弃"
 msgid "Discard Interrupted Edit"
 msgstr "放弃中断的编辑"
 
+msgid "Discard Saved Submissions"
+msgstr "放弃已保存的提交内容"
+
 msgid "Discard draft"
 msgstr "放弃草稿"
+
+msgid "Discard local copies only; does not cancel agent work"
+msgstr "仅放弃本地副本；不会取消智能体的工作"
 
 msgid "Discard the unsupported draft before moving a queued message into the composer."
 msgstr "将队列中的消息移入输入框之前，请先放弃包含不支持内容的草稿。"
@@ -909,6 +933,9 @@ msgstr "无法向 {} 提供商认证"
 
 msgid "Failed to convert image"
 msgstr "转换图像失败"
+
+msgid "Failed to copy saved input: {error}"
+msgstr "复制已保存的输入失败：{error}"
 
 msgid "Failed to decode clipboard content (expected base64)"
 msgstr "解码剪贴板内容失败（应为 base64 格式）"
@@ -1205,6 +1232,9 @@ msgstr "管理 AI 连接…"
 
 msgid "Message"
 msgstr "消息"
+
+msgid "Message accepted; agent connection lost"
+msgstr "消息已被接受；与智能体的连接已断开"
 
 msgid "Message cancelled"
 msgstr "消息已取消"
@@ -1623,6 +1653,9 @@ msgstr "重新连接"
 msgid "Reconnect Now"
 msgstr "立即重新连接"
 
+msgid "Reconnecting requires full history replay. Saved input has been kept."
+msgstr "重新连接需要重放全部历史记录。已保存的输入已保留。"
+
 msgid "Regenerate Thread Title"
 msgstr "重新生成会话标题"
 
@@ -1652,6 +1685,9 @@ msgstr "请求失败"
 
 msgid "Request Refused"
 msgstr "请求被拒绝"
+
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "请求停止（活动未确认）"
 
 msgid "Required"
 msgstr "必填"
@@ -1884,6 +1920,9 @@ msgstr "在面板中显示会话历史记录"
 msgid "Sign In…"
 msgstr "登录…"
 
+msgid "Sign-in did not complete: {message}"
+msgstr "登录未完成：{message}"
+
 msgid "Skill Failed to Load"
 msgstr "技能加载失败"
 
@@ -2073,6 +2112,9 @@ msgstr "智能体可以读取仓库，但不能更改它。点击以为此会话
 msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
 msgstr "智能体可以暂存、提交、切换分支等，但钩子已关闭且无网络访问。每条命令都遵循 git 工具权限。点击以为此会话关闭此功能。"
 
+msgid "The agent can't currently tell whether it is working. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "智能体目前无法判断自己是否在工作。你可以手动发送；自动发送会等到确认为空闲状态后再进行。"
+
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "智能体无法使用 `getDiagnostics`，因此看不到编辑器显示的错误和警告。{reason}"
 
@@ -2182,6 +2224,9 @@ msgstr "此类连接尚不支持沙盒版 Claude Code。"
 msgid "The sandboxed Claude Code is not available yet on this OS."
 msgstr "此操作系统尚不支持沙盒版 Claude Code。"
 
+msgid "The session is attached, but the agent has not reported its activity. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "会话已连接，但智能体尚未报告其活动状态。你可以手动发送；自动发送会等到确认为空闲状态后再进行。"
+
 msgid "The session's terminal was closed right after it opened."
 msgstr "会话的终端在打开后立即被关闭。"
 
@@ -2220,6 +2265,9 @@ msgstr "思考"
 
 msgid "Thinking Effort"
 msgstr "思考深度"
+
+msgid "Thinking is always on at this effort level. Select a lower effort level to make it optional."
+msgstr "在此思考深度下，思考始终开启。如需可关闭思考，请选择较低的思考深度。"
 
 msgid "Thinking: Off"
 msgstr "思考：关"
@@ -2394,9 +2442,6 @@ msgstr "切换会话侧边栏"
 
 msgid "Tool Permissions"
 msgstr "工具权限"
-
-msgid "Tool call: {id}"
-msgstr "工具调用：{id}"
 
 msgid "Tools Unsupported"
 msgstr "不支持工具"

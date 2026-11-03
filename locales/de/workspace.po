@@ -218,6 +218,9 @@ msgstr "Schaltfläche ausblenden"
 msgid "Hide {icon_tooltip}"
 msgstr "{icon_tooltip} ausblenden"
 
+msgid "Home directory not available"
+msgstr "Home-Verzeichnis nicht verfügbar"
+
 msgid "Language servers from running"
 msgstr "Ausführen von Sprachservern"
 

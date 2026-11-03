@@ -122,6 +122,12 @@ msgstr "Cuenta"
 msgid "Actions"
 msgstr "Acciones"
 
+msgid "Activity unconfirmed"
+msgstr "Actividad sin confirmar"
+
+msgid "Activity unknown"
+msgstr "Actividad desconocida"
+
 msgid "Add API Key…"
 msgstr "Agregar clave de API…"
 
@@ -172,6 +178,9 @@ msgstr "Perfiles del agente"
 
 msgid "Agent Update Available"
 msgstr "Actualización del agente disponible"
+
+msgid "Agent connection lost. Reconnect to restore the conversation."
+msgstr "Se perdió la conexión con el agente. Vuelva a conectar para restaurar la conversación."
 
 msgid "Agent refused to respond to this request"
 msgstr "El agente se negó a responder a esta solicitud"
@@ -532,6 +541,9 @@ msgstr "Conectando con el servidor…"
 msgid "Connection Interrupted"
 msgstr "Conexión interrumpida"
 
+msgid "Connection lost; message acceptance is unknown"
+msgstr "Se perdió la conexión; no se sabe si se aceptó el mensaje"
+
 msgid "Context"
 msgstr "Contexto"
 
@@ -562,6 +574,9 @@ msgstr "Copiar mensaje de error"
 msgid "Copy Link"
 msgstr "Copiar enlace"
 
+msgid "Copy Saved Input"
+msgstr "Copiar entrada guardada"
+
 msgid "Copy This Agent Response"
 msgstr "Copiar esta respuesta del agente"
 
@@ -570,6 +585,9 @@ msgstr "Copiar como Markdown"
 
 msgid "Copy into an empty composer. The saved submission is kept until discarded."
 msgstr "Copiar en un cuadro de mensaje vacío. El envío guardado se conserva hasta que se descarte."
+
+msgid "Copy the original content and receipt evidence as JSON"
+msgstr "Copiar el contenido original y la prueba de recepción como JSON"
 
 msgid "Cost"
 msgstr "Costo"
@@ -766,8 +784,14 @@ msgstr "Descartar"
 msgid "Discard Interrupted Edit"
 msgstr "Descartar edición interrumpida"
 
+msgid "Discard Saved Submissions"
+msgstr "Descartar envíos guardados"
+
 msgid "Discard draft"
 msgstr "Descartar borrador"
+
+msgid "Discard local copies only; does not cancel agent work"
+msgstr "Solo descarta las copias locales; no cancela el trabajo del agente"
 
 msgid "Discard the unsupported draft before moving a queued message into the composer."
 msgstr "Descarte el borrador no compatible antes de mover un mensaje en cola al cuadro de mensaje."
@@ -911,6 +935,9 @@ msgstr "No se pudo autenticar con el proveedor {}"
 
 msgid "Failed to convert image"
 msgstr "No se pudo convertir la imagen"
+
+msgid "Failed to copy saved input: {error}"
+msgstr "No se pudo copiar la entrada guardada: {error}"
 
 msgid "Failed to decode clipboard content (expected base64)"
 msgstr "No se pudo descodificar el contenido del portapapeles (se esperaba base64)"
@@ -1209,6 +1236,9 @@ msgstr "Administrar conexiones de IA…"
 
 msgid "Message"
 msgstr "Mensaje"
+
+msgid "Message accepted; agent connection lost"
+msgstr "Mensaje aceptado; se perdió la conexión con el agente"
 
 msgid "Message cancelled"
 msgstr "Mensaje cancelado"
@@ -1627,6 +1657,9 @@ msgstr "Volver a conectar"
 msgid "Reconnect Now"
 msgstr "Volver a conectar ahora"
 
+msgid "Reconnecting requires full history replay. Saved input has been kept."
+msgstr "Para volver a conectar hay que reproducir todo el historial. Se conservó la entrada guardada."
+
 msgid "Regenerate Thread Title"
 msgstr "Volver a generar el título de la conversación"
 
@@ -1656,6 +1689,9 @@ msgstr "Solicitud fallida"
 
 msgid "Request Refused"
 msgstr "Solicitud rechazada"
+
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "Solicitar detención (actividad sin confirmar)"
 
 msgid "Required"
 msgstr "Obligatorio"
@@ -1888,6 +1924,9 @@ msgstr "Mostrar el historial de conversaciones en el panel"
 msgid "Sign In…"
 msgstr "Iniciar sesión…"
 
+msgid "Sign-in did not complete: {message}"
+msgstr "No se completó el inicio de sesión: {message}"
+
 msgid "Skill Failed to Load"
 msgstr "No se pudo cargar la habilidad"
 
@@ -2077,6 +2116,9 @@ msgstr "El agente puede leer el repositorio, pero no modificarlo. Haga clic para
 msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
 msgstr "El agente puede preparar cambios, hacer commit, cambiar de rama, etc., con los hooks desactivados y sin acceso a la red. Cada comando sigue los permisos de la herramienta git. Haga clic para desactivarlo en esta conversación."
 
+msgid "The agent can't currently tell whether it is working. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "El agente no puede saber ahora si está trabajando. Puede enviar manualmente; los envíos automáticos esperan a que se confirme el estado Inactivo."
+
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "El agente no puede usar `getDiagnostics`, por lo que no ve los errores y advertencias que muestra el editor. {reason}"
 
@@ -2187,6 +2229,9 @@ msgstr "El Claude Code en el sandbox todavía no está disponible para este tipo
 msgid "The sandboxed Claude Code is not available yet on this OS."
 msgstr "El Claude Code en el sandbox todavía no está disponible en este sistema operativo."
 
+msgid "The session is attached, but the agent has not reported its activity. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "La sesión está conectada, pero el agente no ha informado de su actividad. Puede enviar manualmente; los envíos automáticos esperan a que se confirme el estado Inactivo."
+
 msgid "The session's terminal was closed right after it opened."
 msgstr "El terminal de la sesión se cerró justo después de abrirse."
 
@@ -2225,6 +2270,9 @@ msgstr "Pensando"
 
 msgid "Thinking Effort"
 msgstr "Nivel de razonamiento"
+
+msgid "Thinking is always on at this effort level. Select a lower effort level to make it optional."
+msgstr "Con este nivel de razonamiento, el razonamiento siempre está activado. Seleccione un nivel inferior para poder desactivarlo."
 
 msgid "Thinking: Off"
 msgstr "Razonamiento: desactivado"
@@ -2399,9 +2447,6 @@ msgstr "Alternar barra lateral de conversaciones"
 
 msgid "Tool Permissions"
 msgstr "Permisos de herramientas"
-
-msgid "Tool call: {id}"
-msgstr "Llamada a herramienta: {id}"
 
 msgid "Tools Unsupported"
 msgstr "Herramientas no compatibles"

@@ -61,7 +61,7 @@ pub use vte::ansi::{Color, NamedColor, Rgb};
 use gpui::{
     App, AppContext as _, BackgroundExecutor, Bounds, ClipboardItem, Context, EventEmitter, Hsla,
     Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
-    Point as GpuiPoint, Rgba, ScrollWheelEvent, Size, Task, TouchPhase, Window, actions, black, px,
+    Point as GpuiPoint, Rgba, ScrollEvent, Size, Task, TouchPhase, Window, actions, black, px,
 };
 
 #[cfg(not(windows))]
@@ -3183,12 +3183,7 @@ impl Terminal {
     }
 
     ///Scroll the terminal
-    pub fn scroll_wheel(
-        &mut self,
-        e: &ScrollWheelEvent,
-        scroll_multiplier: f32,
-        mode: MouseInputMode,
-    ) {
+    pub fn scroll_wheel(&mut self, e: &ScrollEvent, scroll_multiplier: f32, mode: MouseInputMode) {
         let mouse_mode = self.mouse_mode(e.shift, mode);
         let scroll_multiplier = if mouse_mode { 1. } else { scroll_multiplier };
 
@@ -3227,11 +3222,7 @@ impl Terminal {
         self.schedule_find_hyperlink(window.modifiers(), window.mouse_position(), cx);
     }
 
-    fn determine_scroll_lines(
-        &mut self,
-        e: &ScrollWheelEvent,
-        scroll_multiplier: f32,
-    ) -> Option<i32> {
+    fn determine_scroll_lines(&mut self, e: &ScrollEvent, scroll_multiplier: f32) -> Option<i32> {
         let line_height = self.last_content.terminal_bounds.line_height;
         match e.touch_phase {
             /* Reset scroll state on started */
@@ -4656,7 +4647,7 @@ mod tests {
             assert!(terminal.last_content.mode.intersects(Modes::MOUSE_MODE));
             assert_eq!(display_offset(&terminal.term.lock()), 0);
 
-            let scroll_event = ScrollWheelEvent {
+            let scroll_event = ScrollEvent {
                 position: point(px(50.0), px(10.0)),
                 delta: ScrollDelta::Lines(point(0.0, 1.0)),
                 ..Default::default()
@@ -4685,7 +4676,7 @@ mod tests {
             );
             assert_eq!(display_offset(&terminal.term.lock()), 0);
 
-            let scroll_event = ScrollWheelEvent {
+            let scroll_event = ScrollEvent {
                 position: point(px(50.0), px(10.0)),
                 delta: ScrollDelta::Lines(point(0.0, 1.0)),
                 ..Default::default()
@@ -7058,7 +7049,7 @@ mod tests {
 
     mod perf {
         use super::{super::*, init_terminal_test_with_window};
-        use gpui::{ScrollDelta, ScrollWheelEvent, TestAppContext, VisualContext, point};
+        use gpui::{ScrollDelta, ScrollEvent, TestAppContext, VisualContext, point};
         use util::default;
         use util_macros::perf;
 
@@ -7084,7 +7075,7 @@ mod tests {
                     );
 
                     terminal.scroll_wheel(
-                        &ScrollWheelEvent {
+                        &ScrollEvent {
                             position,
                             delta: ScrollDelta::Lines(GpuiPoint::new(0.0, lines as f32)),
                             ..default()

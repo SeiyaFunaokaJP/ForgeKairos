@@ -122,6 +122,12 @@ msgstr "Compte"
 msgid "Actions"
 msgstr "Actions"
 
+msgid "Activity unconfirmed"
+msgstr "Activité non confirmée"
+
+msgid "Activity unknown"
+msgstr "Activité inconnue"
+
 msgid "Add API Key…"
 msgstr "Ajouter une clé API…"
 
@@ -172,6 +178,9 @@ msgstr "Profils de l'agent"
 
 msgid "Agent Update Available"
 msgstr "Mise à jour de l'agent disponible"
+
+msgid "Agent connection lost. Reconnect to restore the conversation."
+msgstr "Connexion à l'agent perdue. Reconnectez-vous pour restaurer la conversation."
 
 msgid "Agent refused to respond to this request"
 msgstr "L'agent a refusé de répondre à cette demande"
@@ -532,6 +541,9 @@ msgstr "Connexion au serveur…"
 msgid "Connection Interrupted"
 msgstr "Connexion interrompue"
 
+msgid "Connection lost; message acceptance is unknown"
+msgstr "Connexion perdue ; on ne sait pas si le message a été accepté"
+
 msgid "Context"
 msgstr "Contexte"
 
@@ -562,6 +574,9 @@ msgstr "Copier le message d'erreur"
 msgid "Copy Link"
 msgstr "Copier le lien"
 
+msgid "Copy Saved Input"
+msgstr "Copier la saisie enregistrée"
+
 msgid "Copy This Agent Response"
 msgstr "Copier cette réponse de l'agent"
 
@@ -570,6 +585,9 @@ msgstr "Copier au format Markdown"
 
 msgid "Copy into an empty composer. The saved submission is kept until discarded."
 msgstr "Copier dans une zone de saisie vide. L'envoi enregistré est conservé jusqu'à ce qu'il soit abandonné."
+
+msgid "Copy the original content and receipt evidence as JSON"
+msgstr "Copier le contenu d'origine et la preuve de réception au format JSON"
 
 msgid "Cost"
 msgstr "Coût"
@@ -766,8 +784,14 @@ msgstr "Abandonner"
 msgid "Discard Interrupted Edit"
 msgstr "Abandonner la modification interrompue"
 
+msgid "Discard Saved Submissions"
+msgstr "Abandonner les envois enregistrés"
+
 msgid "Discard draft"
 msgstr "Abandonner le brouillon"
+
+msgid "Discard local copies only; does not cancel agent work"
+msgstr "Abandonne uniquement les copies locales ; n'annule pas le travail de l'agent"
 
 msgid "Discard the unsupported draft before moving a queued message into the composer."
 msgstr "Abandonnez le brouillon non pris en charge avant de déplacer un message en file d'attente dans la zone de saisie."
@@ -911,6 +935,9 @@ msgstr "Échec de l'authentification auprès du fournisseur {}"
 
 msgid "Failed to convert image"
 msgstr "Impossible de convertir l'image"
+
+msgid "Failed to copy saved input: {error}"
+msgstr "Impossible de copier la saisie enregistrée : {error}"
 
 msgid "Failed to decode clipboard content (expected base64)"
 msgstr "Échec du décodage du contenu du presse-papiers (base64 attendu)"
@@ -1209,6 +1236,9 @@ msgstr "Gérer les connexions IA…"
 
 msgid "Message"
 msgstr "Message"
+
+msgid "Message accepted; agent connection lost"
+msgstr "Message accepté ; connexion à l'agent perdue"
 
 msgid "Message cancelled"
 msgstr "Message annulé"
@@ -1627,6 +1657,9 @@ msgstr "Se reconnecter"
 msgid "Reconnect Now"
 msgstr "Se reconnecter maintenant"
 
+msgid "Reconnecting requires full history replay. Saved input has been kept."
+msgstr "La reconnexion nécessite de rejouer tout l'historique. La saisie enregistrée a été conservée."
+
 msgid "Regenerate Thread Title"
 msgstr "Régénérer le titre de la conversation"
 
@@ -1656,6 +1689,9 @@ msgstr "Échec de la requête"
 
 msgid "Request Refused"
 msgstr "Requête refusée"
+
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "Demander l'arrêt (activité non confirmée)"
 
 msgid "Required"
 msgstr "Obligatoire"
@@ -1888,6 +1924,9 @@ msgstr "Afficher l'historique des conversations dans le panneau"
 msgid "Sign In…"
 msgstr "Se connecter…"
 
+msgid "Sign-in did not complete: {message}"
+msgstr "La connexion au compte n'a pas abouti : {message}"
+
 msgid "Skill Failed to Load"
 msgstr "Échec du chargement de la compétence"
 
@@ -2077,6 +2116,9 @@ msgstr "L'agent peut lire le dépôt, mais pas le modifier. Cliquez pour activer
 msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
 msgstr "L'agent peut indexer, valider, changer de branche, etc., avec les hooks désactivés et sans accès réseau. Chaque commande suit les autorisations de l'outil git. Cliquez pour désactiver cette option pour cette conversation."
 
+msgid "The agent can't currently tell whether it is working. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "L'agent ne peut pas savoir pour l'instant s'il travaille. Vous pouvez envoyer manuellement ; les envois automatiques attendent que l'état Inactif soit confirmé."
+
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "L'agent ne peut pas utiliser `getDiagnostics` : il ne voit donc pas les erreurs et avertissements affichés par l'éditeur. {reason}"
 
@@ -2187,6 +2229,9 @@ msgstr "Le Claude Code en bac à sable n'est pas encore disponible pour ce type 
 msgid "The sandboxed Claude Code is not available yet on this OS."
 msgstr "Le Claude Code en bac à sable n'est pas encore disponible sur ce système d'exploitation."
 
+msgid "The session is attached, but the agent has not reported its activity. You can send manually; automatic sends wait for confirmed Idle."
+msgstr "La session est rattachée, mais l'agent n'a pas signalé son activité. Vous pouvez envoyer manuellement ; les envois automatiques attendent que l'état Inactif soit confirmé."
+
 msgid "The session's terminal was closed right after it opened."
 msgstr "Le terminal de la session a été fermé juste après son ouverture."
 
@@ -2225,6 +2270,9 @@ msgstr "Réflexion"
 
 msgid "Thinking Effort"
 msgstr "Niveau de réflexion"
+
+msgid "Thinking is always on at this effort level. Select a lower effort level to make it optional."
+msgstr "À ce niveau de réflexion, la réflexion est toujours activée. Choisissez un niveau inférieur pour pouvoir la désactiver."
 
 msgid "Thinking: Off"
 msgstr "Réflexion : désactivée"
@@ -2399,9 +2447,6 @@ msgstr "Afficher/masquer la barre latérale des conversations"
 
 msgid "Tool Permissions"
 msgstr "Autorisations des outils"
-
-msgid "Tool call: {id}"
-msgstr "Appel d'outil : {id}"
 
 msgid "Tools Unsupported"
 msgstr "Outils non pris en charge"

@@ -116,6 +116,9 @@ msgstr "Thread umbenennen"
 msgid "Rename Title"
 msgstr "Titel umbenennen"
 
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "Anhalten anfordern (Aktivität unbestätigt)"
+
 msgid "Search threads…"
 msgstr "Threads durchsuchen…"
 

@@ -681,7 +681,6 @@ impl ActivityIndicator {
                 project.restart_language_servers_for_buffers(
                     buffers,
                     HashSet::from_iter([LanguageServerSelector::Name(server_name)]),
-                    true,
                     cx,
                 );
             });
@@ -972,7 +971,6 @@ impl ActivityIndicator {
                             .cloned()
                             .map(LanguageServerSelector::Name)
                             .collect(),
-                        true,
                         cx,
                     );
                 });

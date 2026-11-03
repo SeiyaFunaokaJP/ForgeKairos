@@ -921,7 +921,7 @@ async fn test_removing_invisible_worktree_cleans_reused_lsp_bookkeeping(cx: &mut
     language_registry.add(rust_lang());
     let mut fake_servers = language_registry.register_fake_lsp("Rust", FakeLspAdapter::default());
 
-    let (_visible_buffer, _visible_handle) = project
+    let (visible_buffer, _visible_handle) = project
         .update(cx, |project, cx| {
             project.open_local_buffer_with_lsp(path!("/the-root/main.rs"), cx)
         })
@@ -939,13 +939,10 @@ async fn test_removing_invisible_worktree_cleans_reused_lsp_bookkeeping(cx: &mut
             .unwrap()
             .0
     });
+    let external_uri = Uri::from_file_path(path!("/the-registry/dep/src/dep.rs")).unwrap();
     let external_buffer = project
         .update(cx, |project, cx| {
-            project.open_local_buffer_via_lsp(
-                Uri::from_file_path(path!("/the-registry/dep/src/dep.rs")).unwrap(),
-                server_id,
-                cx,
-            )
+            project.open_local_buffer_via_lsp(external_uri.clone(), server_id, cx)
         })
         .await
         .unwrap();
@@ -979,6 +976,56 @@ async fn test_removing_invisible_worktree_cleans_reused_lsp_bookkeeping(cx: &mut
         );
         assert!(!lsp_store.has_language_server_seed_for_worktree(invisible_worktree_id));
     });
+
+    let external_buffer = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_via_lsp(external_uri.clone(), server_id, cx)
+        })
+        .await
+        .unwrap();
+    let lsp_store = project.read_with(cx, |project, _| project.lsp_store());
+    lsp_store.update(cx, |store, cx| store.stop_all_language_servers(cx));
+    cx.run_until_parked();
+    let _external_handle = project.update(cx, |project, cx| {
+        project.register_buffer_with_language_servers(&external_buffer, cx)
+    });
+    project.update(cx, |project, cx| {
+        project.restart_language_servers_for_buffers(vec![visible_buffer], HashSet::default(), cx);
+    });
+    cx.run_until_parked();
+    lsp_store.read_with(cx, |store, _| {
+        assert_eq!(store.language_server_statuses().count(), 1);
+    });
+    let mut fake_server = fake_servers.next().await.unwrap();
+    assert_ne!(fake_server.server.server_id(), server_id);
+    let document = fake_server
+        .receive_notification::<lsp::notification::DidOpenTextDocument>()
+        .now_or_never()
+        .expect("visible buffer was not reopened")
+        .text_document;
+    assert_eq!(
+        document.uri,
+        Uri::from_file_path(path!("/the-root/main.rs")).unwrap()
+    );
+    project.update(cx, |project, cx| {
+        project.restart_language_servers_for_buffers(
+            vec![external_buffer.clone()],
+            HashSet::default(),
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    let document = fake_server
+        .receive_notification::<lsp::notification::DidOpenTextDocument>()
+        .now_or_never()
+        .expect("external buffer was not reopened")
+        .text_document;
+    assert_eq!(document.uri, external_uri);
+    assert_eq!(document.text, "pub fn dep() {}");
+    lsp_store.read_with(cx, |store, _| {
+        assert_eq!(store.language_server_statuses().count(), 1);
+    });
+    assert!(fake_servers.next().now_or_never().is_none());
 }
 
 #[gpui::test]
@@ -2050,7 +2097,6 @@ async fn test_restart_reopens_only_the_buffers_still_held(cx: &mut TestAppContex
         project.restart_language_servers_for_buffers(
             vec![never_shown.clone(), scrolled_away.clone(), held.clone()],
             HashSet::default(),
-            true,
             cx,
         );
     });
@@ -2125,7 +2171,6 @@ async fn test_restart_reopens_project_files_before_files_outside_it(cx: &mut Tes
         project.restart_language_servers_for_buffers(
             vec![outside.clone(), main.clone()],
             HashSet::default(),
-            true,
             cx,
         );
     });
@@ -2215,7 +2260,6 @@ async fn test_restart_leaves_a_file_no_one_holds_to_the_new_server(cx: &mut Test
         project.restart_language_servers_for_buffers(
             vec![unheld.clone(), held.clone()],
             HashSet::default(),
-            true,
             cx,
         );
     });
@@ -2317,7 +2361,6 @@ async fn test_restarting_one_server_reopens_only_the_buffers_still_held(cx: &mut
             HashSet::from_iter([lsp::LanguageServerSelector::Name(LanguageServerName(
                 "restarted-server".into(),
             ))]),
-            true,
             cx,
         );
     });
@@ -2394,16 +2437,14 @@ async fn test_restart_with_no_file_open_says_the_servers_start_with_a_file(
 
     cx.update(|_| drop(main_handle));
     cx.run_until_parked();
-    // As a change of the semantic tokens setting restarts them.
-    let buffers = lsp_store.read_with(cx, |lsp_store, cx| {
-        lsp_store
-            .buffer_store()
-            .read(cx)
-            .buffers()
-            .collect::<Vec<_>>()
-    });
-    lsp_store.update(cx, |lsp_store, cx| {
-        lsp_store.restart_language_servers_for_buffers(buffers, HashSet::default(), false, cx)
+    // A change of the semantic tokens setting restarts the servers.
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project.all_languages.defaults.semantic_tokens =
+                    Some(settings::SemanticTokens::Full);
+            });
+        });
     });
     cx.run_until_parked();
     assert_eq!(

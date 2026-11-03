@@ -218,6 +218,9 @@ msgstr "버튼 숨기기"
 msgid "Hide {icon_tooltip}"
 msgstr "{icon_tooltip} 숨기기"
 
+msgid "Home directory not available"
+msgstr "홈 디렉터리를 사용할 수 없습니다"
+
 msgid "Language servers from running"
 msgstr "언어 서버 실행"
 

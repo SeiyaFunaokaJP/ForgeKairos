@@ -116,6 +116,9 @@ msgstr "스레드 이름 변경"
 msgid "Rename Title"
 msgstr "제목 변경"
 
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "중지 요청 (활동 미확인)"
+
 msgid "Search threads…"
 msgstr "스레드 검색…"
 

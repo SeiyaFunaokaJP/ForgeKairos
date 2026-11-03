@@ -224,6 +224,9 @@ msgstr "要套用修補檔 {} 嗎？"
 msgid "Are you sure you want to discard changes to {}?"
 msgstr "確定要捨棄對 {} 的變更嗎？"
 
+msgid "Are you sure you want to discard unstaged changes to {}?"
+msgstr "確定要捨棄對 {} 的未暫存變更嗎？"
+
 msgid "Are you sure you want to restore {}?"
 msgstr "確定要還原 {} 嗎？"
 
@@ -897,6 +900,12 @@ msgstr "要捨棄 {tracked_count} 個檔案的變更，並將 {untracked_count} 
 
 msgid "Discard changes to {tracked_count} files?"
 msgstr "要捨棄 {tracked_count} 個檔案的變更嗎？"
+
+msgid "Discard unstaged changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "要捨棄 {tracked_count} 個檔案的未暫存變更，並將 {untracked_count} 個檔案移至垃圾桶嗎？"
+
+msgid "Discard unstaged changes to {tracked_count} files?"
+msgstr "要捨棄 {tracked_count} 個檔案的未暫存變更嗎？"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "捨棄此檔案的變更，並將其還原為最後一次提交中的內容"

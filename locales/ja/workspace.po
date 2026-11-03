@@ -215,6 +215,9 @@ msgstr "ボタンを非表示"
 msgid "Hide {icon_tooltip}"
 msgstr "{icon_tooltip}を隠す"
 
+msgid "Home directory not available"
+msgstr "ホームディレクトリを取得できません"
+
 msgid "Language servers from running"
 msgstr "言語サーバーの実行"
 

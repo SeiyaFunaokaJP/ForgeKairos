@@ -47,9 +47,9 @@ use std::{
 };
 
 /// How long the client waits for the server to answer the check. The server
-/// has just answered a ping, so a server that knows the check answers at
-/// once; one that does not (upstream's, or this fork's from before the check)
-/// never answers at all.
+/// has just answered a ping (or, on a reconnect, taken the connection), so a
+/// server that knows the check answers at once; one that does not (upstream's,
+/// or this fork's from before the check) never answers at all.
 pub(super) const WIRE_REVISION_TIMEOUT: Duration = Duration::from_secs(10);
 
 const REMOVE_SERVER_BINARY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -348,6 +348,31 @@ pub(super) fn confirm(
     client: &Arc<ChannelClient>,
     display_language: Option<String>,
 ) -> impl Future<Output = Result<()>> {
+    let timeout = client.executor.timer(WIRE_REVISION_TIMEOUT);
+    confirm_within(client, display_language, timeout)
+}
+
+/// [`confirm`] on a reconnect, where the server reads the question only once
+/// it has taken the new connection. That handshake has a timeout of its own,
+/// which may be longer than this one, so the server's time to answer starts
+/// when `handshaken` completes (as the replay's does, upstream #65457).
+pub(super) fn confirm_after_handshake(
+    client: &Arc<ChannelClient>,
+    display_language: Option<String>,
+    handshaken: impl Future<Output = ()>,
+) -> impl Future<Output = Result<()>> {
+    let executor = client.executor.clone();
+    confirm_within(client, display_language, async move {
+        handshaken.await;
+        executor.timer(WIRE_REVISION_TIMEOUT).await;
+    })
+}
+
+fn confirm_within(
+    client: &Arc<ChannelClient>,
+    display_language: Option<String>,
+    timeout: impl Future,
+) -> impl Future<Output = Result<()>> {
     let response = client.request_internal(
         proto::CheckWireRevision {
             revision: JP_ENHANCE_WIRE_REVISION,
@@ -355,7 +380,6 @@ pub(super) fn confirm(
         },
         false,
     );
-    let timeout = client.executor.timer(WIRE_REVISION_TIMEOUT);
     let client = client.clone();
     async move {
         confirmed(&client, response, timeout, async {
@@ -1356,6 +1380,54 @@ mod tests {
             );
             assert!(!client.wire_revision_confirmed(), "{described}");
         }
+    }
+
+    /// On a reconnect the question goes out with the handshake, and a handshake
+    /// may take longer than the server is given to answer: that time starts
+    /// once the server has taken the connection.
+    #[gpui::test]
+    async fn a_reconnection_gives_the_server_its_time_after_the_handshake(cx: &mut TestAppContext) {
+        let (incoming_tx, incoming_rx) = mpsc::unbounded::<Envelope>();
+        let (outgoing_tx, mut outgoing_rx) = mpsc::unbounded::<Envelope>();
+        let client =
+            cx.update(|cx| ChannelClient::new(incoming_rx, outgoing_tx, cx, "client", false));
+        let (handshaken_tx, handshaken_rx) = oneshot::channel::<()>();
+        let mut confirming = Box::pin(confirm_after_handshake(&client, None, async move {
+            handshaken_rx.await.ok();
+        }));
+        let check = outgoing_rx
+            .next()
+            .await
+            .expect("the question goes out at once");
+        assert!(matches!(
+            check.payload,
+            Some(proto::envelope::Payload::CheckWireRevision(_))
+        ));
+
+        for _ in 0..3 {
+            assert!(futures::poll!(&mut confirming).is_pending());
+            cx.executor()
+                .advance_clock(WIRE_REVISION_TIMEOUT + super::super::HEARTBEAT_TIMEOUT);
+            cx.run_until_parked();
+        }
+        assert!(
+            futures::poll!(&mut confirming).is_pending(),
+            "the server has not taken the connection yet"
+        );
+
+        handshaken_tx.send(()).expect("still confirming");
+        assert!(futures::poll!(&mut confirming).is_pending());
+        incoming_tx
+            .unbounded_send(
+                proto::CheckWireRevisionResponse {
+                    revision: JP_ENHANCE_WIRE_REVISION,
+                }
+                .into_envelope(1, Some(check.id), None),
+            )
+            .expect("client still reading");
+        cx.run_until_parked();
+        confirming.await.expect("answered in time");
+        assert!(client.wire_revision_confirmed());
     }
 
     /// A reconnection checks the revision again, ahead of the replay: a server

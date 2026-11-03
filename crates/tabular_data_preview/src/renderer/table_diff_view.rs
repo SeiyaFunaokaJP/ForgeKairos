@@ -2988,7 +2988,7 @@ mod tests {
             "the columns have to reach past the pane for this to be a test ({scrollable_by:?})"
         );
 
-        cx.simulate_event(gpui::ScrollWheelEvent {
+        cx.simulate_event(gpui::ScrollEvent {
             position: over_the_cells,
             delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-200.))),
             ..Default::default()
@@ -3001,7 +3001,7 @@ mod tests {
             "a vertical wheel should not move the columns"
         );
 
-        cx.simulate_event(gpui::ScrollWheelEvent {
+        cx.simulate_event(gpui::ScrollEvent {
             position: over_the_cells,
             delta: gpui::ScrollDelta::Pixels(gpui::point(px(-120.), px(0.))),
             ..Default::default()
@@ -3083,7 +3083,7 @@ mod tests {
             "the columns have to reach past the pane for this to be a test ({scrollable_by:?})"
         );
 
-        cx.simulate_event(gpui::ScrollWheelEvent {
+        cx.simulate_event(gpui::ScrollEvent {
             position: over_the_body,
             delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-200.))),
             ..Default::default()

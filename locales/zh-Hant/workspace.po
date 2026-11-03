@@ -218,6 +218,9 @@ msgstr "隱藏按鈕"
 msgid "Hide {icon_tooltip}"
 msgstr "隱藏 {icon_tooltip}"
 
+msgid "Home directory not available"
+msgstr "無法取得主目錄"
+
 msgid "Language servers from running"
 msgstr "語言伺服器的執行"
 

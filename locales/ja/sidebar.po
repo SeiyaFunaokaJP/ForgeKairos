@@ -113,6 +113,9 @@ msgstr "スレッドの名前変更"
 msgid "Rename Title"
 msgstr "タイトルの名前変更"
 
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "停止を要求 (動作状況は未確認)"
+
 msgid "Search threads…"
 msgstr "スレッドを検索…"
 

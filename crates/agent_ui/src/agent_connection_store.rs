@@ -1,8 +1,8 @@
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
 use acp_thread::{AcpThreadEvent, AgentConnection, LoadError};
-use agent_servers::AcpConnection;
+use agent_servers::{AcpConnection, AcpDebugMessage};
 use agent_servers::{AgentServer, AgentServerDelegate};
 use agent_settings::AgentSettings;
 use anyhow::Result;
@@ -95,7 +95,21 @@ impl EventEmitter<AgentConnectionEntryEvent> for AgentConnectionEntry {}
 #[derive(Clone)]
 pub struct ActiveAcpConnection {
     pub agent_id: project::AgentId,
-    pub connection: Rc<AcpConnection>,
+    pub connection: Rc<dyn AgentConnection>,
+}
+
+impl ActiveAcpConnection {
+    pub fn subscribe_debug_messages(
+        &self,
+    ) -> Option<(
+        Vec<AcpDebugMessage>,
+        async_channel::Receiver<AcpDebugMessage>,
+    )> {
+        self.connection
+            .clone()
+            .downcast::<AcpConnection>()
+            .map(|connection| connection.subscribe_debug_messages())
+    }
 }
 
 /// ADR-F49 decision 19: which view a connection started outside its sandbox
@@ -232,17 +246,26 @@ pub struct AgentConnectionStore {
     install_places: HashMap<ConnectionSlot, AgentInstallPlace>,
     idle_watch: Task<()>,
     idle_watch_running: bool,
+    owned_connections: Vec<Weak<dyn AgentConnection>>,
+    shutdown: Option<watch::Sender<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl AgentConnectionStore {
     pub fn new(project: Entity<Project>, cx: &mut Context<Self>) -> Self {
         let agent_server_store = project.read(cx).agent_server_store().clone();
+        let (shutdown, _) = watch::channel(());
+        cx.on_release(|this, _| this.shutdown_connections())
+            .detach();
         let subscriptions = vec![
             cx.subscribe(&agent_server_store, Self::handle_agent_servers_updated),
             // Turning `agent.idle_disconnect_minutes` back on has to start the
             // watch again: it stops itself while the setting says never.
             cx.observe_global::<SettingsStore>(Self::watch_idle_connections),
+            cx.on_app_quit(|this, _| {
+                this.shutdown_connections();
+                async {}
+            }),
         ];
         Self {
             project,
@@ -262,7 +285,21 @@ impl AgentConnectionStore {
             install_places: HashMap::default(),
             idle_watch: Task::ready(()),
             idle_watch_running: false,
+            owned_connections: Vec::new(),
+            shutdown: Some(shutdown),
             _subscriptions: subscriptions,
+        }
+    }
+
+    fn shutdown_connections(&mut self) {
+        drop(self.shutdown.take());
+        // Cache replacement must not hide a connection retained by an older view or receipt.
+        for connection in self
+            .owned_connections
+            .drain(..)
+            .filter_map(|owner| owner.upgrade())
+        {
+            connection.shutdown();
         }
     }
 
@@ -417,14 +454,14 @@ impl AgentConnectionStore {
             .chain(self.in_sandbox.values())
             .chain(self.unrestricted_network.values().map(|(_, entry)| entry))
             .filter_map(|entry| match entry.read(cx) {
-                AgentConnectionEntry::Connected(state) => state
-                    .connection
-                    .clone()
-                    .downcast::<AcpConnection>()
-                    .map(|connection| ActiveAcpConnection {
-                        agent_id: state.connection.agent_id(),
+                AgentConnectionEntry::Connected(state) => {
+                    let connection = state.connection.clone();
+                    let concrete = connection.clone().into_any();
+                    concrete.is::<AcpConnection>().then(|| ActiveAcpConnection {
+                        agent_id: connection.agent_id(),
                         connection,
-                    }),
+                    })
+                }
                 AgentConnectionEntry::Connecting { .. } | AgentConnectionEntry::Error { .. } => {
                     None
                 }
@@ -1330,13 +1367,40 @@ impl AgentConnectionStore {
             }
         }
 
-        let connect_task = server.connect(delegate, self.project.clone(), cx);
-        let connect_task = cx.spawn(async move |_this, _cx| match connect_task.await {
-            Ok(connection) => Ok(AgentConnectedState { connection }),
-            Err(err) => match err.downcast::<LoadError>() {
-                Ok(load_error) => Err(load_error),
-                Err(err) => Err(LoadError::Other(SharedString::from(err.to_string()))),
-            },
+        let shutdown = self.shutdown.as_ref().map(watch::Sender::receiver);
+        let connect_task =
+            shutdown.map(|shutdown| (server.connect(delegate, self.project.clone(), cx), shutdown));
+        let connect_task = cx.spawn(async move |this, cx| {
+            let owner_released = || LoadError::Other("Agent connection owner was released".into());
+            let Some((connect_task, mut shutdown)) = connect_task else {
+                return Err(owner_released());
+            };
+            let stopped = shutdown.changed();
+            futures::pin_mut!(stopped);
+            let result = match futures::future::select(connect_task, stopped).await {
+                futures::future::Either::Left((result, _)) => result,
+                futures::future::Either::Right(_) => return Err(owner_released()),
+            };
+            let connection = result.map_err(|error| match error.downcast::<LoadError>() {
+                Ok(error) => error,
+                Err(error) => LoadError::Other(error.to_string().into()),
+            })?;
+            let registered = this
+                .update(cx, |this, _| {
+                    if this.shutdown.is_none() {
+                        return false;
+                    }
+                    this.owned_connections
+                        .retain(|connection| connection.strong_count() > 0);
+                    this.owned_connections.push(Rc::downgrade(&connection));
+                    true
+                })
+                .is_ok_and(|registered| registered);
+            if !registered {
+                connection.shutdown();
+                return Err(owner_released());
+            }
+            Ok(AgentConnectedState { connection })
         });
         (new_version_rx, loading_status_rx, connect_task)
     }
@@ -1398,9 +1462,10 @@ async fn read_session_options_in_a_session_of_their_own(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversation_view::tests::init_test;
+    use crate::conversation_view::tests::{StubAgentServer, init_test};
     use acp_thread::{
         AcpThread, SandboxProcessMonitor, SandboxProcessSource, SandboxProcessTracking,
+        StubAgentConnection,
     };
     use agent_client_protocol::schema::{v1 as acp, v2 as acp_v2};
     use fs::FakeFs;
@@ -1408,8 +1473,9 @@ mod tests {
     use project::AgentId;
     use std::any::Any;
     use std::cell::RefCell;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use util::path;
     use workspace::PathList;
 
@@ -1547,7 +1613,9 @@ mod tests {
             Task::ready(Ok(acp::PromptResponse::new(acp::StopReason::EndTurn)))
         }
 
-        fn cancel(&self, _session_id: &acp_v2::SessionId, _cx: &mut App) {}
+        fn cancel(&self, _session_id: &acp_v2::SessionId, _cx: &mut App) -> Result<()> {
+            Ok(())
+        }
 
         fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
             self
@@ -2134,5 +2202,165 @@ mod tests {
             is_connected(&store, cx),
             "a user who turned the disconnect off keeps every connection"
         );
+    }
+
+    #[gpui::test]
+    async fn test_connection_owner_shutdown_includes_replaced_connections(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", serde_json::json!({})).await;
+        let project = Project::test(fs, [Path::new("/project")], cx).await;
+        for quitting in [false, true] {
+            let store = cx.new(|cx| AgentConnectionStore::new(project.clone(), cx));
+            let original = StubAgentConnection::new();
+            let replacement = StubAgentConnection::new();
+            let entry = store.update(cx, |store, cx| {
+                store.request_connection(
+                    Agent::Stub,
+                    Rc::new(StubAgentServer::new(original.clone())),
+                    cx,
+                )
+            });
+            let observer = entry.read_with(cx, |entry, _| entry.wait_for_connection());
+            let connected = observer.await.expect("connected");
+            cx.run_until_parked();
+            let other_view = connected.clone();
+            drop(connected);
+            assert_eq!(
+                original.shutdown_calls(),
+                0,
+                "one observer is not the owner"
+            );
+            let replacement_entry = store.update(cx, |store, cx| {
+                store.restart_connection(
+                    Agent::Stub,
+                    Rc::new(StubAgentServer::new(replacement.clone())),
+                    cx,
+                )
+            });
+            let connected = replacement_entry
+                .read_with(cx, |entry, _| entry.wait_for_connection())
+                .await
+                .expect("replacement connected");
+            cx.run_until_parked();
+            assert_eq!(
+                original.shutdown_calls(),
+                0,
+                "restart preserves older views"
+            );
+            if quitting {
+                cx.update(|cx| cx.shutdown());
+                assert_eq!(original.shutdown_calls(), 1);
+                assert_eq!(replacement.shutdown_calls(), 1);
+                let late = store.update(cx, |store, cx| {
+                    store.restart_connection(
+                        Agent::Stub,
+                        Rc::new(StubAgentServer::new(StubAgentConnection::new())),
+                        cx,
+                    )
+                });
+                assert!(
+                    late.read_with(cx, |entry, _| entry.wait_for_connection())
+                        .await
+                        .is_err(),
+                    "an ended owner cannot start another connection"
+                );
+            }
+            drop(store);
+            cx.update(|_| ());
+            cx.run_until_parked();
+            assert_eq!(original.shutdown_calls(), 1);
+            assert_eq!(replacement.shutdown_calls(), 1);
+            assert!(original.take_close_session_calls().is_empty());
+            assert!(replacement.take_close_session_calls().is_empty());
+            drop(other_view);
+            drop(connected);
+        }
+    }
+
+    struct PendingAgentServer {
+        started: Arc<AtomicBool>,
+        dropped: Arc<AtomicBool>,
+    }
+
+    impl AgentServer for PendingAgentServer {
+        fn logo(&self) -> ui::IconName {
+            ui::IconName::ZedAgent
+        }
+
+        fn agent_id(&self) -> project::AgentId {
+            "pending".into()
+        }
+
+        fn connect(
+            &self,
+            _delegate: AgentServerDelegate,
+            _project: Entity<Project>,
+            cx: &mut App,
+        ) -> Task<Result<Rc<dyn AgentConnection>>> {
+            let started = self.started.clone();
+            let dropped = self.dropped.clone();
+            cx.foreground_executor().spawn(async move {
+                let _guard = util::defer(move || dropped.store(true, Ordering::SeqCst));
+                started.store(true, Ordering::SeqCst);
+                futures::future::pending().await
+            })
+        }
+
+        fn into_any(self: Rc<Self>) -> Rc<dyn Any> {
+            self
+        }
+    }
+
+    #[gpui::test]
+    async fn test_connection_owner_shutdown_cancels_pending_startup(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/project", serde_json::json!({})).await;
+        let project = Project::test(fs, [Path::new("/project")], cx).await;
+        for quitting in [false, true] {
+            let store = cx.new(|cx| AgentConnectionStore::new(project.clone(), cx));
+            let started = Arc::new(AtomicBool::new(false));
+            let dropped = Arc::new(AtomicBool::new(false));
+            let entry = store.update(cx, |store, cx| {
+                store.request_connection(
+                    Agent::Stub,
+                    Rc::new(PendingAgentServer {
+                        started: started.clone(),
+                        dropped: dropped.clone(),
+                    }),
+                    cx,
+                )
+            });
+            let pending = entry.read_with(cx, |entry, _| entry.wait_for_connection());
+            cx.run_until_parked();
+            assert!(started.load(Ordering::SeqCst));
+            if quitting {
+                cx.update(|cx| cx.shutdown());
+            } else {
+                drop(store);
+                cx.update(|_| ());
+            }
+            assert!(pending.await.is_err());
+            cx.run_until_parked();
+            assert!(dropped.load(Ordering::SeqCst));
+        }
+        let store = cx.new(|cx| AgentConnectionStore::new(project.clone(), cx));
+        let connection = StubAgentConnection::new();
+        let entry = store.update(cx, |store, cx| {
+            store.request_connection(
+                Agent::Stub,
+                Rc::new(StubAgentServer::new(connection.clone())),
+                cx,
+            )
+        });
+        let pending = entry.read_with(cx, |entry, _| entry.wait_for_connection());
+        drop(store);
+        cx.update(|_| ());
+        assert!(
+            pending.await.is_err(),
+            "late success cannot outlive its owner"
+        );
+        assert_eq!(connection.shutdown_calls(), 1);
     }
 }

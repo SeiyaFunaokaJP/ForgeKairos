@@ -116,6 +116,9 @@ msgstr "Cambiar el nombre de la conversación"
 msgid "Rename Title"
 msgstr "Cambiar el título"
 
+msgid "Request Stop (Activity Unconfirmed)"
+msgstr "Solicitar detención (actividad sin confirmar)"
+
 msgid "Search threads…"
 msgstr "Buscar conversaciones…"
 
