@@ -3439,7 +3439,7 @@ mod tests {
     /// rendezvous the command may write, and refuses the command with it).
     #[test]
     fn a_project_folder_that_holds_the_rendezvous_is_noticed() {
-        let rendezvous = "/root/.cache/zed-jp-enhance/ide/claude-1/bridge.sock";
+        let rendezvous = "/root/.cache/forgekairos/ide/claude-1/bridge.sock";
         let held = |roots: &[&str]| {
             super::remote_launch::writable_root_holding(
                 &roots.iter().map(PathBuf::from).collect::<Vec<_>>(),
@@ -3452,7 +3452,7 @@ mod tests {
             Some("/root/.cache".to_string())
         );
         assert_eq!(held(&["/srv/app"]), None);
-        assert_eq!(held(&["/root/.cache/zed-jp-enhance-other"]), None);
+        assert_eq!(held(&["/root/.cache/forgekairos-other"]), None);
         assert_eq!(held(&[]), None);
         // 綴りの揺れ (末尾の `/`・`//`・`/./`) でも同じ場所は同じ場所。名前はユーザーが
         // 開いたときの綴りのまま見せる。

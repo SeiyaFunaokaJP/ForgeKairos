@@ -2329,7 +2329,7 @@ async fn test_remote_call_hierarchy(cx: &mut TestAppContext, server_cx: &mut Tes
     });
 }
 
-// Added by zed-jp-enhance with the call graph panel: its tree keeps only weak
+// Added by ForgeKairos with the call graph panel: its tree keeps only weak
 // handles to buffers and opens them again by path when a row is expanded.
 #[gpui::test]
 async fn test_remote_call_graph_expands_released_files(
@@ -2612,7 +2612,7 @@ async fn test_remote_call_graph_expands_released_files(
     });
 }
 
-// Added by zed-jp-enhance with the call graph panel's symbol index (ADR-F68):
+// Added by ForgeKairos with the call graph panel's symbol index (ADR-F68):
 // the index answers on the host, including for a function in a file outside
 // the project, which the language server cannot be asked about over SSH.
 #[gpui::test]
@@ -9532,7 +9532,7 @@ async fn session_without_launch_approvals(
     (client, headless)
 }
 
-/// ADR-F50 (zed-jp-enhance): an `AddWorktree` that says nothing about the
+/// ADR-F50 (ForgeKairos): an `AddWorktree` that says nothing about the
 /// worktree's code — what every IDE sends, and what a peer that does not know
 /// the field sends — holds that code back until the IDE decides. The explicit
 /// opt-out is what `open_buffer_over_session` sends.

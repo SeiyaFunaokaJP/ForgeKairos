@@ -5416,7 +5416,7 @@ mod tests {
     #[test]
     fn helper_command_line_starts_the_verified_helper_after_wsl_options() {
         let helper = InstalledHelper {
-            path: "/home/me/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server".to_string(),
+            path: "/home/me/.cache/forgekairos/sandbox/abc/zed-remote-server".to_string(),
             digests: Some(HelperDigests {
                 server: "server-digest".to_string(),
                 slirp: "slirp-digest".to_string(),
@@ -5459,7 +5459,7 @@ mod tests {
                 "-c",
                 VERIFIED_EXEC_SCRIPT,
                 "zed-wsl-exec",
-                "/home/me/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server",
+                "/home/me/.cache/forgekairos/sandbox/abc/zed-remote-server",
                 "server-digest",
                 "--remote-sandbox-helper",
                 "--net",
@@ -5657,21 +5657,21 @@ mod tests {
     fn check_output_is_read_past_other_output() {
         assert_eq!(
             parse_check_output(
-                "motd noise\nzed-wsl-helper: ready /home/my user/.cache/zed-jp-enhance/sandbox/k/zed-remote-server\n"
+                "motd noise\nzed-wsl-helper: ready /home/my user/.cache/forgekairos/sandbox/k/zed-remote-server\n"
             )
             .unwrap(),
             HelperCheck::Ready(
-                "/home/my user/.cache/zed-jp-enhance/sandbox/k/zed-remote-server".to_string()
+                "/home/my user/.cache/forgekairos/sandbox/k/zed-remote-server".to_string()
             )
         );
         assert_eq!(
-            parse_check_output("zed-wsl-helper: missing /root/.cache/zed-jp-enhance/sandbox/k\n")
+            parse_check_output("zed-wsl-helper: missing /root/.cache/forgekairos/sandbox/k\n")
                 .unwrap(),
             HelperCheck::Missing
         );
         assert_eq!(
             parse_check_output(
-                "zed-wsl-helper: unverifiable /root/.cache/zed-jp-enhance/sandbox/k\n"
+                "zed-wsl-helper: unverifiable /root/.cache/forgekairos/sandbox/k\n"
             )
             .unwrap(),
             HelperCheck::Unverifiable
@@ -5685,13 +5685,13 @@ mod tests {
     fn stage_output_keeps_spaces_in_the_staged_path() {
         assert_eq!(
             parse_stage_output(
-                "zed-wsl-install: 1234 abcdef /home/my user/.cache/zed-jp-enhance/sandbox/k/.slirp4netns.AbC123\n"
+                "zed-wsl-install: 1234 abcdef /home/my user/.cache/forgekairos/sandbox/k/.slirp4netns.AbC123\n"
             )
             .unwrap(),
             StageReport {
                 size: 1234,
                 sha256: Some("abcdef".to_string()),
-                path: "/home/my user/.cache/zed-jp-enhance/sandbox/k/.slirp4netns.AbC123".to_string(),
+                path: "/home/my user/.cache/forgekairos/sandbox/k/.slirp4netns.AbC123".to_string(),
             }
         );
         // Without `sha256sum` only the size can be compared.
@@ -6053,7 +6053,7 @@ mod tests {
             vec![
                 Some("/home/me/project".to_string()),
                 Some("/home/me/project".to_string()),
-                Some("/home/me/.local/share/zed-jp-enhance/node".to_string()),
+                Some("/home/me/.local/share/forgekairos/node".to_string()),
                 None,
                 Some("/mnt/c/external/.git".to_string()),
             ],
@@ -6064,7 +6064,7 @@ mod tests {
         assert_eq!(writable_paths, vec!["/home/me/project".to_string()]);
         assert_eq!(
             readable_paths,
-            vec!["/home/me/.local/share/zed-jp-enhance/node".to_string()]
+            vec!["/home/me/.local/share/forgekairos/node".to_string()]
         );
         assert_eq!(protected_paths, vec!["/mnt/c/external/.git".to_string()]);
     }
@@ -6352,7 +6352,7 @@ mod tests {
     #[test]
     fn the_bridge_starts_through_the_verified_helper() {
         let helper = InstalledHelper {
-            path: "/root/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server".to_string(),
+            path: "/root/.cache/forgekairos/sandbox/abc/zed-remote-server".to_string(),
             digests: Some(HelperDigests {
                 server: "server-digest".to_string(),
                 slirp: "slirp-digest".to_string(),
@@ -6361,7 +6361,7 @@ mod tests {
         let args = ide_bridge_command_line(
             Some("Ubuntu"),
             &helper,
-            "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+            "/root/.cache/forgekairos/ide/s1/bridge.sock",
             Some("/root/.claude-zed/ide/45123.lock"),
             Some("/root/.claude-zed"),
         );
@@ -6375,11 +6375,11 @@ mod tests {
                 "-c",
                 VERIFIED_EXEC_SCRIPT,
                 "zed-wsl-exec",
-                "/root/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server",
+                "/root/.cache/forgekairos/sandbox/abc/zed-remote-server",
                 "server-digest",
                 "--ide-bridge",
                 "--rendezvous",
-                "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+                "/root/.cache/forgekairos/ide/s1/bridge.sock",
                 "--lock-file",
                 "/root/.claude-zed/ide/45123.lock",
                 "--exclusive-directory",
@@ -6396,7 +6396,7 @@ mod tests {
         assert_eq!(
             args.get(from_ide_bridge..).unwrap_or_default(),
             crate::remote_ide_bridge_argv(
-                "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+                "/root/.cache/forgekairos/ide/s1/bridge.sock",
                 Some("/root/.claude-zed/ide/45123.lock"),
                 Some("/root/.claude-zed"),
             )
@@ -6414,7 +6414,7 @@ mod tests {
             ide_bridge_command_line(
                 None,
                 &helper,
-                "/root/.cache/zed-jp-enhance/ide/acp-1/bridge.sock",
+                "/root/.cache/forgekairos/ide/acp-1/bridge.sock",
                 None,
                 None,
             ),
@@ -6424,11 +6424,11 @@ mod tests {
                 "-c",
                 VERIFIED_EXEC_SCRIPT,
                 "zed-wsl-exec",
-                "/root/.cache/zed-jp-enhance/sandbox/abc/zed-remote-server",
+                "/root/.cache/forgekairos/sandbox/abc/zed-remote-server",
                 "server-digest",
                 "--ide-bridge",
                 "--rendezvous",
-                "/root/.cache/zed-jp-enhance/ide/acp-1/bridge.sock",
+                "/root/.cache/forgekairos/ide/acp-1/bridge.sock",
             ]
         );
     }
@@ -6468,12 +6468,12 @@ mod tests {
     /// its own `$0` has to sit between them and `-c`.
     #[test]
     fn the_rendezvous_sweep_is_given_its_root_and_prefix_in_order() {
-        let arguments = sweep_rendezvous_arguments("/root/.cache/zed-jp-enhance/ide", "acp-");
+        let arguments = sweep_rendezvous_arguments("/root/.cache/forgekairos/ide", "acp-");
         assert_eq!(arguments[..3], ["--exec", "/bin/sh", "-c"]);
         assert_eq!(arguments[3], SWEEP_RENDEZVOUS_SCRIPT);
         assert_eq!(
             arguments[4..],
-            ["zed-ide-sweep", "/root/.cache/zed-jp-enhance/ide", "acp-"]
+            ["zed-ide-sweep", "/root/.cache/forgekairos/ide", "acp-"]
         );
 
         assert_eq!(
@@ -6542,11 +6542,11 @@ zed-sweep-removed acp-2222
     fn agent_check_results_are_read_with_their_own_prefix() {
         assert_eq!(
             parse_check_result(
-                "zed-wsl-agent: ready /root/.cache/zed-jp-enhance/agents/ab/claude\n",
+                "zed-wsl-agent: ready /root/.cache/forgekairos/agents/ab/claude\n",
                 AGENT_RESULT_PREFIX
             )
             .expect("valid"),
-            HelperCheck::Ready("/root/.cache/zed-jp-enhance/agents/ab/claude".to_string())
+            HelperCheck::Ready("/root/.cache/forgekairos/agents/ab/claude".to_string())
         );
         assert_eq!(
             parse_check_result("zed-wsl-agent: missing /x\n", AGENT_RESULT_PREFIX).expect("valid"),
@@ -6936,7 +6936,7 @@ zed-sweep-removed acp-2222
     /// is what an npm install inside its staging directory needs.)
     #[test]
     fn a_linux_path_is_a_grant_a_windows_client_can_make() {
-        let linux = Path::new("/root/.local/share/zed-jp-enhance/node/wsl-sandbox");
+        let linux = Path::new("/root/.local/share/forgekairos/node/wsl-sandbox");
         let location =
             crate::HostFilesystemLocation::capture(linux).expect("a Linux path is a grant");
         assert_eq!(location.windows_requested_path(), linux);
@@ -6944,7 +6944,7 @@ zed-sweep-removed acp-2222
 
         let expected = PathMapping::Wsl(WslPath {
             distro: None,
-            path: "/root/.local/share/zed-jp-enhance/node/wsl-sandbox".to_string(),
+            path: "/root/.local/share/forgekairos/node/wsl-sandbox".to_string(),
         });
         assert_eq!(
             path_to_wsl(linux).expect("a writable or readable path"),
@@ -7206,7 +7206,7 @@ zed-sweep-removed acp-2222
     /// The `wsl.exe` every fake is reached through.
     const FAKE_WSL_EXE: &str = r"C:\Windows\System32\wsl.exe";
     /// The Zed data directory a fake distro reports.
-    const FAKE_DATA_DIRECTORY: &str = "/home/me/.local/share/zed-jp-enhance";
+    const FAKE_DATA_DIRECTORY: &str = "/home/me/.local/share/forgekairos";
 
     /// Marks the fake as cancelled when a step that never answered is
     /// dropped.
@@ -7523,7 +7523,7 @@ zed-sweep-removed acp-2222
         let destination = format!("{FAKE_DATA_DIRECTORY}/{NPX_RELATIVE}");
         fake.has_data_directory()
             .has_no_runtime()
-            .makes_npm_staging("/home/me/.local/share/zed-jp-enhance-staging/abc")
+            .makes_npm_staging("/home/me/.local/share/forgekairos-staging/abc")
             .prints(
                 "zed-wsl-npm-finalize",
                 format!("zed-wsl-npm: ready {destination}\n"),
@@ -7533,7 +7533,7 @@ zed-sweep-removed acp-2222
         let installed = smol::block_on(install_npm_package(
             &fake,
             Some("Ubuntu"),
-            "/home/me/.local/share/zed-jp-enhance/node/wsl-sandbox/node-v24.22.1-linux-x64",
+            "/home/me/.local/share/forgekairos/node/wsl-sandbox/node-v24.22.1-linux-x64",
             PACKAGE_SPEC,
             NPX_RELATIVE,
             vec!["registry.npmjs.org".to_string()],
@@ -7586,11 +7586,11 @@ zed-sweep-removed acp-2222
         assert_eq!(install.package_spec, PACKAGE_SPEC);
         assert_eq!(
             install.staging,
-            "/home/me/.local/share/zed-jp-enhance-staging/abc"
+            "/home/me/.local/share/forgekairos-staging/abc"
         );
         assert_eq!(
             install.node_directory,
-            "/home/me/.local/share/zed-jp-enhance/node/wsl-sandbox/node-v24.22.1-linux-x64"
+            "/home/me/.local/share/forgekairos/node/wsl-sandbox/node-v24.22.1-linux-x64"
         );
         assert_eq!(
             install.allowed_hosts,
@@ -7604,7 +7604,7 @@ zed-sweep-removed acp-2222
         let finalize = fake.only_call("zed-wsl-npm-finalize");
         assert_eq!(
             finalize.argument(1),
-            "/home/me/.local/share/zed-jp-enhance-staging/abc"
+            "/home/me/.local/share/forgekairos-staging/abc"
         );
         assert_eq!(finalize.argument(2), destination);
         assert_eq!(finalize.argument(3), suffix, "one install, one suffix");
@@ -7702,7 +7702,7 @@ zed-sweep-removed acp-2222
         let fake = FakeWsl::default();
         fake.has_data_directory()
             .has_no_runtime()
-            .makes_npm_staging("/home/me/.local/share/zed-jp-enhance-staging/abc")
+            .makes_npm_staging("/home/me/.local/share/forgekairos-staging/abc")
             .npm_install_fails("Could not run `npm install x` in the sandbox");
 
         let error = smol::block_on(install_npm_package(
@@ -7728,7 +7728,7 @@ zed-sweep-removed acp-2222
         );
         assert_eq!(
             fake.only_call("rm").removed(),
-            vec!["/home/me/.local/share/zed-jp-enhance-staging/abc"]
+            vec!["/home/me/.local/share/forgekairos-staging/abc"]
         );
     }
 
@@ -7740,7 +7740,7 @@ zed-sweep-removed acp-2222
         let fake = FakeWsl::default();
         fake.has_data_directory()
             .has_no_runtime()
-            .makes_npm_staging("/home/me/.local/share/zed-jp-enhance-staging/abc")
+            .makes_npm_staging("/home/me/.local/share/forgekairos-staging/abc")
             .fails(
                 "zed-wsl-npm-finalize",
                 "zed-wsl-npm: error no-node-modules\n",
@@ -7765,7 +7765,7 @@ zed-sweep-removed acp-2222
         );
         assert_eq!(
             fake.only_call("rm").removed(),
-            vec!["/home/me/.local/share/zed-jp-enhance-staging/abc"]
+            vec!["/home/me/.local/share/forgekairos-staging/abc"]
         );
     }
 
@@ -7828,7 +7828,7 @@ zed-sweep-removed acp-2222
         let fake = FakeWsl::default();
         fake.fails(
             "zed-wsl-npm-read",
-            "zed-wsl-npm: error link /home/me/.local/share/zed-jp-enhance/x\n",
+            "zed-wsl-npm: error link /home/me/.local/share/forgekairos/x\n",
         );
         let error = smol::block_on(read_npm_package_json(
             &fake,
@@ -7838,7 +7838,7 @@ zed-sweep-removed acp-2222
         ))
         .expect_err("a link must be refused");
         assert!(
-            format!("{error:#}").contains("(link /home/me/.local/share/zed-jp-enhance/x)"),
+            format!("{error:#}").contains("(link /home/me/.local/share/forgekairos/x)"),
             "{error:#}"
         );
     }

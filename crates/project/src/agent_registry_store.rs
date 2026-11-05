@@ -406,7 +406,7 @@ async fn fetch_registry_index(
     })
 }
 
-/// zed-jp-enhance: these links come from the registry fetched over the
+/// ForgeKairos: these links come from the registry fetched over the
 /// network and are handed to the operating system when clicked. Only web
 /// addresses are kept, so that an entry cannot launch whatever handler the OS
 /// has registered for another scheme (the same rule as a language server's

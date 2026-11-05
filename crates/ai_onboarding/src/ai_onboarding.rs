@@ -160,7 +160,7 @@ impl ZedAiOnboarding {
         })
     }
 
-    /// zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10, ADR-F91): Zed AI is
+    /// ForgeKairos (`.forgekairos-docs/DESIGN.md` ADR-F10, ADR-F91): Zed AI is
     /// an external AI service, so this card must not offer a way in until the
     /// data-retention warning has been acknowledged in the settings window.
     /// Until then it shows what holds for every AI this fork can use rather

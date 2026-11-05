@@ -14538,7 +14538,7 @@ mod tests {
         let lookup = ClaudeCodeLookup {
             // 実在しないプログラム名なので `find` は「無い」と答える。
             lookup: Some(ProgramLookup::OnThisMachine(
-                "zed-jp-enhance-no-such-program".to_string(),
+                "forgekairos-no-such-program".to_string(),
             )),
             program: CLAUDE_CODE_PROGRAM,
             on_remote_host: true,

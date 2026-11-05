@@ -315,7 +315,7 @@ Landlock, and seccomp) and does not need Bubblewrap.
 
 Nothing has to be installed inside the distribution, and nothing is downloaded. The first sandboxed command after
 installing or updating Zed copies the Linux helper that ships with Zed, and `slirp4netns`, into
-`~/.cache/zed-jp-enhance/sandbox/` inside the distribution; later commands reuse that copy. This also works offline.
+`~/.cache/forgekairos/sandbox/` inside the distribution; later commands reuse that copy. This also works offline.
 Every command first checks that copy against the SHA-256 of what this Zed installed, and a replaced or damaged
 helper is not run.
 

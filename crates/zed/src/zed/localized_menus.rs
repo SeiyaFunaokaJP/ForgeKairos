@@ -550,7 +550,7 @@ mod tests {
         ("Amend Last Commit", "直前のコミットを修正 (amend)"),
         ("Back", "戻る"),
         ("Browser Panel", "ブラウザーパネル"),
-        // Added by zed-jp-enhance with the call graph panel.
+        // Added by ForgeKairos with the call graph panel.
         ("Call Graph Panel", "呼び出しグラフパネル"),
         ("Change Folder…", "フォルダーを変更…"),
         ("Check for Updates", "更新を確認"),
@@ -662,7 +662,7 @@ mod tests {
         // Added by upstream v1.19.2.
         ("Show Incoming Calls", "呼び出し元を表示"),
         ("Show Outgoing Calls", "呼び出し先を表示"),
-        // Added by zed-jp-enhance with the call graph panel.
+        // Added by ForgeKairos with the call graph panel.
         (
             "Show Callees in Call Graph",
             "呼び出しグラフで呼び出し先を表示",

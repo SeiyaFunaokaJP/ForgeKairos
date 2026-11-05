@@ -2688,7 +2688,7 @@ fn is_network_path(path: &Path) -> bool {
     path.starts_with("\\\\") || path.starts_with("//")
 }
 
-/// zed-jp-enhance: the checks and the confirmation live in `workspace` so that
+/// ForgeKairos: the checks and the confirmation live in `workspace` so that
 /// Copilot, which runs its own language server, applies the same ones.
 fn show_external_document(
     request: LanguageServerShowDocumentRequest,

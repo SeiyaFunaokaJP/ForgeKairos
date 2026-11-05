@@ -840,7 +840,7 @@ fn agent_profile_tools_schema(_: &mut schemars::SchemaGenerator) -> schemars::Sc
         "terminal",
         "write_file",
     ];
-    // zed-jp-enhance: the fork's own tools, so that a profile naming them is not flagged.
+    // ForgeKairos: the fork's own tools, so that a profile naming them is not flagged.
     let fork_tool_names = [
         "annotate_code",
         "browser_click",

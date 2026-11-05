@@ -702,7 +702,7 @@ pub fn dev_repo_root() -> Option<&'static std::path::Path> {
         let candidates = [
             exe.clone(),
             exe.and_then(|exe| exe.canonicalize().ok()),
-            // zed-jp-enhance builds into target directories outside the checkout. Try the checkout
+            // ForgeKairos builds into target directories outside the checkout. Try the checkout
             // this crate was compiled from before the working directory, which can be any other
             // repository the binary was started in, whose `assets/settings/default.json` would
             // then become the defaults (with AI switched on, for upstream's).

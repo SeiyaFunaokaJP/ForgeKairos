@@ -155,7 +155,7 @@ pub struct EditPrediction {
     pub trigger: PredictEditsRequestTrigger,
     /// Whether Zed Cloud made this prediction. Only those predictions are reported back to Zed
     /// Cloud (accepted, rejected, settled, rated): a user who chose a self-hosted server chose
-    /// not to send Zed anything, whatever consent they have given Zed (zed-jp-enhance ADR-F10).
+    /// not to send Zed anything, whatever consent they have given Zed (ForgeKairos ADR-F10).
     pub made_by_zed_cloud: bool,
 }
 

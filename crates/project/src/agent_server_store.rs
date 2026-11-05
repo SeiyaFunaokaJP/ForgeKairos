@@ -3446,7 +3446,7 @@ mod tests {
                 AgentLaunchTarget::Sandbox {
                     // No distro is ever registered under this name, so the
                     // WSL half fails before it spawns anything.
-                    wsl_distro: Some("zed-jp-enhance-no-such-distro".to_string()),
+                    wsl_distro: Some("forgekairos-no-such-distro".to_string()),
                 },
                 &mut cx.to_async(),
             )
@@ -3460,7 +3460,7 @@ mod tests {
             panic!("an unregistered distro cannot take the agent");
         };
         assert!(
-            reason.contains("zed-jp-enhance-no-such-distro"),
+            reason.contains("forgekairos-no-such-distro"),
             "the reason names the distro: {reason}"
         );
         assert_eq!(

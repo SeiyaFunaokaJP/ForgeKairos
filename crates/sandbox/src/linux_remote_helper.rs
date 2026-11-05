@@ -6659,7 +6659,7 @@ mod tests {
         let mut argv = build_remote_sandbox_helper_argv(
             &["/home/u/proj".to_string(), "/home/u/scratch".to_string()],
             &["/home/u/proj/.git".to_string()],
-            &["/home/u/.local/share/zed-jp-enhance/node".to_string()],
+            &["/home/u/.local/share/forgekairos/node".to_string()],
             &RemoteSandboxNetwork::Hosts(vec!["example.com".into()]),
             None,
             false,
@@ -6697,7 +6697,7 @@ mod tests {
         );
         assert_eq!(
             decoded.readable_paths,
-            vec![PathBuf::from("/home/u/.local/share/zed-jp-enhance/node")]
+            vec![PathBuf::from("/home/u/.local/share/forgekairos/node")]
         );
         assert_eq!(decoded.chdir, Some(PathBuf::from("/home/u/proj/sub")));
         assert_eq!(decoded.program, OsString::from("/bin/bash"));
@@ -7273,7 +7273,7 @@ mod tests {
         let mut invocation = invocation_writing(&[]);
         invocation.ide_forward = Some(IdeForwardRequest {
             port: 45123,
-            rendezvous: PathBuf::from("/root/.cache/zed-jp-enhance/ide/s/bridge.sock"),
+            rendezvous: PathBuf::from("/root/.cache/forgekairos/ide/s/bridge.sock"),
         });
         let with = command_environment(&invocation, &tmpdir, Some(8080));
         for name in ["NO_PROXY", "no_proxy"] {
@@ -8327,7 +8327,7 @@ mod tests {
             &roots,
             // The data directory of the fake home does not exist, so the
             // sessions' configuration is the one directory covered whole.
-            &enclosed_directories(&home, &home.join(".local/share/zed-jp-enhance")),
+            &enclosed_directories(&home, &home.join(".local/share/forgekairos")),
             &writable,
             &[],
         )
@@ -8431,7 +8431,7 @@ mod tests {
         let roots = [home.clone()];
         let writable = pin_writable_paths(&roots, false).expect("pinning the home as the worktree");
         let read_hidden = read_hidden_home_paths(&home, false);
-        let enclosures = enclosed_directories(&home, &home.join(".local/share/zed-jp-enhance"));
+        let enclosures = enclosed_directories(&home, &home.join(".local/share/forgekairos"));
         let (covered, targets) =
             read_hiding_plan(&read_hidden, &roots, &enclosures, &writable, &[]);
         let mut denied = covered;
@@ -8514,12 +8514,12 @@ mod tests {
     #[test]
     fn a_deep_protected_entry_carves_its_whole_chain() {
         let (_root, root) = canonical_tempdir();
-        std::fs::create_dir_all(root.join(".cache/zed-jp-enhance/sandbox/key"))
+        std::fs::create_dir_all(root.join(".cache/forgekairos/sandbox/key"))
             .expect("create the install directory");
         std::fs::create_dir(root.join(".cache/other")).expect("create .cache/other");
-        std::fs::create_dir(root.join(".cache/zed-jp-enhance/other")).expect("create a sibling");
+        std::fs::create_dir(root.join(".cache/forgekairos/other")).expect("create a sibling");
         std::fs::write(root.join("notes.txt"), "x").expect("write notes.txt");
-        let protected = classify_protected_paths(&[root.join(".cache/zed-jp-enhance/sandbox")])
+        let protected = classify_protected_paths(&[root.join(".cache/forgekairos/sandbox")])
             .expect("classify");
         let roots = pin_writable_paths(std::slice::from_ref(&root), true).expect("pin the root");
 
@@ -8528,7 +8528,7 @@ mod tests {
             granted(&plan),
             [
                 root.join(".cache/other"),
-                root.join(".cache/zed-jp-enhance/other"),
+                root.join(".cache/forgekairos/other"),
                 root.join("notes.txt"),
             ]
         );
@@ -8579,19 +8579,19 @@ mod tests {
     }
 
     /// The WSL home opened as a project: its protected
-    /// `.zed-jp-enhance-claude` holds the session's own configuration, which
+    /// `.forgekairos-claude` holds the session's own configuration, which
     /// a read-only bind of it would take along. It is carved instead, and
     /// the configuration keeps its own grant.
     #[test]
     fn a_protected_entry_holding_a_writable_root_is_carved_not_bound() {
         let (_root, root) = canonical_tempdir();
-        let configuration = root.join(".zed-jp-enhance-claude/projects/0123456789abcdef");
+        let configuration = root.join(".forgekairos-claude/projects/0123456789abcdef");
         std::fs::create_dir_all(configuration.join("config")).expect("create the configuration");
-        std::fs::create_dir(root.join(".zed-jp-enhance-claude/projects/other"))
+        std::fs::create_dir(root.join(".forgekairos-claude/projects/other"))
             .expect("create another project's");
         std::fs::write(root.join("notes.txt"), "x").expect("write notes.txt");
         let protected =
-            classify_protected_paths(&[root.join(".zed-jp-enhance-claude")]).expect("classify");
+            classify_protected_paths(&[root.join(".forgekairos-claude")]).expect("classify");
 
         let home_only = pin_writable_paths(std::slice::from_ref(&root), true).expect("pin");
         let plan = plan_filesystem(&home_only, &protected, false, true, &|_| true).expect("plan");
@@ -8632,7 +8632,7 @@ mod tests {
         let configurations = home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
         let projects = home.join(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE);
         let own = projects.join("0123456789abcdef").join("config");
-        let data = home.join(".local/share/zed-jp-enhance");
+        let data = home.join(".local/share/forgekairos");
         let agent = data.join("external_agents/claude");
         std::fs::create_dir_all(&own).expect("create the configuration");
         std::fs::create_dir(projects.join("fedcba9876543210")).expect("create another");
@@ -8690,7 +8690,7 @@ mod tests {
     #[test]
     fn readable_paths_are_checked_then_covered_around() {
         let (_home, home) = canonical_tempdir();
-        let data = home.join(".local/share/zed-jp-enhance");
+        let data = home.join(".local/share/forgekairos");
         let agent = data.join("external_agents/registry/npx/claude");
         std::fs::create_dir_all(&agent).expect("create an agent");
         std::fs::create_dir_all(data.join("db")).expect("create the database");
@@ -9003,7 +9003,7 @@ mod tests {
     fn ide_forward_flags_round_trip_and_are_checked() {
         let forward = crate::IdeForward {
             inner_port: 45123,
-            rendezvous_path: "/root/.cache/zed-jp-enhance/ide/s/bridge.sock".to_string(),
+            rendezvous_path: "/root/.cache/forgekairos/ide/s/bridge.sock".to_string(),
         };
         let decode = |interactive: bool| {
             let mut argv = crate::build_wsl_sandbox_helper_argv(
@@ -9024,7 +9024,7 @@ mod tests {
         };
         let expected = Some(IdeForwardRequest {
             port: 45123,
-            rendezvous: PathBuf::from("/root/.cache/zed-jp-enhance/ide/s/bridge.sock"),
+            rendezvous: PathBuf::from("/root/.cache/forgekairos/ide/s/bridge.sock"),
         });
         let interactive = decode(true);
         assert_eq!(interactive.ide_forward, expected);

@@ -43,7 +43,7 @@ pub static RELEASE_CHANNEL: LazyLock<ReleaseChannel> =
 /// The app identifier for the current release channel, Windows and macOS only.
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 pub fn app_identifier() -> &'static str {
-    // zed-jp-enhance: fork-specific identifiers so the single-instance mutex and
+    // ForgeKairos: fork-specific identifiers so the single-instance mutex and
     // named pipe never collide with an official Zed install — the fork can run
     // alongside Zed instead of one hijacking the other's instance.
     RELEASE_CHANNEL.branded(&branding::CURRENT.app_identifiers)

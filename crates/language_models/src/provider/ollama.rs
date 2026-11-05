@@ -120,7 +120,7 @@ impl State {
         let api_key = self.api_key_state.key(&api_url);
         let extra_headers = settings.custom_headers.clone();
 
-        // zed-jp-enhance: the list is fetched at startup without the user asking,
+        // ForgeKairos: the list is fetched at startup without the user asking,
         // so an endpoint off this machine is not contacted until the user has
         // accepted the external AI warning for it (ADR-F10).
         if !OllamaLanguageModelProvider::endpoint_is_local_or_acknowledged(&api_url, cx) {
@@ -571,7 +571,7 @@ impl LanguageModelClient for OllamaLanguageModelProvider {
             let extra_headers = OllamaLanguageModelProvider::settings(cx)
                 .custom_headers
                 .clone();
-            // zed-jp-enhance: models listed in the settings can be chosen
+            // ForgeKairos: models listed in the settings can be chosen
             // without the list ever being fetched, so the request itself
             // is held to the same consent (ADR-F10).
             let reachable =

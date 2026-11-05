@@ -804,7 +804,7 @@ message LspDiskBasedDiagnosticsUpdated {}
 message ServerRemoved {}
 
 message StatusUpdate {
-  // zed-jp-enhance (ADR-F22): set alongside `binary = FAILED` when the reason
+  // ForgeKairos (ADR-F22): set alongside `binary = FAILED` when the reason
   // the binary is missing is that this fork's egress allowlist refused the
   // hosts the download needs. Lists the hosts the user would have to allow.
   // A plain FAILED with this empty keeps its old meaning, so a peer that
@@ -986,7 +986,7 @@ message LanguageServerPromptResponse {
 }
 
 message LanguageServerShowDocumentRequest {
-  // zed-jp-enhance: named when asking the user before an address is opened.
+  // ForgeKairos: named when asking the user before an address is opened.
   // A host too old to send it leaves it empty.
   string language_server_name = 10000;
   uint64 project_id = 1;

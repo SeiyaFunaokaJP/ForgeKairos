@@ -1497,7 +1497,7 @@ mod tests {
         let env = [
             (
                 "CLAUDE_CONFIG_DIR".to_string(),
-                r"\\wsl.localhost\Ubuntu\home\u\.zed-jp-enhance-claude\projects\k\config"
+                r"\\wsl.localhost\Ubuntu\home\u\.forgekairos-claude\projects\k\config"
                     .to_string(),
             ),
             ("NO_BROWSER".to_string(), "1".to_string()),
@@ -1506,9 +1506,9 @@ mod tests {
         .collect::<HashMap<_, _>>();
         let command = translator
             .host_command_to_client(
-                Path::new(r"\\wsl.localhost\Ubuntu\home\u\.cache\zed-jp-enhance\node\bin\node"),
+                Path::new(r"\\wsl.localhost\Ubuntu\home\u\.cache\forgekairos\node\bin\node"),
                 &[
-                    "/home/u/.cache/zed-jp-enhance/npm/cli.js".to_string(),
+                    "/home/u/.cache/forgekairos/npm/cli.js".to_string(),
                     "login".to_string(),
                 ],
                 &env,
@@ -1517,15 +1517,15 @@ mod tests {
         assert_eq!(
             command,
             ClientCommand {
-                program: "/home/u/.cache/zed-jp-enhance/node/bin/node".to_string(),
+                program: "/home/u/.cache/forgekairos/node/bin/node".to_string(),
                 args: vec![
-                    "/home/u/.cache/zed-jp-enhance/npm/cli.js".to_string(),
+                    "/home/u/.cache/forgekairos/npm/cli.js".to_string(),
                     "login".to_string(),
                 ],
                 env: [
                     (
                         "CLAUDE_CONFIG_DIR".to_string(),
-                        "/home/u/.zed-jp-enhance-claude/projects/k/config".to_string(),
+                        "/home/u/.forgekairos-claude/projects/k/config".to_string(),
                     ),
                     ("NO_BROWSER".to_string(), "1".to_string()),
                 ]

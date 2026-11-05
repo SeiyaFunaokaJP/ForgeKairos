@@ -54,7 +54,7 @@ impl OllamaModelPickerDelegate {
         }
         let filtered_models = matches_for_query(&models, "");
 
-        // zed-jp-enhance: opening the picker is not consent to contact a server
+        // ForgeKairos: opening the picker is not consent to contact a server
         // off this machine. This picker only edits the edit prediction settings,
         // so it asks for the consent their requests are checked against (ADR-F10).
         let awaiting_consent = !api_url.is_empty()

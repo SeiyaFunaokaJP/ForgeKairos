@@ -202,7 +202,7 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p12.i27[agent.prevent_idle_sleep].description",
         "エージェントのスレッドの実行中に、システムがスリープしないようにするかどうかを設定します。",
     ),
-    // Added by zed-jp-enhance with the call graph panel, at the end of the
+    // Added by ForgeKairos with the call graph panel, at the end of the
     // Panels page so that the rows above keep their keys.
     ("p7.i80.header", "呼び出しグラフパネル"),
     (
@@ -261,7 +261,7 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p7.i87[call_graph_panel.excluded_callees].description",
         "関数の呼び出し先の一覧から外す呼び出し先 (ログやアサーションのマクロなど)。末尾の行に件数を出し、押すと表示します。",
     ),
-    // zed-jp-enhance: clangd's memory settings, whose header moves the
+    // ForgeKairos: clangd's memory settings, whose header moves the
     // languages' one down.
     ("p4.i36.header", "clangd"),
     ("p4.i37[clangd.index_mode].title", "索引のモード"),
@@ -279,7 +279,7 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p4.i39[clangd.memory_limit_mb].description",
         "clangd のメモリ使用量 (30 秒ごとに確認) がこのメガバイト数を超えたら、clangd を再起動します。再起動は 10 分に 1 回までで、それ以上は通知だけを出します。リモートのプロジェクトでは、接続先のホストで測ります。0 のときは再起動しません。この項目はユーザー設定でのみ有効です。",
     ),
-    // zed-jp-enhance: the symbol index's settings (ADR-F68), right after
+    // ForgeKairos: the symbol index's settings (ADR-F68), right after
     // clangd's, which move the languages' header down again.
     ("p4.i40.header", "シンボル索引"),
     ("p4.i41[symbol_index.enabled].title", "索引を作る"),
@@ -873,14 +873,14 @@ fn translated_dropdowns() -> Vec<(
                 "なし",
             ],
         ),
-        // zed-jp-enhance: the call graph panel's sources (ADR-F68).
+        // ForgeKairos: the call graph panel's sources (ADR-F68).
         (
             "CallGraphSources",
             settings::CallGraphSources::VARIANTS,
             true,
             vec!["すべて", "言語サーバーのみ", "名前一致のみ"],
         ),
-        // zed-jp-enhance: when the symbol index is built (ADR-F68).
+        // ForgeKairos: when the symbol index is built (ADR-F68).
         (
             "SymbolIndexEnabled",
             settings::SymbolIndexEnabled::VARIANTS,

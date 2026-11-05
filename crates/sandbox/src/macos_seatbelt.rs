@@ -906,10 +906,10 @@ mod tests {
     /// stays stat-able without the directory being listable.
     #[test]
     fn test_generate_seatbelt_config_encloses_a_directory_around_its_grants() {
-        let configurations = PathBuf::from("/Users/test/.zed-jp-enhance-claude");
+        let configurations = PathBuf::from("/Users/test/.forgekairos-claude");
         let project = configurations.join("projects").join("0123456789abcdef");
         let own = project.join("config");
-        let data = PathBuf::from("/Users/test/Library/Application Support/Zed-JP-Enhance");
+        let data = PathBuf::from("/Users/test/Library/Application Support/ForgeKairos");
         let agent = data.join("external_agents").join("claude");
         let work = PathBuf::from("/Users/test/work");
         let config = generate_seatbelt_config(

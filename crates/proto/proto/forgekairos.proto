@@ -1,17 +1,17 @@
 syntax = "proto3";
 package zed.messages;
 
-// zed-jp-enhance: every message this fork adds to the protocol lives here (or in
+// ForgeKairos: every message this fork adds to the protocol lives here (or in
 // file_transfer.proto), not among upstream's messages, so that merging an
 // upstream release touches none of these lines. Fields the fork adds to
 // upstream's messages stay in those messages, numbered from 10000 up; see
-// tests/jp_enhance_numbering.rs.
+// tests/forgekairos_numbering.rs.
 
 import "buffer.proto";
 
 // The first request on every connection between a client and a remote
 // server, before any other message of this fork. Both ends compare
-// `revision` with their own `JP_ENHANCE_WIRE_REVISION`: the client gives up on
+// `revision` with their own `FORGEKAIROS_WIRE_REVISION`: the client gives up on
 // a server that answers another revision or does not answer at all (upstream's
 // server, or this fork's from before this message, cannot decode it), and the
 // server handles nothing but pings until a client of its own revision has

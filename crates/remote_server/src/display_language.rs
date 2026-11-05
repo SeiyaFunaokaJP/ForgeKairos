@@ -1,4 +1,4 @@
-//! zed-jp-enhance: the text this host writes for the client's screen (RPC
+//! ForgeKairos: the text this host writes for the client's screen (RPC
 //! errors, language server statuses, terminal notices) in the language the
 //! client shows its UI in (ADR-F64).
 //!

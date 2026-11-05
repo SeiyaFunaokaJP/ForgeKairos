@@ -791,7 +791,7 @@ impl EditPredictionButton {
                             action = "sign_in",
                             provider = "copilot",
                         );
-                        // zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10): this
+                        // ForgeKairos (`.forgekairos-docs/DESIGN.md` ADR-F10): this
                         // menu is a second, unguarded path to the same sign-in
                         // that `settings_ui::pages::edit_prediction_provider_setup`
                         // gates on consent. Redirect to the "AI" page's
@@ -1281,7 +1281,7 @@ impl EditPredictionButton {
                             action = "sign_in",
                             provider = "zed",
                         );
-                        // zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10): Zed
+                        // ForgeKairos (`.forgekairos-docs/DESIGN.md` ADR-F10): Zed
                         // Cloud is an external AI service. Redirect to the
                         // "AI" page's "プロバイダーの設定" sub-page instead
                         // of signing in directly — the same destination the
@@ -1709,7 +1709,7 @@ pub fn set_completion_provider(fs: Arc<dyn Fs>, cx: &mut App, provider: EditPred
 
 /// The providers offered in every provider picker, in display order.
 ///
-/// zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10): self-hosted providers come
+/// ForgeKairos (`.forgekairos-docs/DESIGN.md` ADR-F10): self-hosted providers come
 /// first and `Zed` comes last. An OpenAI-compatible endpoint pointed at a local
 /// server is what this fork expects people to use, and `Zed` — which needs no
 /// local setup and sends code to a cloud service — should not be what the picker

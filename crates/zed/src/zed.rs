@@ -2315,7 +2315,7 @@ pub fn handle_keymap_file_changes(
         let new_vim_enabled = VimModeSetting::get_global(cx).0;
         let new_helix_enabled = vim_mode_setting::HelixModeSetting::get_global(cx).0;
         let new_disable_ai = DisableAiSettings::get_global(cx).disable_ai;
-        // zed-jp-enhance: the View menu's Agent Panel follows `agent.enabled`
+        // ForgeKairos: the View menu's Agent Panel follows `agent.enabled`
         // (ADR-F09), which changes without `disable_ai` changing.
         let new_agent_enabled = AgentSettings::get_global(cx).enabled(cx);
 

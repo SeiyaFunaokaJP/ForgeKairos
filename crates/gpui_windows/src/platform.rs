@@ -246,7 +246,7 @@ impl WindowsPlatform {
             .context("CreateWindowExW did not run correctly")?;
         let handle = result?;
 
-        // zed-jp-enhance (ADR-F19): DirectComposition composes gpui's swap chain above
+        // ForgeKairos (ADR-F19): DirectComposition composes gpui's swap chain above
         // every child HWND, and the browser panel depends on it - gpui clears the
         // rectangle the WebView2 child occupies to transparent
         // (`Window::paint_punch_through`), so the page shows through while every

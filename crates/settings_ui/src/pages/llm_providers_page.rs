@@ -3456,7 +3456,7 @@ fn parse_optional_u64_field(
 }
 
 #[cfg(test)]
-mod jp_enhance_tests {
+mod forgekairos_tests {
     use super::*;
 
     /// ADR-F49 決定 19 (8c): Claude Code の「常にサンドボックスの外で起動」は

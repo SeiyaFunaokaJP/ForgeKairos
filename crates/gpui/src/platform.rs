@@ -3021,7 +3021,7 @@ impl From<&str> for PromptButton {
         match lowercase.as_str() {
             "ok" => PromptButton::Ok("OK".into()),
             "cancel" => PromptButton::Cancel("Cancel".into()),
-            // zed-jp-enhance (DESIGN.md §3): callers pass `t!("Cancel")`, so in a translated
+            // ForgeKairos (DESIGN.md §3): callers pass `t!("Cancel")`, so in a translated
             // UI the label would otherwise fall to `Other`, and Escape and the native
             // dialog's close box would have no cancel button to answer with. Only the
             // translation without a msgctxt counts: a translation of "Cancel" under some

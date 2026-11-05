@@ -13,7 +13,7 @@ local_install=false
 can_code_sign=false
 
 # This must match the team in the provisioning profile.
-# zed-jp-enhance: the signing identity is the builder's own; without one the
+# ForgeKairos: the signing identity is the builder's own; without one the
 # bundle is only signed ad hoc.
 IDENTITY="${MACOS_SIGNING_IDENTITY:-}"
 APPLE_NOTARIZATION_TEAM="MQ55VZLNZQ"
@@ -136,7 +136,7 @@ echo "Bundled ${app_path}"
 # We use the app icon as a placeholder document icon for now.
 document_icon_source="crates/zed/resources/Document.icns"
 document_icon_target="${app_path}/Contents/Resources/Document.icns"
-# zed-jp-enhance: the checked-in Document.icns is upstream's artwork, so the
+# ForgeKairos: the checked-in Document.icns is upstream's artwork, so the
 # document icon is made from this fork's app icon whenever the macOS tools are there.
 document_icon_artwork="crates/zed/resources/app-icon@2x.png"
 if command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1 && [[ -f "${document_icon_artwork}" ]]; then

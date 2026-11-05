@@ -4510,7 +4510,7 @@ mod tests {
                 "forgekairos-remote-server-dev-".to_string(),
                 format!(
                     "forgekairos-remote-server-dev-build-jp{}",
-                    rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
+                    rpc::proto::forgekairos::FORGEKAIROS_WIRE_REVISION
                 )
             )
         );
@@ -4520,7 +4520,7 @@ mod tests {
                 "forgekairos-remote-server-stable-".to_string(),
                 format!(
                     "forgekairos-remote-server-stable-1.17.2-jp{}.exe",
-                    rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
+                    rpc::proto::forgekairos::FORGEKAIROS_WIRE_REVISION
                 )
             )
         );

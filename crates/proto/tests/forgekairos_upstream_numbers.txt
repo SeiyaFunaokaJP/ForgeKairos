@@ -1,6 +1,6 @@
 # Every numbered field and enum value in upstream's crates/proto/proto at
 # v1.26.2 (c427327), as `scope name number`. Written by `regenerate_upstream_numbers`
-# in jp_enhance_numbering.rs; do not edit by hand.
+# in forgekairos_numbering.rs; do not edit by hand.
 AckBufferOperation buffer_id 1
 AckBufferOperation epoch 2
 AckBufferOperation version 3

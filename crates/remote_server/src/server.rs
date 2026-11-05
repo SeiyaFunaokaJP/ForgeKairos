@@ -2011,7 +2011,7 @@ fn is_new_version(version: &str) -> bool {
     is_version_at_least(
         version,
         env!("ZED_PKG_VERSION"),
-        rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION,
+        rpc::proto::forgekairos::FORGEKAIROS_WIRE_REVISION,
     )
 }
 

@@ -3943,10 +3943,10 @@ mod tests {
     fn test_the_hosts_staging_answer_is_read_from_its_marker_line() {
         assert_eq!(
             remote_staging_result(
-                "zed-remote-agent path /root/.cache/zed-jp-enhance/agents/a/claude\n"
+                "zed-remote-agent path /root/.cache/forgekairos/agents/a/claude\n"
             )
             .expect("a path"),
-            RemoteStagingResult::Ready("/root/.cache/zed-jp-enhance/agents/a/claude".to_string())
+            RemoteStagingResult::Ready("/root/.cache/forgekairos/agents/a/claude".to_string())
         );
         assert_eq!(
             remote_staging_result("motd\nzed-remote-agent missing\n").expect("missing"),

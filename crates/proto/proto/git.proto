@@ -2,7 +2,7 @@ syntax = "proto3";
 package zed.messages;
 
 import "buffer.proto";
-import "jp_enhance.proto";
+import "forgekairos.proto";
 import "worktree.proto";
 
 message GitBranchesResponse {
