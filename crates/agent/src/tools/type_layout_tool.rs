@@ -143,7 +143,7 @@ impl AgentTool for TypeLayoutTool {
                                 let abs_path = project.absolute_path(&location.path, cx)?;
                                 Some(
                                     acp::ToolCallLocation::new(abs_path)
-                                        .line(Some(location.line.saturating_sub(1))),
+                                        .line(Some(location.line)),
                                 )
                             })
                             .collect::<Vec<_>>()

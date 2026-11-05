@@ -712,6 +712,10 @@ msgctxt "OnNewWindow"
 msgid "Launchpad"
 msgstr "啟動台"
 
+msgctxt "OnNewWindow"
+msgid "Readme"
+msgstr "README"
+
 msgctxt "OpenResultsIn"
 msgid "Multi Buffer"
 msgstr "多重緩衝區"
@@ -5249,8 +5253,8 @@ msgid "What to show for directories in the project panel."
 msgstr "在專案面板中顯示資料夾的方式。"
 
 msgctxt "settings"
-msgid "What to show when opening a new window."
-msgstr "開啟新視窗時要顯示的內容。"
+msgid "What to show when opening a new window; Readme opens a project's README when no items are open, leaving the pane empty if none is found."
+msgstr "開啟新視窗時要顯示的內容。選擇 README 時，若沒有開啟的項目，則開啟專案的 README；找不到時窗格保持空白。"
 
 msgctxt "settings"
 msgid "What working directory to use when launching the terminal."

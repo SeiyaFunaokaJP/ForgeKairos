@@ -191,14 +191,9 @@ impl Render for RemoteConnectionPrompt {
                                 // break opportunity; without a zero basis the row grows to
                                 // its full width and pushes past the modal.
                                 .child(
-                                    div()
-                                        .flex_1()
-                                        .w_0()
-                                        .overflow_hidden()
-                                        .child(MarkdownElement::new(
-                                            prompt.0.clone(),
-                                            markdown_style,
-                                        )),
+                                    div().flex_1().w_0().overflow_hidden().child(
+                                        MarkdownElement::new(prompt.0.clone(), markdown_style),
+                                    ),
                                 )
                                 .when(is_password_prompt, |this| {
                                     this.child(

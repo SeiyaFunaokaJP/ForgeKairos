@@ -617,7 +617,7 @@ fn main() {
             tx.send(Some(options)).log_err();
         })
         .detach();
-        ui::on_new_scrollbars::<SettingsStore>(cx);
+        ui::observe_scrollbar_settings::<SettingsStore>(cx);
 
         // ADR-F38: node/npm is IDE plumbing — language servers, prettier and
         // extension builds run through it. The agent's own npm invocations are

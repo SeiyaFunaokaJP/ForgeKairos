@@ -391,7 +391,7 @@ impl MasterProcess {
         askpass_script_path: &std::ffi::OsStr,
         additional_args: Vec<String>,
         socket_path: &std::path::Path,
-        destination: &str,
+        destination_args: Vec<String>,
     ) -> Result<Self> {
         let args = [
             "-N",
@@ -415,7 +415,7 @@ impl MasterProcess {
 
         master_process.arg(format!("ControlPath={}", socket_path.display()));
 
-        let process = master_process.arg(&destination).spawn()?;
+        let process = master_process.args(destination_args).spawn()?;
 
         Ok(MasterProcess { process })
     }
@@ -439,7 +439,7 @@ impl MasterProcess {
         askpass_script_path: &std::ffi::OsStr,
         askpass_socket_path: &std::ffi::OsStr,
         additional_args: Vec<String>,
-        destination: &str,
+        destination_args: Vec<String>,
     ) -> Result<Self> {
         // On Windows, `ControlMaster` and `ControlPath` are not supported:
         // https://github.com/PowerShell/Win32-OpenSSH/issues/405
@@ -447,10 +447,7 @@ impl MasterProcess {
         //
         // Using an ugly workaround to detect connection establishment
         // -N doesn't work with JumpHosts as windows openssh never closes stdin in that case
-        let args = [
-            "-t",
-            &format!("echo '{}'; exec $0", Self::CONNECTION_ESTABLISHED_MAGIC),
-        ];
+        let remote_command = format!("echo '{}'; exec $0", Self::CONNECTION_ESTABLISHED_MAGIC);
 
         let mut master_process = util::command::new_command("ssh");
         master_process
@@ -462,8 +459,9 @@ impl MasterProcess {
             .env("SSH_ASKPASS", askpass_script_path)
             .env("ZED_ASKPASS_SOCKET", askpass_socket_path)
             .args(additional_args)
-            .arg(destination)
-            .args(args);
+            .arg("-t")
+            .args(destination_args)
+            .arg(remote_command);
 
         let process = master_process.spawn()?;
 
@@ -565,7 +563,7 @@ impl RemoteConnection for SshRemoteConnection {
                 ssh_shell,
                 *ssh_shell_kind,
                 socket.ssh_command_options(),
-                &socket.connection_options.ssh_destination(),
+                socket.connection_options.ssh_destination_args(),
                 interactive,
             )
         } else {
@@ -580,7 +578,7 @@ impl RemoteConnection for SshRemoteConnection {
                 ssh_shell,
                 *ssh_shell_kind,
                 socket.ssh_command_options(),
-                &socket.connection_options.ssh_destination(),
+                socket.connection_options.ssh_destination_args(),
                 interactive,
             )
         }
@@ -624,7 +622,7 @@ impl RemoteConnection for SshRemoteConnection {
             self.socket.ssh_command_options(),
             None,
             Interactive::No,
-            &self.socket.connection_options.ssh_destination(),
+            self.socket.connection_options.ssh_destination_args(),
             exec,
             self.socket.envs.clone(),
         );
@@ -647,7 +645,7 @@ impl RemoteConnection for SshRemoteConnection {
                 remote_port
             ));
         }
-        args.push(socket.connection_options.ssh_destination());
+        args.extend(socket.connection_options.ssh_destination_args());
         Ok(CommandTemplate {
             program: "ssh".into(),
             args,
@@ -822,15 +820,16 @@ impl RemoteConnection for SshRemoteConnection {
 /// given destination. See: https://github.com/zed-industries/zed/issues/45271
 #[cfg(not(windows))]
 async fn find_existing_control_master(
-    destination: &str,
-    additional_args: &[String],
+    connection_options: &SshConnectionOptions,
 ) -> Option<PathBuf> {
+    let additional_args = connection_options.additional_args();
+    let destination_args = connection_options.ssh_destination_args();
     // Use `ssh -G` to resolve the user's effective SSH config for this host.
     // This expands ControlPath tokens (%h, %p, %r, %C, etc.) into actual paths.
     let output = match util::command::new_command("ssh")
-        .args(additional_args)
+        .args(&additional_args)
         .arg("-G")
-        .arg(destination)
+        .args(&destination_args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -845,7 +844,10 @@ async fn find_existing_control_master(
     };
 
     if !output.status.success() {
-        log::debug!("ssh -G failed for {destination}, skipping ControlMaster reuse");
+        log::debug!(
+            "ssh -G failed for {}, skipping ControlMaster reuse",
+            connection_options.connection_string()
+        );
         return None;
     }
 
@@ -865,7 +867,7 @@ async fn find_existing_control_master(
         .args(["-O", "check"])
         .arg("-o")
         .arg(format!("ControlPath={}", control_path.display()))
-        .arg(destination)
+        .args(&destination_args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -904,7 +906,6 @@ impl SshRemoteConnection {
         use askpass::AskPassResult;
 
         let connect_started = Instant::now();
-        let destination = connection_options.ssh_destination();
 
         let temp_dir = tempfile::Builder::new()
             .prefix("zed-ssh-session")
@@ -913,8 +914,7 @@ impl SshRemoteConnection {
         // On non-Windows, check if the user already has an active ControlMaster
         // session for this host. If so, reuse it instead of prompting for auth.
         #[cfg(not(windows))]
-        let reused_socket =
-            find_existing_control_master(&destination, &connection_options.additional_args()).await;
+        let reused_socket = find_existing_control_master(&connection_options).await;
 
         #[cfg(not(windows))]
         let (socket, master_process_option) = if let Some(reused_path) = reused_socket {
@@ -944,7 +944,7 @@ impl SshRemoteConnection {
                 askpass.script_path().as_ref(),
                 connection_options.additional_args(),
                 &socket_path,
-                &destination,
+                connection_options.ssh_destination_args(),
             )?;
 
             let result = select_biased! {
@@ -1004,7 +1004,7 @@ impl SshRemoteConnection {
                 askpass.script_path().as_ref(),
                 askpass.socket_path().as_ref(),
                 connection_options.additional_args(),
-                &destination,
+                connection_options.ssh_destination_args(),
             )?;
 
             let result = select_biased! {
@@ -2334,7 +2334,9 @@ impl SshRemoteConnection {
         if let Some(args) = additional_args {
             command.args(args);
         }
-        command.arg(src_path).arg(format!(
+        // scp and sftp have no option for the username, so `--` keeps a destination beginning
+        // with `-` from being parsed as an option. They pass the username on to ssh via `-l`.
+        command.arg("--").arg(src_path).arg(format!(
             "{}:{}",
             self.socket.connection_options.scp_destination(),
             dest_path_str
@@ -2357,7 +2359,9 @@ impl SshRemoteConnection {
                     .unwrap_or_default(),
             );
         command.arg("-b").arg("-");
-        command.arg(self.socket.connection_options.scp_destination());
+        command
+            .arg("--")
+            .arg(self.socket.connection_options.scp_destination());
         command.stdin(Stdio::piped());
         command
     }
@@ -2504,12 +2508,13 @@ impl SshSocket {
             let separator = shell_kind.sequential_commands_separator();
             format!("cd{separator} {to_run}")
         };
-        self.ssh_options(&mut command, true, None)
-            .arg(self.connection_options.ssh_destination());
+        self.ssh_options(&mut command, true, None);
         if !allow_pseudo_tty {
             command.arg("-T");
         }
-        command.arg(to_run);
+        command
+            .args(self.connection_options.ssh_destination_args())
+            .arg(to_run);
         log::debug!("ssh {:?}", command);
         command
     }
@@ -2950,17 +2955,19 @@ impl SshConnectionOptions {
         })
     }
 
-    pub fn ssh_destination(&self) -> String {
-        let mut result = String::default();
+    /// Arguments identifying the remote for `ssh`, which must come after all other options.
+    ///
+    /// The username is passed via `-l` and the host after `--` so that neither is parsed as
+    /// an option when it begins with `-`.
+    fn ssh_destination_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
         if let Some(username) = &self.username {
-            // Username might be: username1@username2@ip2
-            let username = urlencoding::encode(username);
-            result.push_str(&username);
-            result.push('@');
+            args.push("-l".to_string());
+            args.push(username.clone());
         }
-
-        result.push_str(&self.host.to_string());
-        result
+        args.push("--".to_string());
+        args.push(self.host.to_string());
+        args
     }
 
     pub fn additional_args_for_scp(&self) -> Vec<String> {
@@ -3448,7 +3455,7 @@ fn build_command_posix(
     ssh_shell: &str,
     ssh_shell_kind: ShellKind,
     ssh_options: Vec<String>,
-    ssh_destination: &str,
+    ssh_destination_args: Vec<String>,
     interactive: Interactive,
 ) -> Result<CommandTemplate> {
     let mut exec = posix_working_dir_prefix(working_dir, ssh_path_style, ssh_shell_kind)?;
@@ -3482,7 +3489,7 @@ fn build_command_posix(
         ssh_options,
         port_forward,
         interactive,
-        ssh_destination,
+        ssh_destination_args,
         exec,
         ssh_env,
     ))
@@ -3533,7 +3540,7 @@ fn ssh_command_template(
     ssh_options: Vec<String>,
     port_forward: Option<(u16, String, u16)>,
     interactive: Interactive,
-    ssh_destination: &str,
+    ssh_destination_args: Vec<String>,
     exec: String,
     ssh_env: HashMap<String, String>,
 ) -> CommandTemplate {
@@ -3560,7 +3567,7 @@ fn ssh_command_template(
         Interactive::No => args.push("-T".into()),
     }
     // The destination must come after all options but before the command
-    args.push(ssh_destination.into());
+    args.extend(ssh_destination_args);
     args.push(exec);
 
     CommandTemplate {
@@ -3581,7 +3588,7 @@ fn build_command_windows(
     ssh_shell: &str,
     _ssh_shell_kind: ShellKind,
     ssh_options: Vec<String>,
-    ssh_destination: &str,
+    ssh_destination_args: Vec<String>,
     interactive: Interactive,
 ) -> Result<CommandTemplate> {
     use base64::Engine as _;
@@ -3656,7 +3663,7 @@ fn build_command_windows(
     }
 
     // The destination must come after all options but before the command
-    args.push(ssh_destination.into());
+    args.extend(ssh_destination_args);
 
     // Windows OpenSSH server incorrectly escapes the command string when the PTY is used.
     // The simplest way to work around this is to use a base64 encoded command, which doesn't require escaping.
@@ -3699,7 +3706,7 @@ mod tests {
             "/bin/csh",
             ShellKind::Csh,
             Vec::new(),
-            "user@host",
+            vec!["user@host".to_string()],
             Interactive::Yes,
         )?;
         let expected = format!("cd && exec env {helper} --remote-sandbox-helper-argv-hex {packed}");
@@ -3844,7 +3851,10 @@ mod tests {
                     "-o",
                     "LogLevel=ERROR",
                     "-T",
-                    "user@host",
+                    "-l",
+                    "user",
+                    "--",
+                    "host",
                     expected_exec,
                 ]
             );
@@ -4226,7 +4236,12 @@ mod tests {
             "/bin/bash",
             ShellKind::Posix,
             vec!["-o".to_string(), "ControlMaster=auto".to_string()],
-            "user@host",
+            vec![
+                "-l".to_string(),
+                "user".to_string(),
+                "--".to_string(),
+                "host".to_string(),
+            ],
             Interactive::No,
         )?;
         assert_eq!(command.program, "ssh");
@@ -4246,7 +4261,12 @@ mod tests {
             "/bin/fish",
             ShellKind::Fish,
             vec!["-p".to_string(), "2222".to_string()],
-            "user@host",
+            vec![
+                "-l".to_string(),
+                "user".to_string(),
+                "--".to_string(),
+                "host".to_string(),
+            ],
             Interactive::Yes,
         )?;
 
@@ -4259,7 +4279,10 @@ mod tests {
                 "-o",
                 "LogLevel=ERROR",
                 "-t",
-                "user@host",
+                "-l",
+                "user",
+                "--",
+                "host",
                 "cd \"$HOME\"/work && exec env 'INPUT_VA=val' remote_program arg1 arg2"
             ]
         );
@@ -4281,7 +4304,12 @@ mod tests {
             "/bin/fish",
             ShellKind::Fish,
             vec!["-p".to_string(), "2222".to_string()],
-            "user@host",
+            vec![
+                "-l".to_string(),
+                "user".to_string(),
+                "--".to_string(),
+                "host".to_string(),
+            ],
             Interactive::Yes,
         )?;
 
@@ -4296,7 +4324,10 @@ mod tests {
                 "-o",
                 "LogLevel=ERROR",
                 "-t",
-                "user@host",
+                "-l",
+                "user",
+                "--",
+                "host",
                 "cd && exec env 'INPUT_VA=val' /bin/fish -l"
             ]
         );
@@ -4321,7 +4352,12 @@ mod tests {
             "/bin/bash",
             ShellKind::Posix,
             vec![],
-            "user@host",
+            vec![
+                "-l".to_string(),
+                "user".to_string(),
+                "--".to_string(),
+                "host".to_string(),
+            ],
             Interactive::No,
         )?;
 
@@ -4358,7 +4394,7 @@ mod tests {
             "powershell",
             ShellKind::PowerShell,
             vec![],
-            "user@host",
+            vec!["user@host".to_string()],
             Interactive::No,
         )?;
 
@@ -5360,7 +5396,12 @@ mod tests {
             "/bin/bash",
             ShellKind::Posix,
             vec![],
-            "user@host",
+            vec![
+                "-l".to_string(),
+                "user".to_string(),
+                "--".to_string(),
+                "host".to_string(),
+            ],
             Interactive::No,
         )?;
 
@@ -5371,5 +5412,48 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_ssh_destination_args_pass_username_verbatim() {
+        let args_for = |username: &str| {
+            SshConnectionOptions {
+                host: "192.168.1.50".into(),
+                username: Some(username.to_string()),
+                ..Default::default()
+            }
+            .ssh_destination_args()
+        };
+
+        assert_eq!(
+            args_for(r"DOMAIN\user"),
+            ["-l", r"DOMAIN\user", "--", "192.168.1.50"]
+        );
+        assert_eq!(
+            args_for("DOMAIN/user"),
+            ["-l", "DOMAIN/user", "--", "192.168.1.50"]
+        );
+        assert_eq!(
+            args_for("user@jumphost"),
+            ["-l", "user@jumphost", "--", "192.168.1.50"]
+        );
+        assert_eq!(
+            args_for("-oProxyCommand=touch /tmp/pwned"),
+            [
+                "-l",
+                "-oProxyCommand=touch /tmp/pwned",
+                "--",
+                "192.168.1.50"
+            ]
+        );
+
+        let options = SshConnectionOptions {
+            host: "-oProxyCommand=touch /tmp/pwned".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            options.ssh_destination_args(),
+            ["--", "-oProxyCommand=touch /tmp/pwned"]
+        );
     }
 }

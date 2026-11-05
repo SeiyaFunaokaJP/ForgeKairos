@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{num::NonZeroU32, path::Path};
 
 use gpui::{TestAppContext, UpdateGlobal as _};
 use project::{FakeFs, symbol_index_store::build_index_for_tests};
@@ -176,12 +176,12 @@ async fn test_the_output_names_the_match_the_markers_and_the_other_definitions(
     assert_eq!(
         locations
             .iter()
-            .map(|location| (location.path.0.clone(), location.line))
+            .map(|location| (location.path.0.clone(), location.line.map(NonZeroU32::get)))
             .collect::<Vec<_>>(),
         vec![
-            (Path::new(path!("/root/inc/types.h")).to_path_buf(), Some(6)),
+            (Path::new(path!("/root/inc/types.h")).to_path_buf(), Some(7)),
+            (Path::new(path!("/root/inc/types.h")).to_path_buf(), Some(3)),
             (Path::new(path!("/root/inc/types.h")).to_path_buf(), Some(2)),
-            (Path::new(path!("/root/inc/types.h")).to_path_buf(), Some(1)),
         ]
     );
 

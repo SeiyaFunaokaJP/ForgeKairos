@@ -712,6 +712,10 @@ msgctxt "OnNewWindow"
 msgid "Launchpad"
 msgstr "Launchpad"
 
+msgctxt "OnNewWindow"
+msgid "Readme"
+msgstr "README"
+
 msgctxt "OpenResultsIn"
 msgid "Multi Buffer"
 msgstr "Multibúfer"
@@ -5249,8 +5253,8 @@ msgid "What to show for directories in the project panel."
 msgstr "Qué mostrar para los directorios en el panel de proyecto."
 
 msgctxt "settings"
-msgid "What to show when opening a new window."
-msgstr "Qué mostrar al abrir una ventana nueva."
+msgid "What to show when opening a new window; Readme opens a project's README when no items are open, leaving the pane empty if none is found."
+msgstr "Qué mostrar al abrir una ventana nueva. README abre el README del proyecto cuando no hay elementos abiertos y deja el panel vacío si no encuentra ninguno."
 
 msgctxt "settings"
 msgid "What working directory to use when launching the terminal."

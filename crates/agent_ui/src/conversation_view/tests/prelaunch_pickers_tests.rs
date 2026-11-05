@@ -693,7 +693,7 @@ async fn test_a_new_thread_offers_the_last_sessions_options_before_it_starts(
                 .read()
                 .available_commands()
                 .iter()
-                .map(|command| command.name.clone())
+                .map(|command| command.name().to_string())
                 .collect::<Vec<_>>()
         });
     assert_eq!(commands, vec!["review".to_string()]);
@@ -1072,7 +1072,7 @@ async fn test_the_options_of_an_agent_with_no_session_yet_are_read_once(cx: &mut
         snapshot
             .available_commands
             .iter()
-            .map(|command| command.name.clone())
+            .map(|command| command.name().to_string())
             .collect::<Vec<_>>(),
         vec!["review".to_string()],
         "the slash commands the session announced after it started are waited for"

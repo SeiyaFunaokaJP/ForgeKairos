@@ -1046,11 +1046,11 @@ fn test_shipped_keymaps_bind_tour_keys_only_during_a_tour(cx: &mut TestAppContex
                 }
             };
             let keymap = Keymap::new(bindings);
-            for (keystroke, action) in [
+            for (keystroke_text, action) in [
                 ("ctrl-alt-]", "ide_assist::NextTourStep"),
                 ("ctrl-alt-[", "ide_assist::PreviousTourStep"),
             ] {
-                let keystroke = Keystroke::parse(keystroke).unwrap();
+                let keystroke = Keystroke::parse(keystroke_text).unwrap();
                 let during_tour = [
                     KeyContext::parse("Workspace").unwrap(),
                     KeyContext::parse("Pane").unwrap(),
@@ -1061,7 +1061,7 @@ fn test_shipped_keymaps_bind_tour_keys_only_during_a_tour(cx: &mut TestAppContex
                 assert_eq!(
                     bindings.first().map(|binding| binding.action().name()),
                     Some(action),
-                    "{name}: {keystroke} during a tour"
+                    "{name}: {keystroke_text} during a tour"
                 );
                 let without_tour = [
                     KeyContext::parse("Workspace").unwrap(),
@@ -1074,7 +1074,7 @@ fn test_shipped_keymaps_bind_tour_keys_only_during_a_tour(cx: &mut TestAppContex
                     bindings
                         .iter()
                         .all(|binding| !binding.action().name().starts_with("ide_assist::")),
-                    "{name}: {keystroke} outside a tour"
+                    "{name}: {keystroke_text} outside a tour"
                 );
             }
         }

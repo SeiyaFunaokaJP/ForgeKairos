@@ -712,6 +712,10 @@ msgctxt "OnNewWindow"
 msgid "Launchpad"
 msgstr "런치패드"
 
+msgctxt "OnNewWindow"
+msgid "Readme"
+msgstr "README"
+
 msgctxt "OpenResultsIn"
 msgid "Multi Buffer"
 msgstr "멀티버퍼"
@@ -5249,8 +5253,8 @@ msgid "What to show for directories in the project panel."
 msgstr "프로젝트 패널의 디렉터리에 표시할 항목을 설정합니다."
 
 msgctxt "settings"
-msgid "What to show when opening a new window."
-msgstr "새 창을 열 때 표시할 항목을 설정합니다."
+msgid "What to show when opening a new window; Readme opens a project's README when no items are open, leaving the pane empty if none is found."
+msgstr "새 창을 열 때 표시할 항목을 설정합니다. README를 선택하면 열린 항목이 없을 때 프로젝트의 README를 열고, 찾지 못하면 창을 비워 둡니다."
 
 msgctxt "settings"
 msgid "What working directory to use when launching the terminal."

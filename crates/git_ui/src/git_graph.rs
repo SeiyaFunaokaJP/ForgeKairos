@@ -798,10 +798,10 @@ enum SelectionGesture {
 }
 
 impl SelectionGesture {
-    fn from_modifiers(modifiers: &Modifiers) -> Self {
+    fn from_modifiers(modifiers: &Modifiers, cx: &App) -> Self {
         if modifiers.shift {
             SelectionGesture::Range
-        } else if modifiers.secondary() {
+        } else if modifiers.secondary(cx) {
             SelectionGesture::Toggle
         } else {
             SelectionGesture::Replace
@@ -2582,16 +2582,6 @@ impl GitGraph {
         ColumnWidthConfig::explicit(widths)
     }
 
-    fn graph_viewport_width(&self, window: &Window, cx: &App) -> Pixels {
-        let container = self.column_widths.read(cx).cached_container_width();
-        let graph_fraction = self.preview_column_fractions(window, cx)[0];
-        if container > px(0.) && graph_fraction > 0.0 {
-            container * graph_fraction
-        } else {
-            self.graph_canvas_content_width()
-        }
-    }
-
     pub fn new(
         repo_id: RepositoryId,
         git_store: Entity<GitStore>,
@@ -4279,6 +4269,17 @@ impl GitGraph {
                     .child(
                         div().absolute().top_2().right_2().child(
                             IconButton::new("close-detail", IconName::Close)
+                                .tooltip({
+                                    let focus_handle = self.focus_handle.clone();
+                                    move |_window, cx: &mut App| {
+                                        Tooltip::for_action_in(
+                                            i18n::t!("Close Details Panel"),
+                                            &Cancel,
+                                            &focus_handle,
+                                            cx,
+                                        )
+                                    }
+                                })
                                 .icon_size(IconSize::Small)
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.selected_entry_idx = None;
@@ -4488,6 +4489,11 @@ impl GitGraph {
                                             "view-on-provider",
                                             i18n::t!("View on {}", provider_name),
                                         )
+                                        .tooltip({
+                                            move |_window, cx: &mut App| {
+                                                Tooltip::simple(i18n::t!("Open In Browser"), cx)
+                                            }
+                                        })
                                         .start_icon(
                                             Icon::new(icon)
                                                 .size(IconSize::Small)
@@ -4676,9 +4682,7 @@ impl GitGraph {
         let first_visible_row = (scroll_offset_y / row_height).floor() as usize;
         let vertical_scroll_offset = scroll_offset_y - (first_visible_row as f32 * row_height);
 
-        let graph_width = self
-            .graph_canvas_content_width()
-            .max(self.graph_viewport_width(window, cx));
+        let graph_content_width = self.graph_canvas_content_width();
         let last_visible_row = first_visible_row + visible_row_count + 1;
 
         let viewport_range = first_visible_row.min(loaded_commit_count.saturating_sub(1))
@@ -4948,7 +4952,8 @@ impl GitGraph {
                 })
             },
         )
-        .w(graph_width)
+        .w_full()
+        .min_w(graph_content_width)
         .h_full()
     }
 
@@ -5016,7 +5021,7 @@ impl GitGraph {
             return;
         }
 
-        let gesture = SelectionGesture::from_modifiers(&event.modifiers());
+        let gesture = SelectionGesture::from_modifiers(&event.modifiers(), cx);
         let (selection, anchor) = apply_selection_gesture(
             &self.multi_selection,
             self.selection_anchor_idx,
@@ -5230,13 +5235,21 @@ impl GitGraph {
                     .w_full()
                     .gap_1()
                     .child(
-                        Disclosure::new("toggle-commit-message", !collapsed).on_click(cx.listener(
-                            |this, _, _, cx| {
+                        Disclosure::new("toggle-commit-message", !collapsed)
+                            .on_click(cx.listener(|this, _, _, cx| {
                                 this.commit_details_message_collapsed =
                                     !this.commit_details_message_collapsed;
                                 cx.notify();
-                            },
-                        )),
+                            }))
+                            .tooltip({
+                                let label = if !collapsed {
+                                    i18n::t!("Hide Commit Message")
+                                } else {
+                                    i18n::t!("Show Commit Message")
+                                };
+
+                                move |_window, cx: &mut App| Tooltip::simple(label, cx)
+                            }),
                     )
                     .child(
                         Label::new(i18n::tc!("commit details", "Message"))
@@ -5300,7 +5313,6 @@ impl GitGraph {
         self.get_repository(cx).and_then(|repository| {
             repository
                 .read(cx)
-                .snapshot()
                 .branch
                 .as_ref()
                 .map(|branch| SharedString::from(branch.name().to_string()))
@@ -11109,6 +11121,94 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_graph_canvas_resizes_with_detail_panel_in_same_frame(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            Path::new("/project"),
+            serde_json::json!({
+                ".git": {},
+                "file.txt": "content",
+            }),
+        )
+        .await;
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let commits = generate_random_commit_dag(&mut rng, 20, false);
+        fs.set_graph_commits(Path::new("/project/.git"), commits);
+
+        let project = Project::test(fs.clone(), [Path::new("/project")], cx).await;
+        cx.run_until_parked();
+
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+
+        let (multi_workspace, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace_weak =
+            multi_workspace.read_with(&*cx, |multi, _| multi.workspace().downgrade());
+
+        let git_graph = cx.new_window_entity(|window, cx| {
+            GitGraph::new(
+                repository.read(cx).id,
+                project.read(cx).git_store().clone(),
+                workspace_weak,
+                None,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let draw_and_measure = |cx: &mut gpui::VisualTestContext| {
+            cx.draw(
+                point(px(0.), px(0.)),
+                gpui::size(px(1200.), px(800.)),
+                |_, _| git_graph.clone().into_any_element(),
+            );
+            git_graph.read_with(&*cx, |graph, _| {
+                graph
+                    .graph_canvas_bounds
+                    .get()
+                    .expect("graph canvas should have been painted")
+                    .size
+                    .width
+            })
+        };
+
+        // Two frames so the column state has settled before measuring.
+        draw_and_measure(cx);
+        let width_without_panel = draw_and_measure(cx);
+
+        git_graph.update(cx, |graph, cx| {
+            graph.select_entry(0, ScrollStrategy::Nearest, cx);
+        });
+        cx.run_until_parked();
+        let width_with_panel = draw_and_measure(cx);
+        assert!(
+            width_with_panel < width_without_panel,
+            "opening the detail panel should shrink the graph canvas in the same frame \
+             (without panel: {width_without_panel:?}, with panel: {width_with_panel:?})"
+        );
+        assert_eq!(width_with_panel, draw_and_measure(cx));
+
+        git_graph.update_in(cx, |graph, window, cx| {
+            graph.cancel(&Cancel, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            draw_and_measure(cx),
+            width_without_panel,
+            "closing the detail panel should restore the graph canvas width in the same frame"
+        );
+    }
+
+    #[gpui::test]
     async fn test_copy_selected_commit_tag_with_one_tag_copies_to_clipboard(
         cx: &mut TestAppContext,
     ) {
@@ -12575,7 +12675,7 @@ mod tests {
 
             graph.handle_entry_click(
                 1,
-                &click(Modifiers::secondary_key()),
+                &click(Modifiers::secondary_key(cx)),
                 ScrollStrategy::Nearest,
                 None,
                 window,

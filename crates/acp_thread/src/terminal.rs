@@ -1624,7 +1624,10 @@ impl Terminal {
                         if let Some(output) = this.output.as_mut() {
                             output.content = annotate_sandbox_setup_failure(
                                 std::mem::take(&mut output.content),
-                                output.exit_status.exit_code,
+                                output
+                                    .exit_status
+                                    .exit_code
+                                    .and_then(|code| u32::try_from(code).ok()),
                             );
                         }
                         this.terminal.update(cx, |terminal, _cx| {
@@ -1779,7 +1782,7 @@ impl Terminal {
 
     fn exit_status_from_v1(status: acp_v1::TerminalExitStatus) -> acp_v2::TerminalExitStatus {
         acp_v2::TerminalExitStatus::new()
-            .exit_code(status.exit_code)
+            .exit_code(status.exit_code.map(i64::from))
             .signal(status.signal)
             .meta(status.meta)
     }
@@ -1981,7 +1984,7 @@ impl Terminal {
     }
 
     // This method is adapted from `portable_pty::ExitStatus::from`, version 0.9.0
-    fn transform_exit_status(exit_status: ExitStatus) -> (u32, Option<String>) {
+    fn transform_exit_status(exit_status: ExitStatus) -> (i64, Option<String>) {
         #[cfg(unix)]
         {
             use std::os::unix::process::ExitStatusExt;
@@ -1995,16 +1998,13 @@ impl Terminal {
                     signame.to_string_lossy().to_string()
                 };
 
-                return (
-                    exit_status.code().map(|c| c as u32).unwrap_or(1),
-                    Some(signal),
-                );
+                return (exit_status.code().map(i64::from).unwrap_or(1), Some(signal));
             }
         }
 
         let code = exit_status
             .code()
-            .map(|c| c as u32)
+            .map(i64::from)
             .unwrap_or_else(|| if exit_status.success() { 0 } else { 1 });
 
         (code, None)
@@ -3211,8 +3211,7 @@ mod sandboxed_spawn_tests {
 
         let forward = sandbox::IdeForward {
             inner_port: 45123,
-            rendezvous_path: "/home/user/.cache/forgekairos/ide/claude-1/bridge.sock"
-                .to_string(),
+            rendezvous_path: "/home/user/.cache/forgekairos/ide/claude-1/bridge.sock".to_string(),
         };
         let with_ide = policy_of(Some(&forward));
         let tail = with_ide

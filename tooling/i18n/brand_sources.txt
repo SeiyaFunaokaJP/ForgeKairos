@@ -17,6 +17,7 @@
 
 crates/agent/src/agent.rs	identifier	Zed Agent
 crates/agent/src/tools/evals/fixtures/disable_cursor_blinking/before.rs	fact	The remote instance of Zed does not support this yet. It must be upgraded to {}
+crates/agent_servers/src/acp/v1.rs	log	Ignoring a subagents update for {session_id:?}: Zed did not advertise the subagents capability
 crates/agent_servers/src/acp_paths.rs	log	a kind of content Zed does not know
 crates/agent_servers/src/acp_paths.rs	log	a kind of embedded resource Zed does not know
 crates/agent_servers/src/acp_paths.rs	log	a kind of session update Zed does not know

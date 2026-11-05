@@ -458,6 +458,10 @@ const CHANGED_ON_PURPOSE: &[(&str, &str)] = &[
         "Disable edit predictions in these language scopes, such as \"comment\" and \"string\". Use \"...\" to add scopes without repeating the inherited list.",
         "これらの言語スコープ (\"comment\" や \"string\" など) では編集予測を無効にします。\"...\" を使うと、継承した一覧を繰り返さずにスコープを追加できます。",
     ),
+    (
+        "What to show when opening a new window; Readme opens a project's README when no items are open, leaving the pane empty if none is found.",
+        "新しいウィンドウを開いたときに表示する内容です。README を選ぶと、開いている項目がないときにプロジェクトの README を開きます。見つからなければペインは空のままです。",
+    ),
     // The title said 音声のテスト and the button 音声をテスト for the same
     // English; GLOSSARY.md has Test Audio = 音声のテスト.
     ("Test Audio", "音声のテスト"),

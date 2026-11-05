@@ -1,5 +1,5 @@
 # Every numbered field and enum value in upstream's crates/proto/proto at
-# v1.26.2 (c427327), as `scope name number`. Written by `regenerate_upstream_numbers`
+# v1.27.0 (c84af5b), as `scope name number`. Written by `regenerate_upstream_numbers`
 # in forgekairos_numbering.rs; do not edit by hand.
 AckBufferOperation buffer_id 1
 AckBufferOperation epoch 2
@@ -833,19 +833,13 @@ Envelope git_checkout_files 303
 Envelope git_clone 363
 Envelope git_clone_response 364
 Envelope git_commit_details 302
-Envelope git_compare_checkpoints 436
-Envelope git_compare_checkpoints_response 437
 Envelope git_create_archive_checkpoint 444
 Envelope git_create_archive_checkpoint_response 445
 Envelope git_create_branch 313
-Envelope git_create_checkpoint 433
-Envelope git_create_checkpoint_response 434
 Envelope git_create_remote 402
 Envelope git_create_worktree 390
 Envelope git_delete_branch 400
 Envelope git_diff 319
-Envelope git_diff_checkpoints 438
-Envelope git_diff_checkpoints_response 439
 Envelope git_diff_response 320
 Envelope git_edit_ref 443
 Envelope git_get_branches 312
@@ -860,7 +854,6 @@ Envelope git_rename_worktree 432
 Envelope git_repair_worktrees 442
 Envelope git_reset 301
 Envelope git_restore_archive_checkpoint 446
-Envelope git_restore_checkpoint 435
 Envelope git_show 300
 Envelope git_worktree_created_at 457
 Envelope git_worktree_created_at_response 458
@@ -1067,6 +1060,7 @@ Envelope users_response 94
 Error code 2
 Error message 1
 Error tags 3
+ErrorCode AlreadyExists 20
 ErrorCode BadPublicNesting 9
 ErrorCode CircularNesting 10
 ErrorCode CommitFailed 19
@@ -1400,11 +1394,6 @@ GitCommitDetails author_name 5
 GitCommitDetails commit_timestamp 3
 GitCommitDetails message 2
 GitCommitDetails sha 1
-GitCompareCheckpoints left_commit_sha 3
-GitCompareCheckpoints project_id 1
-GitCompareCheckpoints repository_id 2
-GitCompareCheckpoints right_commit_sha 4
-GitCompareCheckpointsResponse equal 1
 GitCreateArchiveCheckpoint project_id 1
 GitCreateArchiveCheckpoint repository_id 2
 GitCreateArchiveCheckpointResponse staged_commit_sha 1
@@ -1413,9 +1402,6 @@ GitCreateBranch base_branch 5
 GitCreateBranch branch_name 4
 GitCreateBranch project_id 1
 GitCreateBranch repository_id 3
-GitCreateCheckpoint project_id 1
-GitCreateCheckpoint repository_id 2
-GitCreateCheckpointResponse commit_sha 1
 GitCreateRemote project_id 1
 GitCreateRemote remote_name 3
 GitCreateRemote remote_url 4
@@ -1438,11 +1424,6 @@ GitDiff repository_id 3
 GitDiff.DiffType HEAD_TO_INDEX 1
 GitDiff.DiffType HEAD_TO_WORKTREE 0
 GitDiff.DiffType MERGE_BASE 2
-GitDiffCheckpoints base_commit_sha 3
-GitDiffCheckpoints project_id 1
-GitDiffCheckpoints repository_id 2
-GitDiffCheckpoints target_commit_sha 4
-GitDiffCheckpointsResponse diff 1
 GitDiffResponse diff 1
 GitEditRef create_to_commit 6
 GitEditRef delete 5
@@ -1499,9 +1480,6 @@ GitRestoreArchiveCheckpoint project_id 1
 GitRestoreArchiveCheckpoint repository_id 2
 GitRestoreArchiveCheckpoint staged_commit_sha 3
 GitRestoreArchiveCheckpoint unstaged_commit_sha 4
-GitRestoreCheckpoint commit_sha 3
-GitRestoreCheckpoint project_id 1
-GitRestoreCheckpoint repository_id 2
 GitShow commit 4
 GitShow project_id 1
 GitShow repository_id 3

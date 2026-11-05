@@ -219,7 +219,7 @@ fn icon_format_button(
 fn preview_button(focus_handle: &FocusHandle, cx: &App) -> ButtonLike {
     let to_the_side_meta = i18n::t!(
         "{} to open in a split",
-        text_for_keystroke(&Modifiers::secondary_key(), "click", cx)
+        text_for_keystroke(&Modifiers::secondary_key(cx), "click", cx)
     );
     ButtonLike::new("markdown-preview")
         .style(ButtonStyle::Subtle)
@@ -243,7 +243,7 @@ fn preview_button(focus_handle: &FocusHandle, cx: &App) -> ButtonLike {
         .on_click({
             let focus_handle = focus_handle.clone();
             move |_, window, cx| {
-                if window.modifiers().secondary() {
+                if window.modifiers().secondary(cx) {
                     focus_handle.dispatch_action(
                         &markdown_preview::OpenPreviewToTheSide,
                         window,
@@ -813,7 +813,8 @@ mod tests {
             .expect("the preview button is drawn in the row");
         cx.simulate_click(bounds.center(), gpui::Modifiers::none());
         cx.run_until_parked();
-        cx.simulate_click(bounds.center(), gpui::Modifiers::secondary_key());
+        let secondary = cx.read(gpui::Modifiers::secondary_key);
+        cx.simulate_click(bounds.center(), secondary);
         cx.run_until_parked();
         assert_eq!(
             *opened.borrow(),

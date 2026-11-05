@@ -117,6 +117,7 @@ const GIT_PANEL_KEY: &str = "GitPanel";
 const AMEND_FORCE_PUSH_NOTE: &str =
     i18n::msg!("Already pushed, so a force push (with lease) is needed afterwards");
 const UPDATE_DEBOUNCE: Duration = Duration::from_millis(50);
+const RECENT_COMMIT_COUNT: usize = 3;
 // TODO: We should revise this part. It seems the indentation width is not aligned with the one in project panel
 const TREE_INDENT: f32 = 16.0;
 const MAX_HISTORY_TAG_CHIPS: usize = 3;
@@ -2527,7 +2528,7 @@ impl GitPanel {
     }
 
     fn dispatch_context(&self, window: &mut Window, cx: &Context<Self>) -> KeyContext {
-        let mut dispatch_context = KeyContext::new_with_defaults();
+        let mut dispatch_context = KeyContext::new_with_defaults(cx.platform_info().os);
         dispatch_context.add("GitPanel");
 
         if self.commit_editor.read(cx).is_focused(window) {
@@ -4945,6 +4946,7 @@ impl GitPanel {
         user_agents_md: Option<&str>,
         rules_content: Option<&str>,
         instructions: Option<&str>,
+        recent_commit_messages: &[String],
         subject: &str,
         diff_text: &str,
     ) -> String {
@@ -4972,6 +4974,20 @@ impl GitPanel {
             _ => String::new(),
         };
 
+        let recent_commit_messages_section = if recent_commit_messages.is_empty() {
+            String::new()
+        } else {
+            let recent_commit_messages = recent_commit_messages
+                .iter()
+                .enumerate()
+                .map(|(index, message)| format!("Commit {}:\n{}", index + 1, message.trim()))
+                .join("\n\n---\n\n");
+            format!(
+                "\n\nUse the following recent commit messages only as style examples. Keep the generated message consistent with them:\n\
+                <recent_commit_messages>\n{recent_commit_messages}\n</recent_commit_messages>\n"
+            )
+        };
+
         let subject_section = if subject.trim().is_empty() {
             String::new()
         } else {
@@ -4979,7 +4995,7 @@ impl GitPanel {
         };
 
         format!(
-            "{prompt}{user_agents_md_section}{rules_section}{instructions_section}{subject_section}\nHere are the changes in this commit:\n{diff_text}"
+            "{prompt}{user_agents_md_section}{rules_section}{instructions_section}{recent_commit_messages_section}{subject_section}\nHere are the changes in this commit:\n{diff_text}"
         )
     }
 
@@ -5006,7 +5022,7 @@ impl GitPanel {
             }
         };
 
-        let Some(repo) = self.active_repository.as_ref() else {
+        let Some(repo) = self.active_repository.clone() else {
             return;
         };
 
@@ -5018,6 +5034,19 @@ impl GitPanel {
             } else {
                 repo.diff(DiffType::HeadToWorktree, cx)
             }
+        });
+
+        let recent_commit_tasks = repo.update(cx, |repo, _| {
+            (0..RECENT_COMMIT_COUNT)
+                .map(|index| {
+                    let revision = if index == 0 {
+                        "HEAD".to_string()
+                    } else {
+                        format!("HEAD~{index}")
+                    };
+                    repo.show(revision)
+                })
+                .collect::<Vec<_>>()
         });
 
         let temperature = AgentSettings::temperature_for_model(&model, cx);
@@ -5060,6 +5089,27 @@ impl GitPanel {
                 const MAX_DIFF_BYTES: usize = 20_000;
                 diff_text = Self::compress_commit_diff(&diff_text, MAX_DIFF_BYTES);
 
+                let recent_commit_messages = futures::future::join_all(recent_commit_tasks)
+                    .await
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, result)| match result {
+                        Ok(Ok(commit)) => Some(commit.message.to_string()),
+                        Ok(Err(error)) => {
+                            if index == 0 {
+                                log::debug!("failed to load recent commit messages: {error:?}");
+                            }
+                            None
+                        }
+                        Err(error) => {
+                            if index == 0 {
+                                log::debug!("failed to receive recent commit message: {error:?}");
+                            }
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
                 let rules_content = if include_project_rules {
                     Self::load_project_rules(&project, &repo_work_dir, &mut cx).await
                 } else {
@@ -5093,6 +5143,7 @@ impl GitPanel {
                     user_agents_md.as_deref(),
                     rules_content.as_deref(),
                     instructions.as_deref(),
+                    &recent_commit_messages,
                     &subject,
                     &diff_text,
                 );
@@ -10958,7 +11009,7 @@ impl GitPanel {
                         this.apply_range_gesture(anchor_ix, ix);
                         this.selected_entry = Some(ix);
                         cx.notify();
-                    } else if event.modifiers().secondary() {
+                    } else if event.modifiers().secondary(cx) {
                         this.toggle_mark(ix, cx);
                     } else {
                         this.clear_marks_and_select(ix, cx);
@@ -11196,7 +11247,7 @@ impl GitPanel {
                         this.apply_range_gesture(anchor_ix, ix);
                         this.selected_entry = Some(ix);
                         cx.notify();
-                    } else if event.modifiers().secondary() {
+                    } else if event.modifiers().secondary(cx) {
                         this.toggle_mark(ix, cx);
                     } else {
                         this.clear_marks();
@@ -18647,6 +18698,11 @@ mod tests {
             Some("Use terse commit messages."),
             Some("Use the git_ui prefix."),
             Some("Follow the configured commit message format."),
+            &[
+                "fix: preserve commit context".to_string(),
+                "feat: improve commit generation\n\nRelease Notes:\n\n- Improved commit suggestions"
+                    .to_string(),
+            ],
             "Update generated message",
             "diff --git a/file b/file",
         );
@@ -18654,14 +18710,22 @@ mod tests {
         assert!(prompt.contains("Use terse commit messages."));
         assert!(prompt.contains("Use the git_ui prefix."));
         assert!(prompt.contains("Follow the configured commit message format."));
+        assert!(prompt.contains("fix: preserve commit context"));
+        assert!(prompt.contains("- Improved commit suggestions"));
         assert!(prompt.contains("Update generated message"));
         assert!(prompt.contains("diff --git a/file b/file"));
 
         let user_agents_md_index = prompt.find("<rules>").unwrap();
         let project_rules_index = prompt.find("<project_rules>").unwrap();
         let instructions_index = prompt.find("<commit_message_instructions>").unwrap();
+        let recent_commits_index = prompt.find("<recent_commit_messages>").unwrap();
         assert!(user_agents_md_index < project_rules_index);
         assert!(project_rules_index < instructions_index);
+        assert!(instructions_index < recent_commits_index);
+        assert!(
+            prompt.find("fix: preserve commit context").unwrap()
+                < prompt.find("feat: improve commit generation").unwrap()
+        );
     }
 
     #[test]
@@ -18671,6 +18735,7 @@ mod tests {
             None,
             None,
             Some("   \n  "),
+            &[],
             "",
             "diff --git a/file b/file",
         );

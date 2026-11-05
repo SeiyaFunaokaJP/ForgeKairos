@@ -122,8 +122,8 @@ pub(crate) enum SelectionChange {
 
 impl SelectionChange {
     /// What the modifiers held during a click mean for the selection.
-    pub(crate) fn from_modifiers(modifiers: Modifiers) -> Self {
-        if modifiers.secondary() {
+    pub(crate) fn from_modifiers(modifiers: Modifiers, cx: &App) -> Self {
+        if modifiers.secondary(cx) {
             SelectionChange::Add
         } else if modifiers.shift {
             SelectionChange::Extend
@@ -1311,7 +1311,7 @@ impl TabularDataPreviewPane {
                     return;
                 }
                 self.commit_editing(window, cx);
-                let change = SelectionChange::from_modifiers(modifiers);
+                let change = SelectionChange::from_modifiers(modifiers, cx);
                 self.change_cell_selection(cell, change, cx);
                 self.grid.drag = Some(GridDrag::Cells);
             }
@@ -1351,7 +1351,7 @@ impl TabularDataPreviewPane {
         match button {
             MouseButton::Left => {
                 self.commit_editing(window, cx);
-                let change = SelectionChange::from_modifiers(modifiers);
+                let change = SelectionChange::from_modifiers(modifiers, cx);
                 self.change_row_selection(row, change, cx);
                 self.grid.drag = Some(GridDrag::Rows);
             }
@@ -1414,7 +1414,7 @@ impl TabularDataPreviewPane {
         match button {
             MouseButton::Left => {
                 self.commit_editing(window, cx);
-                let change = SelectionChange::from_modifiers(modifiers);
+                let change = SelectionChange::from_modifiers(modifiers, cx);
                 self.change_column_selection(col, change, cx);
                 self.grid.drag = Some(GridDrag::Columns);
             }
@@ -1446,10 +1446,10 @@ impl TabularDataPreviewPane {
         self.forget_drag();
         match (drag, preview) {
             (Some(GridDrag::Fill { origin }), Some(preview)) => {
-                self.commit_fill(origin, preview, modifiers.secondary(), cx);
+                self.commit_fill(origin, preview, modifiers.secondary(cx), cx);
             }
             (Some(GridDrag::Move { origin, .. }), Some(preview)) => {
-                self.commit_block_move(origin, preview, modifiers.secondary(), cx);
+                self.commit_block_move(origin, preview, modifiers.secondary(cx), cx);
             }
             _ => {}
         }
@@ -2481,26 +2481,31 @@ mod tests {
         assert_eq!(rect(1, 2, 0, 1).union(rect(1, 2, 0, 1)), rect(1, 2, 0, 1));
     }
 
-    #[test]
-    fn test_selection_change_reads_the_modifiers() {
-        assert_eq!(
-            SelectionChange::from_modifiers(Modifiers::none()),
-            SelectionChange::Replace
-        );
-        assert_eq!(
-            SelectionChange::from_modifiers(Modifiers::shift()),
-            SelectionChange::Extend
-        );
-        assert_eq!(
-            SelectionChange::from_modifiers(Modifiers::secondary_key()),
-            SelectionChange::Add
-        );
-        // Ctrl+Shift+click keeps adding rather than extending, as in Excel.
-        let both = Modifiers {
-            shift: true,
-            ..Modifiers::secondary_key()
-        };
-        assert_eq!(SelectionChange::from_modifiers(both), SelectionChange::Add);
+    #[gpui::test]
+    fn test_selection_change_reads_the_modifiers(cx: &mut TestAppContext) {
+        cx.read(|cx| {
+            assert_eq!(
+                SelectionChange::from_modifiers(Modifiers::none(), cx),
+                SelectionChange::Replace
+            );
+            assert_eq!(
+                SelectionChange::from_modifiers(Modifiers::shift(), cx),
+                SelectionChange::Extend
+            );
+            assert_eq!(
+                SelectionChange::from_modifiers(Modifiers::secondary_key(cx), cx),
+                SelectionChange::Add
+            );
+            // Ctrl+Shift+click keeps adding rather than extending, as in Excel.
+            let both = Modifiers {
+                shift: true,
+                ..Modifiers::secondary_key(cx)
+            };
+            assert_eq!(
+                SelectionChange::from_modifiers(both, cx),
+                SelectionChange::Add
+            );
+        });
     }
 
     #[gpui::test]

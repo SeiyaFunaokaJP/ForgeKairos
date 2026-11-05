@@ -359,6 +359,9 @@ impl RenderOnce for ListItem {
                     })
                     .group("list_item")
                     .w_full()
+                    // With Taffy 0.15 the indent margin otherwise pushes the row past the
+                    // list's edge instead of shrinking it.
+                    .min_w_0()
                     .relative()
                     .gap_1()
                     .px(DynamicSpacing::Base06.rems(cx))

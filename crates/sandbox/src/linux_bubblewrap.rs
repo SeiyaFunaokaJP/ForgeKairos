@@ -1641,10 +1641,7 @@ mod tests {
             .join("projects")
             .join("0123456789abcdef")
             .join("config");
-        let data = home_path
-            .join(".local")
-            .join("share")
-            .join("forgekairos");
+        let data = home_path.join(".local").join("share").join("forgekairos");
         let agent = data.join("external_agents").join("claude");
         let work = home_path.join("work");
         std::fs::create_dir_all(&own).expect("create the configuration");
@@ -1715,10 +1712,7 @@ mod tests {
     fn test_build_bwrap_args_never_binds_a_protected_path_over_a_cover() {
         let home = tempfile::tempdir().expect("create a home");
         let home_path = home.path().canonicalize().expect("canonical home");
-        let data = home_path
-            .join(".local")
-            .join("share")
-            .join("forgekairos");
+        let data = home_path.join(".local").join("share").join("forgekairos");
         let agent = data.join("external_agents").join("claude");
         let work = home_path.join("work");
         std::fs::create_dir_all(&agent).expect("create the agent");

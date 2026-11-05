@@ -2496,7 +2496,7 @@ mod tests {
         let command_names = snapshot
             .available_commands
             .iter()
-            .map(|command| command.name.clone())
+            .map(|command| command.name().to_string())
             .collect::<Vec<_>>();
         assert_eq!(command_names, ["review"]);
         let modes = snapshot
