@@ -19,7 +19,7 @@ use ui::{
     WithScrollbar, prelude::*, right_click_menu,
 };
 use util::path_list::PathList;
-use workspace::Workspace;
+use workspace::{DraggedTab, Pane, Workspace};
 
 use crate::TerminalId;
 use crate::thread_metadata_store::{ThreadId, ThreadMetadata, ThreadMetadataStore};
@@ -74,6 +74,9 @@ pub struct OpenTabRow {
     pub title: SharedString,
     pub icon: Icon,
     pub is_active: bool,
+    /// The pane holding the tab, so the row can be dragged anywhere its tab
+    /// can. `None` for the panel's terminal threads, which have no tab.
+    pub pane: Option<Entity<Pane>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -539,8 +542,13 @@ impl PanelThreadHistory {
                         .on_click(cx.listener(move |_this, _, _window, cx| {
                             cx.emit(PanelThreadHistoryEvent::ActivateOpenTab(id));
                         }));
+                    let dragged_tab = dragged_tab_for_row(row, cx);
                     div()
+                        .id(("panel-open-tab-row", index))
                         .debug_selector(move || format!("PANEL_OPEN_TAB-{index}"))
+                        .when_some(dragged_tab, |this, dragged_tab| {
+                            this.on_drag(dragged_tab, |tab, _, _, cx| cx.new(|_| tab.clone()))
+                        })
                         .child(list_item)
                 })
                 .collect::<Vec<_>>();
@@ -569,6 +577,27 @@ impl PanelThreadHistory {
                 ),
         )
     }
+}
+
+/// The same drag a tab in the tab bar starts, so a row lands wherever that tab
+/// would: another pane, the center, another dock.
+fn dragged_tab_for_row(row: &OpenTabRow, cx: &App) -> Option<DraggedTab> {
+    let OpenTabId::PaneItem(item_id) = row.id else {
+        return None;
+    };
+    let pane_entity = row.pane.clone()?;
+    let pane = pane_entity.read(cx);
+    let (ix, item) = pane
+        .items()
+        .enumerate()
+        .find(|(_, item)| item.item_id() == item_id)?;
+    Some(DraggedTab {
+        item: item.boxed_clone(),
+        is_active: pane.active_item_index() == ix,
+        pane: pane_entity,
+        detail: 0,
+        ix,
+    })
 }
 
 /// Sorts newest first, keeps only the threads matching `query`, and inserts the
