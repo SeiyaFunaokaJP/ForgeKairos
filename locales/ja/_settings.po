@@ -782,6 +782,10 @@ msgid "Default"
 msgstr "既定"
 
 msgctxt "ProjectPanelSortOrder"
+msgid "Extension"
+msgstr "拡張子の順"
+
+msgctxt "ProjectPanelSortOrder"
 msgid "Lower"
 msgstr "小文字を先に"
 
@@ -1280,6 +1284,10 @@ msgstr "(Linux のみ) タイトルバーのウィンドウ操作ボタンの配
 msgctxt "settings"
 msgid "(Linux only) whether Zed or your compositor should draw window decorations."
 msgstr "(Linux のみ) ウィンドウの装飾を ForgeKairos が描画するか、コンポジターに任せるかを設定します。"
+
+msgctxt "settings"
+msgid "(macOS only) render windows using the Display P3 color space."
+msgstr "(macOS のみ) Display P3 の色空間でウィンドウを描画します。"
 
 msgctxt "settings"
 msgid "(macOS only) whether to allow Windows to tab together."
@@ -2268,6 +2276,10 @@ msgstr "表示言語"
 msgctxt "settings"
 msgid "Display Mode"
 msgstr "表示モード"
+
+msgctxt "settings"
+msgid "Display P3"
+msgstr "Display P3"
 
 msgctxt "settings"
 msgid "Display Settings"

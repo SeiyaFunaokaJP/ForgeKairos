@@ -106,33 +106,33 @@ p1.i24[markdown_preview.font_size].description	Markdown プレビューのフォ
 p1.i28.header	テキストの描画
 p1.i29[text_rendering_mode].title	テキストの描画モード
 p1.i29[text_rendering_mode].description	使用するテキストの描画モードです。
-p1.i30.header	カーソル
-p1.i31[multi_cursor_modifier].title	複数カーソルの修飾キー
-p1.i31[multi_cursor_modifier].description	カーソルを追加するときの修飾キーです。
-p1.i32[cursor_blink].title	カーソルの点滅
-p1.i32[cursor_blink].description	エディターでカーソルを点滅させるかどうかを設定します。
-p1.i34[cursor_shape].title	カーソルの形状
-p1.i34[cursor_shape].description	エディターのカーソルの形状です。
-p1.i35[hide_mouse].title	マウスカーソルを隠す
-p1.i35[hide_mouse].description	マウスカーソルを隠すタイミングです。
-p1.i36[reduce_motion].title	モーションを減らす
-p1.i36[reduce_motion].description	読み込み中のスピナーなど、必須ではないアニメーションを静止状態で描画して減らすかどうかを設定します。
-p1.i37.header	ハイライト
-p1.i38[unnecessary_code_fade].title	未使用コードの淡色化
-p1.i38[unnecessary_code_fade].description	未使用のコードをどの程度淡く表示するかを設定します (0.0〜0.9)。
-p1.i39[current_line_highlight].title	現在の行のハイライト
-p1.i39[current_line_highlight].description	現在の行をどのようにハイライトするかを設定します。
-p1.i40[selection_highlight].title	選択テキストのハイライト
-p1.i40[selection_highlight].description	選択したテキストと一致するすべての箇所をハイライトします。
-p1.i41[rounded_selection].title	選択範囲の角丸
-p1.i41[rounded_selection].description	テキストの選択範囲の角を丸くするかどうかを設定します。
-p1.i42[minimum_contrast_for_highlights].title	ハイライトの最小コントラスト
-p1.i42[minimum_contrast_for_highlights].description	ハイライトの背景の上にテキストを描画するときに保つ、APCA 知覚コントラストの最小値です。
-p1.i43.header	ガイド
-p1.i44[show_wrap_guides].title	折り返しガイドを表示
-p1.i44[show_wrap_guides].description	折り返しガイド (縦のルーラー) を表示します。
-p1.i45[wrap_guides].title	折り返しガイド
-p1.i45[wrap_guides].description	折り返しガイドを表示する文字数です。
+p1.i31.header	カーソル
+p1.i32[multi_cursor_modifier].title	複数カーソルの修飾キー
+p1.i32[multi_cursor_modifier].description	カーソルを追加するときの修飾キーです。
+p1.i33[cursor_blink].title	カーソルの点滅
+p1.i33[cursor_blink].description	エディターでカーソルを点滅させるかどうかを設定します。
+p1.i35[cursor_shape].title	カーソルの形状
+p1.i35[cursor_shape].description	エディターのカーソルの形状です。
+p1.i36[hide_mouse].title	マウスカーソルを隠す
+p1.i36[hide_mouse].description	マウスカーソルを隠すタイミングです。
+p1.i37[reduce_motion].title	モーションを減らす
+p1.i37[reduce_motion].description	読み込み中のスピナーなど、必須ではないアニメーションを静止状態で描画して減らすかどうかを設定します。
+p1.i38.header	ハイライト
+p1.i39[unnecessary_code_fade].title	未使用コードの淡色化
+p1.i39[unnecessary_code_fade].description	未使用のコードをどの程度淡く表示するかを設定します (0.0〜0.9)。
+p1.i40[current_line_highlight].title	現在の行のハイライト
+p1.i40[current_line_highlight].description	現在の行をどのようにハイライトするかを設定します。
+p1.i41[selection_highlight].title	選択テキストのハイライト
+p1.i41[selection_highlight].description	選択したテキストと一致するすべての箇所をハイライトします。
+p1.i42[rounded_selection].title	選択範囲の角丸
+p1.i42[rounded_selection].description	テキストの選択範囲の角を丸くするかどうかを設定します。
+p1.i43[minimum_contrast_for_highlights].title	ハイライトの最小コントラスト
+p1.i43[minimum_contrast_for_highlights].description	ハイライトの背景の上にテキストを描画するときに保つ、APCA 知覚コントラストの最小値です。
+p1.i44.header	ガイド
+p1.i45[show_wrap_guides].title	折り返しガイドを表示
+p1.i45[show_wrap_guides].description	折り返しガイド (縦のルーラー) を表示します。
+p1.i46[wrap_guides].title	折り返しガイド
+p1.i46[wrap_guides].description	折り返しガイドを表示する文字数です。
 p2.title	キーマップ
 p2.i0.header	キーバインド
 p2.i1.action	キーバインドの編集

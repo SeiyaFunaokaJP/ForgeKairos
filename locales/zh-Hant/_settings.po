@@ -785,6 +785,10 @@ msgid "Default"
 msgstr "預設"
 
 msgctxt "ProjectPanelSortOrder"
+msgid "Extension"
+msgstr "依副檔名"
+
+msgctxt "ProjectPanelSortOrder"
 msgid "Lower"
 msgstr "小寫優先"
 
@@ -1283,6 +1287,10 @@ msgstr "（僅限 Linux）選擇視窗控制按鈕在標題列中的排列方式
 msgctxt "settings"
 msgid "(Linux only) whether Zed or your compositor should draw window decorations."
 msgstr "（僅限 Linux）選擇由 ForgeKairos 或合成器繪製視窗裝飾。"
+
+msgctxt "settings"
+msgid "(macOS only) render windows using the Display P3 color space."
+msgstr "（僅限 macOS）使用 Display P3 色彩空間繪製視窗。"
 
 msgctxt "settings"
 msgid "(macOS only) whether to allow Windows to tab together."
@@ -2271,6 +2279,10 @@ msgstr "顯示語言"
 msgctxt "settings"
 msgid "Display Mode"
 msgstr "顯示模式"
+
+msgctxt "settings"
+msgid "Display P3"
+msgstr "Display P3"
 
 msgctxt "settings"
 msgid "Display Settings"

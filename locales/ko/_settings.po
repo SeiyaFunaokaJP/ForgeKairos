@@ -785,6 +785,10 @@ msgid "Default"
 msgstr "기본값"
 
 msgctxt "ProjectPanelSortOrder"
+msgid "Extension"
+msgstr "확장자순"
+
+msgctxt "ProjectPanelSortOrder"
 msgid "Lower"
 msgstr "소문자 우선"
 
@@ -1283,6 +1287,10 @@ msgstr "(Linux 전용) 제목 표시줄의 창 제어 버튼 배치 방식을 �
 msgctxt "settings"
 msgid "(Linux only) whether Zed or your compositor should draw window decorations."
 msgstr "(Linux 전용) ForgeKairos 또는 컴포지터가 창 장식을 그릴지 여부를 설정합니다."
+
+msgctxt "settings"
+msgid "(macOS only) render windows using the Display P3 color space."
+msgstr "(macOS 전용) Display P3 색 공간으로 창을 렌더링합니다."
 
 msgctxt "settings"
 msgid "(macOS only) whether to allow Windows to tab together."
@@ -2271,6 +2279,10 @@ msgstr "표시 언어"
 msgctxt "settings"
 msgid "Display Mode"
 msgstr "표시 모드"
+
+msgctxt "settings"
+msgid "Display P3"
+msgstr "Display P3"
 
 msgctxt "settings"
 msgid "Display Settings"

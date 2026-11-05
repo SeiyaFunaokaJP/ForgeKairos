@@ -101,12 +101,18 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p0.i4[on_new_window].description",
         "新しいウィンドウを開いたときに表示する内容です。",
     ),
+    // Upstream's Display P3 row, which moves the cursor rows below it down.
+    ("p1.i30[use_display_p3].title", "Display P3"),
     (
-        "p1.i33[cursor_animation.enabled].title",
+        "p1.i30[use_display_p3].description",
+        "(macOS のみ) Display P3 の色空間でウィンドウを描画します。",
+    ),
+    (
+        "p1.i34[cursor_animation.enabled].title",
         "カーソルのアニメーション",
     ),
     (
-        "p1.i33[cursor_animation.enabled].description",
+        "p1.i34[cursor_animation.enabled].description",
         "エディター内でカーソルが移動するときに、滑らかにアニメーションさせるかどうかを設定します。",
     ),
     (
