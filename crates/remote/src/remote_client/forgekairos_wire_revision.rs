@@ -1,11 +1,11 @@
-//! zed-jp-enhance: the wire revision check every connection starts with.
+//! ForgeKairos: the wire revision check every connection starts with.
 //!
 //! A remote server runs under a name that carries this fork's wire revision
 //! (`transport::server_binary_version`), but a name only says what a binary
 //! was meant to be. Several of the fork's fields fail open when the other end
 //! numbers or reads them differently — a host's `Entry.is_private` read as
 //! absent opens `.env` to agents — so the two ends compare
-//! `JP_ENHANCE_WIRE_REVISION` before anything else crosses:
+//! `FORGEKAIROS_WIRE_REVISION` before anything else crosses:
 //!
 //! - The client asks right after the first ping and before the egress
 //!   allowlist, and `RemoteClient::new` hands out no client (so no project can
@@ -33,7 +33,7 @@ use rpc::{
     AnyProtoClient, ErrorExt as _,
     proto::{
         self, Envelope, EnvelopedMessage as _, envelope::Payload,
-        jp_enhance::JP_ENHANCE_WIRE_REVISION,
+        forgekairos::FORGEKAIROS_WIRE_REVISION,
     },
 };
 use std::{
@@ -270,12 +270,12 @@ pub(super) fn intercept(this: &Arc<ChannelClient>, incoming: &Envelope, cx: &Asy
                 "{}: refusing {kind} ({}) from a peer that has not shown wire revision {}",
                 this.name,
                 incoming.id,
-                JP_ENHANCE_WIRE_REVISION
+                FORGEKAIROS_WIRE_REVISION
             );
             if let Err(error) = AnyProtoClient::from(this.clone()).send_response(
                 incoming.id,
                 anyhow!(
-                    "the peer has not shown wire revision {JP_ENHANCE_WIRE_REVISION}; \
+                    "the peer has not shown wire revision {FORGEKAIROS_WIRE_REVISION}; \
                      nothing but pings is handled"
                 )
                 .to_proto(),
@@ -299,12 +299,12 @@ fn answer(
     let ours = match cx.try_read_global::<WireRevisionAnswerForTests, _>(|answer, _| answer.0) {
         Some(Some(revision)) => revision,
         Some(None) => return,
-        None => JP_ENHANCE_WIRE_REVISION,
+        None => FORGEKAIROS_WIRE_REVISION,
     };
     #[cfg(not(any(test, feature = "test-support")))]
     let ours = {
         let _ = cx;
-        JP_ENHANCE_WIRE_REVISION
+        FORGEKAIROS_WIRE_REVISION
     };
 
     let matches = revision == ours;
@@ -375,7 +375,7 @@ fn confirm_within(
 ) -> impl Future<Output = Result<()>> {
     let response = client.request_internal(
         proto::CheckWireRevision {
-            revision: JP_ENHANCE_WIRE_REVISION,
+            revision: FORGEKAIROS_WIRE_REVISION,
             display_language,
         },
         false,
@@ -441,7 +441,7 @@ async fn confirmed(
             )));
         }
     };
-    let matches = theirs == Some(JP_ENHANCE_WIRE_REVISION);
+    let matches = theirs == Some(FORGEKAIROS_WIRE_REVISION);
     // A reconnection finds the flag set by the connection before it; a server
     // that now answers otherwise gets nothing more handled.
     client.wire_revision.confirmed.store(matches, SeqCst);
@@ -449,7 +449,7 @@ async fn confirmed(
         return Ok(());
     }
     Err(WireRevisionMismatch {
-        ours: JP_ENHANCE_WIRE_REVISION,
+        ours: FORGEKAIROS_WIRE_REVISION,
         theirs,
     }
     .into())
@@ -689,7 +689,7 @@ mod tests {
 
     fn mismatch(theirs: Option<u32>) -> anyhow::Error {
         WireRevisionMismatch {
-            ours: JP_ENHANCE_WIRE_REVISION,
+            ours: FORGEKAIROS_WIRE_REVISION,
             theirs,
         }
         .into()
@@ -901,7 +901,7 @@ mod tests {
                             ScriptedServer::AsksBeforeTheCheck,
                         ) => reply(
                             proto::CheckWireRevisionResponse {
-                                revision: JP_ENHANCE_WIRE_REVISION,
+                                revision: FORGEKAIROS_WIRE_REVISION,
                             }
                             .into_envelope(0, Some(envelope.id), None),
                         ),
@@ -1115,7 +1115,7 @@ mod tests {
             .find(|name| name.starts_with("Error: "))
             .unwrap_or_else(|| panic!("the relay request went unanswered: {received:?}"));
         assert!(
-            refusal.contains(&format!("wire revision {JP_ENHANCE_WIRE_REVISION}")),
+            refusal.contains(&format!("wire revision {FORGEKAIROS_WIRE_REVISION}")),
             "{received:?}"
         );
     }
@@ -1125,7 +1125,7 @@ mod tests {
         cx: &mut TestAppContext,
     ) {
         let (result, received) =
-            connect_to(ScriptedServer::Answers(JP_ENHANCE_WIRE_REVISION), cx).await;
+            connect_to(ScriptedServer::Answers(FORGEKAIROS_WIRE_REVISION), cx).await;
         let client = result
             .expect("the connection should succeed")
             .expect("nothing cancelled it");
@@ -1144,11 +1144,11 @@ mod tests {
         cx: &mut TestAppContext,
     ) {
         let (result, received) =
-            connect_to(ScriptedServer::Answers(JP_ENHANCE_WIRE_REVISION - 1), cx).await;
+            connect_to(ScriptedServer::Answers(FORGEKAIROS_WIRE_REVISION - 1), cx).await;
         let message = format!("{:#}", result.expect_err("the revisions differ"));
         assert!(message.contains("does not match this Zed"), "{message}");
         assert!(
-            message.contains(&format!("{} on the server", JP_ENHANCE_WIRE_REVISION - 1)),
+            message.contains(&format!("{} on the server", FORGEKAIROS_WIRE_REVISION - 1)),
             "{message}"
         );
         // Nothing to remove on this connection, so the user is told how.
@@ -1298,10 +1298,10 @@ mod tests {
         let refused = answer_to(allocate(1), cx).await;
         assert!(is_error(&refused), "{refused:?}");
 
-        let told = answer_to(check(2, JP_ENHANCE_WIRE_REVISION - 1), cx).await;
+        let told = answer_to(check(2, FORGEKAIROS_WIRE_REVISION - 1), cx).await;
         assert_eq!(
             proto::CheckWireRevisionResponse::from_envelope(told).map(|told| told.revision),
-            Some(JP_ENHANCE_WIRE_REVISION)
+            Some(FORGEKAIROS_WIRE_REVISION)
         );
         let refused = answer_to(allocate(3), cx).await;
         assert!(is_error(&refused), "{refused:?}");
@@ -1311,7 +1311,7 @@ mod tests {
             "a refused request reaches no handler"
         );
 
-        answer_to(check(4, JP_ENHANCE_WIRE_REVISION), cx).await;
+        answer_to(check(4, FORGEKAIROS_WIRE_REVISION), cx).await;
         let served = answer_to(allocate(5), cx).await;
         assert!(
             proto::AllocateWorktreeIdResponse::from_envelope(served.clone()).is_some(),
@@ -1320,7 +1320,7 @@ mod tests {
         assert_eq!(handled.load(SeqCst), 1);
 
         // A later check of another revision closes the session again.
-        answer_to(check(6, JP_ENHANCE_WIRE_REVISION + 1), cx).await;
+        answer_to(check(6, FORGEKAIROS_WIRE_REVISION + 1), cx).await;
         let refused = answer_to(allocate(7), cx).await;
         assert!(is_error(&refused), "{refused:?}");
         assert_eq!(handled.load(SeqCst), 1);
@@ -1340,7 +1340,7 @@ mod tests {
         let answers: [(Result<proto::CheckWireRevisionResponse>, bool); 3] = [
             (
                 Ok(proto::CheckWireRevisionResponse {
-                    revision: JP_ENHANCE_WIRE_REVISION + 1,
+                    revision: FORGEKAIROS_WIRE_REVISION + 1,
                 }),
                 true,
             ),
@@ -1356,7 +1356,7 @@ mod tests {
                 &client,
                 async {
                     Ok(proto::CheckWireRevisionResponse {
-                        revision: JP_ENHANCE_WIRE_REVISION,
+                        revision: FORGEKAIROS_WIRE_REVISION,
                     })
                 },
                 futures::future::pending::<()>(),
@@ -1420,7 +1420,7 @@ mod tests {
         incoming_tx
             .unbounded_send(
                 proto::CheckWireRevisionResponse {
-                    revision: JP_ENHANCE_WIRE_REVISION,
+                    revision: FORGEKAIROS_WIRE_REVISION,
                 }
                 .into_envelope(1, Some(check.id), None),
             )
@@ -1453,7 +1453,7 @@ mod tests {
 
         server_cx.update(|cx| {
             cx.set_global(WireRevisionAnswerForTests(Some(
-                JP_ENHANCE_WIRE_REVISION + 1,
+                FORGEKAIROS_WIRE_REVISION + 1,
             )))
         });
         client

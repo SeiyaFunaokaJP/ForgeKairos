@@ -547,10 +547,10 @@ mod tests {
         let mut protected_paths =
             sandbox::builtin_protected_paths(Path::new(path!("/home/user")), &[]);
         protected_paths.push(PathBuf::from(path!(
-            "/home/user/.local/share/zed-jp-enhance"
+            "/home/user/.local/share/forgekairos"
         )));
         ProtectedLocations::Local {
-            settings_directories: vec![PathBuf::from(path!("/home/user/.config/zed-jp-enhance"))],
+            settings_directories: vec![PathBuf::from(path!("/home/user/.config/forgekairos"))],
             protected_paths,
         }
     }
@@ -722,7 +722,7 @@ mod tests {
         assert_eq!(
             classify(
                 path!("/home/user"),
-                ".config/zed-jp-enhance/settings.json",
+                ".config/forgekairos/settings.json",
                 &local()
             ),
             AgentWriteVerdict::Confirm(SensitiveWrite::Settings)
@@ -775,7 +775,7 @@ mod tests {
             ".claude.json",
             ".claude/settings.json",
             ".gemini/settings.json",
-            ".local/share/zed-jp-enhance/db/threads.db",
+            ".local/share/forgekairos/db/threads.db",
         ] {
             assert_eq!(
                 classify(path!("/home/user"), relative, &local()),

@@ -50,7 +50,7 @@ fn entry(id: u64, path: &str, is_dir: bool, is_private: bool) -> proto::Entry {
     }
 }
 
-/// zed-jp-enhance: a host whose `is_private` does not arrive (another wire
+/// ForgeKairos: a host whose `is_private` does not arrive (another wire
 /// revision, a collab server that drops it, settings that have not caught up)
 /// must not open `.env` and keys to agents: this side's own `private_files`
 /// marks them too, and the host's verdict still counts on its own.

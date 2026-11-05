@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 pub mod error;
-pub mod jp_enhance;
+pub mod forgekairos;
 mod macros;
 mod typed_envelope;
 
@@ -38,9 +38,9 @@ impl Envelope {
 }
 
 messages!(
-    // zed-jp-enhance: kept together so that upstream's own entries below merge
+    // ForgeKairos: kept together so that upstream's own entries below merge
     // untouched. Their `RequestMessage` / `EntityMessage` impls are in
-    // jp_enhance.rs.
+    // forgekairos.rs.
     (CheckWireRevision, Foreground),
     (CheckWireRevisionResponse, Foreground),
     (RescanProjectWorktree, Foreground),

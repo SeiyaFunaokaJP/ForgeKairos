@@ -283,7 +283,7 @@ pub(crate) fn server_binary_version(
     };
     format!(
         "{version}-jp{}",
-        rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
+        rpc::proto::forgekairos::FORGEKAIROS_WIRE_REVISION
     )
 }
 
@@ -1310,7 +1310,7 @@ mod tests {
             server_binary_name(release_channel::ReleaseChannel::Stable, "1.21.0"),
             format!(
                 "forgekairos-remote-server-stable-1.21.0-jp{}",
-                rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
+                rpc::proto::forgekairos::FORGEKAIROS_WIRE_REVISION
             )
         );
         assert_eq!(

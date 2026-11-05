@@ -218,7 +218,7 @@ impl RequestHost {
 /// Whether a configured endpoint (such as a self-hosted model server's
 /// `api_url`) is on this machine. Anything that does not parse is not.
 ///
-/// zed-jp-enhance: shared by the surfaces that may reach a self-hosted AI
+/// ForgeKairos: shared by the surfaces that may reach a self-hosted AI
 /// endpoint without the external-AI consent only while it is local (ADR-F10).
 /// The host is read exactly as [`EgressPolicyHandle::check_url`] reads it, so
 /// this never calls local what the allowlist would treat as remote.

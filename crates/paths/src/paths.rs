@@ -22,7 +22,7 @@ pub const EDITORCONFIG_NAME: &str = ".editorconfig";
 /// The application name, used to derive platform-specific data, config, cache,
 /// and state directory paths.
 ///
-/// zed-jp-enhance: renamed from upstream's "Zed" so this fork keeps its own
+/// ForgeKairos: renamed from upstream's "Zed" so this fork keeps its own
 /// data/config/cache/state directories and never shares them with an official
 /// Zed install on the same machine. Without spaces on purpose: the lowercased
 /// form is used for XDG paths that are interpolated into remote `bash -c`

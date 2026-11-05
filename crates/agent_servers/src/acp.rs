@@ -5706,7 +5706,7 @@ mod tests {
     use super::*;
     use gpui::BorrowAppContext as _;
 
-    const CONFIG_DIR: &str = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp";
+    const CONFIG_DIR: &str = "/home/u/.forgekairos-claude/projects/0123456789abcdef/claude-acp";
 
     fn placed_sandbox(
         env: &[(&str, &str)],
@@ -6173,8 +6173,8 @@ mod tests {
     #[test]
     fn a_remote_agent_is_started_by_the_hosts_helper() {
         let readable =
-            "/home/u/.local/share/zed-jp-enhance/external_agents/registry/npx/claude-acp";
-        let node = "/home/u/.local/share/zed-jp-enhance/node/bin/node";
+            "/home/u/.local/share/forgekairos/external_agents/registry/npx/claude-acp";
+        let node = "/home/u/.local/share/forgekairos/node/bin/node";
         let sandbox = placed_sandbox(
             &[("CLAUDE_CONFIG_DIR", CONFIG_DIR), ("PATH", "/usr/bin")],
             &[readable],
@@ -15744,7 +15744,7 @@ exit 7
     /// ADR-F49 第 2b 段: what an agent in the WSL sandbox is started with.
     #[test]
     fn a_wsl_agent_writes_its_worktrees_and_its_folder_and_never_opens_a_browser() {
-        let config_dir = "/root/.zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp";
+        let config_dir = "/root/.forgekairos-claude/projects/0123456789abcdef/claude-acp";
         let plan = plan_wsl_agent(
             &SandboxedAgentProfile::Claude,
             HashMap::from_iter([("PATH".to_string(), "/usr/bin".to_string())]),
@@ -15793,7 +15793,7 @@ exit 7
                 PathBuf::from(r"I:\proj"),
                 PathBuf::from(r"C:\other"),
                 PathBuf::from(
-                    r"\\wsl.localhost\Ubuntu\root\.zed-jp-enhance-claude\projects\0123456789abcdef\claude-acp"
+                    r"\\wsl.localhost\Ubuntu\root\.forgekairos-claude\projects\0123456789abcdef\claude-acp"
                 ),
             ],
             "ADR-F50: the write scope is spelled the way worktrees are"

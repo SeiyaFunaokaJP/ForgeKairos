@@ -297,7 +297,7 @@ impl GlobalCopilotAuth {
 impl Global for GlobalCopilotAuth {}
 
 /// Whether Copilot edit predictions wait for the user to accept Copilot's external AI warning
-/// (zed-jp-enhance: `.forgekairos-docs/DESIGN.md` ADR-F10). Until then the language server is not
+/// (ForgeKairos: `.forgekairos-docs/DESIGN.md` ADR-F10). Until then the language server is not
 /// started, since starting it signs in with credentials already on this machine and contacts
 /// GitHub. Unlike the self-hosted providers, a loopback `enterprise_uri` is no exemption: the
 /// language server's own traffic is outside the egress allowlist.
@@ -1446,7 +1446,7 @@ fn copilot_lsp_native_binary_path() -> anyhow::Result<PathBuf> {
         .join(executable_name))
 }
 
-/// zed-jp-enhance: Copilot's server asks to open addresses outside the
+/// ForgeKairos: Copilot's server asks to open addresses outside the
 /// project's language servers, so it goes through the same checks and
 /// confirmation as they do (`workspace::server_links`) instead of opening any
 /// scheme without asking. Documents inside Zed (`external: false`) are not

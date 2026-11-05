@@ -18183,7 +18183,7 @@ impl PartialEq for LanguageServerPromptRequest {
 
 #[derive(Clone, Debug)]
 pub struct LanguageServerShowDocumentRequest {
-    /// zed-jp-enhance: shown when asking the user before an address is
+    /// ForgeKairos: shown when asking the user before an address is
     /// opened. Empty when a host too old to send it relayed the request.
     pub lsp_name: String,
     pub uri: lsp::Uri,

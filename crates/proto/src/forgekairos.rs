@@ -9,7 +9,7 @@ use crate::*;
 /// 2: `CheckWireRevision`, and `AddWorktree.code_runs_without_ide_decision`
 /// in place of `code_execution_follows_ide`.
 /// 3: SetWorktreeWatchPriority.
-pub const JP_ENHANCE_WIRE_REVISION: u32 = 3;
+pub const FORGEKAIROS_WIRE_REVISION: u32 = 3;
 
 crate::request_messages!(
     (CheckWireRevision, CheckWireRevisionResponse),
@@ -154,23 +154,23 @@ mod tests {
     #[test]
     fn wire_revision_check_round_trips_as_a_request() {
         let request = CheckWireRevision {
-            revision: JP_ENHANCE_WIRE_REVISION,
+            revision: FORGEKAIROS_WIRE_REVISION,
             display_language: Some("pt-BR".to_string()),
         };
         let envelope = request.clone().into_envelope(3, None, None);
         assert_eq!(CheckWireRevision::from_envelope(envelope), Some(request));
         let response = CheckWireRevisionResponse {
-            revision: JP_ENHANCE_WIRE_REVISION,
+            revision: FORGEKAIROS_WIRE_REVISION,
         }
         .into_envelope(4, Some(3), None);
         assert_eq!(
             <CheckWireRevision as RequestMessage>::Response::from_envelope(response)
                 .map(|response| response.revision),
-            Some(JP_ENHANCE_WIRE_REVISION)
+            Some(FORGEKAIROS_WIRE_REVISION)
         );
         // A response that says nothing names no revision, which never matches.
         let empty = CheckWireRevisionResponse::decode([].as_slice()).expect("empty decodes");
-        assert_ne!(empty.revision, JP_ENHANCE_WIRE_REVISION);
+        assert_ne!(empty.revision, FORGEKAIROS_WIRE_REVISION);
     }
 
     #[test]

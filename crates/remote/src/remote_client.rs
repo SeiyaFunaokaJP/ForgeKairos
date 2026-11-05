@@ -56,13 +56,13 @@ use util::{
     rel_path::RelPath,
 };
 
-mod jp_wire_revision;
+mod forgekairos_wire_revision;
 #[cfg(any(test, feature = "test-support"))]
-pub use jp_wire_revision::DisplayLanguageForTests;
+pub use forgekairos_wire_revision::DisplayLanguageForTests;
 #[cfg(any(test, feature = "test-support"))]
-pub use jp_wire_revision::WireRevisionAnswerForTests;
-pub use jp_wire_revision::WireRevisionMismatch;
-pub use jp_wire_revision::{DISPLAY_LANGUAGE_ENV_VAR, DisplayLanguageHandler};
+pub use forgekairos_wire_revision::WireRevisionAnswerForTests;
+pub use forgekairos_wire_revision::WireRevisionMismatch;
+pub use forgekairos_wire_revision::{DISPLAY_LANGUAGE_ENV_VAR, DisplayLanguageHandler};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RemoteOs {
@@ -529,8 +529,8 @@ pub fn has_active_connection(opts: &RemoteConnectionOptions, cx: &App) -> bool {
 }
 
 impl RemoteClient {
-    /// zed-jp-enhance: reached through `RemoteClient::new` in
-    /// jp_wire_revision.rs, which connects again once when the server's wire
+    /// ForgeKairos: reached through `RemoteClient::new` in
+    /// forgekairos_wire_revision.rs, which connects again once when the server's wire
     /// revision does not match.
     fn new_without_reinstall(
         unique_identifier: ConnectionIdentifier,
@@ -649,9 +649,9 @@ impl RemoteClient {
                     "remote connect timing: first ping answered {:?} after the proxy started",
                     proxy_started.elapsed()
                 );
-                // zed-jp-enhance: before anything of this fork's is sent.
-                let display_language = jp_wire_revision::display_language(cx);
-                if let Err(error) = jp_wire_revision::confirm(&client, display_language).await {
+                // ForgeKairos: before anything of this fork's is sent.
+                let display_language = forgekairos_wire_revision::display_language(cx);
+                if let Err(error) = forgekairos_wire_revision::confirm(&client, display_language).await {
                     log::error!("failed to establish connection: {error:#}");
                     return Err(error);
                 }
@@ -907,16 +907,16 @@ impl RemoteClient {
             let multiplex_task = Self::monitor(this.clone(), io_task, cx);
             let connection_ready_rx = client.reconnect(incoming_rx, outgoing_tx, cx);
 
-            // zed-jp-enhance: sent ahead of the replay, which the server holds
+            // ForgeKairos: sent ahead of the replay, which the server holds
             // back from a client it has not checked, but not waited on before
-            // it (see `jp_wire_revision::confirm`). Both are polled together:
+            // it (see `forgekairos_wire_revision::confirm`). Both are polled together:
             // an answer nobody takes holds up every message behind it.
             // The language shown now, which may have changed since the
             // connection before; the server takes it up from here on.
             let (handshaken_tx, handshaken_rx) = oneshot::channel::<()>();
-            let wire_revision = jp_wire_revision::confirm_after_handshake(
+            let wire_revision = forgekairos_wire_revision::confirm_after_handshake(
                 &client,
-                jp_wire_revision::display_language(cx),
+                forgekairos_wire_revision::display_language(cx),
                 async move {
                     // A handshake that fails fails the reconnect by itself.
                     handshaken_rx.await.ok();
@@ -1888,7 +1888,7 @@ pub(crate) struct ChannelClient {
     remote_started: Signal<()>,
     has_wsl_interop: bool,
     executor: BackgroundExecutor,
-    wire_revision: jp_wire_revision::PeerWireRevision,
+    wire_revision: forgekairos_wire_revision::PeerWireRevision,
 }
 
 impl ChannelClient {
@@ -2004,7 +2004,7 @@ impl ChannelClient {
             return;
         }
 
-        if jp_wire_revision::intercept(&this, &incoming, cx) {
+        if forgekairos_wire_revision::intercept(&this, &incoming, cx) {
             return;
         }
 
@@ -2581,7 +2581,7 @@ mod tests {
         let mut ping_response = proto::Ack {}.into_envelope(1, Some(ping.id), None);
         ping_response.ack_id = Some(ping.id);
         incoming_tx.unbounded_send(ping_response).unwrap();
-        // zed-jp-enhance: the client is connected once the server has shown
+        // ForgeKairos: the client is connected once the server has shown
         // its wire revision, and then sends the egress allowlist.
         let check = outgoing_rx.next().await.unwrap();
         assert!(matches!(
@@ -2592,7 +2592,7 @@ mod tests {
         incoming_tx
             .unbounded_send(
                 proto::CheckWireRevisionResponse {
-                    revision: proto::jp_enhance::JP_ENHANCE_WIRE_REVISION,
+                    revision: proto::forgekairos::FORGEKAIROS_WIRE_REVISION,
                 }
                 .into_envelope(last_response_id, Some(check.id), None),
             )
@@ -2622,7 +2622,7 @@ mod tests {
         ));
         assert_ne!(reconnect_handshake.id, initial_handshake.id);
 
-        // zed-jp-enhance: the check goes out ahead of the replay.
+        // ForgeKairos: the check goes out ahead of the replay.
         let check = outgoing_rx.next().await.unwrap();
         assert!(matches!(
             check.payload,
@@ -2631,7 +2631,7 @@ mod tests {
         incoming_tx
             .unbounded_send(
                 proto::CheckWireRevisionResponse {
-                    revision: proto::jp_enhance::JP_ENHANCE_WIRE_REVISION,
+                    revision: proto::forgekairos::FORGEKAIROS_WIRE_REVISION,
                 }
                 .into_envelope(97, Some(check.id), None),
             )

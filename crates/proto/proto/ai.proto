@@ -1,7 +1,7 @@
 syntax = "proto3";
 package zed.messages;
 
-import "jp_enhance.proto";
+import "forgekairos.proto";
 import "task.proto";
 
 message GetAgentServerCommand {

@@ -46,7 +46,7 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         MenuItem::action("Debugger Panel", debug_panel::ToggleFocus),
     ];
 
-    // zed-jp-enhance: AI is off by default through `agent.enabled`, not
+    // ForgeKairos: AI is off by default through `agent.enabled`, not
     // `disable_ai` (ADR-F09), so the menu follows the same switch as the panel.
     if AgentSettings::get_global(cx).enabled(cx) {
         view_items.push(MenuItem::action("Agent Panel", assistant::ToggleFocus));

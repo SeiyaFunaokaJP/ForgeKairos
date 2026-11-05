@@ -602,7 +602,7 @@ fn init_renderers(cx: &mut App) {
         .add_basic_renderer::<settings::SnippetSortOrder>(render_dropdown)
         .add_basic_renderer::<settings::ClosePosition>(render_dropdown)
         .add_basic_renderer::<settings::DockSide>(render_dropdown)
-        // zed-jp-enhance: the call graph panel's sources (ADR-F68).
+        // ForgeKairos: the call graph panel's sources (ADR-F68).
         .add_basic_renderer::<settings::CallGraphSources>(render_dropdown)
         .add_basic_renderer::<settings::TerminalDockPosition>(render_dropdown)
         .add_basic_renderer::<settings::DockPosition>(render_dropdown)

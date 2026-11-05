@@ -1105,7 +1105,7 @@ mod tests {
     use language::LanguageRegistry;
     use node_runtime::NodeRuntime;
     use rpc::proto::{
-        self, EnvelopedMessage as _, REMOTE_SERVER_PROJECT_ID, jp_enhance::JP_ENHANCE_WIRE_REVISION,
+        self, EnvelopedMessage as _, REMOTE_SERVER_PROJECT_ID, forgekairos::FORGEKAIROS_WIRE_REVISION,
     };
     use serde_json::json;
     use std::{cell::Cell, time::Instant};
@@ -1224,8 +1224,8 @@ mod tests {
         // What a client asks first on a fresh session; a resumed one was
         // checked when it started.
         if reply.outcome == DaemonHelloOutcome::Accepted && !reconnect {
-            let answer = check_wire_revision(&mut stream, JP_ENHANCE_WIRE_REVISION).await;
-            assert_eq!(answer, Some(JP_ENHANCE_WIRE_REVISION));
+            let answer = check_wire_revision(&mut stream, FORGEKAIROS_WIRE_REVISION).await;
+            assert_eq!(answer, Some(FORGEKAIROS_WIRE_REVISION));
         }
         (reply.outcome, stream)
     }
@@ -1424,7 +1424,7 @@ mod tests {
         );
     }
 
-    /// zed-jp-enhance: a client of another wire revision reads and writes the
+    /// ForgeKairos: a client of another wire revision reads and writes the
     /// fork's fields differently (`AddWorktree`'s say over the worktree's
     /// code, `Entry.is_private`), so a session serves nothing but pings until
     /// the client has shown this build's revision.
@@ -1473,8 +1473,8 @@ mod tests {
         );
 
         // A client of an older revision is told this one's, and still refused.
-        let answer = check_wire_revision(&mut connection, JP_ENHANCE_WIRE_REVISION - 1).await;
-        assert_eq!(answer, Some(JP_ENHANCE_WIRE_REVISION));
+        let answer = check_wire_revision(&mut connection, FORGEKAIROS_WIRE_REVISION - 1).await;
+        assert_eq!(answer, Some(FORGEKAIROS_WIRE_REVISION));
         let refused = request(&mut connection, add_worktree(3)).await;
         assert!(
             matches!(refused.payload, Some(proto::envelope::Payload::Error(_))),
@@ -1483,8 +1483,8 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(worktree_count(cx), 0, "no refused message may take effect");
 
-        let answer = check_wire_revision(&mut connection, JP_ENHANCE_WIRE_REVISION).await;
-        assert_eq!(answer, Some(JP_ENHANCE_WIRE_REVISION));
+        let answer = check_wire_revision(&mut connection, FORGEKAIROS_WIRE_REVISION).await;
+        assert_eq!(answer, Some(FORGEKAIROS_WIRE_REVISION));
         let added = request(&mut connection, add_worktree(4)).await;
         assert!(
             proto::AddWorktreeResponse::from_envelope(added.clone()).is_some(),

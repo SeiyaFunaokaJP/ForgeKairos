@@ -2955,7 +2955,7 @@ mod remote_sandbox_helper_argv_tests {
     fn the_ide_channel_is_spelled_the_same_in_both_sandboxes() {
         let forward = IdeForward {
             inner_port: 45123,
-            rendezvous_path: "/home/u/.cache/zed-jp-enhance/ide/claude-1/bridge.sock".to_string(),
+            rendezvous_path: "/home/u/.cache/forgekairos/ide/claude-1/bridge.sock".to_string(),
         };
         assert_eq!(
             ide_forward_argv(&forward),
@@ -2963,7 +2963,7 @@ mod remote_sandbox_helper_argv_tests {
                 "--ide-listen",
                 "45123",
                 "--ide-rendezvous",
-                "/home/u/.cache/zed-jp-enhance/ide/claude-1/bridge.sock",
+                "/home/u/.cache/forgekairos/ide/claude-1/bridge.sock",
             ]
         );
     }
@@ -2974,9 +2974,9 @@ mod remote_sandbox_helper_argv_tests {
     /// `Path::is_absolute` would answer about the wrong OS).
     #[test]
     fn the_remote_bridge_argv_names_the_socket_the_lock_and_the_exclusive_directory() {
-        let rendezvous = "/home/u/.cache/zed-jp-enhance/ide/claude-1/bridge.sock";
-        let lock = "/home/u/.zed-jp-enhance-claude/projects/key/config/ide/45123.lock";
-        let exclusive = "/home/u/.zed-jp-enhance-claude/projects/key";
+        let rendezvous = "/home/u/.cache/forgekairos/ide/claude-1/bridge.sock";
+        let lock = "/home/u/.forgekairos-claude/projects/key/config/ide/45123.lock";
+        let exclusive = "/home/u/.forgekairos-claude/projects/key";
         assert_eq!(
             remote_ide_bridge_argv(rendezvous, Some(lock), Some(exclusive))
                 .expect("absolute host paths"),
@@ -3489,7 +3489,7 @@ mod windows_tests {
         );
         let forward = IdeForward {
             inner_port: 45123,
-            rendezvous_path: "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock".to_string(),
+            rendezvous_path: "/root/.cache/forgekairos/ide/s1/bridge.sock".to_string(),
         };
         assert_eq!(
             argv(true, Some(&forward)),
@@ -3502,7 +3502,7 @@ mod windows_tests {
                 "--ide-listen",
                 "45123",
                 "--ide-rendezvous",
-                "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+                "/root/.cache/forgekairos/ide/s1/bridge.sock",
                 "--",
             ]
         );
@@ -3518,7 +3518,7 @@ mod windows_tests {
                 "--ide-listen",
                 "45123",
                 "--ide-rendezvous",
-                "/root/.cache/zed-jp-enhance/ide/s1/bridge.sock",
+                "/root/.cache/forgekairos/ide/s1/bridge.sock",
                 "--",
             ]
         );
@@ -3531,7 +3531,7 @@ mod windows_tests {
     fn the_two_ways_of_asking_for_an_ide_channel_meet_in_one() {
         let forward = |port| IdeForward {
             inner_port: port,
-            rendezvous_path: format!("/root/.cache/zed-jp-enhance/ide/s{port}/bridge.sock"),
+            rendezvous_path: format!("/root/.cache/forgekairos/ide/s{port}/bridge.sock"),
         };
         assert_eq!(merge_ide_forward(None, None), None);
         assert_eq!(

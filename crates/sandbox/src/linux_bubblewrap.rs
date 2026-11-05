@@ -1636,7 +1636,7 @@ mod tests {
     fn test_build_bwrap_args_covers_a_directory_around_what_is_granted_in_it() {
         let home = tempfile::tempdir().expect("create a home");
         let home_path = home.path().canonicalize().expect("canonical home");
-        let enclosure = home_path.join(".zed-jp-enhance-claude");
+        let enclosure = home_path.join(".forgekairos-claude");
         let own = enclosure
             .join("projects")
             .join("0123456789abcdef")
@@ -1644,7 +1644,7 @@ mod tests {
         let data = home_path
             .join(".local")
             .join("share")
-            .join("zed-jp-enhance");
+            .join("forgekairos");
         let agent = data.join("external_agents").join("claude");
         let work = home_path.join("work");
         std::fs::create_dir_all(&own).expect("create the configuration");
@@ -1718,7 +1718,7 @@ mod tests {
         let data = home_path
             .join(".local")
             .join("share")
-            .join("zed-jp-enhance");
+            .join("forgekairos");
         let agent = data.join("external_agents").join("claude");
         let work = home_path.join("work");
         std::fs::create_dir_all(&agent).expect("create the agent");

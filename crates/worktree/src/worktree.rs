@@ -1,5 +1,5 @@
 mod ignore;
-mod jp_private_files;
+mod forgekairos_private_files;
 mod worktree_settings;
 
 use ::ignore::gitignore::{Gitignore, GitignoreBuilder};
@@ -698,7 +698,7 @@ impl Worktree {
             // send them to a foreground task which updates the model.
             cx.background_spawn(async move {
                 while let Some(mut update) = background_updates_rx.next().await {
-                    jp_private_files::mark_private_entries(&mut update, &settings);
+                    forgekairos_private_files::mark_private_entries(&mut update, &settings);
                     {
                         let mut lock = background_snapshot.lock();
                         lock.0.apply_remote_update(

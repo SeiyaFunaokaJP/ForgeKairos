@@ -3211,7 +3211,7 @@ mod sandboxed_spawn_tests {
 
         let forward = sandbox::IdeForward {
             inner_port: 45123,
-            rendezvous_path: "/home/user/.cache/zed-jp-enhance/ide/claude-1/bridge.sock"
+            rendezvous_path: "/home/user/.cache/forgekairos/ide/claude-1/bridge.sock"
                 .to_string(),
         };
         let with_ide = policy_of(Some(&forward));
@@ -3227,7 +3227,7 @@ mod sandboxed_spawn_tests {
                 "--ide-listen",
                 "45123",
                 "--ide-rendezvous",
-                "/home/user/.cache/zed-jp-enhance/ide/claude-1/bridge.sock",
+                "/home/user/.cache/forgekairos/ide/claude-1/bridge.sock",
                 "--session",
                 "claude-1",
                 "--",

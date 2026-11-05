@@ -23537,7 +23537,7 @@ async fn test_external_formatter_with_no_output_leaves_buffer_unchanged(cx: &mut
 }
 
 /// A command name no machine running these tests can have on `PATH`.
-const MISSING_FORMATTER_COMMAND: &str = "zed-jp-enhance-missing-formatter";
+const MISSING_FORMATTER_COMMAND: &str = "forgekairos-missing-formatter";
 
 #[gpui::test]
 async fn test_missing_external_formatter_is_reported(cx: &mut TestAppContext) {

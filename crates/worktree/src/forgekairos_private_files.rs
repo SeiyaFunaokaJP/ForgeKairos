@@ -4,7 +4,7 @@ use util::rel_path::RelPath;
 
 use crate::WorktreeSettings;
 
-/// zed-jp-enhance: marks as private the entries of a remote worktree update
+/// ForgeKairos: marks as private the entries of a remote worktree update
 /// that this side's own `private_files` covers, on top of those the host
 /// marked.
 ///

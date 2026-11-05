@@ -785,6 +785,10 @@ msgid "Default"
 msgstr "Predeterminado"
 
 msgctxt "ProjectPanelSortOrder"
+msgid "Extension"
+msgstr "Por extensión"
+
+msgctxt "ProjectPanelSortOrder"
 msgid "Lower"
 msgstr "Minúsculas primero"
 
@@ -1283,6 +1287,10 @@ msgstr "(Solo Linux) Determina cómo se disponen los botones de control de la ve
 msgctxt "settings"
 msgid "(Linux only) whether Zed or your compositor should draw window decorations."
 msgstr "(Solo Linux) Indica si ForgeKairos o el compositor deben dibujar las decoraciones de ventana."
+
+msgctxt "settings"
+msgid "(macOS only) render windows using the Display P3 color space."
+msgstr "(Solo macOS) Dibuja las ventanas con el espacio de color Display P3."
 
 msgctxt "settings"
 msgid "(macOS only) whether to allow Windows to tab together."
@@ -2271,6 +2279,10 @@ msgstr "Idioma de la interfaz"
 msgctxt "settings"
 msgid "Display Mode"
 msgstr "Modo de visualización"
+
+msgctxt "settings"
+msgid "Display P3"
+msgstr "Display P3"
 
 msgctxt "settings"
 msgid "Display Settings"

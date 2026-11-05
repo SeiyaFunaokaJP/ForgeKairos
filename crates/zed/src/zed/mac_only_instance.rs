@@ -49,7 +49,7 @@ fn current_user_id() -> Option<u32> {
     None
 }
 
-// zed-jp-enhance: an official Zed (and this fork before it was renamed) owns
+// ForgeKairos: an official Zed (and this fork before it was renamed) owns
 // every port from `LEGACY_MAC_INSTANCE_BASE_PORT` up, so this fork's ports sit
 // below it and never answer, or get answered by, an official instance. The
 // `paths` crate probes the same ports, so both compute them in `branding`.

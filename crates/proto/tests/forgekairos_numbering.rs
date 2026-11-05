@@ -1,4 +1,4 @@
-//! zed-jp-enhance: the fork's messages and fields must keep out of the numbers
+//! ForgeKairos: the fork's messages and fields must keep out of the numbers
 //! upstream hands out, so that merging an upstream release never gives one
 //! number to two messages (or two fields) and never silently reinterprets what
 //! an older peer sends.
@@ -15,7 +15,7 @@ use proto::{Envelope, KillTerminalSession, Message as _, SetEgressAllowlist, env
 const FORK_BAND: Range<u32> = 10_000..19_000;
 
 /// Files that hold only the fork's messages.
-const FORK_FILES: &[&str] = &["jp_enhance.proto", "file_transfer.proto"];
+const FORK_FILES: &[&str] = &["forgekairos.proto", "file_transfer.proto"];
 
 /// Fields the fork added to upstream's messages, as `(message, field)`.
 const FORK_FIELDS_IN_UPSTREAM_MESSAGES: &[(&str, &str)] = &[
@@ -378,7 +378,7 @@ fn fork_fields_and_enum_values_in_upstream_messages_are_in_the_fork_band() {
 /// upstream message (or a fork message added to an upstream file) that was
 /// given a small number and never listed, and an upstream number the fork
 /// changed.
-const UPSTREAM_NUMBERS_FILE: &str = "tests/jp_enhance_upstream_numbers.txt";
+const UPSTREAM_NUMBERS_FILE: &str = "tests/forgekairos_upstream_numbers.txt";
 
 fn upstream_numbers_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(UPSTREAM_NUMBERS_FILE)
@@ -456,19 +456,19 @@ fn numbers_below_the_band_in_upstream_files_are_upstreams_own() {
 /// ```text
 /// mkdir upstream-proto
 /// git archive refs/upstream/tags/v1.21.0 crates/proto/proto | tar -x -C upstream-proto
-/// JP_ENHANCE_UPSTREAM_PROTO_DIR=upstream-proto/crates/proto/proto \
-/// JP_ENHANCE_UPSTREAM_LABEL="v1.21.0 (33c9585)" \
-///   cargo test -p proto --test jp_enhance_numbering -- --ignored regenerate_upstream_numbers
+/// FORGEKAIROS_UPSTREAM_PROTO_DIR=upstream-proto/crates/proto/proto \
+/// FORGEKAIROS_UPSTREAM_LABEL="v1.21.0 (33c9585)" \
+///   cargo test -p proto --test forgekairos_numbering -- --ignored regenerate_upstream_numbers
 /// ```
 #[test]
-#[ignore = "rewrites the upstream numbers file from JP_ENHANCE_UPSTREAM_PROTO_DIR"]
+#[ignore = "rewrites the upstream numbers file from FORGEKAIROS_UPSTREAM_PROTO_DIR"]
 fn regenerate_upstream_numbers() {
     let directory = PathBuf::from(
-        std::env::var("JP_ENHANCE_UPSTREAM_PROTO_DIR")
-            .expect("JP_ENHANCE_UPSTREAM_PROTO_DIR names upstream's crates/proto/proto"),
+        std::env::var("FORGEKAIROS_UPSTREAM_PROTO_DIR")
+            .expect("FORGEKAIROS_UPSTREAM_PROTO_DIR names upstream's crates/proto/proto"),
     );
-    let label = std::env::var("JP_ENHANCE_UPSTREAM_LABEL")
-        .expect("JP_ENHANCE_UPSTREAM_LABEL names the upstream release, e.g. `v1.21.0 (33c9585)`");
+    let label = std::env::var("FORGEKAIROS_UPSTREAM_LABEL")
+        .expect("FORGEKAIROS_UPSTREAM_LABEL names the upstream release, e.g. `v1.21.0 (33c9585)`");
     for fork_file in FORK_FILES {
         assert!(
             !directory.join(fork_file).exists(),
@@ -497,7 +497,7 @@ fn regenerate_upstream_numbers() {
     let mut text = format!(
         "# Every numbered field and enum value in upstream's crates/proto/proto at\n\
          # {label}, as `scope name number`. Written by `regenerate_upstream_numbers`\n\
-         # in jp_enhance_numbering.rs; do not edit by hand.\n"
+         # in forgekairos_numbering.rs; do not edit by hand.\n"
     );
     for (scope, name, number) in keys {
         text.push_str(&format!("{scope} {name} {number}\n"));

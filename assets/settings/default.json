@@ -2918,7 +2918,7 @@
       "prettier": {
         "allowed": false,
       },
-      // zed-jp-enhance: defaults equivalent to CustomFormatter (C Indented-Brace
+      // ForgeKairos: defaults equivalent to CustomFormatter (C Indented-Brace
       // Formatter). GNU based, with a space after control statements and
       // function names, no single-line forms, and indented case labels.
       // clang-format is resolved from the editor executable's folder, then its `bin\`,

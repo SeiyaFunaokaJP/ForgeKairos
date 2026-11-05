@@ -3,7 +3,7 @@ use gpui::{App, PromptLevel, Task, Window};
 /// Longer names are cut so that the address stays in view in the prompt.
 const MAX_SERVER_NAME_CHARS: usize = 64;
 
-/// zed-jp-enhance: a language server (Copilot included, or the remote host
+/// ForgeKairos: a language server (Copilot included, or the remote host
 /// relaying one) asks Zed to hand an address to the operating system. Only web
 /// addresses are passed on, and only once the user has seen the whole address
 /// and which server asked: other schemes launch whatever handler the OS has

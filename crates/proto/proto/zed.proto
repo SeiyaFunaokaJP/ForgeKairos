@@ -12,7 +12,7 @@ import "download.proto";
 import "file_transfer.proto";
 import "git.proto";
 import "image.proto";
-import "jp_enhance.proto";
+import "forgekairos.proto";
 import "lsp.proto";
 import "notification.proto";
 import "task.proto";
@@ -27,12 +27,12 @@ message Envelope {
   optional uint32 ack_id = 266;
 
   oneof payload {
-    // zed-jp-enhance: this fork's own messages are numbered from 10000 up, far
+    // ForgeKairos: this fork's own messages are numbered from 10000 up, far
     // from the sequential numbers upstream hands out, so that merging an
     // upstream release never gives one number to two messages. Numbers below
     // 10000 are upstream's alone. Enforced by
-    // crates/proto/tests/jp_enhance_numbering.rs.
-    // Looking for a fork number? Search "// jp-enhance current max"
+    // crates/proto/tests/forgekairos_numbering.rs.
+    // Looking for a fork number? Search "// forgekairos current max"
     SetEgressAllowlist set_egress_allowlist = 10000;
     GitRunCommand git_run_command = 10001;
     GitRunCommandResponse git_run_command_response = 10002;
@@ -96,7 +96,7 @@ message Envelope {
     SymbolIndexTypeTree symbol_index_type_tree = 10074;
     SymbolIndexTypeTreeResponse symbol_index_type_tree_response = 10075;
     SetGitAccountIdentity set_git_account_identity = 10076;
-    SetWorktreeWatchPriority set_worktree_watch_priority = 10077; // jp-enhance current max
+    SetWorktreeWatchPriority set_worktree_watch_priority = 10077; // forgekairos current max
 
     Hello hello = 4;
     Ack ack = 5;

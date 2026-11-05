@@ -2550,7 +2550,7 @@ fn currently_following(project: &Entity<Project>, cx: &App) -> bool {
 }
 
 /// The key under which the user accepts the external AI warning for an edit prediction provider
-/// (zed-jp-enhance: `.forgekairos-docs/DESIGN.md` ADR-F10). Edit predictions are namespaced apart
+/// (ForgeKairos: `.forgekairos-docs/DESIGN.md` ADR-F10). Edit predictions are namespaced apart
 /// from the agent's providers so that accepting the warning for chat does not open predictions.
 /// `settings_ui` builds and reads its keys through this function and
 /// [`external_ai_consent_provider_id`], so the prefix is written only here.

@@ -2907,7 +2907,7 @@ mod tests {
         let Ok(log) = wait(
             b"Welcome to Ubuntu 24.04.3 LTS (GNU/Linux 6.8.0-45-generic x86_64)\n\
               Warning: Permanently added 'host' to the list of known hosts.\n\
-              [ide-bridge] listening on /root/.cache/zed-jp-enhance/ide/s1/bridge.sock\n\
+              [ide-bridge] listening on /root/.cache/forgekairos/ide/s1/bridge.sock\n\
               zed-ide-bridge: ready\n\
               [ide-bridge] a connection arrived\n",
             BridgeHost::RemoteHost,
