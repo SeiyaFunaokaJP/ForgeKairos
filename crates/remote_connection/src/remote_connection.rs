@@ -185,8 +185,21 @@ impl Render for RemoteConnectionPrompt {
                         .child(
                             h_flex()
                                 .w_full()
-                                .justify_between()
-                                .child(MarkdownElement::new(prompt.0.clone(), markdown_style))
+                                .items_start()
+                                .gap_1()
+                                // The host key question carries a fingerprint that has no
+                                // break opportunity; without a zero basis the row grows to
+                                // its full width and pushes past the modal.
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .w_0()
+                                        .overflow_hidden()
+                                        .child(MarkdownElement::new(
+                                            prompt.0.clone(),
+                                            markdown_style,
+                                        )),
+                                )
                                 .when(is_password_prompt, |this| {
                                     this.child(
                                         IconButton::new("toggle_mask", masked_password_icon)
