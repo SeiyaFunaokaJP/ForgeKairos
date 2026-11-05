@@ -1324,10 +1324,28 @@ impl Dock {
         let mut target = self.arrangement();
         target.open = true;
         if promote_stacked || target.secondary != Some(index) {
-            target.promote(index);
+            self.promote_keeping_agent_panel(&mut target, index, cx);
         }
         self.arrange(target, window, cx);
         self.reveal_panel_to_user(index, window, cx);
+    }
+
+    /// [`Arrangement::promote`], except that an agent panel the open dock
+    /// shows on its own or on top stays on screen, stacked below `index`:
+    /// people keep the agent beside whatever else they open in its dock.
+    fn promote_keeping_agent_panel(&self, target: &mut Arrangement, index: usize, cx: &App) {
+        let displaces_agent_panel = self.is_open
+            && target.secondary != Some(index)
+            && target
+                .active
+                .filter(|active| *active != index)
+                .and_then(|active| self.panel_at(active))
+                .is_some_and(|panel| panel.is_agent_panel(cx));
+        if displaces_agent_panel {
+            target.move_in_above(index);
+        } else {
+            target.promote(index);
+        }
     }
 
     pub fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -1773,7 +1791,7 @@ impl Dock {
             // panels stay on screen, they just swap slots. In a closed dock this
             // only picks the panel the dock will open on.
             let mut target = self.arrangement();
-            target.promote(panel_ix);
+            self.promote_keeping_agent_panel(&mut target, panel_ix, cx);
             self.arrange(target, window, cx);
         }
     }
@@ -2435,7 +2453,10 @@ impl Render for PanelButtons {
                     SharedString,
                     Option<Box<dyn Action>>,
                     Option<SharedString>,
-                ) = if shows_in_pair {
+                ) = if shows_in_pair || (is_active_button && panel.is_agent_panel(cx)) {
+                    // The agent panel is the one people keep beside the others
+                    // in its dock, so its button names the panel rather than
+                    // the dock even when nothing else is showing.
                     (i18n::t!("Hide {icon_tooltip}").into(), None, None)
                 } else if is_restorable {
                     (
@@ -2776,6 +2797,7 @@ pub mod test {
         pub set_active_calls: Vec<bool>,
         /// How often the dock said the user asked for this panel by name.
         pub reveal_calls: usize,
+        pub is_agent_panel: bool,
     }
     actions!(test_only, [ToggleTestPanel]);
 
@@ -2795,6 +2817,14 @@ pub mod test {
                 activation_priority,
                 set_active_calls: Vec::new(),
                 reveal_calls: 0,
+                is_agent_panel: false,
+            }
+        }
+
+        pub fn new_agent(position: DockPosition, activation_priority: u32, cx: &mut App) -> Self {
+            Self {
+                is_agent_panel: true,
+                ..Self::new(position, activation_priority, cx)
             }
         }
 
@@ -2930,6 +2960,10 @@ pub mod test {
 
         fn revealed_by_user(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
             self.reveal_calls += 1;
+        }
+
+        fn is_agent_panel(&self) -> bool {
+            self.is_agent_panel
         }
 
         fn activation_priority(&self) -> u32 {

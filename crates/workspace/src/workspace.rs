@@ -21654,6 +21654,86 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_opening_a_panel_keeps_the_agent_panel_on_screen(cx: &mut gpui::TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let agent = cx.new(|cx| TestPanel::new_agent(DockPosition::Right, 100, cx));
+            workspace.add_panel(agent, window, cx);
+            let browser = cx.new(|cx| TestPanel::new(DockPosition::Right, 101, cx));
+            workspace.add_panel(browser, window, cx);
+            let call_graph = cx.new(|cx| TestPanel::new(DockPosition::Right, 102, cx));
+            workspace.add_panel(call_graph, window, cx);
+        });
+
+        let dock = workspace.read_with(cx, |workspace, _| workspace.right_dock().clone());
+        let (agent, browser, call_graph) = dock.read_with(cx, |dock, cx| {
+            let agent = (0..3)
+                .find(|index| {
+                    dock.panel_at(*index)
+                        .is_some_and(|panel| panel.is_agent_panel(cx))
+                })
+                .expect("the agent panel is in the right dock");
+            let mut others = (0..3).filter(|index| *index != agent);
+            (agent, others.next().unwrap(), others.next().unwrap())
+        });
+
+        // A closed dock opens on the panel asked for, alone.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(agent, window, cx);
+            dock.set_open(true, window, cx);
+            assert_eq!(dock.active_panel_index(), Some(agent));
+            assert_eq!(dock.secondary_panel_index(), None);
+        });
+
+        // Another panel joins the agent panel instead of replacing it.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(browser, window, cx);
+            assert_eq!(dock.active_panel_index(), Some(browser));
+            assert_eq!(dock.secondary_panel_index(), Some(agent));
+        });
+
+        // With the agent panel below, the next panel takes the other slot.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(call_graph, window, cx);
+            assert_eq!(dock.active_panel_index(), Some(call_graph));
+            assert_eq!(dock.secondary_panel_index(), Some(agent));
+        });
+
+        // On top again, the agent panel still stays when a third one opens.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(agent, window, cx);
+            assert_eq!(dock.active_panel_index(), Some(agent));
+            assert_eq!(dock.secondary_panel_index(), Some(call_graph));
+            dock.activate_panel(browser, window, cx);
+            assert_eq!(dock.active_panel_index(), Some(browser));
+            assert_eq!(dock.secondary_panel_index(), Some(agent));
+        });
+
+        // Once its own button hid it, other panels replace each other as usual.
+        dock.update_in(cx, |dock, window, cx| {
+            assert!(dock.hide_stacked_panel(agent, window, cx));
+            dock.activate_panel(call_graph, window, cx);
+            assert_eq!(dock.active_panel_index(), Some(call_graph));
+            assert_eq!(dock.secondary_panel_index(), None);
+        });
+
+        // A closed dock does not bring the agent panel along.
+        dock.update_in(cx, |dock, window, cx| {
+            dock.activate_panel(agent, window, cx);
+            dock.set_open(false, window, cx);
+            dock.activate_panel(browser, window, cx);
+            dock.set_open(true, window, cx);
+            assert_eq!(dock.active_panel_index(), Some(browser));
+            assert_eq!(dock.secondary_panel_index(), None);
+        });
+    }
+
+    #[gpui::test]
     async fn test_close_panel_keeps_the_other_half_of_a_stacked_pair(
         cx: &mut gpui::TestAppContext,
     ) {

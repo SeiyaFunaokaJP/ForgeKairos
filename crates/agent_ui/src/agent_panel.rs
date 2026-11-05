@@ -4684,6 +4684,7 @@ impl AgentPanel {
                     title: item.tab_content_text(0, cx),
                     icon: Self::open_tab_icon(item.as_ref(), window, cx),
                     is_active: Some(item_id) == active_pane_item_id,
+                    pane: Some(pane.clone()),
                 });
             }
         }
@@ -4701,6 +4702,7 @@ impl AgentPanel {
                 title: terminal.title(cx),
                 icon: Icon::new(IconName::Terminal),
                 is_active: Some(*terminal_id) == active_terminal_id,
+                pane: None,
             });
         }
 
@@ -9628,7 +9630,10 @@ mod tests {
     use anyhow::{Result, anyhow};
     use feature_flags::FeatureFlagAppExt;
     use fs::FakeFs;
-    use gpui::{App, Modifiers, TestAppContext, UpdateGlobal, VisualTestContext, px, size};
+    use gpui::{
+        App, Modifiers, MouseButton, TestAppContext, UpdateGlobal, VisualTestContext, point, px,
+        size,
+    };
     use parking_lot::Mutex;
     use project::{Project, WorktreePaths};
     use settings::{SettingsStore, WorkingDirectory};
@@ -14128,6 +14133,54 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![OpenTabId::PaneItem(cli_tab)],
             "強調も移る"
+        );
+
+        // 行はタブバーのタブと同じドラッグを始める (タブバーを隠していても
+        // 中央や別のペインへ落とせる)。
+        let start = cli_row.center();
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(
+            start + point(px(40.), px(0.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        let dragged_item = cx.update(|_window, cx| {
+            cx.active_drag_value::<DraggedTab>()
+                .map(|tab| tab.item.item_id())
+        });
+        assert_eq!(
+            dragged_item,
+            Some(cli_tab),
+            "CLI のタブの行を掴むとそのタブを運ぶ"
+        );
+        cx.simulate_mouse_up(
+            start + point(px(40.), px(0.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.run_until_parked();
+
+        let terminal_row = cx
+            .debug_bounds("PANEL_OPEN_TAB-2")
+            .expect("一覧にパネルの端末スレッドの行が描かれている");
+        cx.simulate_mouse_down(
+            terminal_row.center(),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        cx.simulate_mouse_move(
+            terminal_row.center() + point(px(40.), px(0.)),
+            MouseButton::Left,
+            Modifiers::default(),
+        );
+        assert!(
+            !cx.update(|_window, cx| cx.has_active_drag()),
+            "タブを持たない端末スレッドの行は掴めない"
+        );
+        cx.simulate_mouse_up(
+            terminal_row.center() + point(px(40.), px(0.)),
+            MouseButton::Left,
+            Modifiers::default(),
         );
     }
 
