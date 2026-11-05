@@ -65,6 +65,9 @@ msgstr "새 창에서 열기"
 msgid "Output from git {operation}"
 msgstr "git {operation}의 출력"
 
+msgid "Push rejected: fetch and integrate remote changes before pushing again"
+msgstr "푸시 거부됨: 원격 변경 사항을 페치하여 통합한 후 다시 푸시하세요"
+
 msgid "Remove Worktree from Window"
 msgstr "창에서 워크트리 제거"
 

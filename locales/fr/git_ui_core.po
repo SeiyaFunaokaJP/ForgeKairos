@@ -65,6 +65,9 @@ msgstr "Ouvrir dans une nouvelle fenêtre"
 msgid "Output from git {operation}"
 msgstr "Sortie de git {operation}"
 
+msgid "Push rejected: fetch and integrate remote changes before pushing again"
+msgstr "Envoi refusé : récupérez et intégrez les modifications distantes avant d'envoyer à nouveau"
+
 msgid "Remove Worktree from Window"
 msgstr "Retirer l'arborescence de travail de la fenêtre"
 

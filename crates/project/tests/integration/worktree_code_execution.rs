@@ -1059,6 +1059,62 @@ async fn test_a_held_change_is_not_forwarded_when_a_write_lands_during_its_check
 }
 
 #[gpui::test]
+async fn test_a_save_waits_for_the_check_of_the_guard_files(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/root"), rust_worktree()).await;
+    let restricted = paused_with_a_restricted_server(&fs, cx).await;
+    let heard = listen_to_the_restricted_server(&restricted, cx).await;
+    restricted
+        .server
+        .request::<lsp::request::RegisterCapability>(
+            lsp::RegistrationParams {
+                registrations: vec![lsp::Registration {
+                    id: "save".to_string(),
+                    method: "textDocument/didSave".to_string(),
+                    register_options: None,
+                }],
+            },
+            DEFAULT_LSP_REQUEST_TIMEOUT,
+        )
+        .await
+        .into_response()
+        .unwrap();
+    cx.run_until_parked();
+    let (mut finish_checks, checks_wait) = watch::channel(false);
+    cx.update(|cx| cx.set_global(GuardChecksWaitForTests(checks_wait)));
+
+    restricted.buffer.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "// edited\n")], None, cx)
+    });
+    restricted
+        .project
+        .update(cx, |project, cx| {
+            project.save_buffer(restricted.buffer.clone(), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(
+        heard.lock().clone(),
+        Vec::<String>::new(),
+        "held while its check runs"
+    );
+
+    finish_checks.send(true).unwrap();
+    cx.run_until_parked();
+    assert!(
+        heard
+            .lock()
+            .iter()
+            .any(|heard| heard.starts_with("saved ") && heard.ends_with("main.rs")),
+        "forwarded once the guard files are as confirmed: {:?}",
+        heard.lock()
+    );
+    assert!(restricted_server_running(&restricted.project, cx));
+}
+
+#[gpui::test]
 async fn test_nothing_held_is_forwarded_while_a_command_can_write_the_worktree(
     cx: &mut TestAppContext,
 ) {

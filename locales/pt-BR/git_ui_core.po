@@ -65,6 +65,9 @@ msgstr "Abrir em nova janela"
 msgid "Output from git {operation}"
 msgstr "Saída do git {operation}"
 
+msgid "Push rejected: fetch and integrate remote changes before pushing again"
+msgstr "Push recusado: faça fetch e integre as alterações remotas antes de fazer push novamente"
+
 msgid "Remove Worktree from Window"
 msgstr "Remover árvore de trabalho da janela"
 

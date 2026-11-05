@@ -323,10 +323,6 @@ msgid "Repair worktree"
 msgstr "ワークツリーの修復"
 
 msgctxt "git result"
-msgid "Restore checkpoint"
-msgstr "チェックポイントの復元"
-
-msgctxt "git result"
 msgid "Restore files"
 msgstr "ファイルの復元"
 

@@ -1224,6 +1224,9 @@ msgstr "MCP 伺服器"
 msgid "MCP {on}/{total}"
 msgstr "MCP {on}/{total}"
 
+msgid "Main Agent"
+msgstr "主代理"
+
 msgid "Make Subagent Full Screen"
 msgstr "將子代理設為全螢幕"
 
@@ -1235,6 +1238,9 @@ msgstr "訊息"
 
 msgid "Message accepted; agent connection lost"
 msgstr "訊息已被接受；與代理的連線已中斷"
+
+msgid "Message between sessions"
+msgstr "工作階段之間的訊息"
 
 msgid "Message cancelled"
 msgstr "已取消傳送訊息"
@@ -1476,6 +1482,9 @@ msgstr "開啟儲存庫"
 msgid "Open Sandbox Settings"
 msgstr "開啟沙箱設定"
 
+msgid "Open Session"
+msgstr "開啟工作階段"
+
 msgid "Open Skill"
 msgstr "開啟技能"
 
@@ -1703,12 +1712,6 @@ msgstr "重新啟動轉換"
 
 msgid "Restore"
 msgstr "還原"
-
-msgid "Restore Checkpoint"
-msgstr "還原檢查點"
-
-msgid "Restores all files in the project to the content they had at this point in the conversation."
-msgstr "將專案中的所有檔案還原至對話中此時間點的內容。"
 
 msgid "Restrict the Network"
 msgstr "限制網路"
@@ -2013,6 +2016,9 @@ msgstr "子代理失敗"
 msgid "Subagent Output"
 msgstr "子代理輸出"
 
+msgid "Subagent Status Unknown"
+msgstr "子代理狀態不明"
+
 msgid "Subagent: {title} ({session_id})"
 msgstr "子代理：{title}（{session_id}）"
 
@@ -2235,6 +2241,15 @@ msgstr "登入狀態會與您平常使用的 Claude Code（`~/.claude`）共用�
 
 msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
 msgstr "下載的 Claude Code 大小與發行資訊不符。已取消。"
+
+msgid "The subagent reached its limit of model requests."
+msgstr "子代理已達到模型要求次數上限。"
+
+msgid "The subagent reached its token limit."
+msgstr "子代理已達到 Token 上限。"
+
+msgid "The subagent's model refused to continue."
+msgstr "子代理的模型拒絕繼續。"
 
 msgid "The terminal panel is not available."
 msgstr "無法使用終端機面板。"
@@ -2481,6 +2496,9 @@ msgstr "不可用"
 
 msgid "Unavailable Editing"
 msgstr "無法編輯"
+
+msgid "Unavailable Session"
+msgstr "無法使用的工作階段"
 
 msgid "Undo"
 msgstr "復原"
@@ -2965,6 +2983,14 @@ msgstr "一律允許 `{}` 命令"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "來源"
+
+msgctxt "session message"
+msgid "From"
+msgstr "來自"
+
+msgctxt "session message"
+msgid "To"
+msgstr "傳送給"
 
 msgctxt "subagent status"
 msgid "Awaiting Permission"

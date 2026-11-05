@@ -438,6 +438,9 @@ msgstr "關閉"
 msgid "Close (they show again next time)"
 msgstr "關閉（下次會再次顯示）"
 
+msgid "Close Details Panel"
+msgstr "關閉詳細資料面板"
+
 msgid "Close the Box (Its Contents Are Kept)"
 msgstr "關閉盒子（保留其內容）"
 
@@ -1278,6 +1281,9 @@ msgstr "隱藏提交詳細資料"
 msgid "Hide Commit Editor"
 msgstr "隱藏提交訊息編輯器"
 
+msgid "Hide Commit Message"
+msgstr "隱藏提交訊息"
+
 msgid "History"
 msgstr "歷程記錄"
 
@@ -1636,6 +1642,9 @@ msgstr "在專案中開啟檔案"
 
 msgid "Open Git Graph"
 msgstr "開啟提交圖"
+
+msgid "Open In Browser"
+msgstr "在瀏覽器中開啟"
 
 msgid "Open a directory first"
 msgstr "請先開啟資料夾"
@@ -2175,6 +2184,9 @@ msgstr "顯示提交詳細資料"
 
 msgid "Show Commit Editor"
 msgstr "顯示提交訊息編輯器"
+
+msgid "Show Commit Message"
+msgstr "顯示提交訊息"
 
 msgid "Show Flat View"
 msgstr "顯示平面檢視"

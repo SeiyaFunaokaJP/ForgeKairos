@@ -13034,6 +13034,14 @@ exit 7
         updates: Vec<acp::SessionUpdate>,
     }
 
+    /// How the fake agent answers `session/load`, for tests that need more than the default
+    /// empty response.
+    struct LoadSessionTestBehavior {
+        response: acp::LoadSessionResponse,
+        /// Sent right after the response, as the agent's current state.
+        after_response: Vec<acp::SessionUpdate>,
+    }
+
     async fn connect_fake_agent_with_new_session_behavior(
         close_session_gate: Option<async_channel::Receiver<()>>,
         agent_sender: Option<futures::channel::oneshot::Sender<ConnectionTo<Client>>>,
@@ -13048,6 +13056,32 @@ exit 7
         Arc<std::sync::Mutex<Option<async_channel::Receiver<()>>>>,
         Task<anyhow::Result<()>>,
     ) {
+        connect_fake_agent_with_behaviors(
+            close_session_gate,
+            agent_sender,
+            new_session_behavior,
+            None,
+            cx,
+        )
+        .await
+    }
+
+    async fn connect_fake_agent_with_behaviors(
+        close_session_gate: Option<async_channel::Receiver<()>>,
+        agent_sender: Option<futures::channel::oneshot::Sender<ConnectionTo<Client>>>,
+        new_session_behavior: Option<NewSessionTestBehavior>,
+        load_session_behavior: Option<LoadSessionTestBehavior>,
+        cx: &mut gpui::TestAppContext,
+    ) -> (
+        Rc<AcpConnection>,
+        Entity<project::Project>,
+        Arc<AtomicUsize>,
+        Arc<AtomicUsize>,
+        Arc<std::sync::Mutex<Vec<acp::SessionUpdate>>>,
+        Arc<std::sync::Mutex<Option<async_channel::Receiver<()>>>>,
+        Task<anyhow::Result<()>>,
+    ) {
+        let load_session_behavior = Arc::new(Mutex::new(load_session_behavior));
         cx.update(|cx| {
             let store = settings::SettingsStore::test(cx);
             cx.set_global(store);
@@ -13148,6 +13182,7 @@ exit 7
                     let load_count = load_count.clone();
                     let load_session_updates = load_session_updates.clone();
                     let load_session_gate = load_session_gate.clone();
+                    let load_session_behavior = load_session_behavior.clone();
                     async move |req: acp::LoadSessionRequest, responder, cx| {
                         load_count.fetch_add(1, Ordering::SeqCst);
 
@@ -13177,7 +13212,21 @@ exit 7
                             gate.recv().await.ok();
                         }
 
-                        responder.respond(acp::LoadSessionResponse::new())
+                        let behavior = load_session_behavior
+                            .lock()
+                            .expect("load session behavior")
+                            .take();
+                        let Some(behavior) = behavior else {
+                            return responder.respond(acp::LoadSessionResponse::new());
+                        };
+                        responder.respond(behavior.response)?;
+                        for update in behavior.after_response {
+                            cx.send_notification(acp::SessionNotification::new(
+                                req.session_id.clone(),
+                                update,
+                            ))?;
+                        }
+                        Ok(())
                     }
                 },
                 agent_client_protocol::on_receive_request!(),
@@ -14533,6 +14582,89 @@ exit 7
         assert_eq!(
             *options.config_options.borrow(),
             acp_thread::config_options::from_v1(updated_options).expect("shared config options")
+        );
+    }
+
+    /// `ordered_response`: what the agent sends right after its load response is its current
+    /// state, so it waits until the response is applied instead of being overwritten by it.
+    #[gpui::test]
+    async fn test_messages_after_a_load_response_wait_until_it_is_applied(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let web_search = |enabled| {
+            vec![acp::SessionConfigOption::boolean(
+                "web_search",
+                "Web Search",
+                enabled,
+            )]
+        };
+        let (connection, project, _, _, _, _, _keep_agent_alive) =
+            connect_fake_agent_with_behaviors(
+                None,
+                None,
+                None,
+                Some(LoadSessionTestBehavior {
+                    response: acp::LoadSessionResponse::new().config_options(web_search(false)),
+                    after_response: vec![acp::SessionUpdate::ConfigOptionUpdate(
+                        acp::ConfigOptionUpdate::new(web_search(true)),
+                    )],
+                }),
+                cx,
+            )
+            .await;
+        let session_id = acp_v2::SessionId::new("session-update-after-response");
+        let (response_received_tx, response_received) = async_channel::bounded::<()>(1);
+        let (release_tx, release) = async_channel::bounded::<()>(1);
+        let load = cx.update(|cx| {
+            connection.clone().open_or_create_session(
+                session_id.clone(),
+                project,
+                PathList::new(&[std::path::Path::new("/a")]),
+                None,
+                true,
+                move |connection, session_id, _, applied| {
+                    async move {
+                        let request =
+                            acp::LoadSessionRequest::new(acp::SessionId::new(session_id.0), "/a");
+                        let response = ordered_response(&connection, request, applied).await?;
+                        response_received_tx.send(()).await?;
+                        // Stands for the work between receiving the response and applying it.
+                        release.recv().await?;
+                        Ok(SessionConfigResponse {
+                            modes: response.modes,
+                            config_options: response.config_options,
+                        })
+                    }
+                    .boxed_local()
+                },
+                cx,
+            )
+        });
+        response_received.recv().await.expect("the load response");
+        cx.run_until_parked();
+        let current_options = |cx: &mut gpui::TestAppContext| {
+            cx.update(|_| {
+                connection
+                    .sessions
+                    .borrow()
+                    .get(&session_id)
+                    .and_then(|session| session.config_options.as_ref())
+                    .map(|options| options.config_options.borrow().clone())
+            })
+        };
+        assert_eq!(
+            current_options(cx),
+            None,
+            "the update after the response waits while the response is being applied"
+        );
+
+        release_tx.send(()).await.expect("release the load");
+        load.await.expect("session should load");
+        cx.run_until_parked();
+        assert_eq!(
+            current_options(cx),
+            Some(acp_thread::config_options::from_v1(web_search(true)).expect("config options")),
+            "applied after the response, the update is the current state"
         );
     }
 

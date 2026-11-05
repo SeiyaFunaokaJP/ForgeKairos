@@ -1224,6 +1224,9 @@ msgstr "MCP 서버"
 msgid "MCP {on}/{total}"
 msgstr "MCP {on}/{total}"
 
+msgid "Main Agent"
+msgstr "메인 에이전트"
+
 msgid "Make Subagent Full Screen"
 msgstr "하위 에이전트 전체 화면으로 보기"
 
@@ -1235,6 +1238,9 @@ msgstr "메시지"
 
 msgid "Message accepted; agent connection lost"
 msgstr "메시지가 접수되었습니다. 에이전트와의 연결이 끊어졌습니다"
+
+msgid "Message between sessions"
+msgstr "세션 간 메시지"
 
 msgid "Message cancelled"
 msgstr "메시지 전송이 취소됨"
@@ -1476,6 +1482,9 @@ msgstr "저장소 열기"
 msgid "Open Sandbox Settings"
 msgstr "샌드박스 설정 열기"
 
+msgid "Open Session"
+msgstr "세션 열기"
+
 msgid "Open Skill"
 msgstr "스킬 열기"
 
@@ -1703,12 +1712,6 @@ msgstr "변환 다시 시작"
 
 msgid "Restore"
 msgstr "복원"
-
-msgid "Restore Checkpoint"
-msgstr "체크포인트 복원"
-
-msgid "Restores all files in the project to the content they had at this point in the conversation."
-msgstr "프로젝트의 모든 파일을 대화의 이 시점에 있던 상태로 복원합니다."
 
 msgid "Restrict the Network"
 msgstr "네트워크 제한하기"
@@ -2013,6 +2016,9 @@ msgstr "하위 에이전트 실패"
 msgid "Subagent Output"
 msgstr "하위 에이전트 출력"
 
+msgid "Subagent Status Unknown"
+msgstr "하위 에이전트 상태 알 수 없음"
+
 msgid "Subagent: {title} ({session_id})"
 msgstr "하위 에이전트: {title} ({session_id})"
 
@@ -2235,6 +2241,15 @@ msgstr "로그인은 평소 사용하는 Claude Code(`~/.claude`)와 공유됩�
 
 msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
 msgstr "다운로드한 Claude Code의 크기가 릴리스 정보와 일치하지 않습니다. 취소했습니다."
+
+msgid "The subagent reached its limit of model requests."
+msgstr "하위 에이전트가 모델 요청 횟수 한도에 도달했습니다."
+
+msgid "The subagent reached its token limit."
+msgstr "하위 에이전트가 토큰 한도에 도달했습니다."
+
+msgid "The subagent's model refused to continue."
+msgstr "하위 에이전트의 모델이 계속하기를 거부했습니다."
 
 msgid "The terminal panel is not available."
 msgstr "터미널 패널을 사용할 수 없습니다."
@@ -2481,6 +2496,9 @@ msgstr "사용 불가"
 
 msgid "Unavailable Editing"
 msgstr "편집 불가"
+
+msgid "Unavailable Session"
+msgstr "사용할 수 없는 세션"
 
 msgid "Undo"
 msgstr "실행 취소"
@@ -2965,6 +2983,14 @@ msgstr "`{}` 명령에 항상 적용"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "소스"
+
+msgctxt "session message"
+msgid "From"
+msgstr "보낸 사람"
+
+msgctxt "session message"
+msgid "To"
+msgstr "받는 사람"
 
 msgctxt "subagent status"
 msgid "Awaiting Permission"

@@ -1228,6 +1228,9 @@ msgstr "Serveurs MCP"
 msgid "MCP {on}/{total}"
 msgstr "MCP {on}/{total}"
 
+msgid "Main Agent"
+msgstr "Agent principal"
+
 msgid "Make Subagent Full Screen"
 msgstr "Mettre le sous-agent en plein écran"
 
@@ -1239,6 +1242,9 @@ msgstr "Message"
 
 msgid "Message accepted; agent connection lost"
 msgstr "Message accepté ; connexion à l'agent perdue"
+
+msgid "Message between sessions"
+msgstr "Message entre sessions"
 
 msgid "Message cancelled"
 msgstr "Message annulé"
@@ -1480,6 +1486,9 @@ msgstr "Ouvrir le dépôt"
 msgid "Open Sandbox Settings"
 msgstr "Ouvrir les paramètres du bac à sable"
 
+msgid "Open Session"
+msgstr "Ouvrir la session"
+
 msgid "Open Skill"
 msgstr "Ouvrir la compétence"
 
@@ -1707,12 +1716,6 @@ msgstr "Redémarrer la transformation"
 
 msgid "Restore"
 msgstr "Restaurer"
-
-msgid "Restore Checkpoint"
-msgstr "Restaurer le point de contrôle"
-
-msgid "Restores all files in the project to the content they had at this point in the conversation."
-msgstr "Restaure tous les fichiers du projet à l'état qu'ils avaient à ce point de la conversation."
 
 msgid "Restrict the Network"
 msgstr "Restreindre le réseau"
@@ -2017,6 +2020,9 @@ msgstr "Échec du sous-agent"
 msgid "Subagent Output"
 msgstr "Sortie du sous-agent"
 
+msgid "Subagent Status Unknown"
+msgstr "État du sous-agent inconnu"
+
 msgid "Subagent: {title} ({session_id})"
 msgstr "Sous-agent : {title} ({session_id})"
 
@@ -2240,6 +2246,15 @@ msgstr "La connexion est partagée avec votre Claude Code habituel (`~/.claude`)
 
 msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
 msgstr "La taille du Claude Code téléchargé ne correspond pas aux informations de version. Opération annulée."
+
+msgid "The subagent reached its limit of model requests."
+msgstr "Le sous-agent a atteint sa limite de requêtes au modèle."
+
+msgid "The subagent reached its token limit."
+msgstr "Le sous-agent a atteint sa limite de jetons."
+
+msgid "The subagent's model refused to continue."
+msgstr "Le modèle du sous-agent a refusé de continuer."
 
 msgid "The terminal panel is not available."
 msgstr "Le panneau de terminal n'est pas disponible."
@@ -2486,6 +2501,9 @@ msgstr "Indisponible"
 
 msgid "Unavailable Editing"
 msgstr "Modification indisponible"
+
+msgid "Unavailable Session"
+msgstr "Session indisponible"
 
 msgid "Undo"
 msgstr "Défaire"
@@ -2978,6 +2996,14 @@ msgstr "Toujours pour les commandes `{}`"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "Source"
+
+msgctxt "session message"
+msgid "From"
+msgstr "De"
+
+msgctxt "session message"
+msgid "To"
+msgstr "À"
 
 msgctxt "subagent status"
 msgid "Awaiting Permission"

@@ -62,6 +62,9 @@ msgstr "新しいウィンドウで開く"
 msgid "Output from git {operation}"
 msgstr "git {operation} の出力"
 
+msgid "Push rejected: fetch and integrate remote changes before pushing again"
+msgstr "プッシュが拒否されました: リモートの変更をフェッチして取り込んでから、もう一度プッシュしてください"
+
 msgid "Remove Worktree from Window"
 msgstr "ワークツリーをウィンドウから削除"
 
