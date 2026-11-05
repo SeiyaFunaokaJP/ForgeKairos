@@ -120,7 +120,7 @@ jobs:
       matrix:
         arch: ${{ fromJSON((inputs.macos_arch == 'aarch64' && '["aarch64"]') || (inputs.macos_arch == 'x86_64' && '["x86_64"]') || '["aarch64","x86_64"]') }}
     # Apple silicon builds both: x86_64 is cross-compiled, as upstream does.
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
