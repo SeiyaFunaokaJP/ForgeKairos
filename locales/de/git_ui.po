@@ -448,6 +448,9 @@ msgstr "Schließen"
 msgid "Close (they show again next time)"
 msgstr "Schließen (sie werden beim nächsten Mal wieder angezeigt)"
 
+msgid "Close Details Panel"
+msgstr "Details-Panel schließen"
+
 msgid "Close the Box (Its Contents Are Kept)"
 msgstr "Box schließen (Inhalt bleibt erhalten)"
 
@@ -1297,6 +1300,9 @@ msgstr "Commit-Details ausblenden"
 msgid "Hide Commit Editor"
 msgstr "Commit-Editor ausblenden"
 
+msgid "Hide Commit Message"
+msgstr "Commit-Nachricht ausblenden"
+
 msgid "History"
 msgstr "Verlauf"
 
@@ -1660,6 +1666,9 @@ msgstr "Datei im Projekt öffnen"
 
 msgid "Open Git Graph"
 msgstr "Commit-Graph öffnen"
+
+msgid "Open In Browser"
+msgstr "Im Browser öffnen"
 
 msgid "Open a directory first"
 msgstr "Öffnen Sie zuerst ein Verzeichnis"
@@ -2204,6 +2213,9 @@ msgstr "Commit-Details anzeigen"
 
 msgid "Show Commit Editor"
 msgstr "Commit-Editor anzeigen"
+
+msgid "Show Commit Message"
+msgstr "Commit-Nachricht anzeigen"
 
 msgid "Show Flat View"
 msgstr "Flache Ansicht anzeigen"

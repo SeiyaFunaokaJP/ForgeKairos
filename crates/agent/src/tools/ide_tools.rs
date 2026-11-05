@@ -484,10 +484,7 @@ fn call_hierarchy_locations<'a>(
             && node.contents_allowed
             && let Some(abs_path) = project.absolute_path(&node.path, cx)
         {
-            locations.push(
-                acp::ToolCallLocation::new(abs_path)
-                    .line(Some(node.lines.start_line.saturating_sub(1))),
-            );
+            locations.push(acp::ToolCallLocation::new(abs_path).line(Some(node.lines.start_line)));
         }
         pending.extend(node.children.iter().rev());
     }
@@ -1415,6 +1412,7 @@ mod tests {
     use project::FakeFs;
     use serde_json::json;
     use settings::SettingsStore;
+    use std::num::NonZeroU32;
     use util::path;
 
     #[derive(Debug, PartialEq)]
@@ -2397,13 +2395,13 @@ mod tests {
             .expect("the card links to the results");
         let linked = locations
             .iter()
-            .map(|location| (location.path.0.clone(), location.line))
+            .map(|location| (location.path.0.clone(), location.line.map(NonZeroU32::get)))
             .collect::<Vec<_>>();
         assert_eq!(
             linked,
             [
-                (PathBuf::from(path!("/root/src/lib.rs")), Some(0)),
-                (PathBuf::from(path!("/root/src/main.rs")), Some(0)),
+                (PathBuf::from(path!("/root/src/lib.rs")), Some(1)),
+                (PathBuf::from(path!("/root/src/main.rs")), Some(1)),
             ]
         );
 
@@ -2802,11 +2800,11 @@ mod tests {
         assert_eq!(
             locations
                 .iter()
-                .map(|location| (location.path.0.clone(), location.line))
+                .map(|location| (location.path.0.clone(), location.line.map(NonZeroU32::get)))
                 .collect::<Vec<_>>(),
             [
-                (PathBuf::from(path!("/root/src/main.c")), Some(0)),
                 (PathBuf::from(path!("/root/src/main.c")), Some(1)),
+                (PathBuf::from(path!("/root/src/main.c")), Some(2)),
             ]
         );
 

@@ -435,6 +435,9 @@ msgstr "閉じる"
 msgid "Close (they show again next time)"
 msgstr "閉じる (次に開いたときはまた出ます)"
 
+msgid "Close Details Panel"
+msgstr "詳細パネルを閉じる"
+
 msgid "Close the Box (Its Contents Are Kept)"
 msgstr "箱を閉じる (中身はそのまま残ります)"
 
@@ -1275,6 +1278,9 @@ msgstr "コミットの詳細を隠す"
 msgid "Hide Commit Editor"
 msgstr "コミットエディターを隠す"
 
+msgid "Hide Commit Message"
+msgstr "コミットメッセージを隠す"
+
 msgid "History"
 msgstr "履歴"
 
@@ -1633,6 +1639,9 @@ msgstr "プロジェクト内のファイルを開く"
 
 msgid "Open Git Graph"
 msgstr "コミットグラフを開く"
+
+msgid "Open In Browser"
+msgstr "ブラウザーで開く"
 
 msgid "Open a directory first"
 msgstr "先にディレクトリを開いてください。"
@@ -2172,6 +2181,9 @@ msgstr "コミットの詳細を表示"
 
 msgid "Show Commit Editor"
 msgstr "コミットエディターを表示"
+
+msgid "Show Commit Message"
+msgstr "コミットメッセージを表示"
 
 msgid "Show Flat View"
 msgstr "フラット表示に切り替え"

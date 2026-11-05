@@ -546,9 +546,7 @@ mod tests {
     fn local() -> ProtectedLocations {
         let mut protected_paths =
             sandbox::builtin_protected_paths(Path::new(path!("/home/user")), &[]);
-        protected_paths.push(PathBuf::from(path!(
-            "/home/user/.local/share/forgekairos"
-        )));
+        protected_paths.push(PathBuf::from(path!("/home/user/.local/share/forgekairos")));
         ProtectedLocations::Local {
             settings_directories: vec![PathBuf::from(path!("/home/user/.config/forgekairos"))],
             protected_paths,

@@ -448,6 +448,9 @@ msgstr "Fermer"
 msgid "Close (they show again next time)"
 msgstr "Fermer (ils réapparaîtront la prochaine fois)"
 
+msgid "Close Details Panel"
+msgstr "Fermer le panneau des détails"
+
 msgid "Close the Box (Its Contents Are Kept)"
 msgstr "Fermer la boîte (son contenu est conservé)"
 
@@ -1297,6 +1300,9 @@ msgstr "Masquer les détails de la validation"
 msgid "Hide Commit Editor"
 msgstr "Masquer l'éditeur de message de validation"
 
+msgid "Hide Commit Message"
+msgstr "Masquer le message de validation"
+
 msgid "History"
 msgstr "Historique"
 
@@ -1660,6 +1666,9 @@ msgstr "Ouvrir le fichier dans le projet"
 
 msgid "Open Git Graph"
 msgstr "Ouvrir le graphe des validations"
+
+msgid "Open In Browser"
+msgstr "Ouvrir dans le navigateur"
 
 msgid "Open a directory first"
 msgstr "Ouvrez d'abord un répertoire"
@@ -2204,6 +2213,9 @@ msgstr "Afficher les détails de la validation"
 
 msgid "Show Commit Editor"
 msgstr "Afficher l'éditeur de message de validation"
+
+msgid "Show Commit Message"
+msgstr "Afficher le message de validation"
 
 msgid "Show Flat View"
 msgstr "Afficher la vue à plat"

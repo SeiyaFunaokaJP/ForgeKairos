@@ -438,6 +438,9 @@ msgstr "닫기"
 msgid "Close (they show again next time)"
 msgstr "닫기 (다음에 다시 표시됨)"
 
+msgid "Close Details Panel"
+msgstr "세부 정보 패널 닫기"
+
 msgid "Close the Box (Its Contents Are Kept)"
 msgstr "상자 닫기 (내용은 유지됨)"
 
@@ -1278,6 +1281,9 @@ msgstr "커밋 세부 정보 숨기기"
 msgid "Hide Commit Editor"
 msgstr "커밋 편집기 숨기기"
 
+msgid "Hide Commit Message"
+msgstr "커밋 메시지 숨기기"
+
 msgid "History"
 msgstr "기록"
 
@@ -1636,6 +1642,9 @@ msgstr "프로젝트에서 파일 열기"
 
 msgid "Open Git Graph"
 msgstr "커밋 그래프 열기"
+
+msgid "Open In Browser"
+msgstr "브라우저에서 열기"
 
 msgid "Open a directory first"
 msgstr "먼저 디렉터리를 여세요"
@@ -2175,6 +2184,9 @@ msgstr "커밋 세부 정보 표시"
 
 msgid "Show Commit Editor"
 msgstr "커밋 편집기 표시"
+
+msgid "Show Commit Message"
+msgstr "커밋 메시지 표시"
 
 msgid "Show Flat View"
 msgstr "목록 보기 표시"

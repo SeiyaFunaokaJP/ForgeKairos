@@ -326,10 +326,6 @@ msgid "Repair worktree"
 msgstr "修复工作树"
 
 msgctxt "git result"
-msgid "Restore checkpoint"
-msgstr "恢复到检查点"
-
-msgctxt "git result"
 msgid "Restore files"
 msgstr "还原文件"
 

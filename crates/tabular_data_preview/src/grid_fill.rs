@@ -2194,7 +2194,12 @@ mod tests {
         let (pane, editor, mut cx) = open_grid("h\n7\nx\nx", cx).await;
 
         select(&pane, body_cell(0, 0), body_cell(0, 0), &mut cx);
-        drag_fill_handle(&pane, body_cell(2, 0), Modifiers::secondary_key(), &mut cx);
+        drag_fill_handle(
+            &pane,
+            body_cell(2, 0),
+            cx.read(Modifiers::secondary_key),
+            &mut cx,
+        );
 
         assert_eq!(buffer_text(&editor, &mut cx), "h\n7\n8\n9");
     }
@@ -2375,7 +2380,7 @@ mod tests {
             &pane,
             body_cell(0, 0),
             body_cell(2, 0),
-            Modifiers::secondary_key(),
+            cx.read(Modifiers::secondary_key),
             &mut cx,
         );
 
@@ -2665,7 +2670,12 @@ mod tests {
         let (pane, editor, mut cx) = open_grid("d\n2026-09-18\nx\nx", cx).await;
 
         select(&pane, body_cell(0, 0), body_cell(0, 0), &mut cx);
-        drag_fill_handle(&pane, body_cell(2, 0), Modifiers::secondary_key(), &mut cx);
+        drag_fill_handle(
+            &pane,
+            body_cell(2, 0),
+            cx.read(Modifiers::secondary_key),
+            &mut cx,
+        );
 
         assert_eq!(
             buffer_text(&editor, &mut cx),

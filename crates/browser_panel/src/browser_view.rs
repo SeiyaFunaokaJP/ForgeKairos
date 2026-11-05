@@ -1251,7 +1251,7 @@ impl BrowserView {
 
     /// ブックマークのクリック。Ctrl (macOS では Cmd) 併用と中クリックは新しいタブ。
     fn activate_bookmark_url(&mut self, url: &str, event: &ClickEvent, cx: &mut Context<Self>) {
-        if event.modifiers().secondary() || event.is_middle_click() {
+        if event.modifiers().secondary(cx) || event.is_middle_click() {
             self.open_in_new_tab(url, cx);
         } else {
             self.navigate_to(url, cx);

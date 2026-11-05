@@ -28,4 +28,4 @@ rustflags = ["-C", "link-arg=-Wl,-rename_section,__TEXT,__text_startup,__TEXT,__
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [env]
-MACOSX_DEPLOYMENT_TARGET = "10.15.7"
+MACOSX_DEPLOYMENT_TARGET = "12.0"

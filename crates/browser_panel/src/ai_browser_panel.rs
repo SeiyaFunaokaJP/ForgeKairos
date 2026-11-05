@@ -358,7 +358,7 @@ impl Render for AiBrowserPanel {
         };
         // ブラウザーのキー割り当て (Ctrl+T / Ctrl+W など) は `BrowserPanel` の文脈に
         // 付いているので、こちらでも同じ文脈を立てる。
-        let mut key_context = KeyContext::new_with_defaults();
+        let mut key_context = KeyContext::new_with_defaults(cx.platform_info().os);
         key_context.add(BROWSER_PANEL_KEY);
         key_context.add(AI_BROWSER_PANEL_KEY);
         v_flex()

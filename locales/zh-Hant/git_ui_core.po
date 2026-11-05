@@ -65,6 +65,9 @@ msgstr "在新視窗中開啟"
 msgid "Output from git {operation}"
 msgstr "git {operation} 的輸出"
 
+msgid "Push rejected: fetch and integrate remote changes before pushing again"
+msgstr "推送遭拒：請先擷取並整合遠端變更，再重新推送"
+
 msgid "Remove Worktree from Window"
 msgstr "從視窗移除工作樹"
 

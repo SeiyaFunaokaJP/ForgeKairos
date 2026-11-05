@@ -8519,8 +8519,8 @@ mod tests {
         std::fs::create_dir(root.join(".cache/other")).expect("create .cache/other");
         std::fs::create_dir(root.join(".cache/forgekairos/other")).expect("create a sibling");
         std::fs::write(root.join("notes.txt"), "x").expect("write notes.txt");
-        let protected = classify_protected_paths(&[root.join(".cache/forgekairos/sandbox")])
-            .expect("classify");
+        let protected =
+            classify_protected_paths(&[root.join(".cache/forgekairos/sandbox")]).expect("classify");
         let roots = pin_writable_paths(std::slice::from_ref(&root), true).expect("pin the root");
 
         let plan = plan_filesystem(&roots, &protected, false, true, &|_| true).expect("plan");

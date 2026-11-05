@@ -1228,6 +1228,9 @@ msgstr "MCP-Server"
 msgid "MCP {on}/{total}"
 msgstr "MCP {on}/{total}"
 
+msgid "Main Agent"
+msgstr "Hauptagent"
+
 msgid "Make Subagent Full Screen"
 msgstr "Unteragent im Vollbild anzeigen"
 
@@ -1239,6 +1242,9 @@ msgstr "Nachricht"
 
 msgid "Message accepted; agent connection lost"
 msgstr "Nachricht angenommen; Verbindung zum Agenten getrennt"
+
+msgid "Message between sessions"
+msgstr "Nachricht zwischen Sitzungen"
 
 msgid "Message cancelled"
 msgstr "Nachricht abgebrochen"
@@ -1480,6 +1486,9 @@ msgstr "Repository öffnen"
 msgid "Open Sandbox Settings"
 msgstr "Sandbox-Einstellungen öffnen"
 
+msgid "Open Session"
+msgstr "Sitzung öffnen"
+
 msgid "Open Skill"
 msgstr "Skill öffnen"
 
@@ -1707,12 +1716,6 @@ msgstr "Transformation neu starten"
 
 msgid "Restore"
 msgstr "Wiederherstellen"
-
-msgid "Restore Checkpoint"
-msgstr "Prüfpunkt wiederherstellen"
-
-msgid "Restores all files in the project to the content they had at this point in the conversation."
-msgstr "Stellt für alle Dateien im Projekt den Inhalt wieder her, den sie zu diesem Zeitpunkt in der Konversation hatten."
 
 msgid "Restrict the Network"
 msgstr "Netzwerk beschränken"
@@ -2017,6 +2020,9 @@ msgstr "Unteragent fehlgeschlagen"
 msgid "Subagent Output"
 msgstr "Unteragent-Ausgabe"
 
+msgid "Subagent Status Unknown"
+msgstr "Status des Unteragenten unbekannt"
+
 msgid "Subagent: {title} ({session_id})"
 msgstr "Unteragent: {title} ({session_id})"
 
@@ -2240,6 +2246,15 @@ msgstr "Die Anmeldung wird mit Ihrem üblichen Claude Code geteilt (`~/.claude`)
 
 msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
 msgstr "Die Größe des heruntergeladenen Claude Code stimmt nicht mit den Release-Informationen überein. Abgebrochen."
+
+msgid "The subagent reached its limit of model requests."
+msgstr "Der Unteragent hat sein Limit an Modellanfragen erreicht."
+
+msgid "The subagent reached its token limit."
+msgstr "Der Unteragent hat sein Token-Limit erreicht."
+
+msgid "The subagent's model refused to continue."
+msgstr "Das Modell des Unteragenten hat die Fortsetzung verweigert."
 
 msgid "The terminal panel is not available."
 msgstr "Das Terminal-Panel ist nicht verfügbar."
@@ -2486,6 +2501,9 @@ msgstr "Nicht verfügbar"
 
 msgid "Unavailable Editing"
 msgstr "Bearbeitung nicht verfügbar"
+
+msgid "Unavailable Session"
+msgstr "Nicht verfügbare Sitzung"
 
 msgid "Undo"
 msgstr "Rückgängig"
@@ -2978,6 +2996,14 @@ msgstr "Immer für `{}`-Befehle"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "Quelle"
+
+msgctxt "session message"
+msgid "From"
+msgstr "Von"
+
+msgctxt "session message"
+msgid "To"
+msgstr "An"
 
 msgctxt "subagent status"
 msgid "Awaiting Permission"

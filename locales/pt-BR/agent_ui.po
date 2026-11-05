@@ -1228,6 +1228,9 @@ msgstr "Servidores MCP"
 msgid "MCP {on}/{total}"
 msgstr "MCP {on}/{total}"
 
+msgid "Main Agent"
+msgstr "Agente principal"
+
 msgid "Make Subagent Full Screen"
 msgstr "Maximizar subagente"
 
@@ -1239,6 +1242,9 @@ msgstr "Mensagem"
 
 msgid "Message accepted; agent connection lost"
 msgstr "Mensagem aceita; conexão com o agente perdida"
+
+msgid "Message between sessions"
+msgstr "Mensagem entre sessões"
 
 msgid "Message cancelled"
 msgstr "Mensagem cancelada"
@@ -1480,6 +1486,9 @@ msgstr "Abrir repositório"
 msgid "Open Sandbox Settings"
 msgstr "Abrir configurações do sandbox"
 
+msgid "Open Session"
+msgstr "Abrir sessão"
+
 msgid "Open Skill"
 msgstr "Abrir habilidade"
 
@@ -1707,12 +1716,6 @@ msgstr "Reiniciar transformação"
 
 msgid "Restore"
 msgstr "Restaurar"
-
-msgid "Restore Checkpoint"
-msgstr "Restaurar ponto de verificação"
-
-msgid "Restores all files in the project to the content they had at this point in the conversation."
-msgstr "Restaura todos os arquivos do projeto para o conteúdo que tinham neste ponto da conversa."
 
 msgid "Restrict the Network"
 msgstr "Restringir a rede"
@@ -2017,6 +2020,9 @@ msgstr "Subagente falhou"
 msgid "Subagent Output"
 msgstr "Saída do subagente"
 
+msgid "Subagent Status Unknown"
+msgstr "Status do subagente desconhecido"
+
 msgid "Subagent: {title} ({session_id})"
 msgstr "Subagente: {title} ({session_id})"
 
@@ -2240,6 +2246,15 @@ msgstr "O login é compartilhado com o seu Claude Code habitual (`~/.claude`)."
 
 msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
 msgstr "O tamanho do Claude Code baixado não corresponde às informações da versão. Cancelado."
+
+msgid "The subagent reached its limit of model requests."
+msgstr "O subagente atingiu o limite de solicitações ao modelo."
+
+msgid "The subagent reached its token limit."
+msgstr "O subagente atingiu o limite de tokens."
+
+msgid "The subagent's model refused to continue."
+msgstr "O modelo do subagente recusou-se a continuar."
 
 msgid "The terminal panel is not available."
 msgstr "O painel do terminal não está disponível."
@@ -2486,6 +2501,9 @@ msgstr "Indisponível"
 
 msgid "Unavailable Editing"
 msgstr "Edição indisponível"
+
+msgid "Unavailable Session"
+msgstr "Sessão indisponível"
 
 msgid "Undo"
 msgstr "Desfazer"
@@ -2978,6 +2996,14 @@ msgstr "Sempre para comandos `{}`"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "Origem"
+
+msgctxt "session message"
+msgid "From"
+msgstr "De"
+
+msgctxt "session message"
+msgid "To"
+msgstr "Para"
 
 msgctxt "subagent status"
 msgid "Awaiting Permission"

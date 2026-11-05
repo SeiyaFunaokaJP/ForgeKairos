@@ -66,7 +66,7 @@ impl QuickActionBar {
         let modified_click = gpui::Keystroke {
             key: "click".into(),
             modifiers: match &preview_target {
-                PreviewTarget::Markdown(_) => Modifiers::secondary_key(),
+                PreviewTarget::Markdown(_) => Modifiers::secondary_key(cx),
                 PreviewTarget::Svg(_) | PreviewTarget::TabularData(_) => Modifiers::alt(),
             },
             ..Default::default()
@@ -101,7 +101,7 @@ impl QuickActionBar {
                         match &preview_target {
                             PreviewTarget::Markdown(editor) => {
                                 let editor = editor.clone();
-                                if window.modifiers().secondary() {
+                                if window.modifiers().secondary(cx) {
                                     MarkdownPreviewView::open_preview_to_the_side_of_pane(
                                         workspace, editor, pane, window, cx,
                                     );

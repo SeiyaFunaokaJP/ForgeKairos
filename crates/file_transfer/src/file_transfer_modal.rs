@@ -1432,7 +1432,7 @@ impl FileTransferModal {
         if index >= pane.entries.len() {
             return;
         }
-        match (modifiers.shift, modifiers.secondary(), pane.anchor) {
+        match (modifiers.shift, modifiers.secondary(cx), pane.anchor) {
             (true, _, Some(anchor)) => {
                 let (start, end) = if anchor <= index {
                     (anchor, index)

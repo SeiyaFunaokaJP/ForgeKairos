@@ -3,7 +3,7 @@ use gpui::{BackgroundExecutor, Task};
 use notify::{Event, EventKind};
 use parking_lot::{Condvar, Mutex};
 use std::{
-    collections::{HashMap, HashSet, hash_map::Entry},
+    collections::{BTreeSet, HashMap, HashSet, hash_map::Entry},
     hash::{DefaultHasher, Hash, Hasher},
     ops::DerefMut,
     path::{Path, PathBuf},
@@ -1098,11 +1098,9 @@ fn path_is_under(path: &SanitizedPath, root: &SanitizedPath, case_insensitive: b
 /// never be hit by a folded lookup (or vice versa); dispatch can therefore probe
 /// both forms of an event path without risking a cross-rule false match.
 ///
-/// NOTE: folding only normalizes case. macOS (APFS/HFS+) is also Unicode
-/// normalization-insensitive (NFC vs NFD); that normalization is intentionally
-/// centralized here so it can be added in one place later without touching the
-/// add/remove/dispatch call sites.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// Folded keys use path-component spelling so separators and `.` components
+/// agree with exact path equality. macOS also normalizes Unicode before folding.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum WatchKey {
     Exact(Arc<Path>),
     Folded(Arc<str>),
@@ -1114,7 +1112,9 @@ impl WatchKey {
     }
 
     fn folded(path: &SanitizedPath) -> Self {
-        let lossy = path.as_path().to_string_lossy();
+        // Event ancestors omit trailing separators, even when registration paths include them.
+        let normalized_path = path.as_path().components().collect::<std::path::PathBuf>();
+        let lossy = normalized_path.to_string_lossy();
         // macOS (APFS/HFS+) compares names normalization-insensitively (NFC vs
         // NFD), and FSEvents can report NFD while a config/LSP supplies NFC, so
         // normalize before folding case. Windows (NTFS) and Linux are
@@ -1349,6 +1349,10 @@ fn coalesce_pending_rescans(pending_paths: &mut Vec<PathEvent>, path_events: &mu
     });
 }
 
+fn path_depth(path: &SanitizedPath) -> usize {
+    path.as_path().components().count()
+}
+
 fn is_covered_rescan(kind: Option<PathEventKind>, path: &Path, ancestor: &Path) -> bool {
     kind == Some(PathEventKind::Rescan) && path != ancestor && path.starts_with(ancestor)
 }
@@ -1359,16 +1363,18 @@ pub struct WatcherRegistrationId(u32);
 struct WatcherRegistrationState {
     callback: Arc<dyn Fn(&notify::Event) + Send + Sync>,
     key: WatchKey,
-    path: Arc<SanitizedPath>,
 }
 
 struct PathRegistrationState {
+    /// The spelling of the first registration, which a backend watch of the path is created
+    /// with. Unwatching the path, or handing it between the native backend and the fallback
+    /// poller, has to use the same one (on a case-insensitive volume a later registration may
+    /// spell it differently).
+    path: Arc<SanitizedPath>,
+    /// Empty while a backend watch is retained for covered descendants that
+    /// could not get their own backend watch.
     watcher_ids: Vec<WatcherRegistrationId>,
-    has_os_watcher: bool,
-    /// The spelling the backend watch was created with. Unwatching the path, or handing it
-    /// between the native backend and the fallback poller, has to use the same one (on a
-    /// case-insensitive volume a later registration may spell it differently).
-    watched_path: Arc<SanitizedPath>,
+    coverage: Coverage,
     /// Whether the native watcher's fallback poller holds this path in place of the backend
     /// (ADR-F43). A path is only ever held by one of the two, and handing it over keeps the
     /// entry and its registrations, so events that either of them queued before a hand-over
@@ -1386,6 +1392,38 @@ struct PathRegistrationState {
     /// recreate that fall into one debounce window never remove the registration, so the next
     /// registration of the path reinstalls the watch instead.
     stale: bool,
+}
+
+impl PathRegistrationState {
+    /// Whether the path holds a watch of its own, with the backend or with the fallback poller,
+    /// rather than being served by an ancestor's recursive backend watch.
+    fn has_os_watcher(&self) -> bool {
+        matches!(self.coverage, Coverage::Watched { .. })
+    }
+
+    fn is_covered_by(&self, ancestor: &WatchKey) -> bool {
+        matches!(&self.coverage, Coverage::CoveredBy(covering) if covering == ancestor)
+    }
+}
+
+enum Coverage {
+    /// Has its own backend watch. On recursive backends, that watch also
+    /// serves the descendant registrations listed here by [`path_depth`] and
+    /// key, so promotion proceeds shallowest first without re-sorting. A path the
+    /// fallback poller holds covers nothing, so its set stays empty.
+    Watched {
+        covered: BTreeSet<(usize, WatchKey)>,
+    },
+    /// Served by the recursive backend watch of this ancestor registration.
+    CoveredBy(WatchKey),
+}
+
+impl Coverage {
+    fn watched() -> Self {
+        Self::Watched {
+            covered: BTreeSet::new(),
+        }
+    }
 }
 
 // Deep directories are handed to the poller first and shallow ones taken back first, so the
@@ -1415,19 +1453,24 @@ impl WatchPaths {
         self.entries.get_mut(key)
     }
 
+    /// Returns whether a new path entry was created.
     fn add_watcher(
         &mut self,
         key: WatchKey,
         id: WatcherRegistrationId,
         new_entry: impl FnOnce() -> PathRegistrationState,
-    ) {
+    ) -> bool {
         match self.entries.entry(key) {
-            Entry::Occupied(mut occupied) => occupied.get_mut().watcher_ids.push(id),
+            Entry::Occupied(mut occupied) => {
+                occupied.get_mut().watcher_ids.push(id);
+                false
+            }
             Entry::Vacant(vacant) => {
                 if matches!(vacant.key(), WatchKey::Folded(_)) {
                     self.folded_entries += 1;
                 }
                 vacant.insert(new_entry());
+                true
             }
         }
     }
@@ -1446,9 +1489,10 @@ impl WatchPaths {
         self.entries
             .get(key)
             .filter(|registration| {
-                registration.has_os_watcher && registration.polled_by_fallback == polled_by_fallback
+                registration.has_os_watcher()
+                    && registration.polled_by_fallback == polled_by_fallback
             })
-            .map(|registration| registration.watched_path.clone())
+            .map(|registration| registration.path.clone())
     }
 
     fn set_polled_by_fallback(&mut self, key: &WatchKey, polled_by_fallback: bool) {
@@ -1464,7 +1508,7 @@ impl WatchPaths {
     /// its own.
     fn mark_stale_watches(&mut self, event: &notify::Event) {
         fn mark(registration: &mut PathRegistrationState) {
-            if registration.has_os_watcher && !registration.polled_by_fallback {
+            if registration.has_os_watcher() && !registration.polled_by_fallback {
                 registration.stale = true;
             }
         }
@@ -1532,7 +1576,8 @@ impl WatchPaths {
         self.entries
             .values()
             .filter(|registration| {
-                registration.has_os_watcher && registration.polled_by_fallback == polled_by_fallback
+                registration.has_os_watcher()
+                    && registration.polled_by_fallback == polled_by_fallback
             })
             .count()
     }
@@ -1546,15 +1591,15 @@ impl WatchPaths {
             .entries
             .iter()
             .filter(|(_, registration)| {
-                registration.has_os_watcher
+                registration.has_os_watcher()
                     && registration.polled_by_fallback == polled_by_fallback
                     && !registration.native_unavailable
                     && !registration.held_for_priority
             })
             .map(|(key, registration)| {
                 (
-                    registration.watched_path.as_path().components().count(),
-                    registration.watched_path.clone(),
+                    path_depth(&registration.path),
+                    registration.path.clone(),
                     key.clone(),
                 )
             })
@@ -1570,23 +1615,36 @@ impl WatchPaths {
         candidates.into_iter().map(|(_, _, key)| key).collect()
     }
 
-    /// True if a recursive registration on a strict ancestor already covers
-    /// `path`. Only poll watches and native macOS/Windows watches are recursive,
-    /// and a path the fallback poller holds covers nothing below it.
-    fn covered_by_recursive_ancestor(&self, path: &SanitizedPath, recursive: bool) -> bool {
+    /// The nearest strict ancestor whose recursive backend watch covers `path`,
+    /// leaving out `excluded`. Only poll watches and native macOS/Windows watches
+    /// are recursive, and a path the fallback poller holds covers nothing below it.
+    fn covering_ancestor(
+        &self,
+        path: &SanitizedPath,
+        recursive: bool,
+        excluded: Option<&WatchKey>,
+    ) -> Option<WatchKey> {
         if !recursive {
-            return false;
+            return None;
         }
-        path.as_path().ancestors().skip(1).any(|ancestor| {
+        path.as_path().ancestors().skip(1).find_map(|ancestor| {
             let ancestor = SanitizedPath::unchecked_new(ancestor);
             [WatchKey::exact(ancestor), WatchKey::folded(ancestor)]
-                .iter()
-                .any(|key| {
-                    self.entries
-                        .get(key)
-                        .is_some_and(|registration| !registration.polled_by_fallback)
+                .into_iter()
+                .find(|key| {
+                    Some(key) != excluded
+                        && self.entries.get(key).is_some_and(|registration| {
+                            registration.has_os_watcher() && !registration.polled_by_fallback
+                        })
                 })
         })
+    }
+
+    fn covered_by_mut(&mut self, key: &WatchKey) -> Option<&mut BTreeSet<(usize, WatchKey)>> {
+        match &mut self.entries.get_mut(key)?.coverage {
+            Coverage::Watched { covered } => Some(covered),
+            Coverage::CoveredBy(_) => None,
+        }
     }
 
     /// Collects the watcher ids of every registration whose directory is an
@@ -1606,12 +1664,6 @@ impl WatchPaths {
             }
         }
     }
-}
-
-struct RemovedWatch {
-    watched_path: Arc<SanitizedPath>,
-    polled_by_fallback: bool,
-    held_for_priority: bool,
 }
 
 struct WatcherState {
@@ -1636,29 +1688,12 @@ impl WatcherState {
             .is_some_and(|cooldown_until| cooldown_until > Instant::now())
     }
 
-    /// Whether a new registration on `key` can join what is already there without a backend
-    /// call, and if so whether a new path entry would own a watch: either the path is
-    /// registered already, or a recursive ancestor covers it.
-    fn joinable_registration(
-        &self,
-        key: &WatchKey,
-        path: &SanitizedPath,
-        recursive: bool,
-    ) -> Option<bool> {
-        if self.paths.contains(key) {
-            return Some(true);
-        }
-        self.paths
-            .covered_by_recursive_ancestor(path, recursive)
-            .then_some(false)
-    }
-
     fn register_watcher(
         &mut self,
         key: WatchKey,
         path: Arc<SanitizedPath>,
         callback: Arc<dyn Fn(&notify::Event) + Send + Sync>,
-        has_os_watcher: bool,
+        coverage: Coverage,
         polled_by_fallback: bool,
         held_for_priority: bool,
     ) -> WatcherRegistrationId {
@@ -1669,35 +1704,31 @@ impl WatcherState {
             WatcherRegistrationState {
                 callback,
                 key: key.clone(),
-                path: path.clone(),
             },
         );
-        self.paths.add_watcher(key, id, || PathRegistrationState {
-            watcher_ids: vec![id],
-            has_os_watcher,
-            watched_path: path,
-            polled_by_fallback,
-            native_unavailable: false,
-            held_for_priority,
-            stale: false,
-        });
-        id
-    }
-
-    fn remove_registration(&mut self, id: WatcherRegistrationId) -> Option<RemovedWatch> {
-        let registration_state = self.watchers.remove(&id)?;
-        let path_state = self.paths.get_mut(&registration_state.key)?;
-        path_state.watcher_ids.retain(|&existing| existing != id);
-        if !path_state.watcher_ids.is_empty() {
-            return None;
+        let covering_ancestor = match &coverage {
+            Coverage::CoveredBy(ancestor) => Some(ancestor.clone()),
+            Coverage::Watched { .. } => None,
+        };
+        let depth = path_depth(&path);
+        let inserted = self
+            .paths
+            .add_watcher(key.clone(), id, || PathRegistrationState {
+                path,
+                watcher_ids: vec![id],
+                coverage,
+                polled_by_fallback,
+                native_unavailable: false,
+                held_for_priority,
+                stale: false,
+            });
+        if inserted
+            && let Some(ancestor) = covering_ancestor
+            && let Some(covered) = self.paths.covered_by_mut(&ancestor)
+        {
+            covered.insert((depth, key));
         }
-
-        let path_state = self.paths.remove(&registration_state.key)?;
-        path_state.has_os_watcher.then_some(RemovedWatch {
-            watched_path: path_state.watched_path,
-            polled_by_fallback: path_state.polled_by_fallback,
-            held_for_priority: path_state.held_for_priority,
-        })
+        id
     }
 }
 
@@ -2051,15 +2082,19 @@ impl OsWatcher {
         self.rewatch_if_stale_with_key_locked(&key)?;
         {
             let mut state = self.state.lock();
-            if let Some(has_os_watcher) = state.joinable_registration(&key, &path, self.recursive) {
-                return Ok(Some(state.register_watcher(
-                    key,
-                    path,
-                    callback,
-                    has_os_watcher,
-                    false,
-                    false,
-                )));
+            let coverage = if state.paths.contains(&key) {
+                // Joins the existing entry, which keeps its coverage.
+                Some(Coverage::watched())
+            } else {
+                state
+                    .paths
+                    .covering_ancestor(&path, self.recursive, None)
+                    .map(Coverage::CoveredBy)
+            };
+            if let Some(coverage) = coverage {
+                return Ok(Some(
+                    state.register_watcher(key, path, callback, coverage, false, false),
+                ));
             }
         }
 
@@ -2068,8 +2103,6 @@ impl OsWatcher {
             hit_watch_limit,
         } = self.watch_new_path(&path, &key);
         let registered_outcome = outcome.as_ref().ok().copied();
-        let polled_priority_path =
-            registered_outcome == Some(WatchOutcome::Fallback) && self.is_priority_key(&key);
         let registration = outcome.map(|outcome| {
             let (polled_by_fallback, held_for_priority) = match outcome {
                 WatchOutcome::Skipped => return None,
@@ -2078,18 +2111,30 @@ impl OsWatcher {
                 WatchOutcome::Fallback => (true, false),
             };
             Some(self.state.lock().register_watcher(
-                key,
+                key.clone(),
                 path.clone(),
                 callback,
-                true,
+                Coverage::watched(),
                 polled_by_fallback,
                 held_for_priority,
             ))
         });
         drop(key_guard);
 
+        self.after_new_watch(&path, &key, registered_outcome, hit_watch_limit);
+        registration
+    }
+
+    /// The follow-up of [`Self::watch_new_path`] that must not run under a key lock.
+    fn after_new_watch(
+        &self,
+        path: &SanitizedPath,
+        key: &WatchKey,
+        outcome: Option<WatchOutcome>,
+        hit_watch_limit: bool,
+    ) {
         let Some(fallback) = &self.fallback else {
-            return registration;
+            return;
         };
         // Learning scans `/proc`, and trimming to the learned limit can move thousands of
         // paths, so neither happens under the key lock or on the caller's thread.
@@ -2102,10 +2147,10 @@ impl OsWatcher {
             fallback.background.request_maintenance();
         }
         // The kernel refused it, so it has to be polled on every pass from now on.
-        if polled_priority_path {
+        if outcome == Some(WatchOutcome::Fallback) && self.is_priority_key(key) {
             fallback.background.request_maintenance();
         }
-        let needs_background_thread = match registered_outcome {
+        let needs_background_thread = match outcome {
             Some(WatchOutcome::Fallback) => true,
             Some(WatchOutcome::Backend | WatchOutcome::PriorityBackend) => {
                 fallback.budget.is_enabled()
@@ -2115,7 +2160,6 @@ impl OsWatcher {
         if needs_background_thread {
             self.ensure_background_thread();
         }
-        registration
     }
 
     /// Starts watching a path that has no registration yet. With a fallback poller, paths
@@ -2229,13 +2273,10 @@ impl OsWatcher {
             // Cleared before the backend calls, so that a removal dispatched while they run
             // marks the new watch stale again.
             registration.stale = false;
-            if !registration.has_os_watcher || registration.polled_by_fallback {
+            if !registration.has_os_watcher() || registration.polled_by_fallback {
                 return Ok(());
             }
-            (
-                registration.watched_path.clone(),
-                registration.held_for_priority,
-            )
+            (registration.path.clone(), registration.held_for_priority)
         };
 
         log::trace!("rewatching stale path: {watched_path:?}");
@@ -2327,18 +2368,185 @@ impl OsWatcher {
         else {
             return;
         };
-        let _key_guard = self.lock_key(&key);
-        let Some(removed) = self.state.lock().remove_registration(id) else {
-            return;
+        let key_guard = self.lock_key(&key);
+        let blocked_ancestor = {
+            let mut state = self.state.lock();
+            if state.watchers.remove(&id).is_none() {
+                return;
+            }
+            let Some(path_state) = state.paths.get_mut(&key) else {
+                return;
+            };
+            path_state.watcher_ids.retain(|&existing| existing != id);
+            if !path_state.watcher_ids.is_empty() {
+                return;
+            }
+            match &path_state.coverage {
+                Coverage::Watched { .. } => None,
+                Coverage::CoveredBy(ancestor) => {
+                    let ancestor = ancestor.clone();
+                    let covered_entry = (path_depth(&path_state.path), key.clone());
+                    state.paths.remove(&key);
+                    let Some(ancestor_state) = state.paths.get_mut(&ancestor) else {
+                        return;
+                    };
+                    let retained = ancestor_state.watcher_ids.is_empty();
+                    let Coverage::Watched { covered } = &mut ancestor_state.coverage else {
+                        return;
+                    };
+                    // A retained watch stopped at its shallowest covered registration,
+                    // so only that registration leaving can unblock its release.
+                    let blocked_release = covered.first() == Some(&covered_entry);
+                    covered.remove(&covered_entry);
+                    if !(retained && blocked_release) {
+                        return;
+                    }
+                    Some(ancestor)
+                }
+            }
         };
+        match blocked_ancestor {
+            None => self.release_watch(&key, key_guard),
+            Some(ancestor) => {
+                // Key locks are never held two at a time.
+                drop(key_guard);
+                let ancestor_guard = self.lock_key(&ancestor);
+                self.release_watch(&ancestor, ancestor_guard);
+            }
+        }
+    }
+
+    /// Unwatches the unused watch at `key`, whose key lock the caller passes in, once every
+    /// registration it covers is served by another watch.
+    ///
+    /// Replacements are installed shallowest first, so one can cover deeper registrations, and
+    /// before the watch is removed, so their events keep arriving in between. If one cannot be
+    /// installed, the watch is retained for the registrations still covered by it, and is
+    /// reconsidered when the one that could not be promoted is removed.
+    fn release_watch(&self, key: &WatchKey, key_guard: parking_lot::MutexGuard<'_, ()>) {
+        let mut new_watches = Vec::new();
+        let released = loop {
+            let (depth, covered_key, covered_path) = {
+                let mut state = self.state.lock();
+                let Some(path_state) = state.paths.get_mut(key) else {
+                    break None;
+                };
+                if !path_state.watcher_ids.is_empty() {
+                    break None;
+                }
+                let Coverage::Watched { covered } = &mut path_state.coverage else {
+                    break None;
+                };
+                let Some((depth, covered_key)) = covered.pop_first() else {
+                    break state.paths.remove(key);
+                };
+                let Some(covered_path) = state
+                    .paths
+                    .entries
+                    .get(&covered_key)
+                    .filter(|registration| registration.is_covered_by(key))
+                    .map(|registration| registration.path.clone())
+                else {
+                    continue;
+                };
+                if let Some(ancestor) =
+                    state
+                        .paths
+                        .covering_ancestor(&covered_path, self.recursive, Some(key))
+                {
+                    if let Some(covered) = state.paths.covered_by_mut(&ancestor) {
+                        covered.insert((depth, covered_key.clone()));
+                    }
+                    if let Some(registration) = state.paths.get_mut(&covered_key) {
+                        registration.coverage = Coverage::CoveredBy(ancestor);
+                    }
+                    continue;
+                }
+                (depth, covered_key, covered_path)
+            };
+
+            let NewWatch {
+                outcome,
+                hit_watch_limit,
+            } = self.watch_new_path(&covered_path, &covered_key);
+            let own_watch = match &outcome {
+                Ok(WatchOutcome::Backend) => Some((false, false)),
+                Ok(WatchOutcome::PriorityBackend) => Some((false, true)),
+                Ok(WatchOutcome::Fallback) => Some((true, false)),
+                Ok(WatchOutcome::Skipped) | Err(_) => None,
+            };
+            let promoted = {
+                let mut state = self.state.lock();
+                // False when it was removed while its watch was being installed.
+                let still_covered = state
+                    .paths
+                    .entries
+                    .get(&covered_key)
+                    .is_some_and(|registration| registration.is_covered_by(key));
+                match own_watch {
+                    Some((polled_by_fallback, held_for_priority)) => {
+                        if still_covered
+                            && let Some(registration) = state.paths.get_mut(&covered_key)
+                        {
+                            registration.coverage = Coverage::watched();
+                            registration.polled_by_fallback = polled_by_fallback;
+                            registration.held_for_priority = held_for_priority;
+                            registration.stale = false;
+                        }
+                        still_covered
+                    }
+                    None if still_covered => {
+                        if let Some(covered) = state.paths.covered_by_mut(key) {
+                            covered.insert((depth, covered_key));
+                        }
+                        if let Err(error) = &outcome {
+                            log::error!(
+                                "failed to restore watch for {covered_path:?}; retaining its covering watch: {error:#}"
+                            );
+                        }
+                        break None;
+                    }
+                    None => false,
+                }
+            };
+            if !promoted {
+                if let Some((polled_by_fallback, held_for_priority)) = own_watch {
+                    self.unwatch_own_watch(&covered_path, polled_by_fallback, held_for_priority);
+                }
+                continue;
+            }
+            new_watches.push((covered_path, covered_key, outcome.ok(), hit_watch_limit));
+        };
+        if let Some(released) = released {
+            // Forgotten even if unwatching fails: notify can report failure after dropping
+            // the watch (FSEvents restarts its stream afterwards), so a later registration of
+            // this path must install a fresh watch.
+            self.unwatch_own_watch(
+                &released.path,
+                released.polled_by_fallback,
+                released.held_for_priority,
+            );
+        }
+        drop(key_guard);
+        for (path, key, outcome, hit_watch_limit) in new_watches {
+            self.after_new_watch(&path, &key, outcome, hit_watch_limit);
+        }
+    }
+
+    fn unwatch_own_watch(
+        &self,
+        path: &SanitizedPath,
+        polled_by_fallback: bool,
+        held_for_priority: bool,
+    ) {
         match &self.fallback {
-            Some(fallback) if removed.polled_by_fallback => {
-                self.unwatch_with_fallback_poller(fallback, removed.watched_path.as_path());
+            Some(fallback) if polled_by_fallback => {
+                self.unwatch_with_fallback_poller(fallback, path.as_path());
             }
             _ => {
-                self.unwatch(removed.watched_path.as_path()).log_err();
+                self.unwatch(path.as_path()).log_err();
                 if let Some(fallback) = &self.fallback {
-                    fallback.release_native(removed.held_for_priority);
+                    fallback.release_native(held_for_priority);
                 }
             }
         }
@@ -2873,10 +3081,10 @@ impl OsWatcher {
                 .iter()
                 .filter_map(|key| {
                     let registration = state.paths.entries.get(key)?;
-                    (registration.has_os_watcher && registration.polled_by_fallback).then(|| {
+                    (registration.has_os_watcher() && registration.polled_by_fallback).then(|| {
                         (
-                            registration.watched_path.as_path().components().count(),
-                            registration.watched_path.clone(),
+                            path_depth(&registration.path),
+                            registration.path.clone(),
                             registration.native_unavailable,
                             key.clone(),
                         )
@@ -3284,11 +3492,14 @@ mod tests {
         watched_paths: HashSet<PathBuf>,
         watch_calls: Vec<PathBuf>,
         unwatch_calls: Vec<PathBuf>,
+        operations: Vec<(&'static str, PathBuf)>,
         fail_with_watch_limit: bool,
         /// Makes `watch` fail with this raw OS error, the way a volume whose driver has no
         /// change notifications does.
         fail_with_io_os_error: Option<i32>,
         max_watches: Option<usize>,
+        failed_paths: HashSet<PathBuf>,
+        failed_unwatch_paths: HashSet<PathBuf>,
     }
 
     struct SharedFakeWatchBackend(Arc<Mutex<FakeWatchBackend>>);
@@ -3298,6 +3509,7 @@ mod tests {
             let path = path.to_path_buf();
             let mut backend = self.0.lock();
             backend.watch_calls.push(path.clone());
+            backend.operations.push(("watch", path.clone()));
             if let Some(code) = backend.fail_with_io_os_error {
                 return Err(notify::Error::io(std::io::Error::from_raw_os_error(code)));
             }
@@ -3307,6 +3519,9 @@ mod tests {
             if backend.fail_with_watch_limit || at_limit {
                 return Err(notify::Error::new(notify::ErrorKind::MaxFilesWatch));
             }
+            if backend.failed_paths.contains(&path) {
+                return Err(notify::Error::generic("injected watch failure"));
+            }
             backend.watched_paths.insert(path);
             Ok(())
         }
@@ -3315,11 +3530,15 @@ mod tests {
             let path = path.to_path_buf();
             let mut backend = self.0.lock();
             backend.unwatch_calls.push(path.clone());
-            if backend.watched_paths.remove(&path) {
-                Ok(())
-            } else {
-                Err(notify::Error::generic("path was not watched"))
+            backend.operations.push(("unwatch", path.clone()));
+            if !backend.watched_paths.remove(&path) {
+                return Err(notify::Error::watch_not_found());
             }
+            // Like FSEvents failing to restart its stream after removing the path.
+            if backend.failed_unwatch_paths.contains(&path) {
+                return Err(notify::Error::generic("injected unwatch failure"));
+            }
+            Ok(())
         }
     }
 
@@ -3554,7 +3773,7 @@ mod tests {
     }
 
     #[test]
-    fn covered_child_registration_is_not_unwatched_after_parent_is_removed() {
+    fn covered_child_registration_is_promoted_before_parent_is_unwatched() {
         let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
         let watcher = test_os_watcher(OsWatcherKind::Poll, Some(backend.clone()));
         let parent = Arc::<Path>::from(Path::new("/repo"));
@@ -3570,11 +3789,221 @@ mod tests {
             .expect("child watch registered");
 
         watcher.remove(parent_registration);
+        assert_eq!(
+            backend.lock().watched_paths,
+            HashSet::from([child.to_path_buf()])
+        );
+        assert_eq!(
+            backend.lock().operations,
+            [
+                ("watch", parent.to_path_buf()),
+                ("watch", child.to_path_buf()),
+                ("unwatch", parent.to_path_buf()),
+            ]
+        );
         watcher.remove(child_registration);
 
         let backend = backend.lock();
-        assert_eq!(backend.watch_calls, &[parent.to_path_buf()]);
-        assert_eq!(backend.unwatch_calls, &[parent.to_path_buf()]);
+        assert_eq!(
+            backend.watch_calls,
+            &[parent.to_path_buf(), child.to_path_buf()]
+        );
+        assert_eq!(
+            backend.unwatch_calls,
+            &[parent.to_path_buf(), child.to_path_buf()]
+        );
+        assert!(backend.watched_paths.is_empty());
+        assert!(watcher.state.lock().paths.entries.is_empty());
+    }
+
+    #[test]
+    fn promoted_ancestor_covers_deeper_subscribers() {
+        let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let watcher = test_os_watcher(OsWatcherKind::Poll, Some(backend.clone()));
+        let root = watcher
+            .add(Path::new("/repo").into(), true, |_| {})
+            .expect("watch root")
+            .expect("registered root");
+        // Several deeper subscribers make an unordered promotion unlikely to
+        // reach the shallowest one first by chance.
+        let deep = (0..8)
+            .map(|index| {
+                watcher
+                    .add(
+                        PathBuf::from(format!("/repo/child/deep{index}")).into(),
+                        true,
+                        |_| {},
+                    )
+                    .expect("watch deep")
+                    .expect("registered deep")
+            })
+            .collect::<Vec<_>>();
+        let child = watcher
+            .add(Path::new("/repo/child").into(), true, |_| {})
+            .expect("watch child")
+            .expect("registered child");
+        watcher.remove(root);
+        assert_eq!(
+            backend.lock().watched_paths,
+            HashSet::from([PathBuf::from("/repo/child")])
+        );
+        assert_eq!(backend.lock().watch_calls.len(), 2);
+        watcher.remove(child);
+        assert_eq!(backend.lock().watched_paths.len(), deep.len());
+        for deep in deep {
+            watcher.remove(deep);
+        }
+        assert!(backend.lock().watched_paths.is_empty());
+        assert!(watcher.state.lock().paths.entries.is_empty());
+    }
+
+    #[test]
+    fn failed_promotion_retains_coverage_without_retaining_removed_callback() {
+        let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let watcher = test_os_watcher(OsWatcherKind::Poll, Some(backend.clone()));
+        let (parent_fired, parent_callback) = fired_count();
+        let (child_fired, child_callback) = fired_count();
+        let parent = watcher
+            .add(Path::new("/repo").into(), false, parent_callback)
+            .expect("watch parent")
+            .expect("registered parent");
+        let child = watcher
+            .add(Path::new("/repo/child").into(), false, child_callback)
+            .expect("watch child")
+            .expect("registered child");
+        backend
+            .lock()
+            .failed_paths
+            .insert(PathBuf::from("/repo/child"));
+
+        watcher.remove(parent);
+        assert_eq!(
+            backend.lock().watched_paths,
+            HashSet::from([PathBuf::from("/repo")])
+        );
+        watcher.dispatch(Ok(modify_event("/repo/child/file")));
+        assert_eq!(*parent_fired.lock(), 0);
+        assert_eq!(*child_fired.lock(), 1);
+
+        watcher.remove(child);
+        assert!(backend.lock().watched_paths.is_empty());
+        assert!(watcher.state.lock().paths.entries.is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_child_delivery_survives_parent_removal() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path().canonicalize().expect("canonical root");
+        let child = root.join("child");
+        std::fs::create_dir(&child).expect("create child");
+        let executor = BackgroundExecutor::new(Arc::new(gpui::TestDispatcher::new(0)));
+        let watcher = OsWatcher::new(OsWatcherKind::Native, executor.clone());
+        let parent = watcher
+            .add(root.as_path().into(), false, |_| {})
+            .expect("watch parent")
+            .expect("registered parent");
+        let (sender, receiver) = std::sync::mpsc::channel();
+        watcher
+            .add(child.as_path().into(), false, move |event| {
+                sender.send(event.clone()).expect("receiver alive");
+            })
+            .expect("watch child")
+            .expect("registered child");
+        std::thread::sleep(Duration::from_millis(500));
+        for phase in ["before", "after"] {
+            if phase == "after" {
+                watcher.remove(parent);
+            }
+            let file = child.join(phase);
+            std::fs::write(&file, b"probe").expect("write probe");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                executor.run_until_parked();
+                if receiver.try_iter().any(|event| event.paths.contains(&file)) {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "missing {phase} event");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+    }
+
+    #[test]
+    fn partial_promotion_releases_retained_parent_when_failed_subscriber_leaves() {
+        let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+        let watcher = test_os_watcher(OsWatcherKind::Poll, Some(backend.clone()));
+        let registrations = [
+            "/repo",
+            "/repo/a",
+            "/repo/other/deep",
+            "/unrelated",
+            "/repo/other/deep/deeper",
+        ]
+        .map(|path| {
+            watcher
+                .add(Path::new(path).into(), false, |_| {})
+                .expect("watch")
+                .expect("registered")
+        });
+        backend
+            .lock()
+            .failed_paths
+            .insert(PathBuf::from("/repo/other/deep"));
+        watcher.remove(registrations[0]);
+        assert_eq!(
+            backend.lock().watched_paths,
+            HashSet::from([
+                PathBuf::from("/repo"),
+                PathBuf::from("/repo/a"),
+                PathBuf::from("/unrelated")
+            ])
+        );
+        // Only removing the registration that blocked promotion retries it.
+        let watch_calls = backend.lock().watch_calls.len();
+        watcher.remove(registrations[3]);
+        watcher.remove(registrations[1]);
+        watcher.remove(registrations[4]);
+        assert_eq!(backend.lock().watch_calls.len(), watch_calls);
+        assert_eq!(
+            backend.lock().watched_paths,
+            HashSet::from([PathBuf::from("/repo")])
+        );
+
+        watcher.remove(registrations[2]);
+        assert!(backend.lock().watched_paths.is_empty());
+        assert!(watcher.state.lock().paths.entries.is_empty());
+    }
+
+    #[test]
+    fn failed_unwatch_is_not_trusted_when_path_is_registered_again() {
+        for kind in [OsWatcherKind::Native, OsWatcherKind::Poll] {
+            let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+            let watcher = test_os_watcher(kind, Some(backend.clone()));
+            let path = PathBuf::from("/repo");
+            backend.lock().failed_unwatch_paths.insert(path.clone());
+
+            let registration = watcher
+                .add(path.as_path().into(), false, |_| {})
+                .expect("watch")
+                .expect("registered");
+            watcher.remove(registration);
+            assert!(backend.lock().watched_paths.is_empty());
+            assert!(watcher.state.lock().paths.entries.is_empty());
+
+            let registration = watcher
+                .add(path.as_path().into(), false, |_| {})
+                .expect("watch again")
+                .expect("registered again");
+            assert_eq!(backend.lock().watch_calls, [path.clone(), path.clone()]);
+            assert_eq!(backend.lock().watched_paths, HashSet::from([path.clone()]));
+
+            // The backend already dropped this watch, as inotify does when a
+            // watched directory is deleted.
+            backend.lock().watched_paths.clear();
+            watcher.remove(registration);
+            assert!(watcher.state.lock().paths.entries.is_empty());
+        }
     }
 
     #[gpui::test]
@@ -5381,6 +5810,73 @@ mod tests {
             move |_: &notify::Event| *fired.lock() += 1
         };
         (fired, cb)
+    }
+
+    #[test]
+    fn equivalent_path_spellings_share_watch_delivery_and_lifetime() {
+        for case_insensitive in [false, true] {
+            for spelling in ["/repo/project/", "/repo//project", "/repo/./project"] {
+                let backend = Arc::new(Mutex::new(FakeWatchBackend::default()));
+                let watcher = test_os_watcher(OsWatcherKind::Native, Some(backend.clone()));
+                let (first_fired, first_callback) = fired_count();
+                let first = watcher
+                    .add(Path::new(spelling).into(), case_insensitive, first_callback)
+                    .expect("add alternate spelling")
+                    .expect("registered alternate spelling");
+                watcher.dispatch(Ok(modify_event("/repo/project/file.txt")));
+                assert_eq!(
+                    *first_fired.lock(),
+                    1,
+                    "{spelling}, folded={case_insensitive}"
+                );
+
+                let (second_fired, second_callback) = fired_count();
+                let second = watcher
+                    .add(
+                        Path::new("/repo/project").into(),
+                        case_insensitive,
+                        second_callback,
+                    )
+                    .expect("add ordinary spelling")
+                    .expect("registered ordinary spelling");
+                assert_eq!(backend.lock().watch_calls.len(), 1);
+                watcher.dispatch(Ok(modify_event("/repo/project/file.txt")));
+                assert_eq!(*first_fired.lock(), 2);
+                assert_eq!(*second_fired.lock(), 1);
+
+                watcher.remove(first);
+                assert!(backend.lock().unwatch_calls.is_empty());
+                watcher.dispatch(Ok(modify_event("/repo/project/file.txt")));
+                assert_eq!(*first_fired.lock(), 2);
+                assert_eq!(*second_fired.lock(), 2);
+                watcher.remove(second);
+                assert_eq!(backend.lock().unwatch_calls.len(), 1);
+                assert!(backend.lock().watched_paths.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn folded_keys_preserve_root_and_parent_component_identity() {
+        for path in ["/", "/repo/../project", "./project", "project"] {
+            let ordinary = Path::new(path);
+            let with_separator = PathBuf::from(format!("{path}/"));
+            assert_eq!(ordinary, with_separator);
+            assert_eq!(
+                WatchKey::folded(SanitizedPath::new(ordinary)),
+                WatchKey::folded(SanitizedPath::new(&with_separator)),
+            );
+        }
+        for (left, right) in [
+            ("/", ""),
+            ("/repo/../project", "/project"),
+            ("./project", "project"),
+        ] {
+            assert_ne!(
+                WatchKey::folded(SanitizedPath::new(Path::new(left))),
+                WatchKey::folded(SanitizedPath::new(Path::new(right))),
+            );
+        }
     }
 
     #[test]

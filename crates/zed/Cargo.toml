@@ -2,7 +2,7 @@
 description = "ForgeKairos, a fork of the Zed code editor."
 edition.workspace = true
 name = "zed"
-version = "1.26.2"
+version = "1.27.0"
 publish.workspace = true
 license = "GPL-3.0-or-later"
 authors = ["Zed Team <hi@zed.dev>"]
@@ -298,7 +298,7 @@ icon = ["resources/app-icon-dev@2x.png", "resources/app-icon-dev.png"]
 identifier = "io.github.SeiyaFunaokaJP.ForgeKairos-Dev"
 name = "ForgeKairos Dev"
 category = "Developer Tool"
-osx_minimum_system_version = "10.15.7"
+osx_minimum_system_version = "12.0"
 osx_info_plist_exts = ["resources/info/*"]
 osx_url_schemes = ["forgekairos"]
 
@@ -307,7 +307,7 @@ icon = ["resources/app-icon-nightly@2x.png", "resources/app-icon-nightly.png"]
 identifier = "io.github.SeiyaFunaokaJP.ForgeKairos-Nightly"
 name = "ForgeKairos Nightly"
 category = "Developer Tool"
-osx_minimum_system_version = "10.15.7"
+osx_minimum_system_version = "12.0"
 osx_info_plist_exts = ["resources/info/*"]
 osx_url_schemes = ["forgekairos"]
 
@@ -316,7 +316,7 @@ icon = ["resources/app-icon-preview@2x.png", "resources/app-icon-preview.png"]
 identifier = "io.github.SeiyaFunaokaJP.ForgeKairos-Preview"
 name = "ForgeKairos Preview"
 category = "Developer Tool"
-osx_minimum_system_version = "10.15.7"
+osx_minimum_system_version = "12.0"
 osx_info_plist_exts = ["resources/info/*"]
 osx_url_schemes = ["forgekairos"]
 
@@ -325,7 +325,7 @@ icon = ["resources/app-icon@2x.png", "resources/app-icon.png"]
 identifier = "io.github.SeiyaFunaokaJP.ForgeKairos"
 name = "ForgeKairos"
 category = "Developer Tool"
-osx_minimum_system_version = "10.15.7"
+osx_minimum_system_version = "12.0"
 osx_info_plist_exts = ["resources/info/*"]
 osx_url_schemes = ["forgekairos"]
 

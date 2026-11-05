@@ -326,10 +326,6 @@ msgid "Repair worktree"
 msgstr "Reparar worktree"
 
 msgctxt "git result"
-msgid "Restore checkpoint"
-msgstr "Restaurar punto de control"
-
-msgctxt "git result"
 msgid "Restore files"
 msgstr "Restaurar archivos"
 

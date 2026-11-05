@@ -1221,6 +1221,9 @@ msgstr "MCP サーバー"
 msgid "MCP {on}/{total}"
 msgstr "MCP {on}/{total}"
 
+msgid "Main Agent"
+msgstr "メインエージェント"
+
 msgid "Make Subagent Full Screen"
 msgstr "サブエージェントを全画面表示"
 
@@ -1232,6 +1235,9 @@ msgstr "メッセージ"
 
 msgid "Message accepted; agent connection lost"
 msgstr "メッセージは受け付けられました。エージェントとの接続が切れました"
+
+msgid "Message between sessions"
+msgstr "セッション間のメッセージ"
 
 msgid "Message cancelled"
 msgstr "メッセージの送信はキャンセルされました"
@@ -1473,6 +1479,9 @@ msgstr "リポジトリを開く"
 msgid "Open Sandbox Settings"
 msgstr "サンドボックスの設定を開く"
 
+msgid "Open Session"
+msgstr "セッションを開く"
+
 msgid "Open Skill"
 msgstr "スキルを開く"
 
@@ -1700,12 +1709,6 @@ msgstr "変換を再実行"
 
 msgid "Restore"
 msgstr "元に戻す"
-
-msgid "Restore Checkpoint"
-msgstr "チェックポイントを復元"
-
-msgid "Restores all files in the project to the content they had at this point in the conversation."
-msgstr "プロジェクト内のすべてのファイルを、会話のこの時点の内容に復元します。"
 
 msgid "Restrict the Network"
 msgstr "ネットワークを制限する"
@@ -2010,6 +2013,9 @@ msgstr "サブエージェントが失敗しました"
 msgid "Subagent Output"
 msgstr "サブエージェントの出力"
 
+msgid "Subagent Status Unknown"
+msgstr "サブエージェントの状態は不明です"
+
 msgid "Subagent: {title} ({session_id})"
 msgstr "サブエージェント: {title} ({session_id})"
 
@@ -2232,6 +2238,15 @@ msgstr "ログインは普段の Claude Code と共有します (`~/.claude`)。
 
 msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
 msgstr "ダウンロードした Claude Code の大きさがリリース情報と一致しません。中止しました。"
+
+msgid "The subagent reached its limit of model requests."
+msgstr "サブエージェントがモデルへのリクエスト回数の上限に達しました。"
+
+msgid "The subagent reached its token limit."
+msgstr "サブエージェントがトークンの上限に達しました。"
+
+msgid "The subagent's model refused to continue."
+msgstr "サブエージェントのモデルが続行を拒否しました。"
 
 msgid "The terminal panel is not available."
 msgstr "ターミナルパネルが利用できません。"
@@ -2478,6 +2493,9 @@ msgstr "利用不可"
 
 msgid "Unavailable Editing"
 msgstr "編集は利用できません"
+
+msgid "Unavailable Session"
+msgstr "利用できないセッション"
 
 msgid "Undo"
 msgstr "元に戻す"
@@ -2962,6 +2980,14 @@ msgstr "`{}` コマンドで常に許可"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "要求元"
+
+msgctxt "session message"
+msgid "From"
+msgstr "送信元"
+
+msgctxt "session message"
+msgid "To"
+msgstr "宛先"
 
 msgctxt "subagent status"
 msgid "Awaiting Permission"

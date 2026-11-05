@@ -5670,10 +5670,8 @@ mod tests {
             HelperCheck::Missing
         );
         assert_eq!(
-            parse_check_output(
-                "zed-wsl-helper: unverifiable /root/.cache/forgekairos/sandbox/k\n"
-            )
-            .unwrap(),
+            parse_check_output("zed-wsl-helper: unverifiable /root/.cache/forgekairos/sandbox/k\n")
+                .unwrap(),
             HelperCheck::Unverifiable
         );
         assert!(parse_check_output("").is_err());

@@ -1105,7 +1105,8 @@ mod tests {
     use language::LanguageRegistry;
     use node_runtime::NodeRuntime;
     use rpc::proto::{
-        self, EnvelopedMessage as _, REMOTE_SERVER_PROJECT_ID, forgekairos::FORGEKAIROS_WIRE_REVISION,
+        self, EnvelopedMessage as _, REMOTE_SERVER_PROJECT_ID,
+        forgekairos::FORGEKAIROS_WIRE_REVISION,
     };
     use serde_json::json;
     use std::{cell::Cell, time::Instant};

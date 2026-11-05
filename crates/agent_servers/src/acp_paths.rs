@@ -1497,8 +1497,7 @@ mod tests {
         let env = [
             (
                 "CLAUDE_CONFIG_DIR".to_string(),
-                r"\\wsl.localhost\Ubuntu\home\u\.forgekairos-claude\projects\k\config"
-                    .to_string(),
+                r"\\wsl.localhost\Ubuntu\home\u\.forgekairos-claude\projects\k\config".to_string(),
             ),
             ("NO_BROWSER".to_string(), "1".to_string()),
         ]

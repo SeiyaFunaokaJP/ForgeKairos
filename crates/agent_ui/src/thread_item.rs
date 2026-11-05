@@ -893,7 +893,7 @@ impl Render for ThreadItem {
         // `MessageEditor` 文脈は `ThreadView` 側が張るので、送信・改行・Esc は
         // そのまま効く。`AgentThreadTab` は「パネルではなくタブ」を後から
         // キーマップで区別するための札 (ctrl-tab をタブ送りに戻す等)。
-        let mut key_context = KeyContext::new_with_defaults();
+        let mut key_context = KeyContext::new_with_defaults(cx.platform_info().os);
         key_context.add("AgentPanel");
         // `AgentThreadTab` は「パネルではなく外のタブ列」の札 (ctrl-tab を
         // `tab_switcher::Toggle` に戻す)。パネルの中のタブに付けると、パネルの

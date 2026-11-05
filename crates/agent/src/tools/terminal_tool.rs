@@ -1589,8 +1589,10 @@ fn process_content(
             .output
             .contains(acp_thread::REMOTE_SANDBOX_UNSANDBOX_HINT);
         if !already_annotated
-            && let Some(reason) =
-                acp_thread::remote_sandbox_setup_failure_message(exit_code, &output.output)
+            && let Some(reason) = acp_thread::remote_sandbox_setup_failure_message(
+                exit_code.and_then(|code| u32::try_from(code).ok()),
+                &output.output,
+            )
         {
             return with_read_hiding_note(
                 format!(
@@ -2635,7 +2637,7 @@ mod tests {
                 acp_thread::annotate_sandbox_setup_failure(raw.clone(), Some(exit_code));
             for text in [raw, annotated] {
                 let output = ProcessOutput::new(text, false)
-                    .exit_status(acp_v2::TerminalExitStatus::new().exit_code(exit_code));
+                    .exit_status(acp_v2::TerminalExitStatus::new().exit_code(i64::from(exit_code)));
                 let result = process_content(
                     output,
                     "ls",

@@ -1224,6 +1224,9 @@ msgstr "MCP 服务器"
 msgid "MCP {on}/{total}"
 msgstr "MCP {on}/{total}"
 
+msgid "Main Agent"
+msgstr "主智能体"
+
 msgid "Make Subagent Full Screen"
 msgstr "将子智能体全屏显示"
 
@@ -1235,6 +1238,9 @@ msgstr "消息"
 
 msgid "Message accepted; agent connection lost"
 msgstr "消息已被接受；与智能体的连接已断开"
+
+msgid "Message between sessions"
+msgstr "会话之间的消息"
 
 msgid "Message cancelled"
 msgstr "消息已取消"
@@ -1476,6 +1482,9 @@ msgstr "打开仓库"
 msgid "Open Sandbox Settings"
 msgstr "打开沙盒设置"
 
+msgid "Open Session"
+msgstr "打开会话"
+
 msgid "Open Skill"
 msgstr "打开技能"
 
@@ -1703,12 +1712,6 @@ msgstr "重新转换"
 
 msgid "Restore"
 msgstr "还原"
-
-msgid "Restore Checkpoint"
-msgstr "恢复到检查点"
-
-msgid "Restores all files in the project to the content they had at this point in the conversation."
-msgstr "将项目中的所有文件还原为对话中此时间点的内容。"
 
 msgid "Restrict the Network"
 msgstr "限制网络"
@@ -2013,6 +2016,9 @@ msgstr "子智能体失败"
 msgid "Subagent Output"
 msgstr "子智能体输出"
 
+msgid "Subagent Status Unknown"
+msgstr "子智能体状态未知"
+
 msgid "Subagent: {title} ({session_id})"
 msgstr "子智能体：{title}（{session_id}）"
 
@@ -2235,6 +2241,15 @@ msgstr "登录状态与你平时使用的 Claude Code 共享（`~/.claude`）。
 
 msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
 msgstr "下载的 Claude Code 的大小与发布信息不一致。已取消。"
+
+msgid "The subagent reached its limit of model requests."
+msgstr "子智能体已达到模型请求次数上限。"
+
+msgid "The subagent reached its token limit."
+msgstr "子智能体已达到 Token 上限。"
+
+msgid "The subagent's model refused to continue."
+msgstr "子智能体的模型拒绝继续。"
 
 msgid "The terminal panel is not available."
 msgstr "终端面板不可用。"
@@ -2481,6 +2496,9 @@ msgstr "不可用"
 
 msgid "Unavailable Editing"
 msgstr "编辑不可用"
+
+msgid "Unavailable Session"
+msgstr "不可用的会话"
 
 msgid "Undo"
 msgstr "撤销"
@@ -2965,6 +2983,14 @@ msgstr "对 `{}` 命令始终允许"
 msgctxt "sandbox path"
 msgid "Source"
 msgstr "来源"
+
+msgctxt "session message"
+msgid "From"
+msgstr "来自"
+
+msgctxt "session message"
+msgid "To"
+msgstr "发送给"
 
 msgctxt "subagent status"
 msgid "Awaiting Permission"
