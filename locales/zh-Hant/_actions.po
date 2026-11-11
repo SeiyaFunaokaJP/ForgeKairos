@@ -3264,6 +3264,11 @@ msgctxt "action"
 msgid "git::Pull"
 msgstr "Git: 拉取"
 
+#. git: pull from
+msgctxt "action"
+msgid "git::PullFrom"
+msgstr "Git: 從指定遠端拉取"
+
 #. git: pull rebase
 msgctxt "action"
 msgid "git::PullRebase"

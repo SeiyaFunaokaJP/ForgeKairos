@@ -205,6 +205,18 @@ const PROMPT_ANSWERS: &[&str] = &[
     i18n::msg!("Uncommit"),
 ];
 
+/// The branch to name after the remote in `git pull <remote>`. Git only knows which branch to
+/// merge from the remote the branch tracks; any other remote has to be told, and the branch of
+/// the same name is the one people mean.
+fn pull_branch_argument(branch: &Branch, remote_name: &str) -> Option<SharedString> {
+    let pulls_from_upstream = branch
+        .upstream
+        .as_ref()
+        .and_then(|upstream| upstream.remote_name())
+        .is_some_and(|upstream_remote| upstream_remote == remote_name);
+    (!pulls_from_upstream).then(|| branch.name().to_owned().into())
+}
+
 /// The answers are the variants' names, which are English; they are translated here, where they
 /// become buttons. The answer comes back as an index, so which variant was chosen does not depend
 /// on the language.
@@ -5362,7 +5374,13 @@ impl GitPanel {
         .detach();
     }
 
-    pub(crate) fn pull(&mut self, rebase: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn pull(
+        &mut self,
+        rebase: bool,
+        select_remote: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.can_push_and_pull(cx) {
             return;
         }
@@ -5377,7 +5395,7 @@ impl GitPanel {
         }
 
         telemetry::event!("Git Pulled");
-        let remote = self.get_remote(false, false, window, cx);
+        let remote = self.get_remote(select_remote, false, window, cx);
         cx.spawn_in(window, async move |this, cx| {
             let _clear_pending_remote_operation = cx.on_drop(&this, |this, cx| {
                 this.clear_remote_operation(cx);
@@ -5400,10 +5418,7 @@ impl GitPanel {
                 this.askpass_delegate(format!("git pull {}", remote.name), window, cx)
             })?;
 
-            let branch_name = branch
-                .upstream
-                .is_none()
-                .then(|| branch.name().to_owned().into());
+            let branch_name = pull_branch_argument(&branch, &remote.name);
 
             let pull = repo.update(cx, |repo, cx| {
                 repo.pull(branch_name, remote.name.clone(), rebase, askpass, cx)
@@ -6677,10 +6692,15 @@ impl GitPanel {
                 .into_iter()
                 .map(|remotes| remotes.name)
                 .collect();
+            let prompt = if is_push {
+                i18n::t!("Pick which remote to push to")
+            } else {
+                i18n::t!("Pick which remote to pull from")
+            };
             let selection = cx
                 .update(|window, cx| {
                     picker_prompt::prompt(
-                        i18n::t!("Pick which remote to push to"),
+                        prompt,
                         current_remotes.clone(),
                         workspace,
                         window,
@@ -12486,6 +12506,32 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn test_pull_names_the_branch_only_for_a_remote_it_does_not_track() {
+        let branch = |upstream: Option<&str>| Branch {
+            is_head: true,
+            ref_name: "refs/heads/feature".into(),
+            upstream: upstream.map(|ref_name| Upstream {
+                ref_name: ref_name.to_string().into(),
+                tracking: UpstreamTracking::Tracked(UpstreamTrackingStatus {
+                    ahead: 0,
+                    behind: 0,
+                }),
+            }),
+            most_recent_commit: None,
+        };
+        let tracking_origin = branch(Some("refs/remotes/origin/main"));
+        assert_eq!(pull_branch_argument(&tracking_origin, "origin"), None);
+        assert_eq!(
+            pull_branch_argument(&tracking_origin, "upstream").as_deref(),
+            Some("feature")
+        );
+        assert_eq!(
+            pull_branch_argument(&branch(None), "origin").as_deref(),
+            Some("feature")
+        );
+    }
 
     fn init_test(cx: &mut gpui::TestAppContext) {
         zlog::init_test();

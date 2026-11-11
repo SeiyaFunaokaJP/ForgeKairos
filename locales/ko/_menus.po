@@ -157,6 +157,10 @@ msgid "Fetch"
 msgstr "페치"
 
 msgctxt "menu"
+msgid "Fetch From…"
+msgstr "원격에서 페치…"
+
+msgctxt "menu"
 msgid "File"
 msgstr "파일"
 
@@ -353,8 +357,16 @@ msgid "Pull"
 msgstr "풀"
 
 msgctxt "menu"
+msgid "Pull From…"
+msgstr "원격에서 풀…"
+
+msgctxt "menu"
 msgid "Push"
 msgstr "푸시"
+
+msgctxt "menu"
+msgid "Push To…"
+msgstr "원격으로 푸시…"
 
 msgctxt "menu"
 msgid "Quit Zed"

@@ -1746,6 +1746,9 @@ msgstr "請選取要加入目前變更的提交，然後按上方的「加入目
 msgid "Pick which remote to fetch"
 msgstr "選擇要擷取的遠端"
 
+msgid "Pick which remote to pull from"
+msgstr "選擇要從哪個遠端拉取"
+
 msgid "Pick which remote to push to"
 msgstr "選擇要推送至的遠端"
 
@@ -1754,6 +1757,9 @@ msgstr "選擇要移除的遠端"
 
 msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
 msgstr "選擇要在其上工作的其他分支（一條工作線）。檔案會變為該分支的內容"
+
+msgid "Picks one of the registered remotes and brings its branch of the same name into the current branch"
+msgstr "從已註冊的遠端中選擇一個，將其同名分支帶入目前分支"
 
 msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
 msgstr "從已註冊的遠端中選擇一個，只下載其最新內容。檔案不會改變"
@@ -1787,6 +1793,9 @@ msgstr "拉取"
 
 msgid "Pull (Rebase)"
 msgstr "拉取（重訂基底）"
+
+msgid "Pull From"
+msgstr "從指定遠端拉取"
 
 msgid "Pull in Progress…"
 msgstr "正在拉取…"
@@ -3517,6 +3526,10 @@ msgstr "發佈（push --set-upstream）"
 msgctxt "git operation"
 msgid "Pull"
 msgstr "拉取"
+
+msgctxt "git operation"
+msgid "Pull From (pull)"
+msgstr "從指定遠端拉取（pull）"
 
 msgctxt "git operation"
 msgid "Pull with Rebase (pull --rebase)"

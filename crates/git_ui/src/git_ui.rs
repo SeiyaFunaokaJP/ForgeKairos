@@ -288,7 +288,7 @@ pub fn init(cx: &mut App) {
                     return;
                 };
                 panel.update(cx, |panel, cx| {
-                    panel.pull(false, window, cx);
+                    panel.pull(false, false, window, cx);
                 });
             });
             workspace.register_action(|workspace, _: &git::PullRebase, window, cx| {
@@ -296,7 +296,15 @@ pub fn init(cx: &mut App) {
                     return;
                 };
                 panel.update(cx, |panel, cx| {
-                    panel.pull(true, window, cx);
+                    panel.pull(true, false, window, cx);
+                });
+            });
+            workspace.register_action(|workspace, _: &git::PullFrom, window, cx| {
+                let Some(panel) = workspace.panel::<git_panel::GitPanel>(cx) else {
+                    return;
+                };
+                panel.update(cx, |panel, cx| {
+                    panel.pull(false, true, window, cx);
                 });
             });
             workspace.register_action(|workspace, _: &git::ResetToRemote, window, cx| {
@@ -1358,6 +1366,11 @@ mod remote_button {
                 PanelOperation::PullRebase,
                 git::PullRebase.boxed_clone(),
             )),
+            Some((
+                i18n::t!("Pull From"),
+                PanelOperation::PullFrom,
+                git::PullFrom.boxed_clone(),
+            )),
             None,
             Some((
                 i18n::t!("Push"),
@@ -1917,7 +1930,7 @@ mod remote_menu_tests {
     /// that overwrite or throw work away warn about it.
     #[test]
     fn test_remote_menu_explains_every_item() {
-        let expected: [(&str, &dyn Action, &str, Option<&str>); 14] = [
+        let expected: [(&str, &dyn Action, &str, Option<&str>); 15] = [
             ("Fetch", &git::Fetch, "Only downloads", None),
             (
                 "Fetch From",
@@ -1936,6 +1949,12 @@ mod remote_menu_tests {
                 &git::PullRebase,
                 "replays your commits",
                 Some("SHA"),
+            ),
+            (
+                "Pull From",
+                &git::PullFrom,
+                "Picks one of the registered remotes",
+                Some("conflict"),
             ),
             ("Push", &git::Push, "Sends your commits to the remote", None),
             ("Push To", &git::PushTo, "remote to send to", None),
@@ -1989,7 +2008,7 @@ mod remote_menu_tests {
             .filter(|(_, item)| item.is_none())
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
-        assert_eq!(separator_positions, [4, 9, 12, 15]);
+        assert_eq!(separator_positions, [5, 10, 13, 16]);
         let items = super::remote_button::remote_menu_items()
             .into_iter()
             .flatten()

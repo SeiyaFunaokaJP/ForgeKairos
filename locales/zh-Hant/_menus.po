@@ -157,6 +157,10 @@ msgid "Fetch"
 msgstr "擷取"
 
 msgctxt "menu"
+msgid "Fetch From…"
+msgstr "從指定遠端擷取…"
+
+msgctxt "menu"
 msgid "File"
 msgstr "檔案"
 
@@ -353,8 +357,16 @@ msgid "Pull"
 msgstr "拉取"
 
 msgctxt "menu"
+msgid "Pull From…"
+msgstr "從指定遠端拉取…"
+
+msgctxt "menu"
 msgid "Push"
 msgstr "推送"
+
+msgctxt "menu"
+msgid "Push To…"
+msgstr "推送至指定遠端…"
 
 msgctxt "menu"
 msgid "Quit Zed"

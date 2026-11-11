@@ -1746,6 +1746,9 @@ msgstr "현재 변경 사항을 추가할 커밋을 선택한 다음 위의 \"�
 msgid "Pick which remote to fetch"
 msgstr "페치할 원격 선택"
 
+msgid "Pick which remote to pull from"
+msgstr "풀할 원격 선택"
+
 msgid "Pick which remote to push to"
 msgstr "푸시할 원격 선택"
 
@@ -1754,6 +1757,9 @@ msgstr "제거할 원격 선택"
 
 msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
 msgstr "작업할 다른 브랜치(작업 줄기)를 선택합니다. 파일이 해당 브랜치의 내용으로 변경됩니다"
+
+msgid "Picks one of the registered remotes and brings its branch of the same name into the current branch"
+msgstr "등록된 원격 중 하나를 선택하여 같은 이름의 브랜치를 현재 브랜치로 가져옵니다"
 
 msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
 msgstr "등록된 원격 중 하나를 선택하여 최신 변경 사항을 다운로드하기만 합니다. 파일은 변경되지 않습니다"
@@ -1787,6 +1793,9 @@ msgstr "풀"
 
 msgid "Pull (Rebase)"
 msgstr "풀 (리베이스)"
+
+msgid "Pull From"
+msgstr "원격에서 풀"
 
 msgid "Pull in Progress…"
 msgstr "풀 진행 중…"
@@ -3517,6 +3526,10 @@ msgstr "게시 (push --set-upstream)"
 msgctxt "git operation"
 msgid "Pull"
 msgstr "풀"
+
+msgctxt "git operation"
+msgid "Pull From (pull)"
+msgstr "원격 지정하여 풀 (pull)"
 
 msgctxt "git operation"
 msgid "Pull with Rebase (pull --rebase)"

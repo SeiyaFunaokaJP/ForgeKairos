@@ -1771,6 +1771,9 @@ msgstr "Sélectionnez la validation à laquelle ajouter vos modifications actuel
 msgid "Pick which remote to fetch"
 msgstr "Choisissez le dépôt distant depuis lequel récupérer"
 
+msgid "Pick which remote to pull from"
+msgstr "Choisissez le dépôt distant depuis lequel tirer"
+
 msgid "Pick which remote to push to"
 msgstr "Choisissez le dépôt distant vers lequel envoyer"
 
@@ -1779,6 +1782,9 @@ msgstr "Choisissez le dépôt distant à supprimer"
 
 msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
 msgstr "Choisit une autre branche (une ligne de travail) sur laquelle travailler. Les fichiers prennent le contenu de cette branche"
+
+msgid "Picks one of the registered remotes and brings its branch of the same name into the current branch"
+msgstr "Choisit l'un des dépôts distants enregistrés et intègre sa branche du même nom dans la branche actuelle"
 
 msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
 msgstr "Choisit l'un des dépôts distants enregistrés et télécharge uniquement ses dernières modifications. Les fichiers ne changent pas"
@@ -1812,6 +1818,9 @@ msgstr "Tirer"
 
 msgid "Pull (Rebase)"
 msgstr "Tirer (rebase)"
+
+msgid "Pull From"
+msgstr "Tirer depuis"
 
 msgid "Pull in Progress…"
 msgstr "Tirage en cours…"
@@ -3576,6 +3585,10 @@ msgstr "Publier (push --set-upstream)"
 msgctxt "git operation"
 msgid "Pull"
 msgstr "Tirer (pull)"
+
+msgctxt "git operation"
+msgid "Pull From (pull)"
+msgstr "Tirer depuis (pull)"
 
 msgctxt "git operation"
 msgid "Pull with Rebase (pull --rebase)"

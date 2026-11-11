@@ -3264,6 +3264,11 @@ msgctxt "action"
 msgid "git::Pull"
 msgstr "Git: Fazer pull"
 
+#. git: pull from
+msgctxt "action"
+msgid "git::PullFrom"
+msgstr "Git: Fazer pull de"
+
 #. git: pull rebase
 msgctxt "action"
 msgid "git::PullRebase"

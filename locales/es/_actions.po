@@ -3264,6 +3264,11 @@ msgctxt "action"
 msgid "git::Pull"
 msgstr "Git: pull"
 
+#. git: pull from
+msgctxt "action"
+msgid "git::PullFrom"
+msgstr "Git: pull desde un remoto"
+
 #. git: pull rebase
 msgctxt "action"
 msgid "git::PullRebase"

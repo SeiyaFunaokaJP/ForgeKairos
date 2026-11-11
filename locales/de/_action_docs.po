@@ -3153,6 +3153,11 @@ msgctxt "action documentation"
 msgid "git::Pull"
 msgstr "Pullt Änderungen aus dem Remote-Repository."
 
+#. Pulls changes from a remote you pick.
+msgctxt "action documentation"
+msgid "git::PullFrom"
+msgstr "Pullt Änderungen von einem ausgewählten Remote."
+
 #. Pulls changes from the remote repository with rebase.
 msgctxt "action documentation"
 msgid "git::PullRebase"

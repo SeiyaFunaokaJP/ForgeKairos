@@ -1743,6 +1743,9 @@ msgstr "今の変更を入れる先のコミットを選び、上の「今の変
 msgid "Pick which remote to fetch"
 msgstr "フェッチするリモートを選択"
 
+msgid "Pick which remote to pull from"
+msgstr "プルするリモートを選択"
+
 msgid "Pick which remote to push to"
 msgstr "プッシュ先のリモートを選択"
 
@@ -1751,6 +1754,9 @@ msgstr "削除するリモートを選択"
 
 msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
 msgstr "作業するブランチ (作業の枝) を選び替えます。ファイルがそのブランチの内容になります"
+
+msgid "Picks one of the registered remotes and brings its branch of the same name into the current branch"
+msgstr "登録しているリモートから 1 つを選んで、同じ名前のブランチを今のブランチに取り込みます"
 
 msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
 msgstr "登録しているリモートから 1 つを選んで、その最新を取ってくるだけです。ファイルは変わりません"
@@ -1784,6 +1790,9 @@ msgstr "プル"
 
 msgid "Pull (Rebase)"
 msgstr "リベースしてプル"
+
+msgid "Pull From"
+msgstr "取得元を指定してプル"
 
 msgid "Pull in Progress…"
 msgstr "プル中…"
@@ -3514,6 +3523,10 @@ msgstr "発行 (push --set-upstream)"
 msgctxt "git operation"
 msgid "Pull"
 msgstr "プル (pull)"
+
+msgctxt "git operation"
+msgid "Pull From (pull)"
+msgstr "取得元を指定してプル (pull)"
 
 msgctxt "git operation"
 msgid "Pull with Rebase (pull --rebase)"

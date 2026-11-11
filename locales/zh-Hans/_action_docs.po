@@ -3153,6 +3153,11 @@ msgctxt "action documentation"
 msgid "git::Pull"
 msgstr "从远程仓库拉取更改。"
 
+#. Pulls changes from a remote you pick.
+msgctxt "action documentation"
+msgid "git::PullFrom"
+msgstr "从所选的远程拉取更改。"
+
 #. Pulls changes from the remote repository with rebase.
 msgctxt "action documentation"
 msgid "git::PullRebase"
