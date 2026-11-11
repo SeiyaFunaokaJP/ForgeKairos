@@ -507,6 +507,12 @@ fn changes_menu_items(state: ChangesMenuState) -> Vec<PanelMenuItem> {
         ),
         PanelMenuItem::Separator,
         panel_menu_entry(
+            i18n::t!("Worktrees…"),
+            PanelOperation::Worktrees,
+            &zed_actions::git::Worktree,
+            None,
+        ),
+        panel_menu_entry(
             i18n::t!("Initialize Repository"),
             PanelOperation::InitRepository,
             &git::Init,
@@ -20849,6 +20855,12 @@ mod tests {
                     None,
                     "Applies the changes",
                 ),
+                (
+                    "Worktrees…",
+                    &zed_actions::git::Worktree,
+                    None,
+                    "separate folder",
+                ),
                 ("Initialize Repository", &git::Init, None, ".git folder"),
                 ("Git Guide", &git::ShowGuide, None, "Git's terms"),
             ],
@@ -20856,7 +20868,7 @@ mod tests {
 
         assert_eq!(
             separator_positions(&changes_menu_items(everything)),
-            [3, 8, 11, 14, 17, 19]
+            [3, 8, 11, 14, 17, 20]
         );
 
         let nothing = ChangesMenuState {
@@ -20934,6 +20946,12 @@ mod tests {
                     None,
                     "Applies the changes",
                 ),
+                (
+                    "Worktrees…",
+                    &zed_actions::git::Worktree,
+                    None,
+                    "separate folder",
+                ),
                 ("Initialize Repository", &git::Init, None, ".git folder"),
                 ("Git Guide", &git::ShowGuide, None, "Git's terms"),
             ],
@@ -20941,7 +20959,7 @@ mod tests {
 
         assert_eq!(
             separator_positions(&changes_menu_items(nothing)),
-            [3, 8, 11, 14, 16]
+            [3, 8, 11, 14, 17]
         );
 
         let ungrouped = changes_menu_items(ChangesMenuState {

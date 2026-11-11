@@ -1649,6 +1649,9 @@ msgstr "在浏览器中打开"
 msgid "Open a directory first"
 msgstr "请先打开一个文件夹"
 
+msgid "Open in New Worktree"
+msgstr "在新工作树中打开"
+
 msgid "Open repo in new project"
 msgstr "在新项目中打开仓库"
 
@@ -1660,6 +1663,9 @@ msgstr "打开一个指南，介绍 Git 的术语和常用操作的步骤"
 
 msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
 msgstr "打开用于改写最后一次提交消息的界面。对于较早的提交，在提交图中选中它并点击“改写消息”（从该处起的提交的 SHA 会变化）。"
+
+msgid "Opens another branch in a separate folder (a worktree), so you can work on it without switching this one. Lists, creates, opens, and deletes worktrees"
+msgstr "在单独的文件夹（工作树）中打开另一个分支，无需切换当前分支即可在其中工作。可列出、创建、打开和删除工作树"
 
 msgid "Opens the current file itself in the editor, rather than the diff"
 msgstr "在编辑器中打开当前文件本身，而不是差异"
@@ -2944,6 +2950,9 @@ msgstr "若有数万个，大约需要一分钟，期间其他 Git 操作会等�
 msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
 msgstr "在冲突已解决并暂存后，继续完成中途停止的操作的剩余部分"
 
+msgid "Worktrees…"
+msgstr "工作树…"
+
 msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
 msgstr "写入一个仅包含更改的文本文件（补丁）。可选择工作树、已暂存的更改或最后一次提交。文件本身不会改变"
 
@@ -3753,6 +3762,10 @@ msgstr "查看储藏"
 msgctxt "git operation"
 msgid "View Stash List (stash list)"
 msgstr "查看储藏列表（stash list）"
+
+msgctxt "git operation"
+msgid "Worktrees (worktree)"
+msgstr "工作树（worktree）"
 
 msgctxt "git panel view options"
 msgid "Name"

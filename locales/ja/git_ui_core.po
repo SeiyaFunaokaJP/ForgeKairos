@@ -53,6 +53,9 @@ msgstr "{} キーを押しながらクリックすると強制削除します"
 msgid "Learn more"
 msgstr "詳細"
 
+msgid "New Worktree from Branch"
+msgstr "ブランチから新規ワークツリー"
+
 msgid "Open"
 msgstr "開く"
 

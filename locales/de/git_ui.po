@@ -1673,6 +1673,9 @@ msgstr "Im Browser öffnen"
 msgid "Open a directory first"
 msgstr "Öffnen Sie zuerst ein Verzeichnis"
 
+msgid "Open in New Worktree"
+msgstr "In neuem Worktree öffnen"
+
 msgid "Open repo in new project"
 msgstr "Repository in neuem Projekt öffnen"
 
@@ -1684,6 +1687,9 @@ msgstr "Öffnet einen Leitfaden, der Git-Begriffe und die Schritte gängiger Vor
 
 msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
 msgstr "Öffnet eine Ansicht zum Umschreiben der Nachricht des letzten Commits. Für einen älteren Commit wählen Sie ihn im Commit-Graphen aus und klicken auf „Nachricht umformulieren“ (die SHAs der nachfolgenden Commits ändern sich)."
+
+msgid "Opens another branch in a separate folder (a worktree), so you can work on it without switching this one. Lists, creates, opens, and deletes worktrees"
+msgstr "Öffnet einen anderen Branch in einem separaten Ordner (einem Worktree), damit Sie daran arbeiten können, ohne diesen hier zu wechseln. Listet, erstellt, öffnet und löscht Worktrees"
 
 msgid "Opens the current file itself in the editor, rather than the diff"
 msgstr "Öffnet die aktuelle Datei selbst im Editor statt des Diffs"
@@ -2985,6 +2991,9 @@ msgstr "Bei Zehntausenden davon dauert dies etwa eine Minute, und andere Git-Vor
 msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
 msgstr "Setzt bei aufgelösten und gestagten Konflikten den Rest des unterbrochenen Vorgangs fort"
 
+msgid "Worktrees…"
+msgstr "Worktrees…"
+
 msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
 msgstr "Schreibt eine Textdatei (einen Patch), die nur die Änderungen enthält. Wählen Sie das Arbeitsverzeichnis, die gestagten Änderungen oder den letzten Commit. Die Dateien selbst ändern sich nicht"
 
@@ -3812,6 +3821,10 @@ msgstr "Stash anzeigen"
 msgctxt "git operation"
 msgid "View Stash List (stash list)"
 msgstr "Stash-Liste anzeigen (stash list)"
+
+msgctxt "git operation"
+msgid "Worktrees (worktree)"
+msgstr "Worktrees (worktree)"
 
 msgctxt "git panel view options"
 msgid "Name"

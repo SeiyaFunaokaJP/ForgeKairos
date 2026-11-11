@@ -1649,6 +1649,9 @@ msgstr "브라우저에서 열기"
 msgid "Open a directory first"
 msgstr "먼저 디렉터리를 여세요"
 
+msgid "Open in New Worktree"
+msgstr "새 워크트리에서 열기"
+
 msgid "Open repo in new project"
 msgstr "새 프로젝트에서 저장소 열기"
 
@@ -1660,6 +1663,9 @@ msgstr "Git 용어와 일반적인 작업 단계를 설명하는 가이드를 �
 
 msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
 msgstr "마지막 커밋의 메시지를 다시 쓰는 화면을 엽니다. 이전 커밋은 커밋 그래프에서 선택하고 \"메시지 수정\"을 누르세요(그 이후 커밋의 SHA가 변경됩니다)."
+
+msgid "Opens another branch in a separate folder (a worktree), so you can work on it without switching this one. Lists, creates, opens, and deletes worktrees"
+msgstr "다른 브랜치를 별도 폴더(워크트리)에서 열어, 지금 브랜치를 전환하지 않고 작업할 수 있게 합니다. 워크트리를 나열, 생성, 열기, 삭제합니다"
 
 msgid "Opens the current file itself in the editor, rather than the diff"
 msgstr "Diff 대신 현재 파일 자체를 편집기에서 엽니다"
@@ -2944,6 +2950,9 @@ msgstr "수만 개가 있으면 1분 정도 걸리며, 그동안 다른 Git 작�
 msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
 msgstr "충돌을 해결하고 스테이징한 상태에서 도중에 중지된 작업의 나머지를 계속합니다"
 
+msgid "Worktrees…"
+msgstr "워크트리…"
+
 msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
 msgstr "변경 사항만 포함된 텍스트 파일(패치)을 작성합니다. 작업 트리, 스테이징된 변경 사항, 마지막 커밋 중에서 선택하세요. 파일 자체는 변경되지 않습니다"
 
@@ -3753,6 +3762,10 @@ msgstr "스태시 보기"
 msgctxt "git operation"
 msgid "View Stash List (stash list)"
 msgstr "스태시 목록 보기 (stash list)"
+
+msgctxt "git operation"
+msgid "Worktrees (worktree)"
+msgstr "워크트리 (worktree)"
 
 msgctxt "git panel view options"
 msgid "Name"

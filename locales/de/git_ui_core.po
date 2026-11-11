@@ -56,6 +56,9 @@ msgstr "{} gedrückt halten, um das Löschen zu erzwingen"
 msgid "Learn more"
 msgstr "Mehr erfahren"
 
+msgid "New Worktree from Branch"
+msgstr "Neuer Worktree aus Branch"
+
 msgid "Open"
 msgstr "Öffnen"
 

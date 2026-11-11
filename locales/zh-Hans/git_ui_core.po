@@ -56,6 +56,9 @@ msgstr "按住 {} 可强制删除"
 msgid "Learn more"
 msgstr "了解详情"
 
+msgid "New Worktree from Branch"
+msgstr "从分支新建工作树"
+
 msgid "Open"
 msgstr "打开"
 

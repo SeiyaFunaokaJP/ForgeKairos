@@ -301,6 +301,7 @@ pub(crate) enum PanelOperation {
     TrashUntrackedFiles,
     CreatePatch,
     ApplyPatch,
+    Worktrees,
     InitRepository,
     ShowGuide,
     ViewOptions,
@@ -488,6 +489,13 @@ pub(crate) fn panel_operation_help(operation: PanelOperation) -> OperationHelp {
             title: i18n::tc!("git operation", "Apply Patch File (apply)"),
             explanation: i18n::t!(
                 "Applies the changes written in a patch file to your current files. Nothing is committed, so check the result before you commit"
+            ),
+            caution: None,
+        },
+        PanelOperation::Worktrees => OperationHelp {
+            title: i18n::tc!("git operation", "Worktrees (worktree)"),
+            explanation: i18n::t!(
+                "Opens another branch in a separate folder (a worktree), so you can work on it without switching this one. Lists, creates, opens, and deletes worktrees"
             ),
             caution: None,
         },
@@ -1174,6 +1182,7 @@ mod tests {
             (PanelOperation::TrashUntrackedFiles, "Trash", "untracked"),
             (PanelOperation::CreatePatch, "Patch", "Writes"),
             (PanelOperation::ApplyPatch, "apply", "Applies"),
+            (PanelOperation::Worktrees, "worktree", "separate folder"),
             (PanelOperation::InitRepository, "init", ".git folder"),
             (PanelOperation::ShowGuide, "Guide", "terms"),
             (PanelOperation::ViewOptions, "View", "how the list"),

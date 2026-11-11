@@ -56,6 +56,9 @@ msgstr "Maintenez {} pour forcer la suppression"
 msgid "Learn more"
 msgstr "En savoir plus"
 
+msgid "New Worktree from Branch"
+msgstr "Nouvelle arborescence de travail depuis une branche"
+
 msgid "Open"
 msgstr "Ouvrir"
 
