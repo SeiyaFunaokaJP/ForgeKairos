@@ -1673,6 +1673,9 @@ msgstr "Ouvrir dans le navigateur"
 msgid "Open a directory first"
 msgstr "Ouvrez d'abord un répertoire"
 
+msgid "Open in New Worktree"
+msgstr "Ouvrir dans une nouvelle arborescence de travail"
+
 msgid "Open repo in new project"
 msgstr "Ouvrir le dépôt dans un nouveau projet"
 
@@ -1684,6 +1687,9 @@ msgstr "Ouvre un guide qui explique les termes de Git et les étapes des opérat
 
 msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
 msgstr "Ouvre un écran pour réécrire le message de la dernière validation. Pour une validation plus ancienne, sélectionnez-la dans le graphe des validations et appuyez sur \"Reformuler le message\" (les SHA des validations suivantes changent)."
+
+msgid "Opens another branch in a separate folder (a worktree), so you can work on it without switching this one. Lists, creates, opens, and deletes worktrees"
+msgstr "Ouvre une autre branche dans un dossier séparé (une arborescence de travail), pour y travailler sans changer celle-ci. Liste, crée, ouvre et supprime les arborescences de travail"
 
 msgid "Opens the current file itself in the editor, rather than the diff"
 msgstr "Ouvre le fichier actuel lui-même dans l'éditeur, plutôt que les différences"
@@ -2985,6 +2991,9 @@ msgstr "Avec plusieurs dizaines de milliers d'entre elles, cela prend environ un
 msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
 msgstr "Une fois les conflits résolus et indexés, poursuit le reste de l'opération qui s'est arrêtée en cours de route"
 
+msgid "Worktrees…"
+msgstr "Arborescences de travail…"
+
 msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
 msgstr "Écrit un fichier texte (un patch) qui contient uniquement les modifications. Choisissez la copie de travail, les modifications indexées ou la dernière validation. Les fichiers eux-mêmes ne changent pas"
 
@@ -3812,6 +3821,10 @@ msgstr "Afficher la remise"
 msgctxt "git operation"
 msgid "View Stash List (stash list)"
 msgstr "Afficher la liste des remises (stash list)"
+
+msgctxt "git operation"
+msgid "Worktrees (worktree)"
+msgstr "Arborescences de travail (worktree)"
 
 msgctxt "git panel view options"
 msgid "Name"

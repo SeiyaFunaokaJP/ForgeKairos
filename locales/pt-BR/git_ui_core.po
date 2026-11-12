@@ -56,6 +56,9 @@ msgstr "Mantenha {} pressionado para forçar a exclusão"
 msgid "Learn more"
 msgstr "Saiba mais"
 
+msgid "New Worktree from Branch"
+msgstr "Nova árvore de trabalho a partir de branch"
+
 msgid "Open"
 msgstr "Abrir"
 

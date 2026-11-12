@@ -1087,6 +1087,44 @@ impl BranchListDelegate {
         self.branch_selection_behavior.is_select_only()
     }
 
+    /// Worktrees made from one repository's branch would not line up with the others, so the
+    /// button is offered only when the project has a single repository.
+    fn can_open_in_worktree(&self, cx: &App) -> bool {
+        !self.is_select_only()
+            && self.workspace.upgrade().is_some_and(|workspace| {
+                let project = workspace.read(cx).project().read(cx);
+                !project.is_via_collab() && project.repositories(cx).len() == 1
+            })
+    }
+
+    fn open_in_new_worktree(
+        &mut self,
+        ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
+    ) {
+        let Some(branch_ref) = self
+            .matches
+            .get(ix)
+            .and_then(Entry::as_branch)
+            .map(|branch| branch.ref_name.clone())
+        else {
+            return;
+        };
+        if let Some(workspace) = self.workspace.upgrade() {
+            workspace.update(cx, |workspace, cx| {
+                git_ui_core::worktree_service::handle_create_worktree_from_branch(
+                    workspace,
+                    &branch_ref,
+                    window,
+                    None,
+                    cx,
+                );
+            });
+        }
+        cx.emit(DismissEvent);
+    }
+
     fn branch_filter_trigger(&self) -> IconButton {
         IconButton::new("branch-filter", IconName::Filter)
             .icon_size(IconSize::Small)
@@ -2004,11 +2042,29 @@ impl PickerDelegate for BranchListDelegate {
                     ),
             )
             .when(
-                !self.is_select_only() && !is_new_items && !is_head_branch,
+                !is_new_items
+                    && (self.can_open_in_worktree(cx)
+                        || (!self.is_select_only() && !is_head_branch)),
                 |this| {
                     let is_remote = entry.as_branch().is_some_and(|branch| branch.is_remote());
-                    this.end_slot(deleted_branch_icon(ix, is_remote))
-                        .show_end_slot_on_hover()
+                    let open_in_worktree_button = self.can_open_in_worktree(cx).then(|| {
+                        IconButton::new(("open-in-worktree", ix), IconName::GitWorktree)
+                            .icon_size(IconSize::Small)
+                            .tooltip(Tooltip::text(i18n::t!("Open in New Worktree")))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.delegate.open_in_new_worktree(ix, window, cx);
+                            }))
+                    });
+                    let can_delete = !self.is_select_only() && !is_head_branch;
+                    this.end_slot(
+                        h_flex()
+                            .gap_0p5()
+                            .children(open_in_worktree_button)
+                            .when(can_delete, |this| {
+                                this.child(deleted_branch_icon(ix, is_remote))
+                            }),
+                    )
+                    .show_end_slot_on_hover()
                 },
             )
             .when_some(

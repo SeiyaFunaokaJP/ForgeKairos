@@ -1646,6 +1646,9 @@ msgstr "ブラウザーで開く"
 msgid "Open a directory first"
 msgstr "先にディレクトリを開いてください。"
 
+msgid "Open in New Worktree"
+msgstr "新しいワークツリーで開く"
+
 msgid "Open repo in new project"
 msgstr "新しいプロジェクトでリポジトリを開く"
 
@@ -1657,6 +1660,9 @@ msgstr "Git の用語と、よく使う操作の手順を説明するガイド�
 
 msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
 msgstr "直前のコミットのメッセージを書き換える画面を開きます。昔のコミットは、コミットグラフで選んで「メッセージを書き換え」を押します (以降のコミットの SHA が変わります)。"
+
+msgid "Opens another branch in a separate folder (a worktree), so you can work on it without switching this one. Lists, creates, opens, and deletes worktrees"
+msgstr "別のブランチを別のフォルダー (ワークツリー) で開き、今のブランチを切り替えずに作業できるようにします。ワークツリーの一覧・作成・切り替え・削除ができます"
 
 msgid "Opens the current file itself in the editor, rather than the diff"
 msgstr "差分ではなく、今のファイルそのものをエディターで開きます"
@@ -2941,6 +2947,9 @@ msgstr "数万個あると 1 分ほどかかり、その間ほかの Git 操作�
 msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
 msgstr "コンフリクトを解決してステージした状態で、途中で止まった操作の残りを進めます"
 
+msgid "Worktrees…"
+msgstr "ワークツリー…"
+
 msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
 msgstr "変更点だけを書いたテキスト (パッチ) をファイルに書き出します。作業ツリー / ステージ済み / 直近のコミットから選べます。ファイル自体は変わりません"
 
@@ -3750,6 +3759,10 @@ msgstr "スタッシュを表示"
 msgctxt "git operation"
 msgid "View Stash List (stash list)"
 msgstr "スタッシュを表示 (stash list)"
+
+msgctxt "git operation"
+msgid "Worktrees (worktree)"
+msgstr "ワークツリー (worktree)"
 
 msgctxt "git panel view options"
 msgid "Name"

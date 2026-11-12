@@ -705,6 +705,96 @@ pub fn handle_create_worktree(
     task.detach_and_log_err(cx);
 }
 
+/// Creates a worktree at the tip of `branch_ref` (a full `refs/heads/…` or `refs/remotes/…`
+/// ref) and switches to it, naming the worktree after the branch.
+pub fn handle_create_worktree_from_branch(
+    workspace: &mut Workspace,
+    branch_ref: &str,
+    window: &mut gpui::Window,
+    fallback_focused_dock: Option<DockPosition>,
+    cx: &mut gpui::Context<Workspace>,
+) {
+    let worktree_directory_setting = ProjectSettings::get_global(cx)
+        .git
+        .worktree_directory
+        .clone();
+    let worktree_name = workspace
+        .project()
+        .read(cx)
+        .active_repository(cx)
+        .zip(worktree_name_for_branch(branch_ref))
+        .and_then(|(repository, base_name)| {
+            let repository = repository.read(cx);
+            let taken_paths: HashSet<PathBuf> = repository
+                .linked_worktrees()
+                .iter()
+                .map(|worktree| worktree.path.clone())
+                .chain([repository.work_directory_abs_path.to_path_buf()])
+                .collect();
+            unique_worktree_name(&base_name, |name| {
+                repository
+                    .path_for_new_linked_worktree(name, &worktree_directory_setting)
+                    .is_ok_and(|path| !taken_paths.contains(&path))
+            })
+        });
+    let action = zed_actions::CreateWorktree {
+        worktree_name,
+        branch_target: worktree_branch_target_for_ref(branch_ref),
+    };
+    handle_create_worktree(workspace, &action, window, fallback_focused_dock, cx);
+}
+
+fn worktree_branch_target_for_ref(branch_ref: &str) -> NewWorktreeBranchTarget {
+    if let Some(remote_branch) = branch_ref
+        .strip_prefix("refs/remotes/")
+        .and_then(RemoteBranchName::parse)
+    {
+        return NewWorktreeBranchTarget::RemoteBranch {
+            remote_name: remote_branch.remote_name,
+            branch_name: remote_branch.branch_name,
+        };
+    }
+    // The full ref keeps a tag of the same name from winning when git resolves it.
+    let name = if branch_ref.starts_with("refs/") {
+        branch_ref.to_string()
+    } else {
+        format!("refs/heads/{branch_ref}")
+    };
+    NewWorktreeBranchTarget::ExistingBranch { name }
+}
+
+/// Turns a branch ref into a worktree directory name, e.g. `refs/remotes/origin/feature/login`
+/// becomes `feature-login`.
+fn worktree_name_for_branch(branch_ref: &str) -> Option<String> {
+    let branch_name = match branch_ref.strip_prefix("refs/remotes/") {
+        Some(remote_ref) => RemoteBranchName::parse(remote_ref)?.branch_name,
+        None => branch_ref
+            .strip_prefix("refs/heads/")
+            .unwrap_or(branch_ref)
+            .to_string(),
+    };
+    let mut name = String::with_capacity(branch_name.len());
+    for character in branch_name.chars() {
+        let character = if character.is_alphanumeric() || matches!(character, '-' | '_' | '.') {
+            character
+        } else {
+            '-'
+        };
+        if character == '-' && name.ends_with('-') {
+            continue;
+        }
+        name.push(character);
+    }
+    let name = name.trim_matches(|character| character == '-' || character == '.');
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+fn unique_worktree_name(base_name: &str, is_free: impl Fn(&str) -> bool) -> Option<String> {
+    std::iter::once(base_name.to_string())
+        .chain((2..10).map(|suffix| format!("{base_name}-{suffix}")))
+        .find(|name| is_free(name))
+}
+
 /// Outcome of [`create_worktree_workspace`].
 pub struct CreatedWorktreeWorkspace {
     /// The newly opened workspace.
@@ -1709,6 +1799,164 @@ mod tests {
             !has_modal,
             "security modal should not show for a linked worktree created from a trusted main worktree"
         );
+    }
+
+    #[gpui::test]
+    async fn test_create_worktree_from_branch_names_it_after_the_branch(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.background_executor.clone());
+        cx.update(|cx| <dyn Fs>::set_global(fs.clone(), cx));
+        fs.insert_tree(
+            "/root",
+            json!({
+                "project": {
+                    ".git": {},
+                    "src": { "main.rs": "fn main() {}" },
+                },
+            }),
+        )
+        .await;
+        fs.with_git_state(Path::new(path!("/root/project/.git")), true, |state| {
+            state
+                .branches
+                .insert("refs/heads/feature/login".to_string());
+        })
+        .unwrap();
+
+        let main_project_root = PathBuf::from(path!("/root/project"));
+        let project = Project::test(fs.clone(), [main_project_root.as_path()], cx).await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("the project should have a repository")
+        });
+
+        let worktree_directory = cx.update(|cx| {
+            ProjectSettings::get_global(cx)
+                .git
+                .worktree_directory
+                .clone()
+        });
+        let new_worktree_path = |name: &str, cx: &mut TestAppContext| {
+            repository.read_with(cx, |repository, _| {
+                repository
+                    .path_for_new_linked_worktree(name, &worktree_directory)
+                    .expect("the worktree path should resolve")
+            })
+        };
+        let taken_path = new_worktree_path("feature-login", cx);
+        let expected_path = new_worktree_path("feature-login-2", cx);
+        repository
+            .update(cx, |repository, _| {
+                repository.create_worktree(
+                    git::repository::CreateWorktreeTarget::NewBranch {
+                        branch_name: "older".to_string(),
+                        base_sha: None,
+                    },
+                    taken_path,
+                )
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        cx.run_until_parked();
+
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        multi_workspace.update(cx, |multi_workspace, cx| {
+            multi_workspace.retain_active_workspace(cx);
+        });
+        let main_workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+        main_workspace.update_in(cx, |workspace, window, cx| {
+            handle_create_worktree_from_branch(
+                workspace,
+                "refs/heads/feature/login",
+                window,
+                None,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        let worktrees = repository
+            .update(cx, |repository, _| repository.worktrees())
+            .await
+            .unwrap()
+            .unwrap();
+        let created = worktrees
+            .iter()
+            .find(|worktree| worktree.path == expected_path)
+            .unwrap_or_else(|| panic!("no worktree at {expected_path:?} in {worktrees:?}"));
+        assert_eq!(created.sha.as_ref(), "refs/heads/feature/login");
+
+        let new_workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());
+        let new_roots = new_workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .visible_worktrees(cx)
+                .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(new_roots, [expected_path]);
+    }
+
+    #[test]
+    fn test_worktree_name_for_branch() {
+        assert_eq!(
+            worktree_name_for_branch("refs/heads/feature/login").as_deref(),
+            Some("feature-login")
+        );
+        assert_eq!(
+            worktree_name_for_branch("refs/remotes/origin/fix/a b").as_deref(),
+            Some("fix-a-b")
+        );
+        assert_eq!(
+            worktree_name_for_branch("refs/heads/日本語//x").as_deref(),
+            Some("日本語-x")
+        );
+        assert_eq!(worktree_name_for_branch("refs/heads/.../").as_deref(), None);
+        assert_eq!(worktree_name_for_branch("refs/remotes/origin"), None);
+    }
+
+    #[test]
+    fn test_worktree_branch_target_for_ref() {
+        assert_eq!(
+            worktree_branch_target_for_ref("refs/heads/feature/login"),
+            NewWorktreeBranchTarget::ExistingBranch {
+                name: "refs/heads/feature/login".to_string(),
+            }
+        );
+        assert_eq!(
+            worktree_branch_target_for_ref("main"),
+            NewWorktreeBranchTarget::ExistingBranch {
+                name: "refs/heads/main".to_string(),
+            }
+        );
+        assert_eq!(
+            worktree_branch_target_for_ref("refs/remotes/upstream/feature/login"),
+            NewWorktreeBranchTarget::RemoteBranch {
+                remote_name: "upstream".to_string(),
+                branch_name: "feature/login".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_unique_worktree_name() {
+        assert_eq!(
+            unique_worktree_name("topic", |_| true).as_deref(),
+            Some("topic")
+        );
+        assert_eq!(
+            unique_worktree_name("topic", |name| name == "topic-3").as_deref(),
+            Some("topic-3")
+        );
+        assert_eq!(unique_worktree_name("topic", |_| false), None);
     }
 
     #[test]

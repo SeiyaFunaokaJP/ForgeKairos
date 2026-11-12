@@ -56,6 +56,9 @@ msgstr "강제 삭제하려면 {}을(를) 누르고 있으세요"
 msgid "Learn more"
 msgstr "자세히 알아보기"
 
+msgid "New Worktree from Branch"
+msgstr "브랜치에서 새 워크트리"
+
 msgid "Open"
 msgstr "열기"
 

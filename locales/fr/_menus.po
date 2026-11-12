@@ -565,6 +565,10 @@ msgid "Window"
 msgstr "Fenêtre"
 
 msgctxt "menu"
+msgid "Worktrees…"
+msgstr "Arborescences de travail…"
+
+msgctxt "menu"
 msgid "Zed"
 msgstr "ForgeKairos"
 

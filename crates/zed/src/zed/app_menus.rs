@@ -361,6 +361,7 @@ fn git_menu() -> Menu {
             MenuItem::separator(),
             MenuItem::action("Create Branch…", zed_actions::git::Branch),
             MenuItem::action("Switch Branch…", zed_actions::git::Switch),
+            MenuItem::action("Worktrees…", zed_actions::git::Worktree),
             MenuItem::separator(),
             MenuItem::action("Amend Last Commit", git::StartAmend),
             MenuItem::action("Fixup into an Earlier Commit…", git::ChooseFixupCommit),

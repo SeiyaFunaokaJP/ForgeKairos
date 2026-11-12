@@ -56,6 +56,9 @@ msgstr "Mantenga presionado {} para forzar la eliminación"
 msgid "Learn more"
 msgstr "Más información"
 
+msgid "New Worktree from Branch"
+msgstr "Nuevo worktree desde rama"
+
 msgid "Open"
 msgstr "Abrir"
 
