@@ -154,6 +154,10 @@ msgid "Fetch"
 msgstr "フェッチ"
 
 msgctxt "menu"
+msgid "Fetch From…"
+msgstr "取得元を指定してフェッチ…"
+
+msgctxt "menu"
 msgid "File"
 msgstr "ファイル"
 
@@ -350,8 +354,16 @@ msgid "Pull"
 msgstr "プル"
 
 msgctxt "menu"
+msgid "Pull From…"
+msgstr "取得元を指定してプル…"
+
+msgctxt "menu"
 msgid "Push"
 msgstr "プッシュ"
+
+msgctxt "menu"
+msgid "Push To…"
+msgstr "プッシュ先を指定してプッシュ…"
 
 msgctxt "menu"
 msgid "Quit Zed"

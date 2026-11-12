@@ -1786,6 +1786,9 @@ msgstr "Wählen Sie den Commit aus, zu dem Ihre aktuellen Änderungen hinzugefü
 msgid "Pick which remote to fetch"
 msgstr "Remote auswählen, von dem Änderungen abgerufen werden sollen"
 
+msgid "Pick which remote to pull from"
+msgstr "Remote für den Pull auswählen"
+
 msgid "Pick which remote to push to"
 msgstr "Remote für den Push auswählen"
 
@@ -1794,6 +1797,9 @@ msgstr "Zu entfernendes Remote auswählen"
 
 msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
 msgstr "Wählt einen anderen Branch (einen Arbeitszweig) zum Arbeiten aus. Die Dateien ändern sich auf den Inhalt dieses Branches"
+
+msgid "Picks one of the registered remotes and brings its branch of the same name into the current branch"
+msgstr "Wählt eines der registrierten Remotes aus und übernimmt dessen gleichnamigen Branch in den aktuellen Branch"
 
 msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
 msgstr "Wählt eines der registrierten Remotes aus und lädt nur dessen neuesten Stand herunter. Die Dateien ändern sich nicht"
@@ -1827,6 +1833,9 @@ msgstr "Pullen"
 
 msgid "Pull (Rebase)"
 msgstr "Pull (Rebase)"
+
+msgid "Pull From"
+msgstr "Pullen von"
 
 msgid "Pull in Progress…"
 msgstr "Pull wird ausgeführt…"
@@ -3597,6 +3606,10 @@ msgstr "Veröffentlichen (push --set-upstream)"
 msgctxt "git operation"
 msgid "Pull"
 msgstr "Pullen"
+
+msgctxt "git operation"
+msgid "Pull From (pull)"
+msgstr "Pullen von (pull)"
 
 msgctxt "git operation"
 msgid "Pull with Rebase (pull --rebase)"

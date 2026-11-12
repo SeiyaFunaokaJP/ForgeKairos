@@ -3153,6 +3153,11 @@ msgctxt "action documentation"
 msgid "git::Pull"
 msgstr "원격 저장소에서 변경 사항을 풀합니다."
 
+#. Pulls changes from a remote you pick.
+msgctxt "action documentation"
+msgid "git::PullFrom"
+msgstr "선택한 원격에서 변경 사항을 풀합니다."
+
 #. Pulls changes from the remote repository with rebase.
 msgctxt "action documentation"
 msgid "git::PullRebase"

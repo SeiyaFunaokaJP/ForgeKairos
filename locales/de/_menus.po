@@ -157,6 +157,10 @@ msgid "Fetch"
 msgstr "Fetchen"
 
 msgctxt "menu"
+msgid "Fetch From…"
+msgstr "Fetchen von…"
+
+msgctxt "menu"
 msgid "File"
 msgstr "Datei"
 
@@ -353,8 +357,16 @@ msgid "Pull"
 msgstr "Pullen"
 
 msgctxt "menu"
+msgid "Pull From…"
+msgstr "Pullen von…"
+
+msgctxt "menu"
 msgid "Push"
 msgstr "Pushen"
+
+msgctxt "menu"
+msgid "Push To…"
+msgstr "Pushen nach…"
 
 msgctxt "menu"
 msgid "Quit Zed"

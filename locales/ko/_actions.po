@@ -3264,6 +3264,11 @@ msgctxt "action"
 msgid "git::Pull"
 msgstr "Git: 풀"
 
+#. git: pull from
+msgctxt "action"
+msgid "git::PullFrom"
+msgstr "Git: 원격을 지정하여 풀"
+
 #. git: pull rebase
 msgctxt "action"
 msgid "git::PullRebase"

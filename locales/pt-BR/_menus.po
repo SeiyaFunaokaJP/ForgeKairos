@@ -157,6 +157,10 @@ msgid "Fetch"
 msgstr "Fazer fetch"
 
 msgctxt "menu"
+msgid "Fetch From…"
+msgstr "Fazer fetch de…"
+
+msgctxt "menu"
 msgid "File"
 msgstr "Arquivo"
 
@@ -353,8 +357,16 @@ msgid "Pull"
 msgstr "Fazer pull"
 
 msgctxt "menu"
+msgid "Pull From…"
+msgstr "Fazer pull de…"
+
+msgctxt "menu"
 msgid "Push"
 msgstr "Fazer push"
+
+msgctxt "menu"
+msgid "Push To…"
+msgstr "Fazer push para…"
 
 msgctxt "menu"
 msgid "Quit Zed"

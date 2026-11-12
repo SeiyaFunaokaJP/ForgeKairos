@@ -322,6 +322,7 @@ pub(crate) enum PanelOperation {
     FetchFrom,
     Pull,
     PullRebase,
+    PullFrom,
     Push,
     PushTo,
     ForcePush,
@@ -636,6 +637,13 @@ pub(crate) fn panel_operation_help(operation: PanelOperation) -> OperationHelp {
                 "Brings in the latest from the remote and replays your commits that were not pushed yet on top of it. History stays in a straight line"
             ),
             caution: Some(i18n::t!("The replayed commits of yours get new SHAs")),
+        },
+        PanelOperation::PullFrom => OperationHelp {
+            title: i18n::tc!("git operation", "Pull From (pull)"),
+            explanation: i18n::t!(
+                "Picks one of the registered remotes and brings its branch of the same name into the current branch"
+            ),
+            caution: Some(conflict_caution()),
         },
         PanelOperation::Push => OperationHelp {
             title: i18n::tc!("git operation", "Push"),
@@ -1211,6 +1219,7 @@ mod tests {
             (PanelOperation::FetchFrom, "From", "Picks one"),
             (PanelOperation::Pull, "Pull", "brings it into"),
             (PanelOperation::PullRebase, "--rebase", "replays"),
+            (PanelOperation::PullFrom, "Pull From", "same name"),
             (PanelOperation::Push, "Push", "Sends your commits"),
             (PanelOperation::PushTo, "Push To", "remote to send to"),
             (
