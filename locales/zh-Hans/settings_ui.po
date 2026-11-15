@@ -2022,6 +2022,9 @@ msgstr "将智能体运行的终端命令包裹在操作系统级沙盒中。关
 msgid "Writable Paths"
 msgstr "可写路径"
 
+msgid "You can't create skills in a project someone shared with you."
+msgstr "无法在他人与你共享的项目中创建技能。"
+
 msgid "You have consented to using this as an external AI service."
 msgstr "你已同意将其作为外部 AI 服务使用。"
 

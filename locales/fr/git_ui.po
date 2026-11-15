@@ -3125,6 +3125,11 @@ msgid_plural "{count} commits:"
 msgstr[0] "{count} validation :"
 msgstr[1] "{count} validations :"
 
+msgid "{count} entry"
+msgid_plural "{count} entries"
+msgstr[0] "{count} entrée"
+msgstr[1] "{count} entrées"
+
 msgid "{count} excluded commit."
 msgid_plural "{count} excluded commits."
 msgstr[0] "{count} validation exclue."

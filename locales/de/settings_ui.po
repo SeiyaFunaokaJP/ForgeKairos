@@ -2026,6 +2026,9 @@ msgstr "Von Agenten ausgeführte Terminalbefehle in einer Sandbox auf Betriebssy
 msgid "Writable Paths"
 msgstr "Beschreibbare Pfade"
 
+msgid "You can't create skills in a project someone shared with you."
+msgstr "In einem Projekt, das jemand für Sie freigegeben hat, können Sie keine Skills erstellen."
+
 msgid "You have consented to using this as an external AI service."
 msgstr "Sie haben der Verwendung als externer KI-Dienst zugestimmt."
 

@@ -1513,6 +1513,14 @@ msgid "Auto Compact Threshold"
 msgstr "자동 압축 임계값"
 
 msgctxt "settings"
+msgid "Auto Fetch"
+msgstr "자동 페치"
+
+msgctxt "settings"
+msgid "Auto Fetch Interval"
+msgstr "자동 페치 간격"
+
+msgctxt "settings"
 msgid "Auto Fold Directories"
 msgstr "디렉터리 자동 접기"
 
@@ -1567,6 +1575,10 @@ msgstr "삭제된 파일을 자동으로 닫습니다."
 msgctxt "settings"
 msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
 msgstr "에이전트의 컨텍스트가 너무 커지면 이전 메시지를 요약하여 모델의 컨텍스트 창에 여유 공간을 확보하도록 컨텍스트를 자동으로 압축합니다."
+
+msgctxt "settings"
+msgid "Automatically fetch the default branch's remote and the current branch's upstream remote."
+msgstr "기본 브랜치의 원격과 현재 브랜치의 업스트림 원격에서 자동으로 페치합니다."
 
 msgctxt "settings"
 msgid "Automatically open menus in the titlebar on hover."
@@ -2037,6 +2049,14 @@ msgid "Debugger Panel"
 msgstr "디버거 패널"
 
 msgctxt "settings"
+msgid "Debugger Panel Default Height"
+msgstr "디버거 패널 기본 높이"
+
+msgctxt "settings"
+msgid "Debugger Panel Default Width"
+msgstr "디버거 패널 기본 너비"
+
+msgctxt "settings"
 msgid "Debugger Panel Dock"
 msgstr "디버거 패널 도크"
 
@@ -2097,6 +2117,10 @@ msgid "Default fixed width when the agent panel is docked to the left or right a
 msgstr "에이전트 패널이 왼쪽 또는 오른쪽에 도킹되어 있고 가변 크기 조정이 비활성화되었을 때의 기본 고정 너비입니다."
 
 msgctxt "settings"
+msgid "Default height in pixels when the debug panel is docked to the bottom."
+msgstr "디버거 패널을 하단에 도킹했을 때의 기본 높이(픽셀)입니다."
+
+msgctxt "settings"
 msgid "Default height of the AI browser panel in pixels when docked to the bottom."
 msgstr "하단에 도킹했을 때 AI 브라우저 패널의 기본 높이(픽셀)입니다."
 
@@ -2115,6 +2139,10 @@ msgstr "터미널이 하단에 도킹된 경우의 기본 높이(픽셀)입니�
 msgctxt "settings"
 msgid "Default timeout in seconds for MCP server tool calls."
 msgstr "MCP 서버 도구 호출의 기본 시간 제한(초)입니다."
+
+msgctxt "settings"
+msgid "Default width in pixels when the debug panel is docked to the left or right."
+msgstr "디버거 패널을 왼쪽 또는 오른쪽에 도킹했을 때의 기본 너비(픽셀)입니다."
 
 msgctxt "settings"
 msgid "Default width of the AI browser panel in pixels when docked to the left or right."
@@ -2331,6 +2359,10 @@ msgstr "편집 디바운스 (밀리초)"
 msgctxt "settings"
 msgid "Edit Keybindings"
 msgstr "키 바인딩 편집"
+
+msgctxt "settings"
+msgid "Edit Prediction Button"
+msgstr "편집 예측 버튼"
 
 msgctxt "settings"
 msgid "Edit Predictions"
@@ -2951,6 +2983,10 @@ msgstr "새 파일 및 포맷과 저장 작업 중 줄 끝 문자를 처리하�
 msgctxt "settings"
 msgid "How long going to a definition waits for the language server before it also offers the index's name matches, in milliseconds, from 100 to 10000. Default: 1500."
 msgstr "정의로 이동 시 색인의 이름 일치 결과도 함께 제시하기 전에 언어 서버를 기다리는 시간(밀리초, 100~10000)입니다. 기본값: 1500."
+
+msgctxt "settings"
+msgid "How long to wait between automatic fetches, in seconds. (min: 15)"
+msgstr "자동 페치 사이에 기다릴 시간(초)입니다. (최소: 15)"
 
 msgctxt "settings"
 msgid "How many callers or callees of one function to list before a Show more row."
@@ -4431,6 +4467,10 @@ msgstr "상태 표시줄에 커서 위치 버튼을 표시합니다."
 msgctxt "settings"
 msgid "Show the debugger button in the status bar."
 msgstr "상태 표시줄에 디버거 버튼을 표시합니다."
+
+msgctxt "settings"
+msgid "Show the edit prediction button in the status bar."
+msgstr "상태 표시줄에 편집 예측 버튼을 표시합니다."
 
 msgctxt "settings"
 msgid "Show the file icon for a tab."

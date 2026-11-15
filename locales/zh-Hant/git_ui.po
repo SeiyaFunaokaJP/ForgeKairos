@@ -3077,6 +3077,10 @@ msgid "{count} commit:"
 msgid_plural "{count} commits:"
 msgstr[0] "{count} 個提交："
 
+msgid "{count} entry"
+msgid_plural "{count} entries"
+msgstr[0] "{count} 個項目"
+
 msgid "{count} excluded commit."
 msgid_plural "{count} excluded commits."
 msgstr[0] "{count} 個被排除的提交。"

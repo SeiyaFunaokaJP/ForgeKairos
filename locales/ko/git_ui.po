@@ -3077,6 +3077,10 @@ msgid "{count} commit:"
 msgid_plural "{count} commits:"
 msgstr[0] "커밋 {count}개:"
 
+msgid "{count} entry"
+msgid_plural "{count} entries"
+msgstr[0] "항목 {count}개"
+
 msgid "{count} excluded commit."
 msgid_plural "{count} excluded commits."
 msgstr[0] "제외한 커밋 {count}개."

@@ -15003,6 +15003,90 @@ mod tests {
         cx.run_until_parked();
     }
 
+    /// Auto-fetch contacts remotes on its own, so a repository the user has not trusted
+    /// (ADR-F50) is left alone until they do.
+    #[gpui::test]
+    async fn test_auto_fetch_waits_for_trust(cx: &mut TestAppContext) {
+        use util::path;
+
+        init_test(cx);
+        cx.update(|cx| {
+            crate::trusted_worktrees::init(Default::default(), cx);
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{"git":{"auto_fetch":{"enabled":true,"interval_secs":15}}}"#,
+                        cx,
+                    )
+                    .expect("valid settings");
+            });
+        });
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({".git": {}, "README.md": "project"}),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [Path::new(path!("/project"))], cx).await;
+        let fetches = fs
+            .with_git_state(Path::new(path!("/project/.git")), true, |state| {
+                state.branches = ["refs/heads/main", "refs/remotes/origin/main"]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect();
+                state.default_branch_ref = Some("refs/remotes/origin/main".to_owned());
+                state.current_branch_name = Some("refs/heads/main".to_owned());
+                state.remotes = [(
+                    "origin".to_owned(),
+                    "https://example.com/origin.git".to_owned(),
+                )]
+                .into_iter()
+                .collect();
+                state.fetches.clone()
+            })
+            .expect("repository exists");
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        cx.run_until_parked();
+
+        for _ in 0..2 {
+            cx.executor().advance_clock(Duration::from_secs(15));
+            cx.run_until_parked();
+        }
+        assert!(
+            fetches.lock().is_empty(),
+            "an untrusted repository must not be fetched"
+        );
+
+        let worktree_store = project.read_with(cx, |project, _| project.worktree_store());
+        let worktree_id = worktree_store.read_with(cx, |store, cx| {
+            store
+                .visible_worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let trusted_worktrees = cx
+            .update(|cx| crate::trusted_worktrees::TrustedWorktrees::try_get_global(cx))
+            .expect("trusted worktrees are initialized");
+        trusted_worktrees.update(cx, |trusted_worktrees, cx| {
+            trusted_worktrees.trust(
+                &worktree_store,
+                HashSet::from_iter([crate::trusted_worktrees::PathTrust::Worktree(worktree_id)]),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        cx.executor().advance_clock(Duration::from_secs(15));
+        cx.run_until_parked();
+        assert!(
+            !fetches.lock().is_empty(),
+            "once trusted, the repository is fetched"
+        );
+    }
+
     #[gpui::test]
     async fn test_auto_fetch_without_manual_git_operation(cx: &mut TestAppContext) {
         use git::repository::{Upstream, UpstreamTracking};

@@ -22970,6 +22970,7 @@ mod tests {
                 ".git": {},
                 "added.txt": "unstaged\n",
                 "untracked.txt": "untracked\n",
+                "untracked_too.txt": "untracked\n",
             }),
         )
         .await;
@@ -22982,6 +22983,16 @@ mod tests {
         cx.executor().run_until_parked();
 
         assert!(!fs.is_file(path!("/project/untracked.txt").as_ref()).await);
+        let mut trashed = fs.trashed_paths();
+        trashed.sort();
+        assert_eq!(
+            trashed,
+            [
+                PathBuf::from(path!("/project/untracked.txt")),
+                PathBuf::from(path!("/project/untracked_too.txt")),
+            ],
+            "untracked files go to the trash, not away for good"
+        );
         assert_eq!(
             worktree_and_index(&fs, "added.txt").await,
             ("unstaged\n".into(), Some("staged\n".into()))

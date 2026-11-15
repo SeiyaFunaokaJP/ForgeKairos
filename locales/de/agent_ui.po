@@ -271,6 +271,9 @@ msgstr "Anwenden"
 msgid "Archive Thread"
 msgstr "Thread archivieren"
 
+msgid "Asks the agent to stop this process. Its output stays here."
+msgstr "Bittet den Agenten, diesen Prozess zu beenden. Seine Ausgabe bleibt hier erhalten."
+
 msgid "Associate the \"{}\" thread with..."
 msgstr "Thread „{}“ verknüpfen mit..."
 
@@ -541,8 +544,8 @@ msgstr "Verbindung zum Server wird hergestellt…"
 msgid "Connection Interrupted"
 msgstr "Verbindung unterbrochen"
 
-msgid "Connection lost; message acceptance is unknown"
-msgstr "Verbindung getrennt; ob die Nachricht angenommen wurde, ist unbekannt"
+msgid "Connection lost"
+msgstr "Verbindung getrennt"
 
 msgid "Context"
 msgstr "Kontext"
@@ -918,6 +921,9 @@ msgstr "Externe Agenten werden in freigegebenen Projekten noch nicht unterstütz
 msgid "Extracting and checking the hash…"
 msgstr "Wird entpackt und Hash wird geprüft…"
 
+msgid "Failed"
+msgstr "Fehlgeschlagen"
+
 msgid "Failed to Install"
 msgstr "Installation fehlgeschlagen"
 
@@ -1240,17 +1246,8 @@ msgstr "KI-Verbindungen verwalten…"
 msgid "Message"
 msgstr "Nachricht"
 
-msgid "Message accepted; agent connection lost"
-msgstr "Nachricht angenommen; Verbindung zum Agenten getrennt"
-
 msgid "Message between sessions"
 msgstr "Nachricht zwischen Sitzungen"
-
-msgid "Message cancelled"
-msgstr "Nachricht abgebrochen"
-
-msgid "Message failed to send: {}"
-msgstr "Die Nachricht konnte nicht gesendet werden: {}"
 
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "{} anschreiben – @ für Kontext, / für Befehle"
@@ -1573,6 +1570,9 @@ msgstr "Einfügen"
 msgid "Paste as Plain Text"
 msgstr "Als reinen Text einfügen"
 
+msgid "Paused"
+msgstr "Angehalten"
+
 msgid "Permission Denied"
 msgstr "Zugriff verweigert"
 
@@ -1894,8 +1894,8 @@ msgstr "Als Zusammenfassung senden"
 msgid "Send in Full"
 msgstr "Vollständig senden"
 
-msgid "Sending message…"
-msgstr "Nachricht wird gesendet…"
+msgid "Sending…"
+msgstr "Wird gesendet…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "Sendet es nach Prüfung von Signatur und Hash an den Remote-Host."
@@ -2005,6 +2005,9 @@ msgstr "Unteragent beenden"
 msgid "Stop This Command"
 msgstr "Diesen Befehl beenden"
 
+msgid "Stop Tool Call"
+msgstr "Toolaufruf beenden"
+
 msgid "Subagent"
 msgstr "Unteragent"
 
@@ -2110,6 +2113,12 @@ msgstr "Der ForgeKairos-Server auf dem Remote-Host ist noch nicht bereit (intern
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "Der ForgeKairos-Server auf dem Remote-Host ist noch nicht bereit. Warten Sie, bis die Verbindung hergestellt ist, und versuchen Sie es erneut."
 
+msgid "The agent accepted this message but hasn't shown it yet."
+msgstr "Der Agent hat diese Nachricht angenommen, aber noch nicht angezeigt."
+
+msgid "The agent accepted this message, then the connection was lost."
+msgstr "Der Agent hat diese Nachricht angenommen, danach wurde die Verbindung getrennt."
+
 msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
 msgstr "Der Agent und die Befehle, die er ausführt, erreichen innerhalb der Netzwerk-Zulassungsliste jeden Host. Klicken, um sie auf die eigenen Hosts des Agenten zu beschränken. Rechtsklick, um den Standard für dieses Projekt festzulegen."
 
@@ -2127,6 +2136,9 @@ msgstr "Der Agent kann derzeit nicht feststellen, ob er arbeitet. Sie können ma
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "Der Agent kann `getDiagnostics` nicht verwenden und sieht daher die Fehler und Warnungen nicht, die der Editor anzeigt. {reason}"
+
+msgid "The agent finished responding, but work it started keeps running in the background, such as a dev server or a scheduled task."
+msgstr "Der Agent hat seine Antwort beendet, aber von ihm gestartete Arbeit läuft im Hintergrund weiter, etwa ein Entwicklungsserver oder eine geplante Aufgabe."
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "Der Agent startet, wenn du deine erste Nachricht sendest. Wähle zuerst seine Sandbox und sein Netzwerk: Sobald er gestartet ist, bleiben sie für diesen Thread so."
@@ -2154,6 +2166,9 @@ msgstr "Für den Netzwerkzugriff des Agenten müssen Hosts zur Zulassungsliste h
 
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "Die Verbindung zur API von {provider} wurde unterbrochen. ForgeKairos wiederholt den Versuch automatisch. Wenn das Problem weiterhin besteht, überprüfen Sie Ihre Netzwerkverbindung."
+
+msgid "The connection was lost before the agent confirmed this message."
+msgstr "Die Verbindung wurde getrennt, bevor der Agent diese Nachricht bestätigt hat."
 
 msgid "The conversation was rewound, but the message became read-only and was not resent."
 msgstr "Die Unterhaltung wurde zurückgesetzt, aber die Nachricht wurde schreibgeschützt und nicht erneut gesendet."
@@ -2598,14 +2613,14 @@ msgstr "Warten auf Abschluss"
 msgid "Waiting for input"
 msgstr "Warten auf Eingabe"
 
-msgid "Waiting for message to appear…"
-msgstr "Warten, bis die Nachricht erscheint…"
-
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "Warten, bis die Änderung der Zulassungsliste wirksam wird…"
 
 msgid "Waiting for tool confirmation"
 msgstr "Warten auf Toolbestätigung"
+
+msgid "Waiting…"
+msgstr "Warten…"
 
 msgid "We appreciate your feedback and will use it to improve in the future."
 msgstr "Wir schätzen Ihr Feedback und werden es nutzen, um uns in Zukunft zu verbessern."
@@ -2743,6 +2758,11 @@ msgid "{count} project rule"
 msgid_plural "{count} project rules"
 msgstr[0] "{count} Projektregel"
 msgstr[1] "{count} Projektregeln"
+
+msgid "{count} task in background"
+msgid_plural "{count} tasks in background"
+msgstr[0] "{count} Aufgabe im Hintergrund"
+msgstr[1] "{count} Aufgaben im Hintergrund"
 
 msgid "{count} thread"
 msgid_plural "{count} threads"

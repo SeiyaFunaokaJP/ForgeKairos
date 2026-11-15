@@ -44,6 +44,9 @@ msgstr "正在删除…"
 msgid "Failed to connect"
 msgstr "连接失败"
 
+msgid "Find a worktree or branch, or type to create…"
+msgstr "查找工作树或分支，或输入以创建…"
+
 msgid "Force Delete"
 msgstr "强制删除"
 
@@ -76,9 +79,6 @@ msgstr "从窗口移除工作树"
 
 msgid "Requires a Git repository in the project"
 msgstr "项目中需要 Git 仓库"
-
-msgid "Select or type to create a worktree…"
-msgstr "选择工作树，或输入以创建工作树…"
 
 msgid "Show Error Logs"
 msgstr "显示错误日志"

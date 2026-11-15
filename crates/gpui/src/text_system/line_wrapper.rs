@@ -1516,6 +1516,56 @@ mod tests {
     }
 
     #[test]
+    fn test_break_indices_keep_every_kinsoku_rule() {
+        let closing = "、。，．：；！？）］｝」』】〕〉》〙〗…‥・〜々ーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶゝゞヽヾ";
+        for character in closing.chars() {
+            let text = format!("あ{character}");
+            assert!(
+                !LineWrapper::break_indices(&text).any(|index| index == 'あ'.len_utf8()),
+                "{character:?} must not start a line"
+            );
+        }
+        for character in "（［｛「『【〔〈《〘〖".chars() {
+            let text = format!("{character}あ");
+            assert!(
+                !LineWrapper::break_indices(&text).any(|index| index == character.len_utf8()),
+                "{character:?} must not end a line"
+            );
+        }
+    }
+
+    #[test]
+    fn test_wrap_line_japanese_runs_and_embedded_words() {
+        let mut wrapper = build_wrapper();
+        for (text, fitting_prefix, expected) in [
+            // A long run of kana and kanji wraps at every line, not only the first.
+            (
+                "あいうえおかきくけこさしすせそたちつてと",
+                "あいうえおかき",
+                &[21, 42][..],
+            ),
+            // A small kana does not start a line.
+            ("あいうえおかきっと", "あいうえおかき", &[18][..]),
+            // An ASCII word inside Japanese text moves to the next line whole.
+            ("あいうえおかabcdef", "あいうえおかabc", &[18][..]),
+        ] {
+            let wrap_width = fitting_prefix
+                .chars()
+                .map(|character| wrapper.width_for_char(character))
+                .sum();
+            let boundaries = wrapper
+                .wrap_line(
+                    &[LineFragment::text(text)],
+                    wrap_width,
+                    IndentAdjustment::default(),
+                )
+                .map(|boundary| boundary.ix)
+                .collect::<Vec<_>>();
+            assert_eq!(boundaries, expected, "{text:?}");
+        }
+    }
+
+    #[test]
     fn test_truncate_wrapped_line_kinsoku() {
         let mut wrapper = build_wrapper();
         let text = "あいうえおかき。くけこさしすせそたちつてと";

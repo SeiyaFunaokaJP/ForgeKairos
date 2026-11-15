@@ -44,6 +44,9 @@ msgstr "삭제 중…"
 msgid "Failed to connect"
 msgstr "연결하지 못했습니다"
 
+msgid "Find a worktree or branch, or type to create…"
+msgstr "워크트리나 브랜치를 찾거나 입력하여 만들기…"
+
 msgid "Force Delete"
 msgstr "강제 삭제"
 
@@ -76,9 +79,6 @@ msgstr "창에서 워크트리 제거"
 
 msgid "Requires a Git repository in the project"
 msgstr "프로젝트에 Git 저장소가 필요합니다"
-
-msgid "Select or type to create a worktree…"
-msgstr "선택하거나 입력하여 워크트리 만들기…"
 
 msgid "Show Error Logs"
 msgstr "오류 로그 표시"

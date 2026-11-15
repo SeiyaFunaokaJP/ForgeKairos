@@ -267,6 +267,9 @@ msgstr "適用"
 msgid "Archive Thread"
 msgstr "スレッドをアーカイブ"
 
+msgid "Asks the agent to stop this process. Its output stays here."
+msgstr "このプロセスを止めるようエージェントに頼みます。出力はここに残ります。"
+
 msgid "Associate the \"{}\" thread with..."
 msgstr "スレッド \"{}\" の関連付け先を選択..."
 
@@ -537,8 +540,8 @@ msgstr "サーバーに接続しています…"
 msgid "Connection Interrupted"
 msgstr "接続が中断されました"
 
-msgid "Connection lost; message acceptance is unknown"
-msgstr "接続が切れました。メッセージが受け付けられたかは不明です"
+msgid "Connection lost"
+msgstr "接続が切れました"
 
 msgid "Context"
 msgstr "コンテキスト"
@@ -913,6 +916,9 @@ msgstr "共有プロジェクトでは外部エージェントはまだサポー
 msgid "Extracting and checking the hash…"
 msgstr "展開してハッシュを確認しています…"
 
+msgid "Failed"
+msgstr "失敗"
+
 msgid "Failed to Install"
 msgstr "インストールに失敗しました"
 
@@ -1233,17 +1239,8 @@ msgstr "AI の接続を管理…"
 msgid "Message"
 msgstr "メッセージ"
 
-msgid "Message accepted; agent connection lost"
-msgstr "メッセージは受け付けられました。エージェントとの接続が切れました"
-
 msgid "Message between sessions"
 msgstr "セッション間のメッセージ"
-
-msgid "Message cancelled"
-msgstr "メッセージの送信はキャンセルされました"
-
-msgid "Message failed to send: {}"
-msgstr "メッセージを送信できませんでした: {}"
 
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド"
@@ -1566,6 +1563,9 @@ msgstr "貼り付け"
 msgid "Paste as Plain Text"
 msgstr "プレーンテキストとして貼り付け"
 
+msgid "Paused"
+msgstr "一時停止中"
+
 msgid "Permission Denied"
 msgstr "権限がありません"
 
@@ -1887,8 +1887,8 @@ msgstr "要約で送る"
 msgid "Send in Full"
 msgstr "全文で送る"
 
-msgid "Sending message…"
-msgstr "メッセージを送信中…"
+msgid "Sending…"
+msgstr "送信中…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "署名とハッシュを確認してから接続先へ送ります。"
@@ -1998,6 +1998,9 @@ msgstr "サブエージェントを停止"
 msgid "Stop This Command"
 msgstr "このコマンドを停止"
 
+msgid "Stop Tool Call"
+msgstr "ツール呼び出しを停止"
+
 msgid "Subagent"
 msgstr "サブエージェント"
 
@@ -2103,6 +2106,12 @@ msgstr "接続先のホストの ForgeKairos サーバーがまだ用意され�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "接続先のホストの ForgeKairos サーバーがまだ用意されていません。接続が終わるまで待ってからもう一度お試しください。"
 
+msgid "The agent accepted this message but hasn't shown it yet."
+msgstr "エージェントはこのメッセージを受け付けましたが、まだ表示していません。"
+
+msgid "The agent accepted this message, then the connection was lost."
+msgstr "エージェントはこのメッセージを受け付けましたが、その後に接続が切れました。"
+
 msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
 msgstr "エージェントとそのコマンドは、ネットワークの許可リストの範囲ですべてのホストに接続できます。クリックすると、エージェント自身のホストだけに限ります。右クリックで、このプロジェクトの既定を設定します。"
 
@@ -2120,6 +2129,9 @@ msgstr "エージェントは今、作業中かどうかを判断できません
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"
+
+msgid "The agent finished responding, but work it started keeps running in the background, such as a dev server or a scheduled task."
+msgstr "エージェントの応答は終わりましたが、開発サーバーやスケジュールされたタスクなど、エージェントが始めた作業はバックグラウンドで動き続けています。"
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "エージェントは最初のメッセージを送信したときに起動します。サンドボックスとネットワークは先に選んでください。起動後はこのスレッドではそのままになります。"
@@ -2147,6 +2159,9 @@ msgstr "エージェントの通信に許可リストへの追加が必要です
 
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "{provider} の API への接続が中断されました。ForgeKairos が自動的に再試行します。問題が続く場合は、ネットワーク接続を確認してください。"
+
+msgid "The connection was lost before the agent confirmed this message."
+msgstr "エージェントがこのメッセージを受け付けたと確認できる前に、接続が切れました。"
 
 msgid "The conversation was rewound, but the message became read-only and was not resent."
 msgstr "会話は巻き戻しましたが、メッセージが読み取り専用になったため再送信していません。"
@@ -2590,14 +2605,14 @@ msgstr "完了待ち"
 msgid "Waiting for input"
 msgstr "入力を待っています"
 
-msgid "Waiting for message to appear…"
-msgstr "メッセージが表示されるのを待っています…"
-
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "許可リストへの反映を待っています…"
 
 msgid "Waiting for tool confirmation"
 msgstr "ツールの確認を待っています"
+
+msgid "Waiting…"
+msgstr "待機中…"
 
 msgid "We appreciate your feedback and will use it to improve in the future."
 msgstr "フィードバックをありがとうございます。今後の改善に役立てます。"
@@ -2731,6 +2746,10 @@ msgstr[0] "{count} パス"
 msgid "{count} project rule"
 msgid_plural "{count} project rules"
 msgstr[0] "プロジェクトルール {count} 件"
+
+msgid "{count} task in background"
+msgid_plural "{count} tasks in background"
+msgstr[0] "バックグラウンドのタスク {count} 件"
 
 msgid "{count} thread"
 msgid_plural "{count} threads"

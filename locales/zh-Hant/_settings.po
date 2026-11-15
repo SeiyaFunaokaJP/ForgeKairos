@@ -1513,6 +1513,14 @@ msgid "Auto Compact Threshold"
 msgstr "自動壓縮閾值"
 
 msgctxt "settings"
+msgid "Auto Fetch"
+msgstr "自動擷取"
+
+msgctxt "settings"
+msgid "Auto Fetch Interval"
+msgstr "自動擷取間隔"
+
+msgctxt "settings"
 msgid "Auto Fold Directories"
 msgstr "自動摺疊資料夾"
 
@@ -1567,6 +1575,10 @@ msgstr "自動關閉已刪除的檔案。"
 msgctxt "settings"
 msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
 msgstr "代理的上下文過大時自動壓縮，摘要較早的訊息以釋放模型上下文視窗空間。"
+
+msgctxt "settings"
+msgid "Automatically fetch the default branch's remote and the current branch's upstream remote."
+msgstr "自動從預設分支的遠端與目前分支的上游遠端擷取。"
 
 msgctxt "settings"
 msgid "Automatically open menus in the titlebar on hover."
@@ -2037,6 +2049,14 @@ msgid "Debugger Panel"
 msgstr "偵錯工具面板"
 
 msgctxt "settings"
+msgid "Debugger Panel Default Height"
+msgstr "偵錯工具面板預設高度"
+
+msgctxt "settings"
+msgid "Debugger Panel Default Width"
+msgstr "偵錯工具面板預設寬度"
+
+msgctxt "settings"
 msgid "Debugger Panel Dock"
 msgstr "偵錯工具面板停駐位置"
 
@@ -2097,6 +2117,10 @@ msgid "Default fixed width when the agent panel is docked to the left or right a
 msgstr "代理面板停駐於左側或右側且停用彈性大小調整時的預設固定寬度。"
 
 msgctxt "settings"
+msgid "Default height in pixels when the debug panel is docked to the bottom."
+msgstr "偵錯工具面板停駐於底部時的預設高度（像素）。"
+
+msgctxt "settings"
 msgid "Default height of the AI browser panel in pixels when docked to the bottom."
 msgstr "AI 瀏覽器面板停駐於底部時的預設高度（像素）。"
 
@@ -2115,6 +2139,10 @@ msgstr "終端機停駐於底部時的預設高度（像素）。"
 msgctxt "settings"
 msgid "Default timeout in seconds for MCP server tool calls."
 msgstr "MCP 伺服器工具呼叫的預設逾時秒數。"
+
+msgctxt "settings"
+msgid "Default width in pixels when the debug panel is docked to the left or right."
+msgstr "偵錯工具面板停駐於左側或右側時的預設寬度（像素）。"
 
 msgctxt "settings"
 msgid "Default width of the AI browser panel in pixels when docked to the left or right."
@@ -2331,6 +2359,10 @@ msgstr "編輯防彈跳毫秒數"
 msgctxt "settings"
 msgid "Edit Keybindings"
 msgstr "編輯按鍵繫結"
+
+msgctxt "settings"
+msgid "Edit Prediction Button"
+msgstr "編輯預測按鈕"
 
 msgctxt "settings"
 msgid "Edit Predictions"
@@ -2951,6 +2983,10 @@ msgstr "新檔案及格式化和儲存操作時行尾序列的處理方式。"
 msgctxt "settings"
 msgid "How long going to a definition waits for the language server before it also offers the index's name matches, in milliseconds, from 100 to 10000. Default: 1500."
 msgstr "前往定義時，等待語言伺服器多久後也提供索引的名稱比對結果，以毫秒為單位，範圍 100 到 10000。預設值：1500。"
+
+msgctxt "settings"
+msgid "How long to wait between automatic fetches, in seconds. (min: 15)"
+msgstr "兩次自動擷取之間的等待時間（秒）。（下限：15）"
 
 msgctxt "settings"
 msgid "How many callers or callees of one function to list before a Show more row."
@@ -4431,6 +4467,10 @@ msgstr "在狀態列中顯示游標位置按鈕。"
 msgctxt "settings"
 msgid "Show the debugger button in the status bar."
 msgstr "在狀態列中顯示偵錯工具按鈕。"
+
+msgctxt "settings"
+msgid "Show the edit prediction button in the status bar."
+msgstr "在狀態列中顯示編輯預測按鈕。"
 
 msgctxt "settings"
 msgid "Show the file icon for a tab."

@@ -872,6 +872,73 @@ async fn test_global_context_servers_start_without_worktrees(cx: &mut TestAppCon
     });
 }
 
+/// ADR-F42: without a worktree there is nothing to tie an approval to, so a definition the
+/// remote host's settings make, or change for a user entry of the same name, waits.
+#[gpui::test]
+async fn test_server_defined_by_the_host_does_not_start_without_worktrees(cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        let settings_store = SettingsStore::test(cx);
+        cx.set_global(settings_store);
+    });
+    let fs = FakeFs::new(cx.executor());
+    let project = Project::test(fs, [], cx).await;
+    let store = project.read_with(cx, |project, _| project.context_server_store());
+    let executor = cx.executor();
+    store.update(cx, |store, _| {
+        store.set_context_server_factory(Box::new(move |id, _| {
+            Arc::new(ContextServer::new(
+                id.clone(),
+                Arc::new(create_fake_transport(id.0.to_string(), executor.clone())),
+            ))
+        }));
+    });
+
+    set_context_server_configuration(
+        vec![(
+            "shared".into(),
+            settings::ContextServerSettingsContent::Stdio {
+                enabled: true,
+                remote: false,
+                command: ContextServerCommand {
+                    path: "user-binary".into(),
+                    args: Vec::new(),
+                    env: None,
+                    timeout: None,
+                },
+            },
+        )],
+        cx,
+    );
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.set_server_settings(
+                &json!({
+                    "context_servers": {
+                        "host-only": { "command": "host-binary", "args": [] },
+                        "shared": { "command": "host-binary", "args": [] }
+                    }
+                })
+                .to_string(),
+                cx,
+            )
+        })
+        .expect("the server settings parse");
+    });
+    cx.run_until_parked();
+
+    cx.update(|cx| {
+        for id in ["host-only", "shared"] {
+            assert_eq!(
+                store
+                    .read(cx)
+                    .status_for_server(&ContextServerId(id.into())),
+                None,
+                "`{id}` comes from the host's settings and must not start without approval"
+            );
+        }
+    });
+}
+
 #[gpui::test]
 async fn test_server_ids_includes_disabled_servers(cx: &mut TestAppContext) {
     const ENABLED_SERVER_ID: &str = "enabled-server";

@@ -1510,6 +1510,14 @@ msgid "Auto Compact Threshold"
 msgstr "自動圧縮のしきい値"
 
 msgctxt "settings"
+msgid "Auto Fetch"
+msgstr "自動フェッチ"
+
+msgctxt "settings"
+msgid "Auto Fetch Interval"
+msgstr "自動フェッチの間隔"
+
+msgctxt "settings"
 msgid "Auto Fold Directories"
 msgstr "ディレクトリを自動的にまとめる"
 
@@ -1564,6 +1572,10 @@ msgstr "削除されたファイルを自動的に閉じます。"
 msgctxt "settings"
 msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
 msgstr "エージェントのコンテキストが大きくなりすぎたときに自動的に圧縮し、以前のメッセージを要約してモデルのコンテキストウィンドウに空きを作ります。"
+
+msgctxt "settings"
+msgid "Automatically fetch the default branch's remote and the current branch's upstream remote."
+msgstr "既定のブランチのリモートと、現在のブランチの追跡先のリモートから、自動でフェッチします。"
 
 msgctxt "settings"
 msgid "Automatically open menus in the titlebar on hover."
@@ -2034,6 +2046,14 @@ msgid "Debugger Panel"
 msgstr "デバッガーパネル"
 
 msgctxt "settings"
+msgid "Debugger Panel Default Height"
+msgstr "デバッガーパネルの既定の高さ"
+
+msgctxt "settings"
+msgid "Debugger Panel Default Width"
+msgstr "デバッガーパネルの既定の幅"
+
+msgctxt "settings"
 msgid "Debugger Panel Dock"
 msgstr "デバッガーパネルのドック位置"
 
@@ -2094,6 +2114,10 @@ msgid "Default fixed width when the agent panel is docked to the left or right a
 msgstr "エージェントパネルを左右にドッキングし、可変サイズを無効にしているときの既定の固定幅です。"
 
 msgctxt "settings"
+msgid "Default height in pixels when the debug panel is docked to the bottom."
+msgstr "デバッガーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。"
+
+msgctxt "settings"
 msgid "Default height of the AI browser panel in pixels when docked to the bottom."
 msgstr "AI ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。"
 
@@ -2112,6 +2136,10 @@ msgstr "ターミナルを下にドッキングしたときの既定の高さ (�
 msgctxt "settings"
 msgid "Default timeout in seconds for MCP server tool calls."
 msgstr "MCP サーバーのツール呼び出しの既定のタイムアウト (秒) です。"
+
+msgctxt "settings"
+msgid "Default width in pixels when the debug panel is docked to the left or right."
+msgstr "デバッガーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。"
 
 msgctxt "settings"
 msgid "Default width of the AI browser panel in pixels when docked to the left or right."
@@ -2328,6 +2356,10 @@ msgstr "編集後のデバウンス (ミリ秒)"
 msgctxt "settings"
 msgid "Edit Keybindings"
 msgstr "キーバインドの編集"
+
+msgctxt "settings"
+msgid "Edit Prediction Button"
+msgstr "編集予測のボタン"
 
 msgctxt "settings"
 msgid "Edit Predictions"
@@ -2948,6 +2980,10 @@ msgstr "新規ファイル、およびフォーマットと保存の操作で、
 msgctxt "settings"
 msgid "How long going to a definition waits for the language server before it also offers the index's name matches, in milliseconds, from 100 to 10000. Default: 1500."
 msgstr "定義への移動で、言語サーバーの答えをどれだけ待ってから、索引の名前一致も候補に出すか (ミリ秒、100〜10000)。既定は 1500 です。"
+
+msgctxt "settings"
+msgid "How long to wait between automatic fetches, in seconds. (min: 15)"
+msgstr "自動フェッチの間隔 (秒) です (最小 15)。"
 
 msgctxt "settings"
 msgid "How many callers or callees of one function to list before a Show more row."
@@ -4428,6 +4464,10 @@ msgstr "ステータスバーにカーソル位置のボタンを表示します
 msgctxt "settings"
 msgid "Show the debugger button in the status bar."
 msgstr "ステータスバーにデバッガーのボタンを表示します。"
+
+msgctxt "settings"
+msgid "Show the edit prediction button in the status bar."
+msgstr "ステータスバーに編集予測のボタンを表示します。"
 
 msgctxt "settings"
 msgid "Show the file icon for a tab."

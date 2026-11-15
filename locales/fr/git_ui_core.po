@@ -44,6 +44,9 @@ msgstr "Suppression…"
 msgid "Failed to connect"
 msgstr "Échec de la connexion"
 
+msgid "Find a worktree or branch, or type to create…"
+msgstr "Rechercher une arborescence de travail ou une branche, ou saisir un nom pour en créer une…"
+
 msgid "Force Delete"
 msgstr "Forcer la suppression"
 
@@ -76,9 +79,6 @@ msgstr "Retirer l'arborescence de travail de la fenêtre"
 
 msgid "Requires a Git repository in the project"
 msgstr "Nécessite un dépôt Git dans le projet"
-
-msgid "Select or type to create a worktree…"
-msgstr "Sélectionner ou saisir un nom pour créer une arborescence de travail…"
 
 msgid "Show Error Logs"
 msgstr "Afficher les journaux d'erreurs"

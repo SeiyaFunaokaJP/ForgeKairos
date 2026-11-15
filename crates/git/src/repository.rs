@@ -11419,7 +11419,7 @@ mod tests {
         fs::write(
             fake_bin.join("ssh"),
             format!(
-                "#!/bin/sh\nfor argument in \"$@\"; do printf '[%s]' \"$argument\" >> '{}'; done\nprintf '\\n' >> '{}'\nexit 1\n",
+                "#!/bin/sh\nfor argument in \"$@\"; do printf '[%s]' \"$argument\" >> '{}'; done\nprintf '(prompt:%s)(askpass:%s)\\n' \"${{GIT_TERMINAL_PROMPT-unset}}\" \"${{GIT_ASKPASS-unset}}\" >> '{}'\nexit 1\n",
                 record.display().to_string().replace('\\', "/"),
                 record.display().to_string().replace('\\', "/"),
             ),
@@ -11579,6 +11579,27 @@ mod tests {
                 .unwrap(),
             None
         );
+        // An unattended fetch (auto-fetch) uses the account's key too, and ssh may not prompt.
+        repo.fetch(
+            FetchOptions::Remote(Remote {
+                name: "origin".into(),
+            }),
+            None,
+            environment(&[]),
+            cx.to_async(),
+        )
+        .await
+        .unwrap_err();
+        let calls = take_calls();
+        assert!(
+            calls.contains(&format!(
+                "[-i][{}][-o][IdentitiesOnly=yes][-o][BatchMode=yes]",
+                key.display()
+            )),
+            "{calls}"
+        );
+        assert!(calls.contains("(prompt:0)(askpass:)"), "{calls}");
+
         // A key that is not there is named, and ssh does not run.
         repo.set_identity(Some(with_key(&key_dir.join("missing"))));
         let error = fetch(environment(&[])).await.unwrap_err();

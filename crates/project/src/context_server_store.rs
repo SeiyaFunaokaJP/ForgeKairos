@@ -1998,12 +1998,10 @@ impl ContextServerStore {
                         .get_content_for_file(file)
                         .is_some_and(|content| content.project.context_servers.contains_key(id))
                 };
-                // ADR-F42: a definition only the remote host's settings make needs approval,
-                // which is tied to a worktree, so it waits for one.
-                if defined_in(SettingsFile::Server)
-                    && !defined_in(SettingsFile::User)
-                    && !defined_in(SettingsFile::Global)
-                {
+                // ADR-F42: a definition the remote host's settings make or change needs
+                // approval, which is tied to a worktree, so it waits for one. A user entry the
+                // host also defines is no exception: the merged value is the host's.
+                if defined_in(SettingsFile::Server) {
                     continue;
                 }
                 merged.insert(
