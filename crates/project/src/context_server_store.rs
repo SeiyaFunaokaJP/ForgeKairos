@@ -536,7 +536,7 @@ impl ContextServerStore {
         let launch_host = match &state {
             ContextServerStoreState::Remote {
                 upstream_client, ..
-            } => LaunchHost::from_remote_connection(&upstream_client.read(cx).connection_options()),
+            } => LaunchHost::from_remote_connection(upstream_client.read(cx).connection_options()),
             ContextServerStoreState::Local { .. } => LaunchHost::ThisMachine,
         };
         let is_headless = matches!(
@@ -1973,7 +1973,8 @@ impl ContextServerStore {
     }
 
     /// Merges context server settings from all visible worktrees so that servers defined
-    /// in any project folder in a multi-root workspace are picked up.
+    /// in any project folder in a multi-root workspace are picked up. With no visible
+    /// worktrees, falls back to user settings.
     fn resolve_all_context_server_settings(
         worktree_store: &Entity<WorktreeStore>,
         launch_host: &LaunchHost,
@@ -1988,6 +1989,33 @@ impl ContextServerStore {
             .visible_worktrees(cx)
             .map(|worktree| worktree.read(cx))
             .collect::<Vec<_>>();
+        if worktrees.is_empty() {
+            // Without this, user servers are missing until the first worktree is added,
+            // and never appear in a window that has no folder.
+            for (id, settings) in &ProjectSettings::get(None, cx).context_servers {
+                let defined_in = |file: SettingsFile| {
+                    settings_store
+                        .get_content_for_file(file)
+                        .is_some_and(|content| content.project.context_servers.contains_key(id))
+                };
+                // ADR-F42: a definition the remote host's settings make or change needs
+                // approval, which is tied to a worktree, so it waits for one. A user entry the
+                // host also defines is no exception: the merged value is the host's.
+                if defined_in(SettingsFile::Server) {
+                    continue;
+                }
+                merged.insert(
+                    id.clone(),
+                    ContextServerSettingsEntry {
+                        worktree_id: None,
+                        settings: settings.clone(),
+                        source: ContextServerSource::User,
+                        replaces_user_entry: false,
+                    },
+                );
+            }
+            return merged;
+        }
         for worktree in &worktrees {
             let worktree_id = worktree.id();
             let location = settings::SettingsLocation {

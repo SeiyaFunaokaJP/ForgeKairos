@@ -2354,6 +2354,14 @@
     // directory. The git panel writes these. A repository that is not listed
     // follows git's own configuration.
     "project_accounts": {},
+    // Settings for automatically fetching the default branch's remote and the current branch's upstream remote.
+    "auto_fetch": {
+      // Whether to automatically fetch in the background.
+      "enabled": false,
+      // How long to wait between automatic fetches, in seconds.
+      // Only applies when auto fetch is enabled. (min: 15)
+      "interval_secs": 60,
+    },
   },
   // The list of custom Git hosting providers.
   "git_hosting_providers": [
@@ -2372,6 +2380,8 @@
   //      "load_direnv": "disabled"
   "load_direnv": "direct",
   "edit_predictions": {
+    // Whether to show the edit prediction button in the status bar.
+    "button": true,
     // Which edit prediction provider to use.
     // "none" in this fork: the "zed" provider calls a cloud service. Switch to
     // "ollama" once a FIM-capable local model (e.g. qwen2.5-coder) is pulled.
@@ -3570,6 +3580,8 @@
     "save_breakpoints": true,
     "timeout": 2000,
     "dock": "bottom",
+    "default_width": 300,
+    "default_height": 300,
     "log_dap_communications": true,
     "format_dap_log_messages": true,
     "button": true,

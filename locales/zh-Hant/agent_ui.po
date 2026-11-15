@@ -270,6 +270,9 @@ msgstr "套用"
 msgid "Archive Thread"
 msgstr "封存會話"
 
+msgid "Asks the agent to stop this process. Its output stays here."
+msgstr "要求代理停止此處理程序。其輸出會保留在這裡。"
+
 msgid "Associate the \"{}\" thread with..."
 msgstr "將「{}」會話關聯至..."
 
@@ -540,8 +543,8 @@ msgstr "正在連線至伺服器…"
 msgid "Connection Interrupted"
 msgstr "連線中斷"
 
-msgid "Connection lost; message acceptance is unknown"
-msgstr "連線已中斷；無法得知訊息是否已被接受"
+msgid "Connection lost"
+msgstr "連線已中斷"
 
 msgid "Context"
 msgstr "上下文"
@@ -916,6 +919,9 @@ msgstr "共用專案尚不支援外部代理。"
 msgid "Extracting and checking the hash…"
 msgstr "正在解壓縮並檢查雜湊…"
 
+msgid "Failed"
+msgstr "失敗"
+
 msgid "Failed to Install"
 msgstr "安裝失敗"
 
@@ -1236,17 +1242,8 @@ msgstr "管理 AI 連線…"
 msgid "Message"
 msgstr "訊息"
 
-msgid "Message accepted; agent connection lost"
-msgstr "訊息已被接受；與代理的連線已中斷"
-
 msgid "Message between sessions"
 msgstr "工作階段之間的訊息"
-
-msgid "Message cancelled"
-msgstr "已取消傳送訊息"
-
-msgid "Message failed to send: {}"
-msgstr "無法傳送訊息：{}"
 
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "傳送訊息給 {} — @ 以加入上下文，/ 以使用命令"
@@ -1569,6 +1566,9 @@ msgstr "貼上"
 msgid "Paste as Plain Text"
 msgstr "以純文字貼上"
 
+msgid "Paused"
+msgstr "已暫停"
+
 msgid "Permission Denied"
 msgstr "權限遭拒"
 
@@ -1890,8 +1890,8 @@ msgstr "以摘要傳送"
 msgid "Send in Full"
 msgstr "傳送全文"
 
-msgid "Sending message…"
-msgstr "正在傳送訊息…"
+msgid "Sending…"
+msgstr "正在傳送…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "在檢查其簽章與雜湊後傳送至遠端主機。"
@@ -2001,6 +2001,9 @@ msgstr "停止子代理"
 msgid "Stop This Command"
 msgstr "停止此命令"
 
+msgid "Stop Tool Call"
+msgstr "停止工具呼叫"
+
 msgid "Subagent"
 msgstr "子代理"
 
@@ -2106,6 +2109,12 @@ msgstr "遠端主機上的 ForgeKairos 伺服器尚未就緒（內部錯誤）�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "遠端主機上的 ForgeKairos 伺服器尚未就緒。請等待連線完成後再試一次。"
 
+msgid "The agent accepted this message but hasn't shown it yet."
+msgstr "代理已接受此訊息，但尚未顯示。"
+
+msgid "The agent accepted this message, then the connection was lost."
+msgstr "代理已接受此訊息，之後連線中斷。"
+
 msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
 msgstr "代理及其執行的命令將可在網路允許清單範圍內存取任何主機。按一下可限制為只存取代理自己的主機。按右鍵可設定此專案的預設值。"
 
@@ -2123,6 +2132,9 @@ msgstr "代理目前無法判斷自己是否正在工作。您可以手動送出
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "代理無法使用 `getDiagnostics`，因此看不到編輯器所顯示的錯誤與警告。{reason}"
+
+msgid "The agent finished responding, but work it started keeps running in the background, such as a dev server or a scheduled task."
+msgstr "代理已完成回應，但它啟動的工作（例如開發伺服器或排程工作）仍在背景執行。"
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "傳送第一則訊息時代理才會啟動。請先選擇它的沙箱與網路：啟動後，此會話中會維持不變。"
@@ -2150,6 +2162,9 @@ msgstr "代理的網路存取需要將主機加入允許清單"
 
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "與 {provider} 的 API 連線已中斷。ForgeKairos 會自動重試。問題持續發生時，請檢查網路連線。"
+
+msgid "The connection was lost before the agent confirmed this message."
+msgstr "在代理確認此訊息之前，連線已中斷。"
 
 msgid "The conversation was rewound, but the message became read-only and was not resent."
 msgstr "對話已倒回，但訊息已變成唯讀，因此未重新傳送。"
@@ -2593,14 +2608,14 @@ msgstr "正在等待完成"
 msgid "Waiting for input"
 msgstr "正在等待輸入"
 
-msgid "Waiting for message to appear…"
-msgstr "正在等待訊息顯示…"
-
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "正在等待允許清單的變更生效…"
 
 msgid "Waiting for tool confirmation"
 msgstr "正在等待工具確認"
+
+msgid "Waiting…"
+msgstr "正在等待…"
 
 msgid "We appreciate your feedback and will use it to improve in the future."
 msgstr "感謝您的意見回饋，我們將以此改進。"
@@ -2734,6 +2749,10 @@ msgstr[0] "{count} 個路徑"
 msgid "{count} project rule"
 msgid_plural "{count} project rules"
 msgstr[0] "{count} 項專案規則"
+
+msgid "{count} task in background"
+msgid_plural "{count} tasks in background"
+msgstr[0] "背景有 {count} 個工作"
 
 msgid "{count} thread"
 msgid_plural "{count} threads"

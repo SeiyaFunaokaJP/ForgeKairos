@@ -70,7 +70,9 @@ pub struct FakeGitRepositoryState {
     pub blames: HashMap<RepoPath, Blame>,
     pub blames_at_revision: HashMap<(RepoPath, Oid), Blame>,
     pub current_branch_name: Option<String>,
+    pub default_branch_ref: Option<String>,
     pub branches: HashSet<String>,
+    pub branch_upstreams: HashMap<String, git::repository::Upstream>,
     /// List of remotes, keys are names and values are URLs
     pub remotes: HashMap<String, String>,
     pub simulated_index_write_error_message: Option<String>,
@@ -87,6 +89,7 @@ pub struct FakeGitRepositoryState {
     pub graph_commits: Vec<Arc<InitialGraphCommitData>>,
     pub commit_data: HashMap<Oid, FakeCommitDataEntry>,
     pub stash_entries: GitStash,
+    pub fetches: Arc<Mutex<Vec<FetchOptions>>>,
     pub commit_template: Option<GitCommitTemplate>,
     /// Canned results for [`GitRepository::run_command`], keyed by the
     /// arguments joined with spaces (for example `"diff --binary"`). There is
@@ -115,7 +118,9 @@ impl FakeGitRepositoryState {
             blames: Default::default(),
             blames_at_revision: Default::default(),
             current_branch_name: Default::default(),
+            default_branch_ref: Some("refs/remotes/origin/main".into()),
             branches: Default::default(),
+            branch_upstreams: Default::default(),
             simulated_index_write_error_message: Default::default(),
             simulated_create_worktree_error: Default::default(),
             simulated_graph_error: None,
@@ -132,6 +137,7 @@ impl FakeGitRepositoryState {
             commit_data: Default::default(),
             commit_history: Vec::new(),
             stash_entries: Default::default(),
+            fetches: Arc::default(),
             commit_template: None,
             // The git panel asks on every scan whether a cherry-pick / revert / rebase is
             // stopped part-way; in a fresh fake repository none is. Tests that want one override
@@ -797,7 +803,7 @@ impl GitRepository for FakeGitRepository {
                         is_head: Some(branch_name) == current_branch.as_ref(),
                         ref_name,
                         most_recent_commit: None,
-                        upstream: None,
+                        upstream: state.branch_upstreams.get(branch_name).cloned(),
                     }
                 })
                 .collect::<Vec<_>>();
@@ -1429,12 +1435,18 @@ impl GitRepository for FakeGitRepository {
 
     fn fetch(
         &self,
-        _fetch_options: FetchOptions,
-        _askpass: AskPassDelegate,
+        fetch_options: FetchOptions,
+        _askpass: Option<AskPassDelegate>,
         _env: Arc<HashMap<String, String>>,
         _cx: AsyncApp,
     ) -> BoxFuture<'_, Result<git::repository::RemoteCommandOutput>> {
-        unimplemented!()
+        self.with_state_async(true, move |state| {
+            state.fetches.lock().push(fetch_options);
+            Ok(git::repository::RemoteCommandOutput {
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        })
     }
 
     fn get_all_remotes(&self) -> BoxFuture<'_, Result<Vec<Remote>>> {
@@ -1654,14 +1666,20 @@ impl GitRepository for FakeGitRepository {
         &self,
         include_remote_name: bool,
     ) -> BoxFuture<'_, Result<Option<SharedString>>> {
-        async move {
-            Ok(Some(if include_remote_name {
-                "origin/main".into()
-            } else {
-                "main".into()
+        self.with_state_async(false, move |state| {
+            Ok(state.default_branch_ref.as_ref().map(|branch| {
+                let name = if let Some(name) = branch.strip_prefix("refs/remotes/") {
+                    if include_remote_name {
+                        name
+                    } else {
+                        name.split_once('/').map_or(name, |(_, name)| name)
+                    }
+                } else {
+                    branch.strip_prefix("refs/heads/").unwrap_or(branch)
+                };
+                name.to_owned().into()
             }))
-        }
-        .boxed()
+        })
     }
 
     fn create_remote(&self, name: String, url: String) -> BoxFuture<'_, Result<()>> {

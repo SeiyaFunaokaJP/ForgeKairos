@@ -56,11 +56,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "プロジェクト内検索で、Enter を押さなくても入力に合わせて検索を始めます。",
     ),
     (
-        "p6.i65[close_panel_on_toggle].title",
+        "p6.i66[close_panel_on_toggle].title",
         "切り替え時にパネルを閉じる",
     ),
     (
-        "p6.i65[close_panel_on_toggle].description",
+        "p6.i66[close_panel_on_toggle].description",
         "フォーカスのあるパネルで ToggleFocus アクションを実行したときに、フォーカスをエディターに戻す代わりに、パネルを閉じるかどうかを設定します。",
     ),
     (
@@ -140,24 +140,24 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p6.i6[status_bar.pending_keystrokes_indicator].description",
         "複数ストロークのキーバインドの入力中に、カウントダウン付きのインジケーターを表示します。Which-key メニューが有効なときは、そのキーバインドのプレビューのポップオーバーは無効になります。",
     ),
-    ("p6.i56[window_title_format].title", "タイトルの書式"),
+    ("p6.i57[window_title_format].title", "タイトルの書式"),
     (
-        "p6.i56[window_title_format].description",
+        "p6.i57[window_title_format].description",
         "ウィンドウのタイトルのテンプレートです。使える変数は `${projectName}`、`${fileName}`、`${filePath}`、`${relativePath}`、`${fileStem}`、`${remoteName}`、`${remoteHost}`、`${appName}`、`${branch}`、`${separator}` です。`${separator}` は隣の変数が空のときは省かれますが、文字どおりに書いたテキストは残ります。共同作業のインジケーターがある場合は、展開したテンプレートの後ろに付きます。テンプレートを展開した結果が空のときは、既定のテンプレートを使います。",
     ),
     (
-        "p6.i56[window_title_format].placeholder",
+        "p6.i57[window_title_format].placeholder",
         "${projectName}${separator}${fileName}",
     ),
     (
-        "p6.i57[window_title_separator].title",
+        "p6.i58[window_title_separator].title",
         "タイトルの区切り文字",
     ),
     (
-        "p6.i57[window_title_separator].description",
+        "p6.i58[window_title_separator].description",
         "ウィンドウのタイトルの書式で `${separator}` に入る文字列です。前後の空白も値に含めてください。",
     ),
-    ("p6.i57[window_title_separator].placeholder", " — "),
+    ("p6.i58[window_title_separator].placeholder", " — "),
     (
         "p7.i3[project_panel.title_tooltip_delay$].title",
         "プロジェクトパネルの項目名のツールチップの遅延",
@@ -210,61 +210,61 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     ),
     // Added by ForgeKairos with the call graph panel, at the end of the
     // Panels page so that the rows above keep their keys.
-    ("p7.i80.header", "呼び出しグラフパネル"),
+    ("p7.i82.header", "呼び出しグラフパネル"),
     (
-        "p7.i81[call_graph_panel.button].title",
+        "p7.i83[call_graph_panel.button].title",
         "呼び出しグラフパネルのボタン",
     ),
     (
-        "p7.i81[call_graph_panel.button].description",
+        "p7.i83[call_graph_panel.button].description",
         "ステータスバーに呼び出しグラフパネルのボタンを表示します。",
     ),
     (
-        "p7.i82[call_graph_panel.dock].title",
+        "p7.i84[call_graph_panel.dock].title",
         "呼び出しグラフパネルのドック位置",
     ),
     (
-        "p7.i82[call_graph_panel.dock].description",
+        "p7.i84[call_graph_panel.dock].description",
         "呼び出しグラフパネルをドッキングする位置です。",
     ),
     (
-        "p7.i83[call_graph_panel.default_width].title",
+        "p7.i85[call_graph_panel.default_width].title",
         "呼び出しグラフパネルの既定の幅",
     ),
     (
-        "p7.i83[call_graph_panel.default_width].description",
+        "p7.i85[call_graph_panel.default_width].description",
         "呼び出しグラフパネルの既定の幅 (ピクセル) です。",
     ),
     (
-        "p7.i84[call_graph_panel.max_children].title",
+        "p7.i86[call_graph_panel.max_children].title",
         "一覧する呼び出しの上限",
     ),
     (
-        "p7.i84[call_graph_panel.max_children].description",
+        "p7.i86[call_graph_panel.max_children].description",
         "1 つの関数の呼び出し元 / 呼び出し先を、「さらに表示」の行の前にいくつまで並べるかです。",
     ),
     (
-        "p7.i85[call_graph_panel.follow_cursor].title",
+        "p7.i87[call_graph_panel.follow_cursor].title",
         "カーソルに追従",
     ),
     (
-        "p7.i85[call_graph_panel.follow_cursor].description",
+        "p7.i87[call_graph_panel.follow_cursor].description",
         "カーソルが動くたびに、カーソル位置の関数を起点にします。",
     ),
     (
-        "p7.i86[call_graph_panel.sources].title",
+        "p7.i88[call_graph_panel.sources].title",
         "呼び出しグラフの情報源",
     ),
     (
-        "p7.i86[call_graph_panel.sources].description",
+        "p7.i88[call_graph_panel.sources].description",
         "呼び出しをどこから取得するか。正確な言語サーバー、C と C++ のファイルを名前で照合する索引、またはその両方です。",
     ),
     (
-        "p7.i87[call_graph_panel.excluded_callees].title",
+        "p7.i89[call_graph_panel.excluded_callees].title",
         "除外する呼び出し先",
     ),
     (
-        "p7.i87[call_graph_panel.excluded_callees].description",
+        "p7.i89[call_graph_panel.excluded_callees].description",
         "関数の呼び出し先の一覧から外す呼び出し先 (ログやアサーションのマクロなど)。末尾の行に件数を出し、押すと表示します。",
     ),
     // ForgeKairos: clangd's memory settings, whose header moves the
@@ -370,10 +370,10 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "AI ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。",
     ),
     // ADR-F93.
-    ("p10.i23.header", "アカウント"),
-    ("p10.i24[git.accounts].link", "Git アカウント"),
+    ("p10.i24.header", "アカウント"),
+    ("p10.i25[git.accounts].link", "Git アカウント"),
     (
-        "p10.i24[git.accounts].link_description",
+        "p10.i25[git.accounts].link_description",
         "リポジトリがコミット・プッシュに使えるアカウント。リポジトリごとに Git パネルで選びます。",
     ),
     // Added by upstream v1.23.3.
@@ -402,11 +402,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "セッションを読み込み直せるアイドル状態のエージェントのスレッドを、読み込んだまま残しておく最大数です。上限を超えると、更新の古いスレッドから解放します。",
     ),
     (
-        "p6.i23[title_bar.open_menus_on_hover].title",
+        "p6.i24[title_bar.open_menus_on_hover].title",
         "ホバーでメニューを開く",
     ),
     (
-        "p6.i23[title_bar.open_menus_on_hover].description",
+        "p6.i24[title_bar.open_menus_on_hover].description",
         "タイトルバーのメニューを、ホバーしたときに自動で開きます。",
     ),
     ("p0.i27.header", "拡張機能"),
@@ -444,6 +444,41 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     (
         "p7.i62[git_panel.commit_editor].description",
         "Git パネルにコミットメッセージの入力欄を既定で表示するかどうかです。",
+    ),
+    // Added by upstream v1.28.1; each moves the rows below it down.
+    ("p6.i9[edit_predictions.button].title", "編集予測のボタン"),
+    (
+        "p6.i9[edit_predictions.button].description",
+        "ステータスバーに編集予測のボタンを表示します。",
+    ),
+    (
+        "p7.i68[debugger.default_width].title",
+        "デバッガーパネルの既定の幅",
+    ),
+    (
+        "p7.i68[debugger.default_width].description",
+        "デバッガーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。",
+    ),
+    (
+        "p7.i69[debugger.default_height].title",
+        "デバッガーパネルの既定の高さ",
+    ),
+    (
+        "p7.i69[debugger.default_height].description",
+        "デバッガーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。",
+    ),
+    ("p10.i3[git.auto_fetch.enabled].title", "自動フェッチ"),
+    (
+        "p10.i3[git.auto_fetch.enabled].description",
+        "既定のブランチのリモートと、現在のブランチの追跡先のリモートから、自動でフェッチします。",
+    ),
+    (
+        "p10.i3.v1.f0[git.auto_fetch.interval_secs].title",
+        "自動フェッチの間隔",
+    ),
+    (
+        "p10.i3.v1.f0[git.auto_fetch.interval_secs].description",
+        "自動フェッチの間隔 (秒) です (最小 15)。",
     ),
 ];
 

@@ -2022,6 +2022,9 @@ msgstr "에이전트가 실행하는 터미널 명령을 OS 수준 샌드박스�
 msgid "Writable Paths"
 msgstr "쓰기 가능한 경로"
 
+msgid "You can't create skills in a project someone shared with you."
+msgstr "다른 사람이 공유한 프로젝트에서는 스킬을 만들 수 없습니다."
+
 msgid "You have consented to using this as an external AI service."
 msgstr "이 항목을 외부 AI 서비스로 사용하는 데 동의했습니다."
 

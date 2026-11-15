@@ -5,7 +5,7 @@
 
 use std::sync::{Arc, LazyLock};
 
-use agent_client_protocol::schema::v2 as acp;
+use agent_client_protocol::v2::schema as acp;
 use browser_control::{
     BrowserCommand, BrowserControl, ElementTarget, NavigateTarget, ScrollDirection, ToolDefinition,
 };

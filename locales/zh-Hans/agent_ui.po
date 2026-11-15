@@ -270,6 +270,9 @@ msgstr "应用"
 msgid "Archive Thread"
 msgstr "归档会话"
 
+msgid "Asks the agent to stop this process. Its output stays here."
+msgstr "请求智能体停止此进程。其输出会保留在此处。"
+
 msgid "Associate the \"{}\" thread with..."
 msgstr "将“{}”会话关联到..."
 
@@ -540,8 +543,8 @@ msgstr "正在连接服务器…"
 msgid "Connection Interrupted"
 msgstr "连接中断"
 
-msgid "Connection lost; message acceptance is unknown"
-msgstr "连接已断开；不确定消息是否已被接受"
+msgid "Connection lost"
+msgstr "连接已断开"
 
 msgid "Context"
 msgstr "上下文"
@@ -916,6 +919,9 @@ msgstr "共享项目尚不支持外部智能体。"
 msgid "Extracting and checking the hash…"
 msgstr "正在解压并检查哈希…"
 
+msgid "Failed"
+msgstr "失败"
+
 msgid "Failed to Install"
 msgstr "安装失败"
 
@@ -1236,17 +1242,8 @@ msgstr "管理 AI 连接…"
 msgid "Message"
 msgstr "消息"
 
-msgid "Message accepted; agent connection lost"
-msgstr "消息已被接受；与智能体的连接已断开"
-
 msgid "Message between sessions"
 msgstr "会话之间的消息"
-
-msgid "Message cancelled"
-msgstr "消息已取消"
-
-msgid "Message failed to send: {}"
-msgstr "消息发送失败：{}"
 
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "向 {} 发送消息，@ 可添加上下文，/ 可使用命令"
@@ -1569,6 +1566,9 @@ msgstr "粘贴"
 msgid "Paste as Plain Text"
 msgstr "粘贴为纯文本"
 
+msgid "Paused"
+msgstr "已暂停"
+
 msgid "Permission Denied"
 msgstr "权限被拒绝"
 
@@ -1890,8 +1890,8 @@ msgstr "以摘要发送"
 msgid "Send in Full"
 msgstr "完整发送"
 
-msgid "Sending message…"
-msgstr "正在发送消息…"
+msgid "Sending…"
+msgstr "正在发送…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "检查其签名和哈希后发送到远程主机。"
@@ -2001,6 +2001,9 @@ msgstr "停止子智能体"
 msgid "Stop This Command"
 msgstr "停止此命令"
 
+msgid "Stop Tool Call"
+msgstr "停止工具调用"
+
 msgid "Subagent"
 msgstr "子智能体"
 
@@ -2106,6 +2109,12 @@ msgstr "远程主机上的 ForgeKairos 服务器尚未就绪（内部错误）�
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "远程主机上的 ForgeKairos 服务器尚未就绪。请等待连接完成后重试。"
 
+msgid "The agent accepted this message but hasn't shown it yet."
+msgstr "智能体已接受此消息，但尚未显示。"
+
+msgid "The agent accepted this message, then the connection was lost."
+msgstr "智能体已接受此消息，随后连接断开。"
+
 msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
 msgstr "智能体及其运行的命令将可在网络允许列表范围内访问任意主机。点击可限制为只访问智能体自己的主机。右键点击可设置此项目的默认值。"
 
@@ -2123,6 +2132,9 @@ msgstr "智能体目前无法判断自己是否在工作。你可以手动发送
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "智能体无法使用 `getDiagnostics`，因此看不到编辑器显示的错误和警告。{reason}"
+
+msgid "The agent finished responding, but work it started keeps running in the background, such as a dev server or a scheduled task."
+msgstr "智能体已完成响应，但它启动的工作（例如开发服务器或计划任务）仍在后台运行。"
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "发送第一条消息时智能体才会启动。请先选择它的沙盒和网络：启动后，此会话中会保持不变。"
@@ -2150,6 +2162,9 @@ msgstr "智能体的网络访问需要将主机添加到允许列表"
 
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "与 {provider} API 的连接已中断，ForgeKairos 将自动重试。如果问题持续存在，请检查网络连接。"
+
+msgid "The connection was lost before the agent confirmed this message."
+msgstr "在智能体确认此消息之前，连接已断开。"
 
 msgid "The conversation was rewound, but the message became read-only and was not resent."
 msgstr "会话已回退，但该消息已变为只读，未重新发送。"
@@ -2593,14 +2608,14 @@ msgstr "等待完成"
 msgid "Waiting for input"
 msgstr "等待输入"
 
-msgid "Waiting for message to appear…"
-msgstr "正在等待消息出现…"
-
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "正在等待允许列表的更改生效…"
 
 msgid "Waiting for tool confirmation"
 msgstr "正在等待工具调用确认"
+
+msgid "Waiting…"
+msgstr "正在等待…"
 
 msgid "We appreciate your feedback and will use it to improve in the future."
 msgstr "感谢你的反馈，我们将以此为依据持续改进。"
@@ -2734,6 +2749,10 @@ msgstr[0] "{count} 个路径"
 msgid "{count} project rule"
 msgid_plural "{count} project rules"
 msgstr[0] "{count} 条项目规则"
+
+msgid "{count} task in background"
+msgid_plural "{count} tasks in background"
+msgstr[0] "后台有 {count} 个任务"
 
 msgid "{count} thread"
 msgid_plural "{count} threads"

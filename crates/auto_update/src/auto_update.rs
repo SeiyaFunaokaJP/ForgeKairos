@@ -5,6 +5,7 @@ use db::kvp::KeyValueStore;
 // named through the crate root here.
 use ::fs::Fs;
 use futures_lite::StreamExt;
+use github_releases::{GithubRelease, get_release_by_tag_name, latest_github_release};
 use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, Global,
     Task, TaskExt, Window, actions,
@@ -12,7 +13,6 @@ use gpui::{
 use http_client::{
     AsyncBody, EgressDenied, HttpClient, HttpRequestExt as _, RedirectPolicy, Request, RequestHost,
     Response, StatusCode, UPDATE_REPO, Url,
-    github::{GithubRelease, get_release_by_tag_name, latest_github_release},
     http::{HeaderMap, header},
     ide_lane,
 };

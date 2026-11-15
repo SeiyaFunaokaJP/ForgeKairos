@@ -257,8 +257,8 @@ impl PanelThreadHistory {
         let store = ThreadMetadataStore::global(cx);
         let store = store.read(cx);
         store
-            .entries_for_path(&path_list, remote_connection.as_ref())
-            .chain(store.entries_for_main_worktree_path(&path_list, remote_connection.as_ref()))
+            .entries_for_path(&path_list, remote_connection)
+            .chain(store.entries_for_main_worktree_path(&path_list, remote_connection))
             .unique_by(|thread| thread.thread_id)
             .filter(|thread| self.should_list_thread(thread))
             .cloned()
@@ -724,7 +724,7 @@ mod tests {
     fn thread(title: &str, updated_at: DateTime<Utc>) -> ThreadMetadata {
         ThreadMetadata {
             thread_id: ThreadId::new(),
-            session_id: Some(agent_client_protocol::schema::v2::SessionId::new(
+            session_id: Some(agent_client_protocol::v2::schema::SessionId::new(
                 title.to_string(),
             )),
             agent_id: AgentId("zed".into()),

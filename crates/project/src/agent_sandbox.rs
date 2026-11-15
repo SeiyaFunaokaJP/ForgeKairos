@@ -357,9 +357,9 @@ pub fn project_thread_defaults_keys(project: &Project, cx: &App) -> Vec<String> 
     if project.is_via_collab() {
         return Vec::new();
     }
-    let connection = project.remote_client().map(|client| {
-        remote::remote_connection_identity(&client.read(cx).connection_options()).persistence_key()
-    });
+    let connection = project
+        .remote_client()
+        .map(|client| client.read(cx).connection_options().host_key());
     project
         .visible_worktrees(cx)
         .map(|worktree| {

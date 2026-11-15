@@ -1513,6 +1513,14 @@ msgid "Auto Compact Threshold"
 msgstr "Limite de compactação automática"
 
 msgctxt "settings"
+msgid "Auto Fetch"
+msgstr "Fetch automático"
+
+msgctxt "settings"
+msgid "Auto Fetch Interval"
+msgstr "Intervalo do fetch automático"
+
+msgctxt "settings"
 msgid "Auto Fold Directories"
 msgstr "Agrupar diretórios automaticamente"
 
@@ -1567,6 +1575,10 @@ msgstr "Fecha automaticamente os arquivos que foram excluídos."
 msgctxt "settings"
 msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
 msgstr "Compacta automaticamente o contexto do agente quando ele fica muito grande, resumindo as mensagens anteriores para liberar espaço na janela de contexto do modelo."
+
+msgctxt "settings"
+msgid "Automatically fetch the default branch's remote and the current branch's upstream remote."
+msgstr "Faz fetch automaticamente do remoto do branch padrão e do remoto upstream do branch atual."
 
 msgctxt "settings"
 msgid "Automatically open menus in the titlebar on hover."
@@ -2037,6 +2049,14 @@ msgid "Debugger Panel"
 msgstr "Painel do depurador"
 
 msgctxt "settings"
+msgid "Debugger Panel Default Height"
+msgstr "Altura padrão do painel do depurador"
+
+msgctxt "settings"
+msgid "Debugger Panel Default Width"
+msgstr "Largura padrão do painel do depurador"
+
+msgctxt "settings"
 msgid "Debugger Panel Dock"
 msgstr "Posição do dock do painel do depurador"
 
@@ -2097,6 +2117,10 @@ msgid "Default fixed width when the agent panel is docked to the left or right a
 msgstr "Largura fixa padrão quando o painel do agente está posicionado à esquerda ou à direita e o dimensionamento flexível está desabilitado."
 
 msgctxt "settings"
+msgid "Default height in pixels when the debug panel is docked to the bottom."
+msgstr "Altura padrão, em pixels, do painel do depurador quando posicionado na parte inferior."
+
+msgctxt "settings"
 msgid "Default height of the AI browser panel in pixels when docked to the bottom."
 msgstr "Altura padrão, em pixels, do painel do navegador de IA quando posicionado na parte inferior."
 
@@ -2115,6 +2139,10 @@ msgstr "Altura padrão quando o terminal está posicionado na parte inferior (em
 msgctxt "settings"
 msgid "Default timeout in seconds for MCP server tool calls."
 msgstr "Tempo limite padrão em segundos para chamadas de ferramenta do servidor MCP."
+
+msgctxt "settings"
+msgid "Default width in pixels when the debug panel is docked to the left or right."
+msgstr "Largura padrão, em pixels, do painel do depurador quando posicionado à esquerda ou à direita."
 
 msgctxt "settings"
 msgid "Default width of the AI browser panel in pixels when docked to the left or right."
@@ -2331,6 +2359,10 @@ msgstr "Debounce de edição (ms)"
 msgctxt "settings"
 msgid "Edit Keybindings"
 msgstr "Editar associações de teclas"
+
+msgctxt "settings"
+msgid "Edit Prediction Button"
+msgstr "Botão de previsões de edição"
 
 msgctxt "settings"
 msgid "Edit Predictions"
@@ -2951,6 +2983,10 @@ msgstr "Define como as terminações de linha devem ser tratadas em novos arquiv
 msgctxt "settings"
 msgid "How long going to a definition waits for the language server before it also offers the index's name matches, in milliseconds, from 100 to 10000. Default: 1500."
 msgstr "Quanto tempo a ida para uma definição aguarda o servidor de linguagem antes de também oferecer as correspondências de nome do índice, em milissegundos, de 100 a 10000. Padrão: 1500."
+
+msgctxt "settings"
+msgid "How long to wait between automatic fetches, in seconds. (min: 15)"
+msgstr "Tempo de espera entre fetches automáticos, em segundos. (mín.: 15)"
 
 msgctxt "settings"
 msgid "How many callers or callees of one function to list before a Show more row."
@@ -4431,6 +4467,10 @@ msgstr "Mostra o botão de posição do cursor na barra de status."
 msgctxt "settings"
 msgid "Show the debugger button in the status bar."
 msgstr "Mostra o botão do depurador na barra de status."
+
+msgctxt "settings"
+msgid "Show the edit prediction button in the status bar."
+msgstr "Mostra o botão de previsões de edição na barra de status."
 
 msgctxt "settings"
 msgid "Show the file icon for a tab."

@@ -1061,7 +1061,7 @@ impl Project {
                             &env,
                             None,
                             None,
-                            Interactive::Yes,
+                            Interactive::No,
                         )?;
                         let mut command = new_std_command(command_template.program);
                         command.args(command_template.args);
@@ -1410,6 +1410,7 @@ fn quote_cmd_command_arg_for_outer_shell(arg: &str, shell_kind: ShellKind) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::TestAppContext;
     use pretty_assertions::assert_eq;
 
     const SERVER_BINARY: &str = ".zed_server/zed-remote-server-dev-build";
@@ -2112,6 +2113,101 @@ mod tests {
         assert!(
             given_up.now_or_never().is_some(),
             "a connection that will not come back is not waited for"
+        );
+    }
+
+    async fn init_remote_client(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) -> Entity<RemoteClient> {
+        cx.update(|cx| {
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+        server_cx.update(|cx| {
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+
+        let (opts, server_session, connect_guard) = RemoteClient::fake_server(cx, server_cx);
+        let ping_handler = server_cx.new(|_| ());
+        server_session.add_request_handler::<proto::Ping, _, _, _>(
+            ping_handler.downgrade(),
+            |_entity, _envelope, _cx| async { Ok(proto::Ack {}) },
+        );
+        drop(connect_guard);
+
+        RemoteClient::connect_mock(opts, cx).await
+    }
+
+    #[gpui::test]
+    async fn remote_exec_in_shell_uses_non_interactive_command(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) {
+        let remote_client = init_remote_client(cx, server_cx).await;
+        let project = cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            let client = client::Client::new(
+                Arc::new(clock::FakeSystemClock::new()),
+                http_client::FakeHttpClient::with_404_response(),
+                cx,
+            );
+            let user_store = cx.new(|cx| client::UserStore::new(client.clone(), cx));
+            Project::remote(
+                remote_client,
+                client,
+                node_runtime::NodeRuntime::unavailable(),
+                user_store,
+                Arc::new(language::LanguageRegistry::test(
+                    cx.background_executor().clone(),
+                )),
+                fs::FakeFs::new(cx.background_executor().clone()),
+                false,
+                cx,
+            )
+        });
+
+        let exec_command = project
+            .update(cx, |project, cx| {
+                project.exec_in_shell("echo hello".to_string(), cx)
+            })
+            .await
+            .unwrap();
+        assert_eq!(exec_command.get_program(), "mock");
+        assert_eq!(
+            exec_command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["-T", "sh", "-c", "echo hello"],
+        );
+    }
+
+    #[gpui::test]
+    async fn remote_terminal_launch_uses_interactive_command(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) {
+        let remote_client = init_remote_client(cx, server_cx).await;
+
+        let (expected_title, (terminal_shell, _)) = cx.update(|cx| {
+            let title = format!(
+                "{} — Terminal",
+                remote_client.read(cx).connection_options().display_name()
+            );
+            // No directory: with one, the fork wraps the shell in a `cd`
+            // fallback (`terminal::remote_cwd`), which is not what this checks.
+            let shell =
+                create_remote_shell(None, HashMap::default(), None, remote_client, cx).unwrap();
+            (title, shell)
+        });
+        assert_eq!(
+            terminal_shell,
+            Shell::WithArguments {
+                program: "mock".to_string(),
+                args: vec!["-t".to_string(), "sh".to_string()],
+                title_override: Some(expected_title),
+            },
         );
     }
 }

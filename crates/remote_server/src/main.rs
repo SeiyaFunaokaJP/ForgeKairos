@@ -3,6 +3,9 @@ use remote_server::Commands;
 use std::io::Write as _;
 use std::path::PathBuf;
 
+#[cfg(target_env = "musl")]
+mod musl_allocator;
+
 #[derive(Parser)]
 #[command(disable_version_flag = true)]
 struct Cli {
@@ -22,6 +25,9 @@ struct Cli {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_env = "musl")]
+    musl_allocator::configure();
+
     // ADR-F18: when this binary is re-invoked on the remote host as the sandbox
     // helper (`--remote-sandbox-helper …`), handle it before clap sees the
     // helper's own argv. Neither stage returns if it matched.

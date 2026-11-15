@@ -14,7 +14,8 @@ path = "src/server.rs"
 doctest = false
 
 [[bin]]
-name = "remote_server"
+name = "remote-server"
+path = "src/main.rs"
 
 [features]
 default = []
@@ -87,6 +88,11 @@ libc.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 gpui = { workspace = true, features = ["windows-manifest"] }
+
+[target.'cfg(target_env = "musl")'.dependencies]
+libmimalloc-sys = { version = "0.1", features = ["extended"] }
+mimalloc = "0.1"
+tree-sitter.workspace = true
 
 [dev-dependencies]
 acp_thread.workspace = true

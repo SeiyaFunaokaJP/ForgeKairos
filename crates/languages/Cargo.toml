@@ -30,10 +30,11 @@ async-trait.workspace = true
 chrono.workspace = true
 collections.workspace = true
 futures.workspace = true
+github_releases.workspace = true
 globset.workspace = true
 gpui.workspace = true
 grammars.workspace = true
-http_client = { workspace = true, features = ["github-download"] }
+http_client.workspace = true
 i18n.workspace = true
 itertools.workspace = true
 json_schema_store.workspace = true

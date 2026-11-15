@@ -34,7 +34,7 @@ pub fn project_account_key(work_directory_abs_path: &Path) -> String {
 }
 
 /// The key the choice for a repository on a remote host is kept under: the host's connection
-/// (`RemoteConnectionIdentity::persistence_key`, such as `ssh:ada@example.com:22`) and the
+/// (`RemoteConnectionOptions::host_key`, such as `ssh:ada@example.com:22`) and the
 /// repository's path there. It never equals a local key, which is a bare absolute path.
 pub fn remote_project_account_key(connection_key: &str, work_directory_abs_path: &Path) -> String {
     format!(

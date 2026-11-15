@@ -856,6 +856,8 @@ pub struct GitSettings {
     ///
     /// Default: {}
     pub project_accounts: Option<BTreeMap<String, String>>,
+    /// Settings for automatically fetching the default branch's remote and the current branch's upstream remote.
+    pub auto_fetch: Option<AutoFetchSettingsContent>,
 }
 
 /// A git account a repository can commit and push as.
@@ -879,6 +881,21 @@ pub struct GitAccountContent {
     /// and fetching reach SSH remotes with, offered alone (`IdentitiesOnly`). Local projects
     /// only. Not used when `GIT_SSH_COMMAND`, `GIT_SSH` or `core.sshCommand` is set.
     pub ssh_key: Option<String>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Copy, PartialEq, Debug, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+#[serde(rename_all = "snake_case")]
+pub struct AutoFetchSettingsContent {
+    /// Whether to automatically fetch in the background.
+    ///
+    /// Default: false
+    pub enabled: Option<bool>,
+    /// How long to wait between automatic fetches, in seconds.
+    /// Only used when `enabled` is true. (min: 15)
+    ///
+    /// Default: 60
+    pub interval_secs: Option<u64>,
 }
 
 #[with_fallible_options]

@@ -41,6 +41,9 @@ msgstr "削除中…"
 msgid "Failed to connect"
 msgstr "接続できませんでした"
 
+msgid "Find a worktree or branch, or type to create…"
+msgstr "ワークツリーやブランチを検索、または入力して作成…"
+
 msgid "Force Delete"
 msgstr "強制削除"
 
@@ -73,9 +76,6 @@ msgstr "ワークツリーをウィンドウから削除"
 
 msgid "Requires a Git repository in the project"
 msgstr "プロジェクトに Git リポジトリが必要です。"
-
-msgid "Select or type to create a worktree…"
-msgstr "ワークツリーを選択、または入力して作成…"
 
 msgid "Show Error Logs"
 msgstr "エラーログを表示"

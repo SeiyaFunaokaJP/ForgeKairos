@@ -271,6 +271,9 @@ msgstr "Aplicar"
 msgid "Archive Thread"
 msgstr "Arquivar conversa"
 
+msgid "Asks the agent to stop this process. Its output stays here."
+msgstr "Pede ao agente que pare este processo. A saída dele continua aqui."
+
 msgid "Associate the \"{}\" thread with..."
 msgstr "Associar a conversa \"{}\" a..."
 
@@ -541,8 +544,8 @@ msgstr "Conectando ao servidor…"
 msgid "Connection Interrupted"
 msgstr "Conexão interrompida"
 
-msgid "Connection lost; message acceptance is unknown"
-msgstr "Conexão perdida; não se sabe se a mensagem foi aceita"
+msgid "Connection lost"
+msgstr "Conexão perdida"
 
 msgid "Context"
 msgstr "Contexto"
@@ -918,6 +921,9 @@ msgstr "Agentes externos ainda não são suportados em projetos compartilhados."
 msgid "Extracting and checking the hash…"
 msgstr "Extraindo e verificando o hash…"
 
+msgid "Failed"
+msgstr "Falhou"
+
 msgid "Failed to Install"
 msgstr "Falha ao instalar"
 
@@ -1240,17 +1246,8 @@ msgstr "Gerenciar conexões de IA…"
 msgid "Message"
 msgstr "Mensagem"
 
-msgid "Message accepted; agent connection lost"
-msgstr "Mensagem aceita; conexão com o agente perdida"
-
 msgid "Message between sessions"
 msgstr "Mensagem entre sessões"
-
-msgid "Message cancelled"
-msgstr "Mensagem cancelada"
-
-msgid "Message failed to send: {}"
-msgstr "Falha ao enviar a mensagem: {}"
 
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "Enviar mensagem para {}, @ para incluir contexto, / para comandos"
@@ -1573,6 +1570,9 @@ msgstr "Colar"
 msgid "Paste as Plain Text"
 msgstr "Colar como texto simples"
 
+msgid "Paused"
+msgstr "Em pausa"
+
 msgid "Permission Denied"
 msgstr "Permissão negada"
 
@@ -1894,8 +1894,8 @@ msgstr "Enviar como resumo"
 msgid "Send in Full"
 msgstr "Enviar completo"
 
-msgid "Sending message…"
-msgstr "Enviando mensagem…"
+msgid "Sending…"
+msgstr "Enviando…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "Envia-o ao host remoto depois de verificar a assinatura e o hash."
@@ -2005,6 +2005,9 @@ msgstr "Parar subagente"
 msgid "Stop This Command"
 msgstr "Parar este comando"
 
+msgid "Stop Tool Call"
+msgstr "Parar chamada de ferramenta"
+
 msgid "Subagent"
 msgstr "Subagente"
 
@@ -2110,6 +2113,12 @@ msgstr "O servidor do ForgeKairos no host remoto ainda não está pronto (erro i
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "O servidor do ForgeKairos no host remoto ainda não está pronto. Aguarde a conexão terminar e tente novamente."
 
+msgid "The agent accepted this message but hasn't shown it yet."
+msgstr "O agente aceitou esta mensagem, mas ainda não a exibiu."
+
+msgid "The agent accepted this message, then the connection was lost."
+msgstr "O agente aceitou esta mensagem e, em seguida, a conexão foi perdida."
+
 msgid "The agent and the commands it runs will reach any host within the network allowlist. Click to keep them to the agent's own hosts. Right-click to set the default for this project."
 msgstr "O agente e os comandos que ele executa vão alcançar qualquer host dentro da lista de permissões de rede. Clique para limitá-los aos hosts próprios do agente. Clique com o botão direito para definir o padrão deste projeto."
 
@@ -2127,6 +2136,9 @@ msgstr "O agente não consegue saber agora se está trabalhando. Você pode envi
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "O agente não pode usar `getDiagnostics`, então não vê os erros e avisos que o editor mostra. {reason}"
+
+msgid "The agent finished responding, but work it started keeps running in the background, such as a dev server or a scheduled task."
+msgstr "O agente terminou de responder, mas o trabalho que ele iniciou continua em execução em segundo plano, como um servidor de desenvolvimento ou uma tarefa agendada."
 
 msgid "The agent starts when you send your first message. Pick its sandbox and network first: they stay as they are for this thread once it starts."
 msgstr "O agente inicia quando você envia a primeira mensagem. Escolha antes o sandbox e a rede dele: depois que ele inicia, eles ficam assim nesta conversa."
@@ -2154,6 +2166,9 @@ msgstr "O acesso à rede do agente precisa que hosts sejam adicionados à lista 
 
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "A conexão com a API de {provider} foi interrompida. O ForgeKairos tentará novamente automaticamente. Se o problema persistir, verifique sua conexão de rede."
+
+msgid "The connection was lost before the agent confirmed this message."
+msgstr "A conexão foi perdida antes de o agente confirmar esta mensagem."
 
 msgid "The conversation was rewound, but the message became read-only and was not resent."
 msgstr "A conversa foi rebobinada, mas a mensagem se tornou somente leitura e não foi reenviada."
@@ -2598,14 +2613,14 @@ msgstr "Aguardando conclusão"
 msgid "Waiting for input"
 msgstr "Aguardando entrada"
 
-msgid "Waiting for message to appear…"
-msgstr "Aguardando a mensagem aparecer…"
-
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "Aguardando a alteração da lista de permissões entrar em vigor…"
 
 msgid "Waiting for tool confirmation"
 msgstr "Aguardando confirmação do uso da ferramenta"
+
+msgid "Waiting…"
+msgstr "Aguardando…"
 
 msgid "We appreciate your feedback and will use it to improve in the future."
 msgstr "Agradecemos seu feedback e o usaremos para melhorar no futuro."
@@ -2743,6 +2758,11 @@ msgid "{count} project rule"
 msgid_plural "{count} project rules"
 msgstr[0] "{count} regra do projeto"
 msgstr[1] "{count} regras do projeto"
+
+msgid "{count} task in background"
+msgid_plural "{count} tasks in background"
+msgstr[0] "{count} tarefa em segundo plano"
+msgstr[1] "{count} tarefas em segundo plano"
 
 msgid "{count} thread"
 msgid_plural "{count} threads"

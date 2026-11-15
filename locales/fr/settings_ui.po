@@ -2026,6 +2026,9 @@ msgstr "Exécute les commandes de terminal lancées par l'agent dans un bac à s
 msgid "Writable Paths"
 msgstr "Chemins accessibles en écriture"
 
+msgid "You can't create skills in a project someone shared with you."
+msgstr "Vous ne pouvez pas créer de compétences dans un projet que quelqu'un a partagé avec vous."
+
 msgid "You have consented to using this as an external AI service."
 msgstr "Vous avez consenti à utiliser ceci comme service d'IA externe."
 

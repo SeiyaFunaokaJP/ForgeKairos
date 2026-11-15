@@ -2026,6 +2026,9 @@ msgstr "Envolve os comandos de terminal executados pelo agente em um sandbox no 
 msgid "Writable Paths"
 msgstr "Caminhos graváveis"
 
+msgid "You can't create skills in a project someone shared with you."
+msgstr "Não é possível criar habilidades em um projeto que outra pessoa compartilhou com você."
+
 msgid "You have consented to using this as an external AI service."
 msgstr "Você deu consentimento para usar isto como um serviço de IA externo."
 

@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use acp_thread::MentionUri;
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::v1::schema as acp;
 use anyhow::{Context as _, Result};
 use collections::HashMap;
 use http_client::{Host, Url};

@@ -994,6 +994,10 @@ mod language_server_failure_tests {
             unimplemented!("the extension never reaches the network in these tests")
         }
 
+        fn background_executor(&self) -> &gpui::BackgroundExecutor {
+            unimplemented!("the extension never downloads anything in these tests")
+        }
+
         fn worktree_id(&self) -> project::WorktreeId {
             project::WorktreeId::from_usize(0)
         }

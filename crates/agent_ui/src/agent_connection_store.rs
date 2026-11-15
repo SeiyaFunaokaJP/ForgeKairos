@@ -1467,7 +1467,7 @@ mod tests {
         AcpThread, SandboxProcessMonitor, SandboxProcessSource, SandboxProcessTracking,
         StubAgentConnection,
     };
-    use agent_client_protocol::schema::{v1 as acp, v2 as acp_v2};
+    use agent_client_protocol::{v1::schema as acp, v2::schema as acp_v2};
     use fs::FakeFs;
     use gpui::TestAppContext;
     use project::AgentId;

@@ -67,20 +67,23 @@ pub(super) struct InitializeWithExtraCapabilities {
 }
 
 impl InitializeWithExtraCapabilities {
-    pub(super) fn to_value(&self) -> Result<Value, acp::Error> {
-        let mut value =
-            serde_json::to_value(&self.request).map_err(acp::Error::into_internal_error)?;
+    pub(super) fn to_value(&self) -> Result<Value, agent_client_protocol::Error> {
+        let mut value = serde_json::to_value(&self.request)
+            .map_err(agent_client_protocol::Error::into_internal_error)?;
         if self.extra_capabilities.is_empty() {
             return Ok(value);
         }
         let Some(params) = value.as_object_mut() else {
-            return Err(acp::Error::internal_error().data("initialize is not an object"));
+            return Err(
+                agent_client_protocol::Error::internal_error().data("initialize is not an object")
+            );
         };
         let capabilities = params
             .entry(CLIENT_CAPABILITIES_KEY)
             .or_insert_with(|| Value::Object(Map::new()));
         let Some(capabilities) = capabilities.as_object_mut() else {
-            return Err(acp::Error::internal_error().data("clientCapabilities is not an object"));
+            return Err(agent_client_protocol::Error::internal_error()
+                .data("clientCapabilities is not an object"));
         };
         for (key, extra) in &self.extra_capabilities {
             capabilities
@@ -100,13 +103,13 @@ impl JsonRpcMessage for InitializeWithExtraCapabilities {
         INITIALIZE_METHOD
     }
 
-    fn to_untyped_message(&self) -> Result<UntypedMessage, acp::Error> {
+    fn to_untyped_message(&self) -> Result<UntypedMessage, agent_client_protocol::Error> {
         UntypedMessage::new(INITIALIZE_METHOD, self.to_value()?)
     }
 
-    fn parse_message(method: &str, params: &impl Serialize) -> Result<Self, acp::Error> {
+    fn parse_message(method: &str, params: &Value) -> Result<Self, agent_client_protocol::Error> {
         if method != INITIALIZE_METHOD {
-            return Err(acp::Error::method_not_found());
+            return Err(agent_client_protocol::Error::method_not_found());
         }
         Ok(Self {
             request: agent_client_protocol::util::json_cast_params(params)?,
@@ -232,7 +235,7 @@ impl JsonRpcMessage for IncomingSessionUpdate {
         SESSION_UPDATE_METHOD
     }
 
-    fn to_untyped_message(&self) -> Result<UntypedMessage, acp::Error> {
+    fn to_untyped_message(&self) -> Result<UntypedMessage, agent_client_protocol::Error> {
         match self {
             Self::Session(notification) => UntypedMessage::new(SESSION_UPDATE_METHOD, notification),
             Self::Subagent(notification) => {
@@ -241,12 +244,11 @@ impl JsonRpcMessage for IncomingSessionUpdate {
         }
     }
 
-    fn parse_message(method: &str, params: &impl Serialize) -> Result<Self, acp::Error> {
+    fn parse_message(method: &str, params: &Value) -> Result<Self, agent_client_protocol::Error> {
         if method != SESSION_UPDATE_METHOD {
-            return Err(acp::Error::method_not_found());
+            return Err(agent_client_protocol::Error::method_not_found());
         }
-        let params = serde_json::to_value(params).map_err(acp::Error::into_internal_error)?;
-        if is_subagent_update_kind(&params) {
+        if is_subagent_update_kind(params) {
             agent_client_protocol::util::json_cast_params(params).map(Self::Subagent)
         } else {
             agent_client_protocol::util::json_cast_params(params).map(Self::Session)

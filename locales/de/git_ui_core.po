@@ -44,6 +44,9 @@ msgstr "Wird gelöscht…"
 msgid "Failed to connect"
 msgstr "Verbindung konnte nicht hergestellt werden"
 
+msgid "Find a worktree or branch, or type to create…"
+msgstr "Worktree oder Branch suchen oder Namen zum Erstellen eingeben…"
+
 msgid "Force Delete"
 msgstr "Löschen erzwingen"
 
@@ -76,9 +79,6 @@ msgstr "Worktree aus dem Fenster entfernen"
 
 msgid "Requires a Git repository in the project"
 msgstr "Erfordert ein Git-Repository im Projekt"
-
-msgid "Select or type to create a worktree…"
-msgstr "Auswählen oder eingeben, um einen Worktree zu erstellen…"
 
 msgid "Show Error Logs"
 msgstr "Fehlerprotokolle anzeigen"

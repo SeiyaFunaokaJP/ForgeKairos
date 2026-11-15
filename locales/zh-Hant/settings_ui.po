@@ -2022,6 +2022,9 @@ msgstr "以作業系統層級的沙箱包覆代理執行的終端機命令。關
 msgid "Writable Paths"
 msgstr "可寫入路徑"
 
+msgid "You can't create skills in a project someone shared with you."
+msgstr "無法在他人與您共用的專案中建立技能。"
+
 msgid "You have consented to using this as an external AI service."
 msgstr "您已同意將此作為外部 AI 服務使用。"
 

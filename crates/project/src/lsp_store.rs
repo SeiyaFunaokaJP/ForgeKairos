@@ -86,8 +86,8 @@ use futures::{
 };
 use globset::{Glob, GlobBuilder, GlobMatcher, GlobSet, GlobSetBuilder};
 use gpui::{
-    App, AppContext, AsyncApp, Context, Entity, EventEmitter, PromptLevel, SharedString,
-    Subscription, Task, TaskExt, WeakEntity,
+    App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, PromptLevel,
+    SharedString, Subscription, Task, TaskExt, WeakEntity,
 };
 use http_client::HttpClient;
 use itertools::Itertools as _;
@@ -6408,7 +6408,10 @@ impl LspStore {
             ))));
         };
         let http_client = local.http_client.clone();
-        cx.background_spawn(async move { dev_tools::install_tool(tool, http_client).await })
+        let executor = cx.background_executor().clone();
+        cx.background_spawn(
+            async move { dev_tools::install_tool(tool, http_client, executor).await },
+        )
     }
 
     async fn handle_check_dev_tools(
@@ -19125,6 +19128,7 @@ pub struct LocalLspAdapterDelegate {
     worktree: worktree::Snapshot,
     fs: Arc<dyn Fs>,
     http_client: Arc<dyn HttpClient>,
+    background_executor: BackgroundExecutor,
     language_registry: Arc<LanguageRegistry>,
     load_shell_env_task: Shared<Task<Option<HashMap<String, String>>>>,
 }
@@ -19147,6 +19151,7 @@ impl LocalLspAdapterDelegate {
             worktree: worktree.read(cx).snapshot(),
             fs,
             http_client,
+            background_executor: cx.background_executor().clone(),
             language_registry,
             load_shell_env_task,
         })
@@ -19181,6 +19186,10 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
 
     fn http_client(&self) -> Arc<dyn HttpClient> {
         self.http_client.clone()
+    }
+
+    fn background_executor(&self) -> &BackgroundExecutor {
+        &self.background_executor
     }
 
     fn worktree_id(&self) -> WorktreeId {
