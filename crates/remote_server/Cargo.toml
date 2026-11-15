@@ -89,6 +89,11 @@ libc.workspace = true
 [target.'cfg(windows)'.dependencies]
 gpui = { workspace = true, features = ["windows-manifest"] }
 
+[target.'cfg(target_env = "musl")'.dependencies]
+libmimalloc-sys = { version = "0.1", features = ["extended"] }
+mimalloc = "0.1"
+tree-sitter.workspace = true
+
 [dev-dependencies]
 acp_thread.workspace = true
 action_log.workspace = true

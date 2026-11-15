@@ -407,12 +407,7 @@ impl FileSource for WorktreeFileSource {
         // without holding a huge (or endless) file in memory.
         let limit = IndexConfig::default().max_file_bytes.saturating_add(1);
         if self.read_directly {
-            use std::io::Read as _;
-            let mut contents = Vec::new();
-            std::fs::File::open(&absolute)?
-                .take(limit)
-                .read_to_end(&mut contents)?;
-            return Ok(contents);
+            return symbol_index::read_file_for_index(&absolute, limit);
         }
         match futures::executor::block_on(self.fs.load_bytes(&absolute)) {
             Ok(mut bytes) => {

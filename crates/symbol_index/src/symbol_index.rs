@@ -10,6 +10,7 @@
 
 mod cleanup;
 mod extract;
+mod page_cache;
 mod storage;
 mod type_layout;
 mod type_resolve;
@@ -44,6 +45,7 @@ pub use crate::cleanup::*;
 pub use crate::extract::{
     AssignmentKind, CallKind, DefinitionKind, Position, Range, SourceLanguage,
 };
+pub use crate::page_cache::read_file_for_index;
 pub use crate::type_layout::*;
 pub use crate::type_resolve::*;
 
@@ -132,7 +134,7 @@ impl FileSource for DirectorySource {
         for component in path.split('/') {
             full_path.push(component);
         }
-        fs::read(full_path)
+        read_file_for_index(&full_path, u64::MAX)
     }
 }
 
