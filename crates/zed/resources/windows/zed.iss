@@ -46,7 +46,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
 ; Listed first so Japanese is preselected when Windows' UI language matches none of these.
-; Upstream shows Zed Industries' Terms of Service as a license to accept. This fork
+; Upstream shows Zed's Terms of Service as a license to accept. This fork
 ; shows its own notice instead, as an information page: the GPL needs no acceptance
 ; to install or run the program. The RTF comes from script\generate-notice-rtf.py.
 Name: "japanese"; MessagesFile: "{#ResourcesDir}\messages\Default.ja.isl,{#ResourcesDir}\messages\ja.isl"; InfoBeforeFile: "script\terms\notice.ja.rtf"

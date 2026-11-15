@@ -18,9 +18,7 @@ pub use remote_client::{
     RemotePlatform, connect, has_active_connection, set_client_instance_id,
 };
 pub use remote_client::{DISPLAY_LANGUAGE_ENV_VAR, DisplayLanguageHandler};
-pub use remote_identity::{
-    RemoteConnectionIdentity, remote_connection_identity, same_remote_connection_identity,
-};
+pub use remote_identity::RemoteConnectionIdentity;
 pub use transport::docker::DockerConnectionOptions;
 pub use transport::ssh::{
     SshConnectionOptions, SshPortForwardOption, take_remote_connection_warnings,

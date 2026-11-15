@@ -1,6 +1,6 @@
 use super::deserialize_maybe_stringified;
 use crate::{AgentTool, Thread, ToolCallEventStream, ToolInput};
-use agent_client_protocol::schema::v2 as acp;
+use agent_client_protocol::v2::schema as acp;
 use anyhow::{Context as _, Result, anyhow};
 use collections::HashMap;
 use gpui::{App, AsyncApp, Entity, SharedString, Task, WeakEntity};

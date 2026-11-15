@@ -1965,7 +1965,10 @@ fn find_remote(
     let absolute = if path_style.has_root(Path::new(candidate)) {
         candidate.to_string()
     } else {
-        path_style.join(working_directory?, candidate)?
+        path_style
+            .join(working_directory?, candidate)
+            .to_str()?
+            .to_string()
     };
     let absolute = normalize_lexically(&absolute, path_style);
     let relative = path_style
@@ -2031,12 +2034,8 @@ pub(crate) fn worktree_settings_file(
     let abs_path = worktree.abs_path();
     let path = path_style
         .join(&abs_path, &*relative.display(path_style))
-        .unwrap_or_else(|| {
-            abs_path
-                .join(relative.as_std_path())
-                .to_string_lossy()
-                .into_owned()
-        });
+        .to_string_lossy()
+        .into_owned();
     LaunchDefinitionFile::Worktree(path.into())
 }
 

@@ -1,6 +1,6 @@
 //! Behavior test helper for the Windows WSL sandbox (ADR-F46: the sandbox
 //! helper bundled with Zed, run inside WSL) — the Windows analog of
-//! `bwrap_test_helper`.
+//! `bwrap-test-helper`.
 //!
 //! It finds the helper artifacts the way Zed does, so put a Linux
 //! `remote_server` build (`zed-remote-server-linux-x86_64[.gz]`) and
@@ -34,7 +34,7 @@
 
 #[cfg(not(target_os = "windows"))]
 fn main() {
-    eprintln!("wsl_sandbox_test_helper is only supported on Windows");
+    eprintln!("wsl-sandbox-test-helper is only supported on Windows");
     std::process::exit(1);
 }
 
@@ -78,7 +78,7 @@ mod imp {
         allow_fs_write: bool,
     }
 
-    /// Tag prefixed to every result line, matching `bwrap_test_helper` so both
+    /// Tag prefixed to every result line, matching `bwrap-test-helper` so both
     /// helpers' output reads the same.
     const RESULT_TAG: &str = "[sandbox_test]:";
 
@@ -1155,7 +1155,7 @@ mod imp {
     }
 
     /// Tracks assertion results so the helper can report a summary and a single
-    /// exit code, mirroring `bwrap_test_helper`.
+    /// exit code, mirroring `bwrap-test-helper`.
     struct Checks {
         passed: usize,
         failed: usize,

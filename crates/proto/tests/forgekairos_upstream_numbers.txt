@@ -1,5 +1,5 @@
 # Every numbered field and enum value in upstream's crates/proto/proto at
-# v1.27.0 (c84af5b), as `scope name number`. Written by `regenerate_upstream_numbers`
+# v1.28.1 (e8bc16a), as `scope name number`. Written by `regenerate_upstream_numbers`
 # in forgekairos_numbering.rs; do not edit by hand.
 AckBufferOperation buffer_id 1
 AckBufferOperation epoch 2

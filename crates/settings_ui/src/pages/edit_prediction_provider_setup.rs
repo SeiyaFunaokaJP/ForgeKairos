@@ -339,7 +339,8 @@ fn render_provider_dropdown_control(
                 .child(
                     DropdownMenu::new("provider-dropdown", trigger_label, menu)
                         .tab_index(0)
-                        .style(DropdownStyle::Outlined),
+                        .style(DropdownStyle::Outlined)
+                        .attach(gpui::Anchor::BottomRight),
                 ),
         )
         .child(

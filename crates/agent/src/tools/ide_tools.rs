@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use agent_client_protocol::schema::v2 as acp;
+use agent_client_protocol::v2::schema as acp;
 use gpui::{App, AsyncApp, Entity, SharedString, Task};
 use ide_query::{
     AssistSource, CallCandidates, CallDirection, CallExpansion, CallHierarchy, CallHierarchyAnswer,

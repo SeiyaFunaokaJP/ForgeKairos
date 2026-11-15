@@ -144,7 +144,7 @@ function Build-LinuxRemoteServer {
     if ($buildExitCode -ne 0) {
         throw "cargo zigbuild -p remote_server failed (exit $buildExitCode)."
     }
-    $binaryPath = Join-Path $TargetDir "$LinuxRemoteServerTarget\$cargoProfile\remote_server"
+    $binaryPath = Join-Path $TargetDir "$LinuxRemoteServerTarget\$cargoProfile\remote-server"
     if (-not (Test-Path $binaryPath)) {
         throw "The remote_server build succeeded but its binary is missing: $binaryPath"
     }

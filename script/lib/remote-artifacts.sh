@@ -90,5 +90,5 @@ build_linux_remote_server_with_zigbuild() {
         --package remote_server --target "$triple" --target-dir "$target_dir"
 
     mkdir -p "$(dirname "$destination")"
-    gzip -f --stdout --best "${target_dir}/${triple}/${profile}/remote_server" > "$destination"
+    gzip -f --stdout --best "${target_dir}/${triple}/${profile}/remote-server" > "$destination"
 }

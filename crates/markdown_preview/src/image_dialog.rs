@@ -1227,7 +1227,11 @@ fn document_location(
             is_local,
         };
     }
-    let Some(file_path) = path_style.join(&root, relative.display(path_style).as_ref()) else {
+    let Some(file_path) = path_style
+        .join(&root, relative.display(path_style).as_ref())
+        .to_str()
+        .map(str::to_string)
+    else {
         return unsaved;
     };
     DocumentLocation {
@@ -1368,7 +1372,12 @@ fn is_within(directory: &str, path: &str, style: PathStyle) -> bool {
 }
 
 fn join_path(directory: &str, relative: &str, style: PathStyle) -> Option<String> {
-    let joined = style.join(directory, relative)?;
+    // `PathStyle::join` lets a rooted right side replace the directory; such
+    // input is not relative to the document.
+    if style.has_root(Path::new(relative)) {
+        return None;
+    }
+    let joined = style.join(directory, relative);
     Some(
         style
             .normalize_lexically(&joined)

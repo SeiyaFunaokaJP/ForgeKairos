@@ -1,12 +1,8 @@
 mod async_body;
 mod egress;
-#[cfg(not(target_family = "wasm"))]
-pub mod github;
-#[cfg(all(not(target_family = "wasm"), feature = "github-download"))]
-pub mod github_download;
 mod proxy_relay;
 
-pub use anyhow::{Result, anyhow};
+use anyhow::Result;
 pub use async_body::{AsyncBody, Inner, Json};
 pub use egress::{
     AllowlistedHttpClient, BUILTIN_ALLOWLIST, BuiltinAllow, EGRESS_DENIED_MARKER, EgressDenied,

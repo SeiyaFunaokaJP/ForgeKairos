@@ -17,7 +17,9 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use futures::AsyncReadExt as _;
-use http_client::{HttpClient, github::AssetKind, github_download::download_server_binary};
+use github_releases::{AssetKind, download_server_binary};
+use gpui::BackgroundExecutor;
+use http_client::HttpClient;
 use rpc::{ErrorCode, ErrorCodeExt as _, ErrorExt as _};
 use serde::{Deserialize, Serialize};
 
@@ -275,7 +277,11 @@ fn language_server_is_downloaded(server_name: &str) -> bool {
 /// Downloads a tool and puts it in [`paths::managed_tools_dir`], returning its
 /// path. Only for [`DevToolAcquisition::PyPiWheel`]; a language server is
 /// installed by letting Zed fetch it again, which the caller drives.
-pub async fn install_tool(tool: &DevTool, http_client: Arc<dyn HttpClient>) -> Result<PathBuf> {
+pub async fn install_tool(
+    tool: &DevTool,
+    http_client: Arc<dyn HttpClient>,
+    executor: BackgroundExecutor,
+) -> Result<PathBuf> {
     let DevToolAcquisition::PyPiWheel { project, version } = tool.acquisition else {
         anyhow::bail!(i18n::t!(
             "{tool} is not a tool that can be downloaded and installed",
@@ -306,7 +312,8 @@ pub async fn install_tool(tool: &DevTool, http_client: Arc<dyn HttpClient>) -> R
     // and a full disk should fail here rather than halfway through.
     let unpack_dir = tools_dir.join(format!(".{}-unpack", tool.id));
     remove_dir_if_present(&unpack_dir).await;
-    let result = install_from_wheel(tool, &wheel, &*http_client, &unpack_dir, tools_dir).await;
+    let result =
+        install_from_wheel(tool, &wheel, http_client, &executor, &unpack_dir, tools_dir).await;
     remove_dir_if_present(&unpack_dir).await;
     result
 }
@@ -314,11 +321,13 @@ pub async fn install_tool(tool: &DevTool, http_client: Arc<dyn HttpClient>) -> R
 async fn install_from_wheel(
     tool: &DevTool,
     wheel: &PyPiFile,
-    http_client: &dyn HttpClient,
+    http_client: Arc<dyn HttpClient>,
+    executor: &BackgroundExecutor,
     unpack_dir: &Path,
     tools_dir: &Path,
 ) -> Result<PathBuf> {
     download_server_binary(
+        executor,
         http_client,
         &wheel.url,
         wheel.digests.sha256.as_deref(),

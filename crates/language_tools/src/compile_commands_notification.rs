@@ -196,16 +196,25 @@ fn lookup_for(
 
     let mut abs_paths = Vec::new();
     for candidate in &inside {
-        abs_paths
-            .push(path_style.join(&root, candidate.as_rel_path().display(path_style).as_ref())?);
+        abs_paths.push(
+            path_style
+                .join(&root, candidate.as_rel_path().display(path_style).as_ref())
+                .to_str()?
+                .to_string(),
+        );
     }
     // Above the worktree's root, or above the single file it is.
     let mut folder = path_style.parent(&root);
     while let Some(current) = folder {
         for name in [COMPILE_COMMANDS, COMPILE_FLAGS, CLANGD_CONFIG] {
-            abs_paths.push(path_style.join(current, name)?);
+            abs_paths.push(path_style.join(current, name).to_str()?.to_string());
         }
-        abs_paths.push(path_style.join(path_style.join(current, "build")?, COMPILE_COMMANDS)?);
+        abs_paths.push(
+            path_style
+                .join(path_style.join(current, "build"), COMPILE_COMMANDS)
+                .to_str()?
+                .to_string(),
+        );
         folder = path_style.parent(current);
     }
 

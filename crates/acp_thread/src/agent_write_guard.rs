@@ -11,7 +11,7 @@
 //! ADR-F50's "agent write generation" bump belongs there too.
 
 use crate::AcpThread;
-use agent_client_protocol::schema::v1 as acp;
+use agent_client_protocol::v1::schema as acp;
 use anyhow::{Result, anyhow};
 use fs::Fs;
 use fs::verified_write::{GIT_DIRECTORY_NAME, NameRules};

@@ -14,7 +14,7 @@ use crate::{
 };
 use acp_thread::{AcpThread, AgentThreadEntry, MentionUri};
 use agent::ThreadStore;
-use agent_client_protocol::schema::v2 as acp_v2;
+use agent_client_protocol::v2::schema as acp_v2;
 use agent_settings::AgentSettings;
 use anyhow::{Result, anyhow};
 use base64::Engine as _;
@@ -2856,7 +2856,7 @@ mod tests {
     use super::PromptLocalCommand;
     use acp_thread::{AgentConnection as _, MentionUri};
     use agent::{ThreadStore, outline};
-    use agent_client_protocol::schema::v2 as acp_v2;
+    use agent_client_protocol::v2::schema as acp_v2;
     use base64::Engine as _;
     use editor::{
         AnchorRangeExt as _, Editor, EditorMode, MultiBufferOffset, SelectionEffects,

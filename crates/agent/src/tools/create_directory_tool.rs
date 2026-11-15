@@ -3,7 +3,7 @@ use super::tool_permissions::{
     resolve_creatable_global_skill_path, resolve_one_new_path_in_the_project,
     sensitive_settings_kind,
 };
-use agent_client_protocol::schema::v2 as acp;
+use agent_client_protocol::v2::schema as acp;
 use agent_settings::AgentSettings;
 use futures::FutureExt as _;
 use gpui::{App, AppContext as _, AsyncApp, Entity, SharedString, Task};

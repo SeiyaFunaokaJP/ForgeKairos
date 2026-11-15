@@ -297,6 +297,7 @@ pub struct MarkdownStyle {
     /// is set.
     pub table_overflow_x_scroll: bool,
     pub soft_break_as_hard_break: bool,
+    pub rounded_images: bool,
 }
 
 impl Default for MarkdownStyle {
@@ -327,6 +328,7 @@ impl Default for MarkdownStyle {
             table_columns_min_size: false,
             table_overflow_x_scroll: false,
             soft_break_as_hard_break: false,
+            rounded_images: true,
         }
     }
 }
@@ -574,6 +576,10 @@ impl MarkdownStyle {
         });
 
         self.heading_border_color = Some(colors.border_variant);
+
+        // The preview should match how GitHub and browsers render images, which
+        // keep their own corners (e.g. shields.io badges).
+        self.rounded_images = false;
 
         self
     }
@@ -2273,7 +2279,7 @@ impl MarkdownElement {
                     .debug_selector(|| format!("markdown-image-{}", range.start))
                     .min_w_0()
                     .max_w_full()
-                    .rounded_md()
+                    .when(self.style.rounded_images, |this| this.rounded_md())
                     .mr_1()
                     .mb_1()
                     .when_some(height, |this, height| this.h(height))

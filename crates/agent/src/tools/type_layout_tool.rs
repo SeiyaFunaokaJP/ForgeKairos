@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use agent_client_protocol::schema::v2 as acp;
+use agent_client_protocol::v2::schema as acp;
 use gpui::{App, Entity, SharedString, Task};
 use ide_query::{
     LinePosition, MAX_OTHER_TYPE_CANDIDATES, TypeIndexUnavailable, TypeIndexUnavailableReason,

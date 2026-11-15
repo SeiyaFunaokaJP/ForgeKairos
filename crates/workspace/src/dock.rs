@@ -1596,6 +1596,8 @@ impl Dock {
                         {
                             // A stacked panel is already on screen, so focus it
                             // instead of swapping it into the primary slot.
+                            // Opening and activating in one arrangement also never
+                            // activates the dock's previous panel on the way.
                             this.show_panel(ix, false, window, cx);
                             window.focus(&panel.read(cx).activation_focus_handle(cx), cx);
                         }
@@ -2793,6 +2795,9 @@ pub mod test {
         pub position: DockPosition,
         pub zoomed: bool,
         pub active: bool,
+        /// Keeps track of the values provided to [`Self::set_active`], to allow
+        /// inspecting whether the panel was activated or deactivated.
+        pub activation_history: Vec<bool>,
         pub focus_handle: FocusHandle,
         pub activation_focus_handle: Option<FocusHandle>,
         pub default_size: Pixels,
@@ -2815,6 +2820,7 @@ pub mod test {
                 position,
                 zoomed: false,
                 active: false,
+                activation_history: Vec::new(),
                 focus_handle: cx.focus_handle(),
                 activation_focus_handle: None,
                 default_size: px(300.),
@@ -2962,6 +2968,7 @@ pub mod test {
         fn set_active(&mut self, active: bool, _window: &mut Window, _cx: &mut Context<Self>) {
             self.active = active;
             self.set_active_calls.push(active);
+            self.activation_history.push(active);
         }
 
         fn revealed_by_user(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {

@@ -266,6 +266,8 @@ impl Destination {
     fn absolute(&self, path: &RelPath) -> Result<String> {
         self.path_style
             .join(&self.root, path.display(self.path_style).as_ref())
+            .to_str()
+            .map(str::to_string)
             .with_context(|| i18n::t!("Cannot build the path: {}", path.as_unix_str()))
     }
 }
