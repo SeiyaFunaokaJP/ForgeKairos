@@ -40,7 +40,7 @@ use terminal::{
 use ui::{
     Checkbox, ContextMenu, ContextMenuEntry, Disclosure, DocumentationSide, DropdownMenu,
     DropdownStyle, HighlightedLabel, InputFrameSize, ListItem, ListItemSpacing, Modal, ModalFooter,
-    ModalHeader, PopoverMenu, Section, ToggleState, Tooltip, WithScrollbar, input_frame,
+    ModalHeader, PopoverMenu, Section, ToggleState, Tooltip, WithScrollbar, form, input_frame,
     input_frame_sized, prelude::*, right_click_menu,
 };
 use util::ResultExt as _;
@@ -1181,6 +1181,13 @@ impl MacroRunOptions {
     }
 }
 
+impl MacroRunOptions {
+    fn focus_adjacent_field(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let fields = [self.count.focus_handle(cx), self.interval.focus_handle(cx)];
+        form::focus_adjacent_field(&self.focus_handle, &fields, forward, window, cx);
+    }
+}
+
 impl Render for MacroRunOptions {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let name = self.terminal_macro.name.clone();
@@ -1196,8 +1203,14 @@ impl Render for MacroRunOptions {
         v_flex()
             .w(rems(28.))
             .elevation_3(cx)
-            .key_context("TerminalMacroRunOptions")
+            .key_context(format!("TerminalMacroRunOptions {}", form::KEY_CONTEXT).as_str())
             .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this, _: &form::FocusNextField, window, cx| {
+                this.focus_adjacent_field(true, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &form::FocusPreviousField, window, cx| {
+                this.focus_adjacent_field(false, window, cx);
+            }))
             .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| cx.emit(DismissEvent)))
             .on_action(cx.listener(|this, _: &menu::Confirm, window, cx| {
                 this.run(window, cx);
@@ -1264,9 +1277,11 @@ impl Render for MacroRunOptions {
 
 impl EventEmitter<DismissEvent> for MacroRunOptions {}
 
+/// The modal layer focuses this after the modal is built, so it names the
+/// first field: focusing the root would leave typing with nowhere to go.
 impl Focusable for MacroRunOptions {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.count.focus_handle(cx)
     }
 }
 
@@ -3441,6 +3456,63 @@ impl MacroEditor {
             row.collect_field_editors(&mut fields);
         }
         fields
+    }
+
+    /// The tree's fields first, then the form's in reading order. Which fields
+    /// a step shows, and where, depends on its kind, so the form's order is
+    /// taken from where the fields were last drawn.
+    fn focus_adjacent_field(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let mut fields = vec![self.list_filter.clone()];
+        fields.extend(
+            self.renaming_folder
+                .as_ref()
+                .map(|(_, field)| field.clone()),
+        );
+        fields.extend(self.new_folder.as_ref().map(|entry| entry.field.clone()));
+
+        let mut form_fields = vec![
+            self.name.clone(),
+            self.tags.clone(),
+            self.description.clone(),
+            self.repeat.clone(),
+            self.repeat_interval.clone(),
+        ];
+        for row in &self.steps {
+            row.collect_field_editors(&mut form_fields);
+        }
+        let mut placed = form_fields
+            .into_iter()
+            .filter_map(|field| {
+                let bounds = *field.read(cx).last_bounds()?;
+                Some((bounds, field))
+            })
+            .collect::<Vec<_>>();
+        placed.sort_by_key(|(bounds, _)| bounds.center().y);
+        // Fields of one line differ in height, so they are grouped by how close
+        // their centres are before being ordered left to right.
+        const LINE_TOLERANCE: f32 = 8.;
+        let mut line_start = 0;
+        for index in 1..=placed.len() {
+            let ends_line = match (placed.get(line_start), placed.get(index)) {
+                (Some((first, _)), Some((next, _))) => {
+                    next.center().y - first.center().y > px(LINE_TOLERANCE)
+                }
+                _ => true,
+            };
+            if ends_line {
+                if let Some(line) = placed.get_mut(line_start..index) {
+                    line.sort_by_key(|(bounds, _)| bounds.origin.x);
+                }
+                line_start = index;
+            }
+        }
+        fields.extend(placed.into_iter().map(|(_, field)| field));
+
+        let fields = fields
+            .iter()
+            .map(|field| field.focus_handle(cx))
+            .collect::<Vec<_>>();
+        form::focus_adjacent_field(&self.focus_handle, &fields, forward, window, cx);
     }
 
     /// Whether leaving the form now would throw work away.
@@ -6454,9 +6526,15 @@ impl Render for MacroEditor {
             .relative()
             .overflow_hidden()
             .bg(cx.theme().colors().editor_background)
-            .key_context("TerminalMacroEditor")
+            .key_context(format!("TerminalMacroEditor {}", form::KEY_CONTEXT).as_str())
             .debug_selector(|| "macro-editor".into())
             .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this, _: &form::FocusNextField, window, cx| {
+                this.focus_adjacent_field(true, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &form::FocusPreviousField, window, cx| {
+                this.focus_adjacent_field(false, window, cx);
+            }))
             .child(measured_width)
             .child(
                 v_flex()
@@ -8155,6 +8233,22 @@ impl QuickConnectModal {
     }
 }
 
+impl QuickConnectModal {
+    /// Visual order. The user name field is skipped while it is hidden.
+    fn focus_adjacent_field(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let fields = [
+            &self.host,
+            &self.port,
+            &self.user,
+            &self.password,
+            &self.name,
+            &self.folder,
+        ]
+        .map(|editor| editor.focus_handle(cx));
+        form::focus_adjacent_field(&self.focus_handle, &fields, forward, window, cx);
+    }
+}
+
 impl Render for QuickConnectModal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let folders = self.store.read(cx).macro_folders().to_vec();
@@ -8226,8 +8320,14 @@ impl Render for QuickConnectModal {
         v_flex()
             .w(rems(38.))
             .elevation_3(cx)
-            .key_context("QuickConnect")
+            .key_context(format!("QuickConnect {}", form::KEY_CONTEXT).as_str())
             .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this, _: &form::FocusNextField, window, cx| {
+                this.focus_adjacent_field(true, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &form::FocusPreviousField, window, cx| {
+                this.focus_adjacent_field(false, window, cx);
+            }))
             .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| cx.emit(DismissEvent)))
             .on_action(cx.listener(|this, _: &menu::Confirm, window, cx| {
                 this.connect(window, cx);
@@ -8401,9 +8501,11 @@ impl Render for QuickConnectModal {
 
 impl EventEmitter<DismissEvent> for QuickConnectModal {}
 
+/// The modal layer focuses this after the modal is built, so it names the
+/// first field: focusing the root would leave typing with nowhere to go.
 impl Focusable for QuickConnectModal {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.host.focus_handle(cx)
     }
 }
 
@@ -8520,6 +8622,160 @@ mod tests {
         workspace.read_with(cx, |workspace, cx| {
             workspace.items_of_type::<MacroEditor>(cx).count()
         })
+    }
+
+    /// Tab in the macro editor visits each drawn field once before wrapping,
+    /// Shift+Tab walks the same cycle backwards, and the tree's filter comes
+    /// before the form.
+    #[gpui::test]
+    async fn tab_cycles_the_macro_editor_fields(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, "{}").await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        let editor = open_editor(&workspace, &store, cx);
+        settle(cx);
+
+        let focused_field = |cx: &mut VisualTestContext| {
+            cx.update(|window, cx| {
+                editor
+                    .read(cx)
+                    .field_editors()
+                    .into_iter()
+                    .find(|field| field.focus_handle(cx).is_focused(window))
+                    .map(|field| field.entity_id())
+            })
+        };
+        let walk = |forward: bool, cx: &mut VisualTestContext| {
+            let start = focused_field(cx);
+            let mut visited = Vec::new();
+            for _ in 0..64 {
+                editor.update_in(cx, |editor, window, cx| {
+                    editor.focus_adjacent_field(forward, window, cx)
+                });
+                let field = focused_field(cx);
+                assert!(field.is_some(), "Tab left the fields");
+                if field == start {
+                    return visited;
+                }
+                visited.push(field);
+            }
+            panic!("Tab never came back to the field it started from");
+        };
+
+        editor.update_in(cx, |editor, window, cx| {
+            window.focus(&editor.name.focus_handle(cx), cx)
+        });
+        let forward = walk(true, cx);
+        let mut backward = walk(false, cx);
+        backward.reverse();
+        assert_eq!(forward, backward);
+        let distinct = forward.iter().collect::<HashSet<_>>();
+        assert_eq!(distinct.len(), forward.len(), "a field was visited twice");
+
+        let id = |field: &Entity<Editor>| Some(field.entity_id());
+        let (filter, tags) =
+            editor.read_with(cx, |editor, _| (id(&editor.list_filter), id(&editor.tags)));
+        let position = |field| forward.iter().position(|visited| *visited == field);
+        assert!(position(filter).is_some() && position(tags).is_some());
+        assert_eq!(
+            forward.last().copied().flatten(),
+            filter,
+            "the filter comes just before the name"
+        );
+    }
+
+    fn open_quick_connect(
+        workspace: &Entity<Workspace>,
+        store: &Entity<TerminalSessionStore>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<QuickConnectModal> {
+        let store = store.clone();
+        workspace.update_in(cx, |workspace, window, cx| {
+            let handle = cx.weak_entity();
+            workspace.toggle_modal(window, cx, |window, cx| {
+                QuickConnectModal::new(store, handle, window, cx)
+            });
+            workspace
+                .active_modal::<QuickConnectModal>(cx)
+                .expect("quick connect should be the active modal")
+        })
+    }
+
+    /// Which of the modal's fields holds focus, by the name the tests use.
+    fn focused_quick_connect_field(
+        modal: &Entity<QuickConnectModal>,
+        cx: &mut VisualTestContext,
+    ) -> Option<&'static str> {
+        cx.update(|window, cx| {
+            let modal = modal.read(cx);
+            [
+                ("host", &modal.host),
+                ("port", &modal.port),
+                ("user", &modal.user),
+                ("password", &modal.password),
+                ("name", &modal.name),
+                ("folder", &modal.folder),
+            ]
+            .into_iter()
+            .find(|(_, editor)| editor.focus_handle(cx).is_focused(window))
+            .map(|(name, _)| name)
+        })
+    }
+
+    /// Tab walks the fields in the order they are drawn, wraps at both ends,
+    /// and skips the user name while telnet hides it. The real keymap is
+    /// loaded because the editors' own Tab binding is what used to win.
+    #[gpui::test]
+    async fn tab_moves_between_the_quick_connect_fields(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, "{}").await;
+        cx.update(|cx| {
+            let bindings = settings::KeymapFile::load_asset_allow_partial_failure(
+                settings::DEFAULT_KEYMAP_PATH,
+                cx,
+            )
+            .expect("the default keymap should load");
+            cx.bind_keys(bindings);
+        });
+        let cx = &mut VisualTestContext::from_window(window.into(), cx);
+        let store = new_store(&fs, cx);
+        let modal = open_quick_connect(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(focused_quick_connect_field(&modal, cx), Some("host"));
+
+        let mut visited = Vec::new();
+        for _ in 0..6 {
+            cx.simulate_keystrokes("tab");
+            visited.push(focused_quick_connect_field(&modal, cx));
+        }
+        assert_eq!(
+            visited,
+            [
+                Some("port"),
+                Some("user"),
+                Some("password"),
+                Some("name"),
+                Some("folder"),
+                Some("host"),
+            ]
+        );
+        assert_eq!(
+            modal.read_with(cx, |modal, cx| modal.host.read(cx).text(cx)),
+            "",
+            "Tab must not be typed into the field"
+        );
+
+        cx.simulate_keystrokes("shift-tab");
+        assert_eq!(focused_quick_connect_field(&modal, cx), Some("folder"));
+
+        modal.update_in(cx, |modal, window, cx| {
+            modal.set_protocol(ConnectionProtocol::Telnet, window, cx);
+            window.focus(&modal.port.focus_handle(cx), cx);
+        });
+        cx.run_until_parked();
+        cx.simulate_keystrokes("tab");
+        assert_eq!(focused_quick_connect_field(&modal, cx), Some("password"));
+        cx.simulate_keystrokes("shift-tab");
+        assert_eq!(focused_quick_connect_field(&modal, cx), Some("port"));
     }
 
     fn open_picker(

@@ -1828,6 +1828,15 @@
       "shift-tab": "file_transfer::FocusPreviousField",
     },
   },
+  {
+    // Tab moves between the text fields of a dialog or form (ui::form). Multi-line code
+    // editors and open completion menus keep Tab for themselves.
+    "context": "FormFields || (FormFields > Editor && mode != full && !showing_completions && !edit_prediction)",
+    "bindings": {
+      "tab": "form::FocusNextField",
+      "shift-tab": "form::FocusPreviousField",
+    },
+  },
   // The built-in browser panel (ADR-F19)
   {
     "context": "Workspace",

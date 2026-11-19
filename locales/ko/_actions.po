@@ -2999,6 +2999,16 @@ msgctxt "action"
 msgid "file_transfer::FocusPreviousField"
 msgstr "파일 전송: 이전 입력란으로 이동"
 
+#. form: focus next field
+msgctxt "action"
+msgid "form::FocusNextField"
+msgstr "양식: 다음 입력란으로 이동"
+
+#. form: focus previous field
+msgctxt "action"
+msgid "form::FocusPreviousField"
+msgstr "양식: 이전 입력란으로 이동"
+
 #. git: add
 msgctxt "action"
 msgid "git::Add"
