@@ -2999,6 +2999,16 @@ msgctxt "action"
 msgid "file_transfer::FocusPreviousField"
 msgstr "檔案傳輸: 上一個欄位"
 
+#. form: focus next field
+msgctxt "action"
+msgid "form::FocusNextField"
+msgstr "表單: 下一個欄位"
+
+#. form: focus previous field
+msgctxt "action"
+msgid "form::FocusPreviousField"
+msgstr "表單: 上一個欄位"
+
 #. git: add
 msgctxt "action"
 msgid "git::Add"

@@ -2999,6 +2999,16 @@ msgctxt "action"
 msgid "file_transfer::FocusPreviousField"
 msgstr "文件传输: 上一个输入框"
 
+#. form: focus next field
+msgctxt "action"
+msgid "form::FocusNextField"
+msgstr "表单: 下一个输入框"
+
+#. form: focus previous field
+msgctxt "action"
+msgid "form::FocusPreviousField"
+msgstr "表单: 上一个输入框"
+
 #. git: add
 msgctxt "action"
 msgid "git::Add"

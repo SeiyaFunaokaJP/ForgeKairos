@@ -2908,6 +2908,16 @@ msgctxt "action documentation"
 msgid "file_transfer::FocusPreviousField"
 msgstr "이전 입력란으로 이동합니다."
 
+#. Moves to the next input field.
+msgctxt "action documentation"
+msgid "form::FocusNextField"
+msgstr "다음 입력란으로 이동합니다."
+
+#. Moves to the previous input field.
+msgctxt "action documentation"
+msgid "form::FocusPreviousField"
+msgstr "이전 입력란으로 이동합니다."
+
 #. Adds files to the git staging area.
 msgctxt "action documentation"
 msgid "git::Add"

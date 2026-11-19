@@ -1711,6 +1711,7 @@ struct AddRemoteModal {
     panel: Entity<GitPanel>,
     name_input: Entity<ui_input::InputField>,
     url_input: Entity<ui_input::InputField>,
+    focus_handle: FocusHandle,
 }
 
 impl AddRemoteModal {
@@ -1738,7 +1739,16 @@ impl AddRemoteModal {
             panel,
             name_input,
             url_input,
+            focus_handle: cx.focus_handle(),
         }
+    }
+
+    fn focus_adjacent_field(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let fields = [
+            self.name_input.focus_handle(cx),
+            self.url_input.focus_handle(cx),
+        ];
+        ui::form::focus_adjacent_field(&self.focus_handle, &fields, forward, window, cx);
     }
 }
 
@@ -1751,6 +1761,14 @@ impl Focusable for AddRemoteModal {
 impl Render for AddRemoteModal {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
+            .key_context(ui::form::KEY_CONTEXT)
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this, _: &ui::form::FocusNextField, window, cx| {
+                this.focus_adjacent_field(true, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ui::form::FocusPreviousField, window, cx| {
+                this.focus_adjacent_field(false, window, cx);
+            }))
             .elevation_3(cx)
             .w(rems(34.))
             .p_2()

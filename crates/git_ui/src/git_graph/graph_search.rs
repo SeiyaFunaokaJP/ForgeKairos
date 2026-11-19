@@ -826,8 +826,47 @@ impl GraphSearchForm {
         if let Some(field) = self.fields.iter().find(|field| field.kind == kind) {
             field.editor.update(cx, |editor, cx| {
                 editor.set_text(name.to_string(), window, cx);
+                editor.move_to_end(&editor::actions::MoveToEnd, window, cx);
             });
         }
+    }
+
+    /// Tab completes a tag or branch name from the first suggestion, the way
+    /// a shell does, and otherwise moves to the next field. A name that is
+    /// already complete moves on, so Tab never cycles through longer names.
+    fn focus_next_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let focused = self
+            .fields
+            .iter()
+            .find(|field| field.editor.focus_handle(cx).contains_focused(window, cx))
+            .map(|field| (field.kind, field.editor.read(cx).text(cx)));
+        if let Some((kind, typed)) = focused
+            && !typed.trim().is_empty()
+            && !self.is_known_name(kind, &typed)
+            && let Some(first) = self.suggestions(kind, cx).0.into_iter().next()
+        {
+            self.pick_suggestion(kind, first, window, cx);
+            return;
+        }
+        self.focus_adjacent_field(true, window, cx);
+    }
+
+    fn is_known_name(&self, kind: CommitSearchConditionKind, typed: &str) -> bool {
+        let names = match kind {
+            CommitSearchConditionKind::Tag => &self.tag_names,
+            CommitSearchConditionKind::Branch => &self.branch_names,
+            _ => return false,
+        };
+        names.iter().any(|name| name.as_ref() == typed)
+    }
+
+    fn focus_adjacent_field(&self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let fields = self
+            .fields
+            .iter()
+            .map(|field| field.editor.focus_handle(cx))
+            .collect::<Vec<_>>();
+        ui::form::focus_adjacent_field(&self.focus_handle, &fields, forward, window, cx);
     }
 
     fn render_suggestions(
@@ -881,6 +920,20 @@ impl GraphSearchForm {
                 .editor
                 .update(cx, |editor, cx| editor.set_text(value, window, cx));
         }
+    }
+
+    /// Presses Tab in the field for `kind`.
+    #[cfg(test)]
+    pub(super) fn press_tab_for_test(
+        &mut self,
+        kind: CommitSearchConditionKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(field) = self.fields.iter().find(|field| field.kind == kind) {
+            window.focus(&field.editor.focus_handle(cx), cx);
+        }
+        self.focus_next_field(window, cx);
     }
 
     #[cfg(test)]
@@ -983,8 +1036,14 @@ impl Render for GraphSearchForm {
         });
 
         v_flex()
-            .key_context("GitGraphSearchForm")
+            .key_context(format!("GitGraphSearchForm {}", ui::form::KEY_CONTEXT).as_str())
             .track_focus(&self.focus_handle)
+            .on_action(cx.listener(|this, _: &ui::form::FocusNextField, window, cx| {
+                this.focus_next_field(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ui::form::FocusPreviousField, window, cx| {
+                this.focus_adjacent_field(false, window, cx);
+            }))
             .on_action(cx.listener(|this, _: &menu::Confirm, _window, cx| {
                 this.run_search(cx);
             }))

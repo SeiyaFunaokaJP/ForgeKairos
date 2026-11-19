@@ -2999,6 +2999,16 @@ msgctxt "action"
 msgid "file_transfer::FocusPreviousField"
 msgstr "Transferencia de archivos: campo anterior"
 
+#. form: focus next field
+msgctxt "action"
+msgid "form::FocusNextField"
+msgstr "Formulario: campo siguiente"
+
+#. form: focus previous field
+msgctxt "action"
+msgid "form::FocusPreviousField"
+msgstr "Formulario: campo anterior"
+
 #. git: add
 msgctxt "action"
 msgid "git::Add"

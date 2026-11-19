@@ -23,7 +23,7 @@ use project::{
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use settings::{Settings as _, SettingsStore, update_settings_file};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use theme_settings::ThemeSettings;
 use ui::{
     CommonAnimationExt, ContextMenu, DropdownMenu, DropdownStyle, IconPosition, KeyBinding, Modal,
@@ -1666,10 +1666,35 @@ impl ConfigureContextServerModal {
             })
             .collect::<Vec<_>>();
 
+        let text_fields = form
+            .inputs
+            .iter()
+            .filter_map(|input| match input {
+                ExtensionSettingsInput::Text(editor) => Some(editor.focus_handle(cx)),
+                ExtensionSettingsInput::Toggle(_) | ExtensionSettingsInput::Choice(_) => None,
+            })
+            .collect::<Rc<[_]>>();
+        let focus_adjacent_field = {
+            let root = form.focus_handle.clone();
+            move |forward: bool, window: &mut Window, cx: &mut App| {
+                ui::form::focus_adjacent_field(&root, &text_fields, forward, window, cx);
+            }
+        };
+
         v_flex()
             .w_full()
             .gap_3()
+            .key_context(ui::form::KEY_CONTEXT)
             .track_focus(&form.focus_handle)
+            .on_action({
+                let focus_adjacent_field = focus_adjacent_field.clone();
+                move |_: &ui::form::FocusNextField, window, cx| {
+                    focus_adjacent_field(true, window, cx)
+                }
+            })
+            .on_action(move |_: &ui::form::FocusPreviousField, window, cx| {
+                focus_adjacent_field(false, window, cx)
+            })
             .children(rows)
             .into_any_element()
     }

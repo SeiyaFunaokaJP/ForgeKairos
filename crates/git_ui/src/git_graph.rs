@@ -10584,6 +10584,20 @@ mod tests {
                 "alice"
             );
         });
+
+        // Tab completes a partly typed tag from the first suggestion, and moves on once the
+        // name is complete instead of cycling to a longer one.
+        let tag_after_tab = |form: &Entity<GraphSearchForm>, cx: &mut VisualTestContext| {
+            form.update_in(cx, |form, window, cx| {
+                form.press_tab_for_test(CommitSearchConditionKind::Tag, window, cx);
+                form.field_text_for_test(CommitSearchConditionKind::Tag, cx)
+            })
+        };
+        form.update_in(cx, |form, window, cx| {
+            form.set_field_for_test(CommitSearchConditionKind::Tag, "v1", window, cx)
+        });
+        assert_eq!(tag_after_tab(&form, cx), "v1.0");
+        assert_eq!(tag_after_tab(&form, cx), "v1.0");
     }
 
     #[gpui::test]
