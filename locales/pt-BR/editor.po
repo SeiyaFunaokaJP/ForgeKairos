@@ -11,9 +11,6 @@ msgstr ""
 msgid "(anonymous)"
 msgstr "(anônimo)"
 
-msgid "2 years, 11 months ago"
-msgstr "há 2 anos e 11 meses"
-
 msgid "Accept"
 msgstr "Aceitar"
 

@@ -88,11 +88,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "マルチバッファーを表示しているときに、アウトラインパネルのシンボル・抜粋・検索結果を隠すかどうかを設定します。",
     ),
     (
-        "p7.i59[git_panel.folder_indicator].title",
+        "p7.i60[git_panel.folder_indicator].title",
         "フォルダーの表示",
     ),
     (
-        "p7.i59[git_panel.folder_indicator].description",
+        "p7.i60[git_panel.folder_indicator].description",
         "Git パネルのディレクトリに何を表示するかを設定します。",
     ),
     // Added by upstream v1.20.2.
@@ -210,61 +210,61 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     ),
     // Added by ForgeKairos with the call graph panel, at the end of the
     // Panels page so that the rows above keep their keys.
-    ("p7.i82.header", "呼び出しグラフパネル"),
+    ("p7.i83.header", "呼び出しグラフパネル"),
     (
-        "p7.i83[call_graph_panel.button].title",
+        "p7.i84[call_graph_panel.button].title",
         "呼び出しグラフパネルのボタン",
     ),
     (
-        "p7.i83[call_graph_panel.button].description",
+        "p7.i84[call_graph_panel.button].description",
         "ステータスバーに呼び出しグラフパネルのボタンを表示します。",
     ),
     (
-        "p7.i84[call_graph_panel.dock].title",
+        "p7.i85[call_graph_panel.dock].title",
         "呼び出しグラフパネルのドック位置",
     ),
     (
-        "p7.i84[call_graph_panel.dock].description",
+        "p7.i85[call_graph_panel.dock].description",
         "呼び出しグラフパネルをドッキングする位置です。",
     ),
     (
-        "p7.i85[call_graph_panel.default_width].title",
+        "p7.i86[call_graph_panel.default_width].title",
         "呼び出しグラフパネルの既定の幅",
     ),
     (
-        "p7.i85[call_graph_panel.default_width].description",
+        "p7.i86[call_graph_panel.default_width].description",
         "呼び出しグラフパネルの既定の幅 (ピクセル) です。",
     ),
     (
-        "p7.i86[call_graph_panel.max_children].title",
+        "p7.i87[call_graph_panel.max_children].title",
         "一覧する呼び出しの上限",
     ),
     (
-        "p7.i86[call_graph_panel.max_children].description",
+        "p7.i87[call_graph_panel.max_children].description",
         "1 つの関数の呼び出し元 / 呼び出し先を、「さらに表示」の行の前にいくつまで並べるかです。",
     ),
     (
-        "p7.i87[call_graph_panel.follow_cursor].title",
+        "p7.i88[call_graph_panel.follow_cursor].title",
         "カーソルに追従",
     ),
     (
-        "p7.i87[call_graph_panel.follow_cursor].description",
+        "p7.i88[call_graph_panel.follow_cursor].description",
         "カーソルが動くたびに、カーソル位置の関数を起点にします。",
     ),
     (
-        "p7.i88[call_graph_panel.sources].title",
+        "p7.i89[call_graph_panel.sources].title",
         "呼び出しグラフの情報源",
     ),
     (
-        "p7.i88[call_graph_panel.sources].description",
+        "p7.i89[call_graph_panel.sources].description",
         "呼び出しをどこから取得するか。正確な言語サーバー、C と C++ のファイルを名前で照合する索引、またはその両方です。",
     ),
     (
-        "p7.i89[call_graph_panel.excluded_callees].title",
+        "p7.i90[call_graph_panel.excluded_callees].title",
         "除外する呼び出し先",
     ),
     (
-        "p7.i89[call_graph_panel.excluded_callees].description",
+        "p7.i90[call_graph_panel.excluded_callees].description",
         "関数の呼び出し先の一覧から外す呼び出し先 (ログやアサーションのマクロなど)。末尾の行に件数を出し、押すと表示します。",
     ),
     // ForgeKairos: clangd's memory settings, whose header moves the
@@ -370,10 +370,10 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "AI ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。",
     ),
     // ADR-F93.
-    ("p10.i24.header", "アカウント"),
-    ("p10.i25[git.accounts].link", "Git アカウント"),
+    ("p10.i34.header", "アカウント"),
+    ("p10.i35[git.accounts].link", "Git アカウント"),
     (
-        "p10.i25[git.accounts].link_description",
+        "p10.i35[git.accounts].link_description",
         "リポジトリがコミット・プッシュに使えるアカウント。リポジトリごとに Git パネルで選びます。",
     ),
     // Added by upstream v1.23.3.
@@ -438,11 +438,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "フォーカスのある項目 (エディターやターミナルなど) で選択しているテキストを、ファイル検索の検索語にあらかじめ入れるかどうかです。",
     ),
     (
-        "p7.i62[git_panel.commit_editor].title",
+        "p7.i63[git_panel.commit_editor].title",
         "コミットメッセージの入力欄",
     ),
     (
-        "p7.i62[git_panel.commit_editor].description",
+        "p7.i63[git_panel.commit_editor].description",
         "Git パネルにコミットメッセージの入力欄を既定で表示するかどうかです。",
     ),
     // Added by upstream v1.28.1; each moves the rows below it down.
@@ -452,33 +452,105 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "ステータスバーに編集予測のボタンを表示します。",
     ),
     (
-        "p7.i68[debugger.default_width].title",
+        "p7.i69[debugger.default_width].title",
         "デバッガーパネルの既定の幅",
     ),
     (
-        "p7.i68[debugger.default_width].description",
+        "p7.i69[debugger.default_width].description",
         "デバッガーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。",
     ),
     (
-        "p7.i69[debugger.default_height].title",
+        "p7.i70[debugger.default_height].title",
         "デバッガーパネルの既定の高さ",
     ),
     (
-        "p7.i69[debugger.default_height].description",
+        "p7.i70[debugger.default_height].description",
         "デバッガーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。",
     ),
-    ("p10.i3[git.auto_fetch.enabled].title", "自動フェッチ"),
+    ("p10.i4[git.auto_fetch.enabled].title", "自動フェッチ"),
     (
-        "p10.i3[git.auto_fetch.enabled].description",
+        "p10.i4[git.auto_fetch.enabled].description",
         "既定のブランチのリモートと、現在のブランチの追跡先のリモートから、自動でフェッチします。",
     ),
     (
-        "p10.i3.v1.f0[git.auto_fetch.interval_secs].title",
+        "p10.i4.v1.f0[git.auto_fetch.interval_secs].title",
         "自動フェッチの間隔",
     ),
     (
-        "p10.i3.v1.f0[git.auto_fetch.interval_secs].description",
+        "p10.i4.v1.f0[git.auto_fetch.interval_secs].description",
         "自動フェッチの間隔 (秒) です (最小 15)。",
+    ),
+    // Added with upstream v1.29.
+    ("p7.i48[git_panel.date_style].title", "日付の表示方法"),
+    (
+        "p7.i48[git_panel.date_style].description",
+        "コミット履歴の日付を相対表示と絶対表示のどちらにするかを設定します。",
+    ),
+    ("p10.i1[git.date_format].title", "日付の書式"),
+    (
+        "p10.i1[git.date_format].description",
+        "絶対表示の日付の書式です。locale、iso (YYYY-MM-DD HH:MM)、または %Y-%m-%d %H:%M のような strftime の書式を指定します。",
+    ),
+    (
+        "p10.i9[git.inline_blame.date_style].title",
+        "日付の表示方法",
+    ),
+    (
+        "p10.i9[git.inline_blame.date_style].description",
+        "インライン表示とステータスバーの日付を相対表示と絶対表示のどちらにするかを設定します。",
+    ),
+    ("p10.i16[git.blame.date_style].title", "日付の表示方法"),
+    (
+        "p10.i16[git.blame.date_style].description",
+        "blame のガターの日付を相対表示と絶対表示のどちらにするかを設定します。",
+    ),
+    (
+        "p10.i19[git.branch_picker.date_style].title",
+        "日付の表示方法",
+    ),
+    (
+        "p10.i19[git.branch_picker.date_style].description",
+        "ブランチの選択で、日付を相対表示と絶対表示のどちらにするかを設定します。",
+    ),
+    ("p10.i21.header", "スタッシュの選択"),
+    (
+        "p10.i22[git.stash_picker.date_style].title",
+        "日付の表示方法",
+    ),
+    (
+        "p10.i22[git.stash_picker.date_style].description",
+        "スタッシュの選択で、日付を相対表示と絶対表示のどちらにするかを設定します。",
+    ),
+    ("p10.i23.header", "Git コミットビュー"),
+    (
+        "p10.i24[git.commit_view.expand_description].title",
+        "既定で説明を展開",
+    ),
+    (
+        "p10.i24[git.commit_view.expand_description].description",
+        "新しく開いたコミットビューで、コミットの説明を全文表示するかどうかを設定します。",
+    ),
+    (
+        "p10.i25[git.commit_view.expand_files].title",
+        "既定でファイルを展開",
+    ),
+    (
+        "p10.i25[git.commit_view.expand_files].description",
+        "新しく開いたコミットビューで、変更されたファイルをすべて展開するかどうかを設定します。",
+    ),
+    ("p10.i27.header", "コミットグラフ"),
+    ("p10.i28[git_graph.date_style].title", "日付の表示方法"),
+    (
+        "p10.i28[git_graph.date_style].description",
+        "コミットグラフの各行の日付を相対表示と絶対表示のどちらにするかを設定します。",
+    ),
+    (
+        "p12.i38[agent.auto_generate_thread_titles].title",
+        "スレッドタイトルを自動生成",
+    ),
+    (
+        "p12.i38[agent.auto_generate_thread_titles].description",
+        "要約用のモデルで ForgeKairos Agent のスレッドのタイトルを自動生成するかどうかを設定します。オフにすると、タイトルは手動で要求したときだけ作成されます。",
     ),
 ];
 
@@ -1093,6 +1165,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         FolderIndicator,
         FormatOnSave,
         FullscreenMode,
+        GitDateStyle,
         GitDiffBaseSetting,
         GitGutterSetting,
         GitGutterWidthDiscriminants,
@@ -1666,7 +1739,7 @@ async fn english_search_still_matches_the_start_of_words(cx: &mut TestAppContext
         ("vim", 20, "Vim"),
         ("mat", 21, "General Settings"),
         ("ine", 0, "General"),
-        ("new", 27, "General Settings"),
+        ("new", 29, "General Settings"),
     ] {
         let (rows, best_match) = search_results(settings_window, query, cx);
         assert_eq!(

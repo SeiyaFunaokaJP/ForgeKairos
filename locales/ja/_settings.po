@@ -433,6 +433,14 @@ msgctxt "FullscreenMode"
 msgid "Simple"
 msgstr "シンプル"
 
+msgctxt "GitDateStyle"
+msgid "Absolute"
+msgstr "絶対"
+
+msgctxt "GitDateStyle"
+msgid "Relative"
+msgstr "相対"
+
 msgctxt "GitDiffBaseSetting"
 msgid "Default Branch"
 msgstr "既定のブランチ"
@@ -1562,6 +1570,10 @@ msgid "Auto Update"
 msgstr "自動更新"
 
 msgctxt "settings"
+msgid "Auto-Generate Thread Titles"
+msgstr "スレッドタイトルを自動生成"
+
+msgctxt "settings"
 msgid "Autoclose"
 msgstr "自動閉じ"
 
@@ -2024,6 +2036,14 @@ msgstr "ダークテーマ"
 msgctxt "settings"
 msgid "Data Collection"
 msgstr "データの収集"
+
+msgctxt "settings"
+msgid "Date Format"
+msgstr "日付の書式"
+
+msgctxt "settings"
+msgid "Date Style"
+msgstr "日付の表示方法"
 
 msgctxt "settings"
 msgid "Debounce"
@@ -2494,12 +2514,20 @@ msgid "Excluded Callees"
 msgstr "除外する呼び出し先"
 
 msgctxt "settings"
+msgid "Expand Description by Default"
+msgstr "既定で説明を展開"
+
+msgctxt "settings"
 msgid "Expand Edit Card"
 msgstr "編集カードを展開"
 
 msgctxt "settings"
 msgid "Expand Excerpt Lines"
 msgstr "抜粋を展開する行数"
+
+msgctxt "settings"
+msgid "Expand Files by Default"
+msgstr "既定でファイルを展開"
 
 msgctxt "settings"
 msgid "Expand Outlines With Depth"
@@ -2750,6 +2778,10 @@ msgid "Format On Save"
 msgstr "保存時にフォーマット"
 
 msgctxt "settings"
+msgid "Format absolute dates using locale, iso (YYYY-MM-DD HH:MM), or a strftime format such as %Y-%m-%d %H:%M."
+msgstr "絶対表示の日付の書式です。locale、iso (YYYY-MM-DD HH:MM)、または %Y-%m-%d %H:%M のような strftime の書式を指定します。"
+
+msgctxt "settings"
 msgid "Formatter"
 msgstr "フォーマッタ"
 
@@ -2782,8 +2814,16 @@ msgid "Git Blame View"
 msgstr "Git blame ビュー"
 
 msgctxt "settings"
+msgid "Git Commit View"
+msgstr "Git コミットビュー"
+
+msgctxt "settings"
 msgid "Git Diff"
 msgstr "Git の差分"
+
+msgctxt "settings"
+msgid "Git Graph"
+msgstr "コミットグラフ"
 
 msgctxt "settings"
 msgid "Git Gutter"
@@ -4398,6 +4438,30 @@ msgid "Show quick action buttons (e.g., search, selection, editor controls, etc.
 msgstr "クイックアクションのボタン (検索・選択・エディター操作など) を表示します。"
 
 msgctxt "settings"
+msgid "Show relative or absolute dates in commit history."
+msgstr "コミット履歴の日付を相対表示と絶対表示のどちらにするかを設定します。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in graph rows."
+msgstr "コミットグラフの各行の日付を相対表示と絶対表示のどちらにするかを設定します。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the blame gutter."
+msgstr "blame のガターの日付を相対表示と絶対表示のどちらにするかを設定します。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the branch picker."
+msgstr "ブランチの選択で、日付を相対表示と絶対表示のどちらにするかを設定します。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the stash picker."
+msgstr "スタッシュの選択で、日付を相対表示と絶対表示のどちらにするかを設定します。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates inline and in the status bar."
+msgstr "インライン表示とステータスバーの日付を相対表示と絶対表示のどちらにするかを設定します。"
+
+msgctxt "settings"
 msgid "Show runnable buttons in the gutter."
 msgstr "ガターに実行ボタンを表示します。"
 
@@ -4640,6 +4704,10 @@ msgstr "プロジェクト内検索で、Enter を押さなくても入力に合
 msgctxt "settings"
 msgid "Starts Open"
 msgstr "起動時に開く"
+
+msgctxt "settings"
+msgid "Stash Picker"
+msgstr "スタッシュの選択"
 
 msgctxt "settings"
 msgid "Status Bar"
@@ -5518,6 +5586,14 @@ msgid "Whether invoking a panel's ToggleFocus action while it's already focused 
 msgstr "フォーカスのあるパネルで ToggleFocus アクションを実行したときに、フォーカスをエディターに戻す代わりに、パネルを閉じるかどうかを設定します。"
 
 msgctxt "settings"
+msgid "Whether newly opened commit views expand every changed file."
+msgstr "新しく開いたコミットビューで、変更されたファイルをすべて展開するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether newly opened commit views show the full commit description."
+msgstr "新しく開いたコミットビューで、コミットの説明を全文表示するかどうかを設定します。"
+
+msgctxt "settings"
 msgid "Whether newly opened file diffs show the full file instead of changes only."
 msgstr "新しく開いたファイルの差分で、変更箇所だけでなくファイル全体を表示するかどうかを設定します。"
 
@@ -5660,6 +5736,10 @@ msgstr "JSX のタグを自動的に閉じるかどうかを設定します。"
 msgctxt "settings"
 msgid "Whether to automatically enable case-sensitive search based on the search query."
 msgstr "検索クエリの内容に応じて、大文字と小文字の区別を自動的に有効にするかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether to automatically generate a title for Zed Agent threads using the summary model. When disabled, titles are only created when manually requested."
+msgstr "要約用のモデルで ForgeKairos Agent のスレッドのタイトルを自動生成するかどうかを設定します。オフにすると、タイトルは手動で要求したときだけ作成されます。"
 
 msgctxt "settings"
 msgid "Whether to automatically open Markdown files in the preview."

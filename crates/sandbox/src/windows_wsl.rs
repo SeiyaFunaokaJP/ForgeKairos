@@ -4529,6 +4529,7 @@ async fn run_sandboxed_npm_install(
                 node_directory,
                 i18n::tc!("wsl sandbox path", "Node.js installation folder"),
             )?],
+            protected_file_names: Vec::new(),
         },
         network: crate::SandboxNetPolicy::Restricted {
             allowed_domains: allowed_hosts,
@@ -8499,6 +8500,7 @@ zed-sweep-removed acp-2222
                             crate::HostFilesystemLocation::capture(path).expect("a read grant")
                         })
                         .collect(),
+                    protected_file_names: Vec::new(),
                 },
                 network: crate::SandboxNetPolicy::Blocked,
             })
@@ -8989,6 +8991,7 @@ zed-sweep-removed acp-2222
                         .expect("the worktree's .git"),
                 ],
                 readable_paths: Vec::new(),
+                protected_file_names: Vec::new(),
             },
             network: crate::SandboxNetPolicy::Blocked,
         })

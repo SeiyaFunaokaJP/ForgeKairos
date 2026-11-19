@@ -744,65 +744,65 @@ p7.i44[outline_panel.auto_fold_dirs].description	ディレクトリの中にサ�
 p7.i45[outline_panel.indent_guides.show].title	インデントガイドを表示
 p7.i45[outline_panel.indent_guides.show].description	アウトラインパネルにインデントガイドを表示するタイミングです。
 p7.i47.header	Git パネル
-p7.i48[git_panel.button].title	Git パネルのボタン
-p7.i48[git_panel.button].description	ステータスバーに Git パネルのボタンを表示します。
-p7.i49[git_panel.dock].title	Git パネルのドック位置
-p7.i49[git_panel.dock].description	Git パネルをドッキングする位置です。
-p7.i50[git_panel.starts_open].title	起動時に開く
-p7.i50[git_panel.starts_open].description	起動時に git パネルを開くかどうかを設定します。
-p7.i51[git_panel.default_width].title	Git パネルの既定の幅
-p7.i51[git_panel.default_width].description	Git パネルの既定の幅 (ピクセル) です。
-p7.i52[git_panel.status_style].title	Git パネルの状態の表示スタイル
-p7.i52[git_panel.status_style].description	項目の状態をどのように表示するかを設定します。
-p7.i53[git_panel.fallback_branch_name].title	既定のブランチ名
-p7.i53[git_panel.fallback_branch_name].description	Git で init.defaultbranch が設定されていないときに使うブランチ名です。
-p7.i54[git_panel.sort_by].title	並べ替え
-p7.i54[git_panel.sort_by].description	git パネルの項目の並び順です。
-p7.i55[git_panel.group_by].title	グループ化
-p7.i55[git_panel.group_by].description	git パネルの項目のグループ化の方法です。
-p7.i56[git_panel.collapse_untracked_diff].title	未追跡ファイルの差分を折りたたむ
-p7.i56[git_panel.collapse_untracked_diff].description	差分パネルで未追跡のファイルを折りたたむかどうかを設定します。
-p7.i57[git_panel.tree_view].title	ツリー表示
-p7.i57[git_panel.tree_view].description	有効にすると項目をツリー表示で、無効にするとフラットな一覧で表示します。
-p7.i58[git_panel.file_icons].title	ファイルアイコン
-p7.i58[git_panel.file_icons].description	Git の状態アイコンの横にファイルアイコンを表示します。
-p7.i60[git_panel.diff_stats].title	差分の統計
-p7.i60[git_panel.diff_stats].description	Git パネルの各ファイルの横に、追加・削除の行数を表示するかどうかを設定します。
-p7.i61[git_panel.entry_primary_click_action].title	クリック時の動作
-p7.i61[git_panel.entry_primary_click_action].description	Git パネルで変更されたファイルをクリックしたときの既定の動作です。
-p7.i63[git_panel.show_count_badge].title	件数バッジを表示
-p7.i63[git_panel.show_count_badge].description	git パネルのアイコンに、未コミットの変更数のバッジを表示するかどうかを設定します。
-p7.i64[git_panel.commit_title_max_length].title	コミットタイトルの最大長
-p7.i64[git_panel.commit_title_max_length].description	警告を表示するまでのコミットメッセージのタイトルの最大長です。0 で無効になります。
-p7.i65[git_panel.scrollbar.show].title	スクロールバー
-p7.i65[git_panel.scrollbar.show].description	スクロールバーをどのように、いつ表示するかを設定します。
-p7.i66.header	デバッガーパネル
-p7.i67[debugger.dock].title	デバッガーパネルのドック位置
-p7.i67[debugger.dock].description	デバッグパネルをドッキングする位置です。
-p7.i70.header	コラボレーションパネル
-p7.i71[collaboration_panel.button].title	コラボレーションパネルのボタン
-p7.i71[collaboration_panel.button].description	ステータスバーにコラボレーションパネルのボタンを表示します。
-p7.i72[collaboration_panel.dock].title	コラボレーションパネルのドック位置
-p7.i72[collaboration_panel.dock].description	コラボレーションパネルをドッキングする位置です。
-p7.i73[collaboration_panel.dock].title	コラボレーションパネルの既定の幅
-p7.i73[collaboration_panel.dock].description	コラボレーションパネルの既定の幅 (ピクセル) です。
-p7.i74.header	エージェントパネル
-p7.i75[agent.button].title	エージェントパネルのボタン
-p7.i75[agent.button].description	ステータスバーにエージェントパネルのボタンを表示するかどうかを設定します。
-p7.i76[agent.dock].title	エージェントパネルのドック位置
-p7.i76[agent.dock].description	エージェントパネルをドッキングする位置です。
-p7.i77[agent.starts_open].title	起動時に開く
-p7.i77[agent.starts_open].description	起動時にエージェントパネルを開くかどうかを設定します。
-p7.i78[agent.flexible].title	エージェントパネルの可変サイズ
-p7.i78[agent.flexible].description	左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。有効にすると既定の幅はパネルの幅に影響せず、パネルをリセットすると既定の比率に戻ります。
-p7.i79[agent.default_width].title	エージェントパネルの既定の幅
-p7.i79[agent.default_width].description	エージェントパネルを左右にドッキングし、可変サイズを無効にしているときの既定の固定幅です。
-p7.i80[agent.default_height].title	エージェントパネルの既定の高さ
-p7.i80[agent.default_height].description	エージェントパネルを下にドッキングしたときの既定の高さです。
-p7.i81[agent.limit_content_width].title	内容の幅を制限
-p7.i81[agent.limit_content_width].description	読みやすさのために、エージェントパネルの内容を最大幅に制限し、パネルがそれより広いときは中央に寄せるかどうかを設定します。
-p7.i81.v1.f0[agent.max_content_width].title	内容の最大幅
-p7.i81.v1.f0[agent.max_content_width].description	内容の最大幅 (ピクセル) です。パネルがこの値より広いときは内容を中央に寄せます。
+p7.i49[git_panel.button].title	Git パネルのボタン
+p7.i49[git_panel.button].description	ステータスバーに Git パネルのボタンを表示します。
+p7.i50[git_panel.dock].title	Git パネルのドック位置
+p7.i50[git_panel.dock].description	Git パネルをドッキングする位置です。
+p7.i51[git_panel.starts_open].title	起動時に開く
+p7.i51[git_panel.starts_open].description	起動時に git パネルを開くかどうかを設定します。
+p7.i52[git_panel.default_width].title	Git パネルの既定の幅
+p7.i52[git_panel.default_width].description	Git パネルの既定の幅 (ピクセル) です。
+p7.i53[git_panel.status_style].title	Git パネルの状態の表示スタイル
+p7.i53[git_panel.status_style].description	項目の状態をどのように表示するかを設定します。
+p7.i54[git_panel.fallback_branch_name].title	既定のブランチ名
+p7.i54[git_panel.fallback_branch_name].description	Git で init.defaultbranch が設定されていないときに使うブランチ名です。
+p7.i55[git_panel.sort_by].title	並べ替え
+p7.i55[git_panel.sort_by].description	git パネルの項目の並び順です。
+p7.i56[git_panel.group_by].title	グループ化
+p7.i56[git_panel.group_by].description	git パネルの項目のグループ化の方法です。
+p7.i57[git_panel.collapse_untracked_diff].title	未追跡ファイルの差分を折りたたむ
+p7.i57[git_panel.collapse_untracked_diff].description	差分パネルで未追跡のファイルを折りたたむかどうかを設定します。
+p7.i58[git_panel.tree_view].title	ツリー表示
+p7.i58[git_panel.tree_view].description	有効にすると項目をツリー表示で、無効にするとフラットな一覧で表示します。
+p7.i59[git_panel.file_icons].title	ファイルアイコン
+p7.i59[git_panel.file_icons].description	Git の状態アイコンの横にファイルアイコンを表示します。
+p7.i61[git_panel.diff_stats].title	差分の統計
+p7.i61[git_panel.diff_stats].description	Git パネルの各ファイルの横に、追加・削除の行数を表示するかどうかを設定します。
+p7.i62[git_panel.entry_primary_click_action].title	クリック時の動作
+p7.i62[git_panel.entry_primary_click_action].description	Git パネルで変更されたファイルをクリックしたときの既定の動作です。
+p7.i64[git_panel.show_count_badge].title	件数バッジを表示
+p7.i64[git_panel.show_count_badge].description	git パネルのアイコンに、未コミットの変更数のバッジを表示するかどうかを設定します。
+p7.i65[git_panel.commit_title_max_length].title	コミットタイトルの最大長
+p7.i65[git_panel.commit_title_max_length].description	警告を表示するまでのコミットメッセージのタイトルの最大長です。0 で無効になります。
+p7.i66[git_panel.scrollbar.show].title	スクロールバー
+p7.i66[git_panel.scrollbar.show].description	スクロールバーをどのように、いつ表示するかを設定します。
+p7.i67.header	デバッガーパネル
+p7.i68[debugger.dock].title	デバッガーパネルのドック位置
+p7.i68[debugger.dock].description	デバッグパネルをドッキングする位置です。
+p7.i71.header	コラボレーションパネル
+p7.i72[collaboration_panel.button].title	コラボレーションパネルのボタン
+p7.i72[collaboration_panel.button].description	ステータスバーにコラボレーションパネルのボタンを表示します。
+p7.i73[collaboration_panel.dock].title	コラボレーションパネルのドック位置
+p7.i73[collaboration_panel.dock].description	コラボレーションパネルをドッキングする位置です。
+p7.i74[collaboration_panel.dock].title	コラボレーションパネルの既定の幅
+p7.i74[collaboration_panel.dock].description	コラボレーションパネルの既定の幅 (ピクセル) です。
+p7.i75.header	エージェントパネル
+p7.i76[agent.button].title	エージェントパネルのボタン
+p7.i76[agent.button].description	ステータスバーにエージェントパネルのボタンを表示するかどうかを設定します。
+p7.i77[agent.dock].title	エージェントパネルのドック位置
+p7.i77[agent.dock].description	エージェントパネルをドッキングする位置です。
+p7.i78[agent.starts_open].title	起動時に開く
+p7.i78[agent.starts_open].description	起動時にエージェントパネルを開くかどうかを設定します。
+p7.i79[agent.flexible].title	エージェントパネルの可変サイズ
+p7.i79[agent.flexible].description	左右にドッキングしたときに、エージェントパネルで可変 (比率) サイズを使うかどうかを設定します。有効にすると既定の幅はパネルの幅に影響せず、パネルをリセットすると既定の比率に戻ります。
+p7.i80[agent.default_width].title	エージェントパネルの既定の幅
+p7.i80[agent.default_width].description	エージェントパネルを左右にドッキングし、可変サイズを無効にしているときの既定の固定幅です。
+p7.i81[agent.default_height].title	エージェントパネルの既定の高さ
+p7.i81[agent.default_height].description	エージェントパネルを下にドッキングしたときの既定の高さです。
+p7.i82[agent.limit_content_width].title	内容の幅を制限
+p7.i82[agent.limit_content_width].description	読みやすさのために、エージェントパネルの内容を最大幅に制限し、パネルがそれより広いときは中央に寄せるかどうかを設定します。
+p7.i82.v1.f0[agent.max_content_width].title	内容の最大幅
+p7.i82.v1.f0[agent.max_content_width].description	内容の最大幅 (ピクセル) です。パネルがこの値より広いときは内容を中央に寄せます。
 p8.title	デバッガー
 p8.i0.header	全般
 p8.i1[debugger.stepping_granularity].title	ステップ実行の粒度
@@ -904,50 +904,49 @@ p9.i42[terminal.scrollbar.show].title	スクロールバーを表示
 p9.i42[terminal.scrollbar.show].description	ターミナルにスクロールバーを表示するタイミングです。
 p10.title	バージョン管理
 p10.i0.header	Git 連携
-p10.i1[git.disable_git].title	Git 連携を無効にする
-p10.i1[git.disable_git].description	ForgeKairos の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。
-p10.i1.v1.f0[git.enable_status].title	Git の状態を有効にする
-p10.i1.v1.f0[git.enable_status].description	エディターに Git の状態情報を表示します。
-p10.i1.v1.f1[git.enable_diff].title	Git の差分を有効にする
-p10.i1.v1.f1[git.enable_diff].description	エディターに Git の差分情報を表示します。
-p10.i2[git.status_untracked_files].title	追跡されていないファイルの検出範囲
-p10.i2[git.status_untracked_files].description	git status に追跡されていないファイルをどこまで報告させるかを設定します。All は追跡されていないフォルダーの中身も 1 件ずつ報告するため、プロジェクトパネルの色分けが正確になりますが、巨大なリポジトリでは最も重くなります。Normal はフォルダーだけ、No は追跡されていないファイルを一切扱いません。リモート SSH でも同じ値がサーバー側で使われます。
-p10.i4.header	Git ガター
-p10.i5[git.git_gutter].title	表示
-p10.i5[git.git_gutter].description	エディターのガターに Git の状態を表示するかどうかを設定します。
-p10.i6[git.gutter_debounce].title	デバウンス
-p10.i6[git.gutter_debounce].description	変更が Git ガターに反映されるまでのデバウンスのしきい値 (ミリ秒) です。
-p10.i7.header	インライン Git blame
-p10.i8[git.inline_blame.enabled].title	有効
-p10.i8[git.inline_blame.enabled].description	現在フォーカスしている行の Git blame 情報を表示するかどうかを設定します。
-p10.i8.v1.f0[git.inline_blame.location].title	表示位置
-p10.i8.v1.f0[git.inline_blame.location].description	Git blame を有効にしたときの表示位置です。
-p10.i9[git.inline_blame.delay_ms].title	遅延
-p10.i9[git.inline_blame.delay_ms].description	インライン blame の情報を表示するまでの遅延です。
-p10.i10[git.inline_blame.padding].title	余白
-p10.i10[git.inline_blame.padding].description	ソース行の末尾からインライン blame の開始位置までの余白 (列数) です。
-p10.i11[git.inline_blame.min_column].title	最小の列
-p10.i11[git.inline_blame.min_column].description	インライン blame の情報を表示する最小の列位置です。
-p10.i12[git.inline_blame.show_commit_summary].title	コミットの概要を表示
-p10.i12[git.inline_blame.show_commit_summary].description	インライン blame にコミットの概要を表示します。
-p10.i13.header	Git blame ビュー
-p10.i14[git.blame.show_avatar].title	アバターを表示
-p10.i14[git.blame.show_avatar].description	コミットの作成者のアバターを表示します。
-p10.i15.header	ブランチの選択
-p10.i16[git.branch_picker.show_author_name].title	作成者名を表示
-p10.i16[git.branch_picker.show_author_name].description	ブランチの選択で、コミット情報の一部として作成者名を表示します。
-p10.i17.header	ファイルの差分
-p10.i18[git.file_diff.show_full_file].title	既定でファイル全体を表示
-p10.i18[git.file_diff.show_full_file].description	新しく開いたファイルの差分で、変更箇所だけでなくファイル全体を表示するかどうかを設定します。
-p10.i19.header	Git の変更箇所
-p10.i20[git.hunk_style].title	変更箇所のスタイル
-p10.i20[git.hunk_style].description	エディターで Git の変更箇所をどのように表示するかを設定します。
-p10.i21[git.diff_base].title	差分の基準
-p10.i21[git.diff_base].description	git の機能が HEAD との差分 (未コミットの変更) を示すか、既定のブランチとの差分 (現在のブランチのすべての変更) を示すかを設定します。
-p10.i22[git.path_style].title	パスの表示スタイル
-p10.i22[git.path_style].description	git のビューで、名前とパスのどちらを先に表示するかを設定します。
-p10.i23[git.show_stage_restore_buttons].title	ステージ/元に戻すボタンを表示
-p10.i23[git.show_stage_restore_buttons].description	差分の変更箇所に、ステージと元に戻すのボタンを表示するかどうかを設定します。
+p10.i2[git.disable_git].title	Git 連携を無効にする
+p10.i2[git.disable_git].description	ForgeKairos の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。
+p10.i2.v1.f0[git.enable_status].title	Git の状態を有効にする
+p10.i2.v1.f0[git.enable_status].description	エディターに Git の状態情報を表示します。
+p10.i2.v1.f1[git.enable_diff].title	Git の差分を有効にする
+p10.i2.v1.f1[git.enable_diff].description	エディターに Git の差分情報を表示します。
+p10.i3[git.status_untracked_files].title	追跡されていないファイルの検出範囲
+p10.i3[git.status_untracked_files].description	git status に追跡されていないファイルをどこまで報告させるかを設定します。All は追跡されていないフォルダーの中身も 1 件ずつ報告するため、プロジェクトパネルの色分けが正確になりますが、巨大なリポジトリでは最も重くなります。Normal はフォルダーだけ、No は追跡されていないファイルを一切扱いません。リモート SSH でも同じ値がサーバー側で使われます。
+p10.i5.header	Git ガター
+p10.i6[git.git_gutter].title	表示
+p10.i6[git.git_gutter].description	エディターのガターに Git の状態を表示するかどうかを設定します。
+p10.i7[git.gutter_debounce].title	デバウンス
+p10.i7[git.gutter_debounce].description	変更が Git ガターに反映されるまでのデバウンスのしきい値 (ミリ秒) です。
+p10.i8.header	インライン Git blame
+p10.i10[git.inline_blame.enabled].title	有効
+p10.i10[git.inline_blame.enabled].description	現在フォーカスしている行の Git blame 情報を表示するかどうかを設定します。
+p10.i10.v1.f0[git.inline_blame.location].title	表示位置
+p10.i10.v1.f0[git.inline_blame.location].description	Git blame を有効にしたときの表示位置です。
+p10.i11[git.inline_blame.delay_ms].title	遅延
+p10.i11[git.inline_blame.delay_ms].description	インライン blame の情報を表示するまでの遅延です。
+p10.i12[git.inline_blame.padding].title	余白
+p10.i12[git.inline_blame.padding].description	ソース行の末尾からインライン blame の開始位置までの余白 (列数) です。
+p10.i13[git.inline_blame.min_column].title	最小の列
+p10.i13[git.inline_blame.min_column].description	インライン blame の情報を表示する最小の列位置です。
+p10.i14[git.inline_blame.show_commit_summary].title	コミットの概要を表示
+p10.i14[git.inline_blame.show_commit_summary].description	インライン blame にコミットの概要を表示します。
+p10.i15.header	Git blame ビュー
+p10.i17[git.blame.show_avatar].title	アバターを表示
+p10.i17[git.blame.show_avatar].description	コミットの作成者のアバターを表示します。
+p10.i18.header	ブランチの選択
+p10.i20[git.branch_picker.show_author_name].title	作成者名を表示
+p10.i20[git.branch_picker.show_author_name].description	ブランチの選択で、コミット情報の一部として作成者名を表示します。
+p10.i26[git.file_diff.show_full_file].title	既定でファイル全体を表示
+p10.i26[git.file_diff.show_full_file].description	新しく開いたファイルの差分で、変更箇所だけでなくファイル全体を表示するかどうかを設定します。
+p10.i29.header	Git の変更箇所
+p10.i30[git.hunk_style].title	変更箇所のスタイル
+p10.i30[git.hunk_style].description	エディターで Git の変更箇所をどのように表示するかを設定します。
+p10.i31[git.diff_base].title	差分の基準
+p10.i31[git.diff_base].description	git の機能が HEAD との差分 (未コミットの変更) を示すか、既定のブランチとの差分 (現在のブランチのすべての変更) を示すかを設定します。
+p10.i32[git.path_style].title	パスの表示スタイル
+p10.i32[git.path_style].description	git のビューで、名前とパスのどちらを先に表示するかを設定します。
+p10.i33[git.show_stage_restore_buttons].title	ステージ/元に戻すボタンを表示
+p10.i33[git.show_stage_restore_buttons].description	差分の変更箇所に、ステージと元に戻すのボタンを表示するかどうかを設定します。
 p11.title	コラボレーション
 p11.i0.header	通話
 p11.i1[calls.mute_on_join].title	参加時にミュート
@@ -1029,50 +1028,50 @@ p12.i36[agent.show_turn_stats].title	ターンの統計を表示
 p12.i36[agent.show_turn_stats].description	生成中の経過時間やターンの所要時間などの統計を表示するかどうかを設定します。
 p12.i37[agent.show_merge_conflict_indicator].title	マージコンフリクトのインジケーターを表示
 p12.i37[agent.show_merge_conflict_indicator].description	エージェントでコンフリクトを解決できることを示すインジケーターを、ステータスバーに表示するかどうかを設定します。
-p12.i38[agent.auto_compact.enabled].title	自動圧縮
-p12.i38[agent.auto_compact.enabled].description	エージェントのコンテキストが大きくなりすぎたときに自動的に圧縮し、以前のメッセージを要約してモデルのコンテキストウィンドウに空きを作ります。
-p12.i39[agent.auto_compact.threshold].title	自動圧縮のしきい値
-p12.i39[agent.auto_compact.threshold].description	自動圧縮を実行する条件です。"90%" のようなパーセント文字列は、コンテキストウィンドウに対する割合として扱われます。正の整数は、使用トークン数がその値を超えたら圧縮することを意味します。負の整数は、コンテキストウィンドウの残りトークン数がその値を下回ったら圧縮することを意味します。
-p12.i39[agent.auto_compact.threshold].placeholder	90%
-p12.i40[agent.auto_compact_min_context_window].title	自動圧縮を行う最小コンテキストウィンドウ
-p12.i40[agent.auto_compact_min_context_window].description	自動圧縮を実行するモデルのコンテキストウィンドウの下限 (トークン数) です。これを下回るモデルでは圧縮を行わず、トークン上限の警告だけを表示します。ローカル LLM の小さいコンテキストでも自動圧縮を効かせたいときに下げてください。8000 未満を指定しても 8000 として扱われます。
-p12.i40[agent.auto_compact_min_context_window].placeholder	80000
-p12.i41[agent.attach_active_file].title	アクティブなファイルを自動で添付
-p12.i41[agent.attach_active_file].description	メッセージを送信するときに、アクティブなエディターを自動で添付します。選択範囲があればその行だけを、なければファイル全体を添付します。同じものを手で @ メンションしている場合は二重に添付しません。
-p12.i42[agent.context_attachments.inline_max_bytes].title	添付を全文で送る上限 (バイト)
-p12.i42[agent.context_attachments.inline_max_bytes].description	これより大きいファイルは全文ではなくアウトライン (シンボルと行番号の一覧) で送り、必要な範囲だけエージェントに読ませます。1024 未満は 1024 として扱われます。
-p12.i42[agent.context_attachments.inline_max_bytes].placeholder	16384
-p12.i43[agent.context_attachments.message_budget_bytes].title	1 メッセージの添付の合計上限 (バイト)
-p12.i43[agent.context_attachments.message_budget_bytes].description	1 つのメッセージの添付の合計がこれを超えたら、大きいものから順にアウトラインや参照だけに減らして送ります。「全文で送る」にした添付は減らしません。4096 未満は 4096 として扱われます。
-p12.i43[agent.context_attachments.message_budget_bytes].placeholder	65536
-p12.i44[agent.context_attachments.outline_max_bytes].title	アウトラインの上限 (バイト)
-p12.i44[agent.context_attachments.outline_max_bytes].description	大きいファイルを添付したときに送るアウトラインの大きさの上限です。収まらないときは深い階層のシンボルから省きます。512 未満は 512 として扱われます。
-p12.i44[agent.context_attachments.outline_max_bytes].placeholder	8192
-p12.i45[agent.context_attachments.fetch_max_bytes].title	Web ページの添付の上限 (バイト)
-p12.i45[agent.context_attachments.fetch_max_bytes].description	@fetch で添付した Web ページの本文のうち、送る部分の上限です。1024 未満は 1024 として扱われます。
-p12.i45[agent.context_attachments.fetch_max_bytes].placeholder	32768
-p12.i46[agent.context_attachments.diagnostics_max_files].title	診断を添付するファイル数の上限
-p12.i46[agent.context_attachments.diagnostics_max_files].description	@diagnostics で添付する診断を、この数のファイルまでに絞ります。1 未満は 1 として扱われます。
-p12.i46[agent.context_attachments.diagnostics_max_files].placeholder	50
-p12.i47[agent.system_prompt_repo_map_bytes].title	システムプロンプトに含めるリポジトリマップのバイト数
-p12.i47[agent.system_prompt_repo_map_bytes].description	システムプロンプトのプロジェクトのルートフォルダー一覧の直後に、リポジトリマップ (ファイルとそこで宣言されているシンボルの一覧) を差し込みます。0 で無効です。上限は 32768 バイトで、それより大きい値は 32768 として扱われます。プロジェクトの内容が変わったときだけ作り直します。
-p12.i47[agent.system_prompt_repo_map_bytes].placeholder	0
-p12.i48[agent.idle_disconnect_minutes].title	使わなくなったエージェントを止めるまでの分数
-p12.i48[agent.idle_disconnect_minutes].description	外部エージェントのスレッドが 1 つも開かれていない状態がこの分数だけ続いたら、そのエージェントとの接続を終了します (エージェントとそのサンドボックスも止まります)。スレッドを開き直すと接続し直します。0 でウィンドウを閉じるまで接続を保ちます。
-p12.i48[agent.idle_disconnect_minutes].placeholder	5
-p12.i49[agent.agent_servers_update_check].title	エージェントの更新確認
-p12.i49[agent.agent_servers_update_check].description	ACP レジストリからインストールした外部エージェントの新しいバージョンを確認するタイミングです。更新に同意するまでは、インストール済みのバージョンで起動し続けます。手動にすると、"agent: check for agent updates" を実行するか、ACP レジストリのページで「更新を確認」をクリックしたときだけ確認します。
-p12.i50.header	編集予測
-p12.i51[edit_predictions.providers].link	プロバイダーの設定
-p12.i51[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
-p12.i52[edit_predictions.allow_data_collection].title	データの収集
-p12.i52[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
-p12.i53[languages.$(language).show_edit_predictions].title	編集予測を表示
-p12.i53[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
-p12.i54[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
-p12.i54[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。
-p12.i55[edit_prediction.display_mode].title	表示モード
-p12.i55[edit_prediction.display_mode].description	バッファーで編集予測のプレビューを表示するタイミングです。eager モードはインラインで表示し、subtle モードは修飾キーを押している間だけ表示します。
+p12.i39[agent.auto_compact.enabled].title	自動圧縮
+p12.i39[agent.auto_compact.enabled].description	エージェントのコンテキストが大きくなりすぎたときに自動的に圧縮し、以前のメッセージを要約してモデルのコンテキストウィンドウに空きを作ります。
+p12.i40[agent.auto_compact.threshold].title	自動圧縮のしきい値
+p12.i40[agent.auto_compact.threshold].description	自動圧縮を実行する条件です。"90%" のようなパーセント文字列は、コンテキストウィンドウに対する割合として扱われます。正の整数は、使用トークン数がその値を超えたら圧縮することを意味します。負の整数は、コンテキストウィンドウの残りトークン数がその値を下回ったら圧縮することを意味します。
+p12.i40[agent.auto_compact.threshold].placeholder	90%
+p12.i41[agent.auto_compact_min_context_window].title	自動圧縮を行う最小コンテキストウィンドウ
+p12.i41[agent.auto_compact_min_context_window].description	自動圧縮を実行するモデルのコンテキストウィンドウの下限 (トークン数) です。これを下回るモデルでは圧縮を行わず、トークン上限の警告だけを表示します。ローカル LLM の小さいコンテキストでも自動圧縮を効かせたいときに下げてください。8000 未満を指定しても 8000 として扱われます。
+p12.i41[agent.auto_compact_min_context_window].placeholder	80000
+p12.i42[agent.attach_active_file].title	アクティブなファイルを自動で添付
+p12.i42[agent.attach_active_file].description	メッセージを送信するときに、アクティブなエディターを自動で添付します。選択範囲があればその行だけを、なければファイル全体を添付します。同じものを手で @ メンションしている場合は二重に添付しません。
+p12.i43[agent.context_attachments.inline_max_bytes].title	添付を全文で送る上限 (バイト)
+p12.i43[agent.context_attachments.inline_max_bytes].description	これより大きいファイルは全文ではなくアウトライン (シンボルと行番号の一覧) で送り、必要な範囲だけエージェントに読ませます。1024 未満は 1024 として扱われます。
+p12.i43[agent.context_attachments.inline_max_bytes].placeholder	16384
+p12.i44[agent.context_attachments.message_budget_bytes].title	1 メッセージの添付の合計上限 (バイト)
+p12.i44[agent.context_attachments.message_budget_bytes].description	1 つのメッセージの添付の合計がこれを超えたら、大きいものから順にアウトラインや参照だけに減らして送ります。「全文で送る」にした添付は減らしません。4096 未満は 4096 として扱われます。
+p12.i44[agent.context_attachments.message_budget_bytes].placeholder	65536
+p12.i45[agent.context_attachments.outline_max_bytes].title	アウトラインの上限 (バイト)
+p12.i45[agent.context_attachments.outline_max_bytes].description	大きいファイルを添付したときに送るアウトラインの大きさの上限です。収まらないときは深い階層のシンボルから省きます。512 未満は 512 として扱われます。
+p12.i45[agent.context_attachments.outline_max_bytes].placeholder	8192
+p12.i46[agent.context_attachments.fetch_max_bytes].title	Web ページの添付の上限 (バイト)
+p12.i46[agent.context_attachments.fetch_max_bytes].description	@fetch で添付した Web ページの本文のうち、送る部分の上限です。1024 未満は 1024 として扱われます。
+p12.i46[agent.context_attachments.fetch_max_bytes].placeholder	32768
+p12.i47[agent.context_attachments.diagnostics_max_files].title	診断を添付するファイル数の上限
+p12.i47[agent.context_attachments.diagnostics_max_files].description	@diagnostics で添付する診断を、この数のファイルまでに絞ります。1 未満は 1 として扱われます。
+p12.i47[agent.context_attachments.diagnostics_max_files].placeholder	50
+p12.i48[agent.system_prompt_repo_map_bytes].title	システムプロンプトに含めるリポジトリマップのバイト数
+p12.i48[agent.system_prompt_repo_map_bytes].description	システムプロンプトのプロジェクトのルートフォルダー一覧の直後に、リポジトリマップ (ファイルとそこで宣言されているシンボルの一覧) を差し込みます。0 で無効です。上限は 32768 バイトで、それより大きい値は 32768 として扱われます。プロジェクトの内容が変わったときだけ作り直します。
+p12.i48[agent.system_prompt_repo_map_bytes].placeholder	0
+p12.i49[agent.idle_disconnect_minutes].title	使わなくなったエージェントを止めるまでの分数
+p12.i49[agent.idle_disconnect_minutes].description	外部エージェントのスレッドが 1 つも開かれていない状態がこの分数だけ続いたら、そのエージェントとの接続を終了します (エージェントとそのサンドボックスも止まります)。スレッドを開き直すと接続し直します。0 でウィンドウを閉じるまで接続を保ちます。
+p12.i49[agent.idle_disconnect_minutes].placeholder	5
+p12.i50[agent.agent_servers_update_check].title	エージェントの更新確認
+p12.i50[agent.agent_servers_update_check].description	ACP レジストリからインストールした外部エージェントの新しいバージョンを確認するタイミングです。更新に同意するまでは、インストール済みのバージョンで起動し続けます。手動にすると、"agent: check for agent updates" を実行するか、ACP レジストリのページで「更新を確認」をクリックしたときだけ確認します。
+p12.i51.header	編集予測
+p12.i52[edit_predictions.providers].link	プロバイダーの設定
+p12.i52[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
+p12.i53[edit_predictions.allow_data_collection].title	データの収集
+p12.i53[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
+p12.i54[languages.$(language).show_edit_predictions].title	編集予測を表示
+p12.i54[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
+p12.i55[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
+p12.i55[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。
+p12.i56[edit_prediction.display_mode].title	表示モード
+p12.i56[edit_prediction.display_mode].description	バッファーで編集予測のプレビューを表示するタイミングです。eager モードはインラインで表示し、subtle モードは修飾キーを押している間だけ表示します。
 p13.title	ネットワーク
 p13.i0.header	ネットワーク
 p13.i1[proxy].title	プロキシ

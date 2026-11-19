@@ -3030,6 +3030,7 @@ shift 3
                 ),
                 protected_paths,
                 readable_paths: Vec::new(),
+                protected_file_names: Vec::new(),
             },
             network: sandbox::SandboxNetPolicy::Restricted {
                 allowed_domains: plan.allowed_hosts,

@@ -1303,6 +1303,7 @@ mod tests {
             sidebar_enabled: true,
             panel_thread_history: true,
             panel_tab_bar: Default::default(),
+            auto_generate_thread_titles: true,
             max_idle_retained_threads: 5,
             threads_sidebar: agent_settings::ThreadsSidebarSettings {
                 auto_open: true,

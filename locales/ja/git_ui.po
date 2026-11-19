@@ -39,6 +39,9 @@ msgstr[0] "。開発ブランチに無い変更 {count} ファイル"
 msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
 msgstr "1. 「開発ブランチ」(コミットの出どころ) と「基点」(MR の向け先) を選びます。2. コミットグラフの行を箱にドラッグするか、選んで「MR の箱に入れる」を押します。MR に入れないものは、行を右クリックして「MR から除外する」で脇に置きます。3. 箱の下の「未配置」が 0 件なら入れ忘れはありません (未配置の行はグラフに小さな ● が付き、「次の未配置へ」で順に移動できます)。4. メッセージと MR ブランチ名を入れて「作成して比較」を押すと、基点の上で 1 コミットにまとめた MR ブランチを作り、開発ブランチと比べます。未コミットの変更があると作れないので、先にコミットかスタッシュしてください。"
 
+msgid "2 years, 11 months ago"
+msgstr "2 年 11 か月前"
+
 msgid "<no branch>"
 msgstr "<ブランチなし>"
 
@@ -272,6 +275,9 @@ msgstr "比べる基準 (移植元) のブランチ / タグ"
 msgid "Branch / tag to compare with (the target)"
 msgstr "比べる相手 (移植先) のブランチ / タグ"
 
+msgid "Branch Changes"
+msgstr "ブランチの変更"
+
 msgid "Branched off at {}."
 msgstr "分かれた所: {}。"
 
@@ -377,6 +383,9 @@ msgstr[0] "{count} 件を取り込みます: 古い順に、現在のブラン�
 
 msgid "Choose What the Patch File Contains (Whole Repository: {})"
 msgstr "パッチファイルに含める内容を選択 (リポジトリ全体: {})"
+
+msgid "Choose Which Changes to Show"
+msgstr "表示する変更を選択"
 
 msgid "Choose a Branch…"
 msgstr "ブランチを選ぶ…"
@@ -528,6 +537,9 @@ msgstr "SHA がこう始まるコミット"
 msgid "Commits without the checks that run automatically before a commit (hooks)"
 msgstr "コミットの前に自動で走るチェック (フック) を飛ばしてコミットします"
 
+msgid "Compare Against Base"
+msgstr "基準ブランチと比較"
+
 msgid "Compare two branches"
 msgstr "2 つのブランチを比べたい"
 
@@ -606,10 +618,16 @@ msgstr "メールアドレスをコピー"
 msgid "Copy Path"
 msgstr "パスをコピー"
 
+msgid "Copy Paths"
+msgstr "パスをコピー"
+
 msgid "Copy Ref Name"
 msgstr "ref 名をコピー"
 
 msgid "Copy Relative Path"
+msgstr "相対パスをコピー"
+
+msgid "Copy Relative Paths"
 msgstr "相対パスをコピー"
 
 msgid "Copy SHA"
@@ -720,6 +738,9 @@ msgstr "MR ブランチに反映できませんでした\n{reason}"
 
 msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
 msgstr "MR ブランチに反映できませんでした。一時ブランチ「{}」の上に残っています。\n{reason}"
+
+msgid "Couldn't load branch changes"
+msgstr "ブランチの変更を読み込めませんでした"
 
 msgid "Create"
 msgstr "作成"
@@ -1372,6 +1393,9 @@ msgstr "読み込み中"
 msgid "Loading Commit History…"
 msgstr "コミット履歴を読み込み中…"
 
+msgid "Loading branch changes…"
+msgstr "ブランチの変更を読み込み中…"
+
 msgid "Loading comparison…"
 msgstr "比較を読み込み中…"
 
@@ -1509,6 +1533,9 @@ msgstr "ブランチがチェックアウトされていないため、プッシ
 msgid "No changes"
 msgstr "変更はありません"
 
+msgid "No changes since {base_ref}"
+msgstr "{base_ref} 以降の変更はありません"
+
 msgid "No changes to commit"
 msgstr "コミットする変更がありません"
 
@@ -1523,6 +1550,9 @@ msgstr "該当するコミットはありません。条件を減らしてみて
 
 msgid "No commits yet"
 msgstr "まだコミットがありません"
+
+msgid "No default branch found. Pick a base branch."
+msgstr "既定のブランチが見つかりません。基準ブランチを選んでください。"
 
 msgid "No development branch is chosen. Choose a development branch first."
 msgstr "開発ブランチが決まっていません。先に開発ブランチを選んでください。"
@@ -2140,6 +2170,9 @@ msgstr "前の一致を選択"
 msgid "Select a Patch File to Apply"
 msgstr "適用するパッチファイルを選択"
 
+msgid "Select a branch…"
+msgstr "ブランチを選択…"
+
 msgid "Select a repository..."
 msgstr "リポジトリを選択..."
 
@@ -2253,6 +2286,9 @@ msgstr "棚 (stash) に退避したこの変更の中身を、差分で表示し
 
 msgid "Signoff"
 msgstr "サインオフ"
+
+msgid "Since {base_ref}"
+msgstr "{base_ref} 以降"
 
 msgid "Skip Hooks"
 msgstr "フックをスキップ"
@@ -2785,6 +2821,9 @@ msgstr "Git リポジトリを初期化できません"
 msgid "Uncommit"
 msgstr "コミットを取り消す"
 
+msgid "Uncommitted"
+msgstr "未コミット"
+
 msgid "Uncommitted Changes"
 msgstr "未コミットの変更"
 
@@ -2902,8 +2941,14 @@ msgstr "差分を表示"
 msgid "View File"
 msgstr "ファイルを表示"
 
+msgid "View File Histories"
+msgstr "ファイルの履歴を表示"
+
 msgid "View File History"
 msgstr "ファイルの履歴を表示"
+
+msgid "View Files"
+msgstr "ファイルを表示"
 
 msgid "View Log"
 msgstr "ログを表示"

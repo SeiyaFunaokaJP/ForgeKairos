@@ -930,7 +930,10 @@ mod imp {
             .collect();
         let policy = SandboxPolicy {
             fs: if permissions.allow_fs_write {
-                SandboxFsPolicy::Unrestricted { protected_paths }
+                SandboxFsPolicy::Unrestricted {
+                    protected_paths,
+                    protected_file_names: Vec::new(),
+                }
             } else {
                 SandboxFsPolicy::Restricted {
                     // On Windows the location only records the requested path;
@@ -941,6 +944,7 @@ mod imp {
                         .collect(),
                     protected_paths,
                     readable_paths: Vec::new(),
+                    protected_file_names: Vec::new(),
                 }
             },
             network: match permissions.network {

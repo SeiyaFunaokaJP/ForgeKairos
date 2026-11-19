@@ -436,6 +436,14 @@ msgctxt "FullscreenMode"
 msgid "Simple"
 msgstr "단순"
 
+msgctxt "GitDateStyle"
+msgid "Absolute"
+msgstr "절대"
+
+msgctxt "GitDateStyle"
+msgid "Relative"
+msgstr "상대"
+
 msgctxt "GitDiffBaseSetting"
 msgid "Default Branch"
 msgstr "기본 브랜치"
@@ -1565,6 +1573,10 @@ msgid "Auto Update"
 msgstr "자동 업데이트"
 
 msgctxt "settings"
+msgid "Auto-Generate Thread Titles"
+msgstr "스레드 제목 자동 생성"
+
+msgctxt "settings"
 msgid "Autoclose"
 msgstr "자동 닫기"
 
@@ -2027,6 +2039,14 @@ msgstr "다크 테마"
 msgctxt "settings"
 msgid "Data Collection"
 msgstr "데이터 수집"
+
+msgctxt "settings"
+msgid "Date Format"
+msgstr "날짜 형식"
+
+msgctxt "settings"
+msgid "Date Style"
+msgstr "날짜 스타일"
 
 msgctxt "settings"
 msgid "Debounce"
@@ -2497,12 +2517,20 @@ msgid "Excluded Callees"
 msgstr "제외할 호출 대상"
 
 msgctxt "settings"
+msgid "Expand Description by Default"
+msgstr "기본적으로 설명 펼치기"
+
+msgctxt "settings"
 msgid "Expand Edit Card"
 msgstr "편집 카드 펼치기"
 
 msgctxt "settings"
 msgid "Expand Excerpt Lines"
 msgstr "발췌 확장 줄 수"
+
+msgctxt "settings"
+msgid "Expand Files by Default"
+msgstr "기본적으로 파일 펼치기"
 
 msgctxt "settings"
 msgid "Expand Outlines With Depth"
@@ -2753,6 +2781,10 @@ msgid "Format On Save"
 msgstr "저장 시 포맷"
 
 msgctxt "settings"
+msgid "Format absolute dates using locale, iso (YYYY-MM-DD HH:MM), or a strftime format such as %Y-%m-%d %H:%M."
+msgstr "절대 날짜의 형식입니다. locale, iso(YYYY-MM-DD HH:MM) 또는 %Y-%m-%d %H:%M 같은 strftime 형식을 사용합니다."
+
+msgctxt "settings"
 msgid "Formatter"
 msgstr "포맷터"
 
@@ -2785,8 +2817,16 @@ msgid "Git Blame View"
 msgstr "Git Blame 뷰"
 
 msgctxt "settings"
+msgid "Git Commit View"
+msgstr "Git 커밋 뷰"
+
+msgctxt "settings"
 msgid "Git Diff"
 msgstr "Git Diff"
+
+msgctxt "settings"
+msgid "Git Graph"
+msgstr "커밋 그래프"
 
 msgctxt "settings"
 msgid "Git Gutter"
@@ -4401,6 +4441,30 @@ msgid "Show quick action buttons (e.g., search, selection, editor controls, etc.
 msgstr "빠른 작업 버튼을 표시합니다 (예: 검색, 선택 영역, 편집기 컨트롤 등)."
 
 msgctxt "settings"
+msgid "Show relative or absolute dates in commit history."
+msgstr "커밋 기록의 날짜를 상대 또는 절대 형식으로 표시합니다."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in graph rows."
+msgstr "그래프 행의 날짜를 상대 또는 절대 형식으로 표시합니다."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the blame gutter."
+msgstr "Blame 거터의 날짜를 상대 또는 절대 형식으로 표시합니다."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the branch picker."
+msgstr "브랜치 선택기의 날짜를 상대 또는 절대 형식으로 표시합니다."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the stash picker."
+msgstr "스태시 선택기의 날짜를 상대 또는 절대 형식으로 표시합니다."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates inline and in the status bar."
+msgstr "인라인과 상태 표시줄의 날짜를 상대 또는 절대 형식으로 표시합니다."
+
+msgctxt "settings"
 msgid "Show runnable buttons in the gutter."
 msgstr "거터에 실행 버튼을 표시합니다."
 
@@ -4643,6 +4707,10 @@ msgstr "Enter를 누르지 않아도 프로젝트 검색에서 입력하는 즉�
 msgctxt "settings"
 msgid "Starts Open"
 msgstr "시작 시 열기"
+
+msgctxt "settings"
+msgid "Stash Picker"
+msgstr "스태시 선택기"
 
 msgctxt "settings"
 msgid "Status Bar"
@@ -5521,6 +5589,14 @@ msgid "Whether invoking a panel's ToggleFocus action while it's already focused 
 msgstr "패널의 ToggleFocus 작업을 호출할 때 패널이 이미 포커스되어 있으면 포커스를 편집기로 되돌리는 대신 패널을 닫을지 여부입니다."
 
 msgctxt "settings"
+msgid "Whether newly opened commit views expand every changed file."
+msgstr "새로 연 커밋 뷰에서 변경된 파일을 모두 펼칠지 여부입니다."
+
+msgctxt "settings"
+msgid "Whether newly opened commit views show the full commit description."
+msgstr "새로 연 커밋 뷰에 커밋 설명 전체를 표시할지 여부입니다."
+
+msgctxt "settings"
 msgid "Whether newly opened file diffs show the full file instead of changes only."
 msgstr "새로 연 파일 Diff가 변경 사항만 표시하는 대신 전체 파일을 표시할지 여부입니다."
 
@@ -5663,6 +5739,10 @@ msgstr "JSX 태그를 자동으로 닫을지 여부입니다."
 msgctxt "settings"
 msgid "Whether to automatically enable case-sensitive search based on the search query."
 msgstr "검색어를 기반으로 대소문자 구분 검색을 자동으로 활성화할지 여부입니다."
+
+msgctxt "settings"
+msgid "Whether to automatically generate a title for Zed Agent threads using the summary model. When disabled, titles are only created when manually requested."
+msgstr "요약 모델을 사용해 ForgeKairos Agent 스레드의 제목을 자동으로 생성할지 여부입니다. 사용하지 않으면 직접 요청할 때만 제목이 만들어집니다."
 
 msgctxt "settings"
 msgid "Whether to automatically open Markdown files in the preview."

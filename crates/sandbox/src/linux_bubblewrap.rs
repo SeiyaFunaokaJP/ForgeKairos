@@ -2029,6 +2029,7 @@ mod tests {
                 ],
                 protected_paths: Vec::new(),
                 readable_paths: Vec::new(),
+                protected_file_names: Vec::new(),
             },
             network: crate::SandboxNetPolicy::Blocked,
         })

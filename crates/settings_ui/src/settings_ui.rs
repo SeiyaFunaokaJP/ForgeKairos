@@ -610,6 +610,7 @@ fn init_renderers(cx: &mut App) {
         .add_basic_renderer::<settings::PanelTabBar>(render_dropdown)
         .add_basic_renderer::<settings::DefaultDockPanel>(render_dropdown)
         .add_basic_renderer::<settings::GitGutterSetting>(render_dropdown)
+        .add_basic_renderer::<settings::GitDateStyle>(render_dropdown)
         .add_basic_renderer::<settings::GitHunkStyleSetting>(render_dropdown)
         .add_basic_renderer::<settings::StatusUntrackedFilesSetting>(render_dropdown)
         .add_basic_renderer::<settings::GitDiffBaseSetting>(render_dropdown)

@@ -274,9 +274,10 @@ fn rematch_within_names(commands: &[Command], matches: &mut [StringMatch], query
     for label_match in fuzzy_nucleo::match_strings(
         &label_candidates,
         query,
-        fuzzy_nucleo::Case::Smart,
-        fuzzy_nucleo::LengthPenalty::Off,
-        label_candidates.len(),
+        fuzzy_nucleo::StringMatchOptions {
+            length_penalty: fuzzy_nucleo::LengthPenalty::Off,
+            ..Default::default()
+        },
     ) {
         if let Some(string_match) = matches.get_mut(label_match.candidate_id) {
             string_match.positions = label_match.positions;
@@ -685,10 +686,10 @@ impl PickerDelegate for CommandPaletteDelegate {
                 let mut matches = fuzzy_nucleo::match_strings_async(
                     &candidates,
                     &query,
-                    fuzzy_nucleo::Case::Smart,
-                    fuzzy_nucleo::LengthPenalty::On,
-                    10000,
-                    &Default::default(),
+                    fuzzy_nucleo::StringMatchOptions {
+                        max_results: fuzzy_nucleo::MaxResults::limit::<10_000>(),
+                        ..Default::default()
+                    },
                     executor,
                 )
                 .await;
@@ -1086,9 +1087,10 @@ mod tests {
             let mut matches = fuzzy_nucleo::match_strings(
                 &[StringMatchCandidate::new(0, &search_text)],
                 &query,
-                fuzzy_nucleo::Case::Smart,
-                fuzzy_nucleo::LengthPenalty::On,
-                10,
+                fuzzy_nucleo::StringMatchOptions {
+                    max_results: fuzzy_nucleo::MaxResults::limit::<10>(),
+                    ..Default::default()
+                },
             );
             rematch_within_names(&commands, &mut matches, &query);
             assert_eq!(matches.len(), 1, "{query:?}");

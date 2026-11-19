@@ -1208,9 +1208,11 @@ impl Render for MacroRunOptions {
             .on_action(cx.listener(|this, _: &form::FocusNextField, window, cx| {
                 this.focus_adjacent_field(true, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &form::FocusPreviousField, window, cx| {
-                this.focus_adjacent_field(false, window, cx);
-            }))
+            .on_action(
+                cx.listener(|this, _: &form::FocusPreviousField, window, cx| {
+                    this.focus_adjacent_field(false, window, cx);
+                }),
+            )
             .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| cx.emit(DismissEvent)))
             .on_action(cx.listener(|this, _: &menu::Confirm, window, cx| {
                 this.run(window, cx);
@@ -8325,9 +8327,11 @@ impl Render for QuickConnectModal {
             .on_action(cx.listener(|this, _: &form::FocusNextField, window, cx| {
                 this.focus_adjacent_field(true, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &form::FocusPreviousField, window, cx| {
-                this.focus_adjacent_field(false, window, cx);
-            }))
+            .on_action(
+                cx.listener(|this, _: &form::FocusPreviousField, window, cx| {
+                    this.focus_adjacent_field(false, window, cx);
+                }),
+            )
             .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| cx.emit(DismissEvent)))
             .on_action(cx.listener(|this, _: &menu::Confirm, window, cx| {
                 this.connect(window, cx);

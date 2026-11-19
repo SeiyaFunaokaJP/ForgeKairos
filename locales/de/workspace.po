@@ -305,8 +305,14 @@ msgstr "Einen Link von einem Sprachserver öffnen?"
 msgid "Open in Default App"
 msgstr "In Standard-App öffnen"
 
+msgid "Open in New Window"
+msgstr "In neuem Fenster öffnen"
+
 msgid "Open in Terminal"
 msgstr "Im Terminal öffnen"
+
+msgid "Open in This Window"
+msgstr "In diesem Fenster öffnen"
 
 msgid "Open in WSL"
 msgstr "In WSL öffnen"

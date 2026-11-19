@@ -2,9 +2,10 @@ pub use crate::commit_context_menu::{CopyCommitSha, CopyCommitTag, OpenCommitVie
 use crate::{
     commit_context_menu::{CommitContextMenuData, CommitContextMenuSource, commit_context_menu},
     commit_tooltip::CommitAvatar,
-    commit_view::CommitView,
+    commit_view::{CommitView, CommitViewOptions},
     git_status_icon,
     git_terms::{self, help_aside},
+    git_timestamp::format_git_timestamp,
     merge_request_box::{self, MergeRequestBox, MergeRequestCandidate, RowMark, RowMarks},
     rewrite_range_modal::{self, RewriteCommitRow, RewriteRangeModal},
 };
@@ -31,6 +32,7 @@ use language::line_diff;
 use markdown::{Markdown, MarkdownElement};
 use menu::{Cancel, SelectFirst, SelectLast, SelectNext, SelectPrevious};
 use picker::{Picker, PickerDelegate};
+use project::project_settings::ProjectSettings;
 use project::{
     ProjectPath,
     git_store::{
@@ -38,6 +40,7 @@ use project::{
         GraphDataResponse, Repository, RepositoryEvent, RepositoryId,
     },
 };
+use settings::{GitDateStyle, RegisterSetting, Settings};
 use smallvec::{SmallVec, smallvec};
 use std::{
     cell::Cell,
@@ -268,8 +271,10 @@ impl ChangedFileEntry {
             commit_sha.to_string(),
             repository.clone(),
             workspace.clone(),
-            None,
-            Some(self.repo_path.clone()),
+            CommitViewOptions {
+                file_filter: Some(self.repo_path.clone()),
+                ..Default::default()
+            },
             window,
             cx,
         );
@@ -1577,16 +1582,41 @@ fn decorate_row_for_drops(
         }))
 }
 
-// The date follows the display language's date pattern when it has one, and the OS's date and
-// time format otherwise, rather than one fixed English layout.
-pub(crate) fn format_timestamp(timestamp: i64) -> String {
+#[derive(Clone, Debug, RegisterSetting)]
+pub(crate) struct GitGraphSettings {
+    pub date_style: GitDateStyle,
+}
+
+impl Settings for GitGraphSettings {
+    fn from_settings(content: &settings::SettingsContent) -> Self {
+        Self {
+            date_style: content.git_graph.as_ref().unwrap().date_style.unwrap(),
+        }
+    }
+}
+
+pub(crate) fn format_timestamp(timestamp: i64, date_style: GitDateStyle, cx: &App) -> String {
     let Ok(datetime) = OffsetDateTime::from_unix_timestamp(timestamp) else {
         return i18n::t!("Unknown").to_string();
     };
+
+    if date_style == GitDateStyle::Relative {
+        return format_git_timestamp(datetime, time_format::TimestampFormat::Relative, cx);
+    }
     let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
-    format_local_datetime(datetime, local_offset)
+    format_absolute_datetime(datetime, local_offset, cx)
 }
 
+fn format_absolute_datetime(datetime: OffsetDateTime, local_offset: UtcOffset, cx: &App) -> String {
+    ProjectSettings::get_global(cx)
+        .git
+        .date_format
+        .format(datetime.to_offset(local_offset))
+        .unwrap_or_else(|| format_local_datetime(datetime, local_offset))
+}
+
+// Without a `git.date_format`, the date follows the display language's date pattern when it has
+// one, and the OS's date and time format otherwise, rather than one fixed English layout.
 fn format_local_datetime(datetime: OffsetDateTime, local_offset: UtcOffset) -> String {
     time_format::format_localized_timestamp(
         datetime,
@@ -1600,6 +1630,10 @@ fn format_local_datetime(datetime: OffsetDateTime, local_offset: UtcOffset) -> S
 /// hours late in the day stand in for the widest dates; September has the longest English month
 /// name and December the longest month number.
 fn date_column_min_width(window: &Window, cx: &App) -> Option<Pixels> {
+    // Relative dates are short, so the column keeps its share of the table.
+    if GitGraphSettings::get_global(cx).date_style == GitDateStyle::Relative {
+        return None;
+    }
     let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
     let year = OffsetDateTime::now_utc().to_offset(local_offset).year();
     let time_of_day = time::Time::from_hms(22, 58, 0).ok()?;
@@ -1613,7 +1647,7 @@ fn date_column_min_width(window: &Window, cx: &App) -> Option<Pixels> {
             let date = time::Date::from_calendar_date(year, month, 28).ok()?;
             let widest =
                 time::PrimitiveDateTime::new(date, time_of_day).assume_offset(local_offset);
-            let text = SharedString::from(format_local_datetime(widest, local_offset));
+            let text = SharedString::from(format_absolute_datetime(widest, local_offset, cx));
             let run = gpui::TextRun {
                 len: text.len(),
                 font: font.clone(),
@@ -2660,8 +2694,17 @@ impl GitGraph {
             },
         );
         let mut row_height = Self::row_height(window, cx);
+        let mut was_date_style = GitGraphSettings::get_global(cx).date_style;
+        let mut was_date_format = ProjectSettings::get_global(cx).git.date_format.clone();
 
         cx.observe_global_in::<settings::SettingsStore>(window, move |this, window, cx| {
+            let date_style = GitGraphSettings::get_global(cx).date_style;
+            let date_format = &ProjectSettings::get_global(cx).git.date_format;
+            if date_style != was_date_style || *date_format != was_date_format {
+                was_date_style = date_style;
+                was_date_format = date_format.clone();
+                cx.notify();
+            }
             let new_row_height = Self::row_height(window, cx);
             if new_row_height != row_height {
                 // The `uniform_list` powering the table caches the item size
@@ -3191,7 +3234,11 @@ impl GitGraph {
                     author_name = data.author_name.clone();
                     author_email =
                         (!data.author_email.is_empty()).then(|| data.author_email.clone());
-                    formatted_time = format_timestamp(data.commit_timestamp);
+                    formatted_time = format_timestamp(
+                        data.commit_timestamp,
+                        GitGraphSettings::get_global(cx).date_style,
+                        cx,
+                    );
                 } else {
                     subject = i18n::t!("Loading…").into();
                     author_name = SharedString::default();
@@ -3763,8 +3810,7 @@ impl GitGraph {
             commit_entry.data.sha.to_string(),
             repository.downgrade(),
             self.workspace.clone(),
-            None,
-            None,
+            Default::default(),
             window,
             cx,
         );
@@ -4172,7 +4218,9 @@ impl GitGraph {
             CommitDataState::Loading(_) => (i18n::t!("Loading…").into(), "".into(), None),
         };
 
-        let date_string = commit_timestamp.map(format_timestamp).unwrap_or_default();
+        let date_string = commit_timestamp
+            .map(|timestamp| format_timestamp(timestamp, GitDateStyle::Absolute, cx))
+            .unwrap_or_default();
 
         let remote = repository.update(cx, |repo, cx| {
             let remote_url = repo.default_remote_url()?;
@@ -8573,6 +8621,24 @@ mod tests {
     use smallvec::{SmallVec, smallvec};
     use std::path::Path;
     use std::sync::{Arc, Mutex};
+
+    #[gpui::test]
+    fn test_graph_dates_use_date_format(cx: &mut App) {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        ProjectSettings::register(cx);
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |content| {
+                content.git.get_or_insert_default().date_format = Some("%Y".into());
+            });
+        });
+        let timestamp = time::macros::datetime!(2024-06-08 12:34 UTC).unix_timestamp();
+        assert!(format_timestamp(timestamp, GitDateStyle::Relative, cx).ends_with(" ago"));
+        assert_eq!(
+            format_timestamp(timestamp, GitDateStyle::Absolute, cx),
+            "2024"
+        );
+    }
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {

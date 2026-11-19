@@ -114,7 +114,7 @@ pub use element::{
     CursorLayout, EditorElement, HighlightedRange, HighlightedRangeLine, PointForPosition,
     file_status_label_color, render_breadcrumb_text,
 };
-pub use git::blame::{BlameRenderer, GitBlame};
+pub use git::blame::{BlameRenderer, GitBlame, MAX_RELATIVE_TIMESTAMP};
 pub use git::{
     DefaultDiffHunkRenderer, DiffHunkRenderer, HiddenDiffHunkRenderer,
     HiddenUnstagedDiffHunkRenderer, render_diff_hunk_controls, set_blame_renderer,
@@ -12702,13 +12702,10 @@ impl EditorSnapshot {
                 self.git_blame_gutter_max_author_length
                     .map(|max_author_length| {
                         let renderer = cx.global::<GlobalBlameRenderer>().0.clone();
-                        // 幅の見積もりはバイト長 × ch_advance。UTF-8 の CJK は 3 バイト/表示 2 列
-                        // なのでバイト長 >= 表示列数となり、日本語でも幅不足にはならない。
-                        let max_relative_timestamp = i18n::t!("2 years, 11 months ago");
 
                         let max_char_count = max_author_length.min(renderer.max_author_length())
                             + ::git::SHORT_SHA_LENGTH
-                            + max_relative_timestamp.len();
+                            + renderer.max_timestamp_width(cx);
 
                         ch_advance * max_char_count
                             + renderer.blame_entry_non_text_width(window, cx)

@@ -3491,6 +3491,11 @@ msgctxt "action documentation"
 msgid "git_panel::CollapseSelectedEntry"
 msgstr "선택한 항목을 접어 하위 항목을 숨깁니다."
 
+#. Picks a base branch and shows the files changed since it.
+msgctxt "action documentation"
+msgid "git_panel::CompareAgainstBase"
+msgstr "기준 브랜치를 선택하고 그 이후 변경된 파일을 표시합니다."
+
 #. Expands the selected entry to show its children.
 msgctxt "action documentation"
 msgid "git_panel::ExpandSelectedEntry"
@@ -3555,6 +3560,16 @@ msgstr "항목을 이름순으로 정렬합니다."
 msgctxt "action documentation"
 msgid "git_panel::SetSortByPath"
 msgstr "항목을 경로순으로 정렬합니다."
+
+#. Shows the files changed on the current branch since its base branch.
+msgctxt "action documentation"
+msgid "git_panel::ShowBranchChanges"
+msgstr "현재 브랜치에서 기준 브랜치 이후 변경된 파일을 표시합니다."
+
+#. Shows the uncommitted changes.
+msgctxt "action documentation"
+msgid "git_panel::ShowUncommittedChanges"
+msgstr "커밋되지 않은 변경 사항을 표시합니다."
 
 #. Toggles the git panel.
 msgctxt "action documentation"
@@ -4543,6 +4558,11 @@ msgstr "다중 선택 모드를 전환합니다. 이 모드에서는 클릭한 �
 msgctxt "action documentation"
 msgid "picker::TogglePreview"
 msgstr "미리 보기의 표시 여부를 전환합니다."
+
+#. Toggles the project bookmarks search.
+msgctxt "action documentation"
+msgid "project_bookmarks::Toggle"
+msgstr "프로젝트 북마크 검색을 표시하거나 숨깁니다."
 
 #. Collapses all entries in the project tree.
 msgctxt "action documentation"

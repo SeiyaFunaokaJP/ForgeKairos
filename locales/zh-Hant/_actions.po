@@ -3604,6 +3604,11 @@ msgctxt "action"
 msgid "git_panel::CollapseSelectedEntry"
 msgstr "Git: 摺疊選取的項目"
 
+#. git panel: compare against base
+msgctxt "action"
+msgid "git_panel::CompareAgainstBase"
+msgstr "Git: 與基底分支比較"
+
 #. git panel: expand selected entry
 msgctxt "action"
 msgid "git_panel::ExpandSelectedEntry"
@@ -3668,6 +3673,16 @@ msgstr "Git: 依名稱排序"
 msgctxt "action"
 msgid "git_panel::SetSortByPath"
 msgstr "Git: 依路徑排序"
+
+#. git panel: show branch changes
+msgctxt "action"
+msgid "git_panel::ShowBranchChanges"
+msgstr "Git: 顯示分支變更"
+
+#. git panel: show uncommitted changes
+msgctxt "action"
+msgid "git_panel::ShowUncommittedChanges"
+msgstr "Git: 顯示未提交的變更"
 
 #. git panel: toggle
 msgctxt "action"
@@ -4693,6 +4708,11 @@ msgstr "選擇器: 切換多重選取模式"
 msgctxt "action"
 msgid "picker::TogglePreview"
 msgstr "選擇器: 切換預覽"
+
+#. project bookmarks: toggle
+msgctxt "action"
+msgid "project_bookmarks::Toggle"
+msgstr "書籤: 在專案中搜尋"
 
 #. project panel: collapse all entries
 msgctxt "action"

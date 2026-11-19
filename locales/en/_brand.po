@@ -506,6 +506,10 @@ msgid "Whether breakpoints should be reused across Zed sessions."
 msgstr "Whether breakpoints should be reused across ForgeKairos sessions."
 
 msgctxt "settings"
+msgid "Whether to automatically generate a title for Zed Agent threads using the summary model. When disabled, titles are only created when manually requested."
+msgstr "Whether to automatically generate a title for ForgeKairos Agent threads using the summary model. When disabled, titles are only created when manually requested."
+
+msgctxt "settings"
 msgid "Whether to automatically surround text with characters for you. For example, when you select text and type '(', Zed will automatically surround text with ()."
 msgstr "Whether to automatically surround text with characters for you. For example, when you select text and type '(', ForgeKairos will automatically surround text with ()."
 
@@ -684,6 +688,10 @@ msgstr "What base settings to start from before applying this profile's override
 msgctxt "settings schema"
 msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"
 msgstr "Whether the breakpoints should be reused across ForgeKairos sessions.\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically generate a title for Zed Agent threads using the\nsummary model. When disabled, titles are only created when manually\nrequested (e.g. via the thread's \"Regenerate Thread Title\" action).\n\nDefault: true"
+msgstr "Whether to automatically generate a title for ForgeKairos Agent threads using the\nsummary model. When disabled, titles are only created when manually\nrequested (e.g. via the thread's \"Regenerate Thread Title\" action).\n\nDefault: true"
 
 msgctxt "settings schema"
 msgid "Whether to automatically surround text with characters for you. For example,\nwhen you select text and type '(', Zed will automatically surround text with ().\n\nDefault: true"

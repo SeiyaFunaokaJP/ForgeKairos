@@ -527,6 +527,10 @@ msgid "Command to automatically run when Zed creates a Terminal Thread shell in 
 msgstr "Comando que se ejecuta automáticamente cuando ForgeKairos crea un shell de conversación de terminal en el panel del agente.\nEl comando se envía al shell como si se escribiera, por lo que lo interpreta el shell configurado (también en Windows y en proyectos remotos o de WSL).\nUna cadena vacía deshabilita este comportamiento.\n\nValor predeterminado: \"\""
 
 msgctxt "settings schema"
+msgid "Commit view settings."
+msgstr "Configuración de la vista de commit."
+
+msgctxt "settings schema"
 msgid "Common language server settings."
 msgstr "Configuración común de servidores de lenguaje."
 
@@ -1373,6 +1377,10 @@ msgstr "Formatea el código usando el servidor de lenguaje actual."
 msgctxt "settings schema"
 msgid "Format files using Zed's Prettier integration (if applicable),\nor falling back to formatting via language server."
 msgstr "Formatea los archivos con la integración de Prettier de ForgeKairos (si corresponde) o, en su defecto, mediante el servidor de lenguaje."
+
+msgctxt "settings schema"
+msgid "Format for absolute Git dates: \"locale\", \"iso\", or a strftime format\nsuch as \"%Y-%m-%d %H:%M\" or \"%b %d, %Y\". Invalid formats fall back to \"locale\".\n\nDefault: locale"
+msgstr "Formato de las fechas absolutas de Git: \"locale\", \"iso\" o un formato strftime como \"%Y-%m-%d %H:%M\" o \"%b %d, %Y\". Si el formato no es válido, se usa \"locale\".\n\nValor predeterminado: locale"
 
 msgctxt "settings schema"
 msgid "Git accounts a repository can commit and push as. Which one a repository\nuses is picked in the git panel and kept in `project_accounts`. An\naccount's token is kept in the operating system's credential store, never\nin this file.\n\nDefault: []"
@@ -2587,6 +2595,10 @@ msgid "Start searching as you type in project search, without pressing Enter."
 msgstr "Empieza a buscar a medida que se escribe en la búsqueda del proyecto, sin presionar Enter."
 
 msgctxt "settings schema"
+msgid "Stash picker settings."
+msgstr "Configuración del selector de stash."
+
+msgctxt "settings schema"
 msgid "Sticky scroll related settings"
 msgstr "Configuración relacionada con el desplazamiento fijo"
 
@@ -2879,8 +2891,8 @@ msgid "The color of the scrollbar thumb."
 msgstr "El color del control de la barra de desplazamiento."
 
 msgctxt "settings schema"
-msgid "The column at which to soft-wrap lines, for buffers where soft-wrap\nis enabled.\n\nDefault: 80"
-msgstr "La columna en la que se ajustan las líneas, en los búferes con el ajuste de línea habilitado.\n\nValor predeterminado: 80"
+msgid "The column at which to soft-wrap lines, for buffers where soft-wrap\nis enabled. The `editor::Rewrap` action also wraps to this column by\ndefault, whether or not soft-wrap is enabled.\n\nDefault: 80"
+msgstr "La columna en la que se ajustan las líneas, en los búferes con el ajuste de línea habilitado. La acción `editor::Rewrap` también ajusta a esta columna de forma predeterminada, esté o no habilitado el ajuste de línea.\n\nValor predeterminado: 80"
 
 msgctxt "settings schema"
 msgid "The command key, on macos\nthe windows key, on windows\nthe super key, on linux"
@@ -4003,6 +4015,14 @@ msgid "Whether invoking a panel's `ToggleFocus` action while the panel is\nalrea
 msgstr "Indica si al invocar la acción `ToggleFocus` de un panel mientras ya tiene el foco se cierra el panel, en lugar de solo devolver el foco al editor. Esto solo se aplica a la acción de alternar el foco de un panel, no a su acción normal de alternar la visibilidad.\n\nValor predeterminado: false"
 
 msgctxt "settings schema"
+msgid "Whether newly opened commit views expand every changed file.\n\nDefault: true"
+msgstr "Indica si las vistas de commit recién abiertas expanden todos los archivos modificados.\n\nValor predeterminado: true"
+
+msgctxt "settings schema"
+msgid "Whether newly opened commit views show the full commit description.\n\nDefault: false"
+msgstr "Indica si las vistas de commit recién abiertas muestran la descripción completa del commit.\n\nValor predeterminado: false"
+
+msgctxt "settings schema"
 msgid "Whether newly opened file diffs show the full file instead of changes only.\n\nDefault: true"
 msgstr "Indica si las diferencias de archivo recién abiertas muestran el archivo completo en lugar de solo los cambios.\n\nValor predeterminado: true"
 
@@ -4325,6 +4345,10 @@ msgstr "Indica si se detecta automáticamente el lenguaje de un búfer sin títu
 msgctxt "settings schema"
 msgid "Whether to automatically discover models served by the llama.cpp server.\nDefaults to true."
 msgstr "Indica si se detectan automáticamente los modelos que ofrece el servidor de llama.cpp.\nEl valor predeterminado es true."
+
+msgctxt "settings schema"
+msgid "Whether to automatically generate a title for Zed Agent threads using the\nsummary model. When disabled, titles are only created when manually\nrequested (e.g. via the thread's \"Regenerate Thread Title\" action).\n\nDefault: true"
+msgstr "Indica si se genera automáticamente un título para las conversaciones de ForgeKairos Agent con el modelo de resumen. Si se desactiva, los títulos solo se crean cuando se solicitan manualmente (por ejemplo, con la acción \"Volver a generar el título de la conversación\").\n\nValor predeterminado: true"
 
 msgctxt "settings schema"
 msgid "Whether to automatically open Markdown files in the preview.\n\nDefault: false"
@@ -4785,6 +4809,22 @@ msgstr "Indica si los editores abiertos se muestran como pestañas de vista prev
 msgctxt "settings schema"
 msgid "Whether to show padding for zoomed panels.\nWhen enabled, zoomed bottom panels will have some top padding,\nwhile zoomed left/right panels will have padding to the right/left (respectively).\n\nDefault: true"
 msgstr "Indica si se muestra relleno en los paneles ampliados. Si está habilitado, los paneles inferiores ampliados tienen algo de relleno superior, y los paneles izquierdo/derecho ampliados tienen relleno a la derecha/izquierda (respectivamente).\n\nValor predeterminado: true"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in commit history.\n\nDefault: relative"
+msgstr "Indica si las fechas del historial de commits se muestran como relativas o absolutas.\n\nValor predeterminado: relative"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in graph rows.\n\nDefault: absolute"
+msgstr "Indica si las fechas de las filas del grafo se muestran como relativas o absolutas.\n\nValor predeterminado: absolute"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in the blame gutter.\n\nDefault: relative"
+msgstr "Indica si las fechas del margen de blame se muestran como relativas o absolutas.\n\nValor predeterminado: relative"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates.\n\nDefault: relative"
+msgstr "Indica si las fechas se muestran como relativas o absolutas.\n\nValor predeterminado: relative"
 
 msgctxt "settings schema"
 msgid "Whether to show runnable buttons in the gutter.\n\nDefault: true"

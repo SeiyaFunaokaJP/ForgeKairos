@@ -305,8 +305,14 @@ msgstr "언어 서버의 링크를 여시겠습니까?"
 msgid "Open in Default App"
 msgstr "기본 앱에서 열기"
 
+msgid "Open in New Window"
+msgstr "새 창에서 열기"
+
 msgid "Open in Terminal"
 msgstr "터미널에서 열기"
+
+msgid "Open in This Window"
+msgstr "이 창에서 열기"
 
 msgid "Open in WSL"
 msgstr "WSL에서 열기"

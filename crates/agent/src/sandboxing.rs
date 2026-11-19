@@ -118,6 +118,7 @@ pub fn settings_sandbox_policy(persistent: &SandboxPermissions) -> SandboxPolicy
     let fs = if persistent.allow_fs_write_all {
         SandboxFsPolicy::Unrestricted {
             protected_paths: Vec::new(),
+            protected_file_names: Vec::new(),
         }
     } else {
         SandboxFsPolicy::Restricted {
@@ -134,6 +135,7 @@ pub fn settings_sandbox_policy(persistent: &SandboxPermissions) -> SandboxPolicy
             ),
             protected_paths: Vec::new(),
             readable_paths: Vec::new(),
+            protected_file_names: Vec::new(),
         }
     };
     let network = if persistent.allow_all_hosts {
@@ -453,6 +455,7 @@ impl ThreadSandboxGrants {
             ),
             protected_paths: Vec::new(),
             readable_paths: Vec::new(),
+            protected_file_names: Vec::new(),
         };
         let network = if self.network_any_host {
             SandboxNetPolicy::Unrestricted
@@ -866,6 +869,7 @@ mod tests {
                 ],
                 protected_paths: Vec::new(),
                 readable_paths: Vec::new(),
+                protected_file_names: Vec::new(),
             }
         );
         assert_eq!(
@@ -883,6 +887,7 @@ mod tests {
                 writable_paths: Vec::new(),
                 protected_paths: Vec::new(),
                 readable_paths: Vec::new(),
+                protected_file_names: Vec::new(),
             }
         );
         assert_eq!(empty.network, SandboxNetPolicy::Blocked);
@@ -898,6 +903,7 @@ mod tests {
                 writable_paths: Vec::new(),
                 protected_paths: Vec::new(),
                 readable_paths: Vec::new(),
+                protected_file_names: Vec::new(),
             }
         );
         assert_eq!(policy.network, SandboxNetPolicy::Unrestricted);
@@ -923,6 +929,7 @@ mod tests {
                 ],
                 protected_paths: Vec::new(),
                 readable_paths: Vec::new(),
+                protected_file_names: Vec::new(),
             }
         );
         assert_eq!(
@@ -942,6 +949,7 @@ mod tests {
             policy.fs,
             SandboxFsPolicy::Unrestricted {
                 protected_paths: Vec::new(),
+                protected_file_names: Vec::new(),
             }
         );
         assert_eq!(policy.network, SandboxNetPolicy::Unrestricted);
