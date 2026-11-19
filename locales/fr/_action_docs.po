@@ -3491,6 +3491,11 @@ msgctxt "action documentation"
 msgid "git_panel::CollapseSelectedEntry"
 msgstr "Réduit l'entrée sélectionnée pour masquer ses enfants."
 
+#. Picks a base branch and shows the files changed since it.
+msgctxt "action documentation"
+msgid "git_panel::CompareAgainstBase"
+msgstr "Choisit une branche de base et affiche les fichiers modifiés depuis celle-ci."
+
 #. Expands the selected entry to show its children.
 msgctxt "action documentation"
 msgid "git_panel::ExpandSelectedEntry"
@@ -3555,6 +3560,16 @@ msgstr "Trie les entrées par nom."
 msgctxt "action documentation"
 msgid "git_panel::SetSortByPath"
 msgstr "Trie les entrées par chemin d'accès."
+
+#. Shows the files changed on the current branch since its base branch.
+msgctxt "action documentation"
+msgid "git_panel::ShowBranchChanges"
+msgstr "Affiche les fichiers modifiés dans la branche actuelle depuis sa branche de base."
+
+#. Shows the uncommitted changes.
+msgctxt "action documentation"
+msgid "git_panel::ShowUncommittedChanges"
+msgstr "Affiche les modifications non validées."
 
 #. Toggles the git panel.
 msgctxt "action documentation"
@@ -4543,6 +4558,11 @@ msgstr "Active ou désactive le mode de sélection multiple, dans lequel cliquer
 msgctxt "action documentation"
 msgid "picker::TogglePreview"
 msgstr "Affiche ou masque l'aperçu."
+
+#. Toggles the project bookmarks search.
+msgctxt "action documentation"
+msgid "project_bookmarks::Toggle"
+msgstr "Affiche ou masque la recherche des signets du projet."
 
 #. Collapses all entries in the project tree.
 msgctxt "action documentation"

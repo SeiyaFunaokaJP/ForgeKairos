@@ -305,8 +305,14 @@ msgstr "¿Abrir un enlace de un servidor de lenguaje?"
 msgid "Open in Default App"
 msgstr "Abrir en la aplicación predeterminada"
 
+msgid "Open in New Window"
+msgstr "Abrir en ventana nueva"
+
 msgid "Open in Terminal"
 msgstr "Abrir en terminal"
+
+msgid "Open in This Window"
+msgstr "Abrir en esta ventana"
 
 msgid "Open in WSL"
 msgstr "Abrir en WSL"

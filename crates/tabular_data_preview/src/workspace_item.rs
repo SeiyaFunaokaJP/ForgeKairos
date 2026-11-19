@@ -516,12 +516,8 @@ impl Item for TabularDataPreviewPane {
         Item::capability(self.editor().read(cx), cx)
     }
 
-    fn toggle_read_only(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let editor = self.editor().clone();
-        editor.update(cx, |editor, cx| {
-            Item::toggle_read_only(editor, window, cx);
-        });
-        cx.notify();
+    fn read_only_toggle_buffer(&self, cx: &App) -> Option<Entity<Buffer>> {
+        Item::read_only_toggle_buffer(self.editor().read(cx), cx)
     }
 
     fn set_nav_history(

@@ -401,6 +401,7 @@ impl TableDiffView {
                 starting_directory: None,
             },
             DirectoryLister::Project(project.clone()),
+            workspace::OpenPathPromptMode::SelectPath,
             window,
             cx,
         );
@@ -410,7 +411,7 @@ impl TableDiffView {
                 .await
                 .ok()
                 .flatten()
-                .and_then(|paths| paths.into_iter().next())
+                .and_then(|result| result.paths.into_iter().next())
             else {
                 return;
             };

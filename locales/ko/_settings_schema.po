@@ -527,6 +527,10 @@ msgid "Command to automatically run when Zed creates a Terminal Thread shell in 
 msgstr "ForgeKairos가 에이전트 패널에서 터미널 스레드 셸을 만들 때 자동으로 실행할 명령입니다.\n명령은 입력된 것처럼 셸에 전송되므로 구성된 셸에서 해석됩니다(Windows 및 원격/WSL 프로젝트 포함).\n빈 문자열이면 이 동작이 비활성화됩니다.\n\n기본값: \"\""
 
 msgctxt "settings schema"
+msgid "Commit view settings."
+msgstr "커밋 뷰 설정입니다."
+
+msgctxt "settings schema"
 msgid "Common language server settings."
 msgstr "공통 언어 서버 설정입니다."
 
@@ -1373,6 +1377,10 @@ msgstr "현재 언어 서버를 사용하여 코드를 포맷합니다."
 msgctxt "settings schema"
 msgid "Format files using Zed's Prettier integration (if applicable),\nor falling back to formatting via language server."
 msgstr "ForgeKairos의 Prettier 통합(해당하는 경우)을 사용하여 파일을 포맷하거나, 언어 서버를 통한 포맷으로 대체합니다."
+
+msgctxt "settings schema"
+msgid "Format for absolute Git dates: \"locale\", \"iso\", or a strftime format\nsuch as \"%Y-%m-%d %H:%M\" or \"%b %d, %Y\". Invalid formats fall back to \"locale\".\n\nDefault: locale"
+msgstr "Git 절대 날짜의 형식입니다. \"locale\", \"iso\" 또는 \"%Y-%m-%d %H:%M\"이나 \"%b %d, %Y\" 같은 strftime 형식을 사용합니다. 형식이 잘못되면 \"locale\"을 사용합니다.\n\n기본값: locale"
 
 msgctxt "settings schema"
 msgid "Git accounts a repository can commit and push as. Which one a repository\nuses is picked in the git panel and kept in `project_accounts`. An\naccount's token is kept in the operating system's credential store, never\nin this file.\n\nDefault: []"
@@ -2587,6 +2595,10 @@ msgid "Start searching as you type in project search, without pressing Enter."
 msgstr "Enter를 누르지 않아도 프로젝트 검색에서 입력하는 즉시 검색을 시작합니다."
 
 msgctxt "settings schema"
+msgid "Stash picker settings."
+msgstr "스태시 선택기 설정입니다."
+
+msgctxt "settings schema"
 msgid "Sticky scroll related settings"
 msgstr "고정 스크롤 관련 설정"
 
@@ -2879,8 +2891,8 @@ msgid "The color of the scrollbar thumb."
 msgstr "스크롤바 슬라이더의 색입니다."
 
 msgctxt "settings schema"
-msgid "The column at which to soft-wrap lines, for buffers where soft-wrap\nis enabled.\n\nDefault: 80"
-msgstr "소프트 줄 바꿈이 활성화된 버퍼에서 줄을 소프트 줄 바꿈할 열입니다.\n\n기본값: 80"
+msgid "The column at which to soft-wrap lines, for buffers where soft-wrap\nis enabled. The `editor::Rewrap` action also wraps to this column by\ndefault, whether or not soft-wrap is enabled.\n\nDefault: 80"
+msgstr "소프트 줄 바꿈이 활성화된 버퍼에서 줄을 소프트 줄 바꿈할 열입니다. `editor::Rewrap` 작업도 소프트 줄 바꿈 사용 여부와 관계없이 기본적으로 이 열에 맞춰 줄을 바꿉니다.\n\n기본값: 80"
 
 msgctxt "settings schema"
 msgid "The command key, on macos\nthe windows key, on windows\nthe super key, on linux"
@@ -4003,6 +4015,14 @@ msgid "Whether invoking a panel's `ToggleFocus` action while the panel is\nalrea
 msgstr "패널에 이미 포커스가 있을 때 패널의 `ToggleFocus` 작업을 실행하면 편집기로 포커스만 되돌리는 대신 패널을 닫을지 여부입니다. 이는 패널의 포커스 전환 작업에만 적용되며, 일반 표시 전환 작업에는 적용되지 않습니다.\n\n기본값: false"
 
 msgctxt "settings schema"
+msgid "Whether newly opened commit views expand every changed file.\n\nDefault: true"
+msgstr "새로 연 커밋 뷰에서 변경된 파일을 모두 펼칠지 여부입니다.\n\n기본값: true"
+
+msgctxt "settings schema"
+msgid "Whether newly opened commit views show the full commit description.\n\nDefault: false"
+msgstr "새로 연 커밋 뷰에 커밋 설명 전체를 표시할지 여부입니다.\n\n기본값: false"
+
+msgctxt "settings schema"
 msgid "Whether newly opened file diffs show the full file instead of changes only.\n\nDefault: true"
 msgstr "새로 연 파일 Diff에서 변경 사항만이 아닌 파일 전체를 표시할지 여부입니다.\n\n기본값: true"
 
@@ -4325,6 +4345,10 @@ msgstr "제목 없는 버퍼의 언어를 내용으로부터 자동으로 감지
 msgctxt "settings schema"
 msgid "Whether to automatically discover models served by the llama.cpp server.\nDefaults to true."
 msgstr "llama.cpp 서버가 제공하는 모델을 자동으로 검색할지 여부입니다.\n기본값은 true입니다."
+
+msgctxt "settings schema"
+msgid "Whether to automatically generate a title for Zed Agent threads using the\nsummary model. When disabled, titles are only created when manually\nrequested (e.g. via the thread's \"Regenerate Thread Title\" action).\n\nDefault: true"
+msgstr "요약 모델을 사용해 ForgeKairos Agent 스레드의 제목을 자동으로 생성할지 여부입니다. 사용하지 않으면 직접 요청할 때만(예: 스레드의 \"스레드 제목 다시 생성\" 작업) 제목이 만들어집니다.\n\n기본값: true"
 
 msgctxt "settings schema"
 msgid "Whether to automatically open Markdown files in the preview.\n\nDefault: false"
@@ -4785,6 +4809,22 @@ msgstr "열린 편집기를 미리 보기 탭으로 표시할지 여부입니다
 msgctxt "settings schema"
 msgid "Whether to show padding for zoomed panels.\nWhen enabled, zoomed bottom panels will have some top padding,\nwhile zoomed left/right panels will have padding to the right/left (respectively).\n\nDefault: true"
 msgstr "확대된 패널에 안쪽 여백을 표시할지 여부입니다. 활성화하면 확대된 하단 패널에는 위쪽 여백이, 확대된 왼쪽/오른쪽 패널에는 각각 오른쪽/왼쪽 여백이 생깁니다.\n\n기본값: true"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in commit history.\n\nDefault: relative"
+msgstr "커밋 기록의 날짜를 상대 또는 절대 형식으로 표시할지 여부입니다.\n\n기본값: relative"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in graph rows.\n\nDefault: absolute"
+msgstr "그래프 행의 날짜를 상대 또는 절대 형식으로 표시할지 여부입니다.\n\n기본값: absolute"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in the blame gutter.\n\nDefault: relative"
+msgstr "Blame 거터의 날짜를 상대 또는 절대 형식으로 표시할지 여부입니다.\n\n기본값: relative"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates.\n\nDefault: relative"
+msgstr "날짜를 상대 또는 절대 형식으로 표시할지 여부입니다.\n\n기본값: relative"
 
 msgctxt "settings schema"
 msgid "Whether to show runnable buttons in the gutter.\n\nDefault: true"

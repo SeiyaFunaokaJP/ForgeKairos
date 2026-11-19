@@ -3604,6 +3604,11 @@ msgctxt "action"
 msgid "git_panel::CollapseSelectedEntry"
 msgstr "Git : réduire l'élément sélectionné"
 
+#. git panel: compare against base
+msgctxt "action"
+msgid "git_panel::CompareAgainstBase"
+msgstr "Git : comparer à la branche de base"
+
 #. git panel: expand selected entry
 msgctxt "action"
 msgid "git_panel::ExpandSelectedEntry"
@@ -3668,6 +3673,16 @@ msgstr "Git : trier par nom"
 msgctxt "action"
 msgid "git_panel::SetSortByPath"
 msgstr "Git : trier par chemin d'accès"
+
+#. git panel: show branch changes
+msgctxt "action"
+msgid "git_panel::ShowBranchChanges"
+msgstr "Git : afficher les modifications de la branche"
+
+#. git panel: show uncommitted changes
+msgctxt "action"
+msgid "git_panel::ShowUncommittedChanges"
+msgstr "Git : afficher les modifications non validées"
 
 #. git panel: toggle
 msgctxt "action"
@@ -4693,6 +4708,11 @@ msgstr "Sélecteur : activer/désactiver la sélection multiple"
 msgctxt "action"
 msgid "picker::TogglePreview"
 msgstr "Sélecteur : afficher/masquer l'aperçu"
+
+#. project bookmarks: toggle
+msgctxt "action"
+msgid "project_bookmarks::Toggle"
+msgstr "Signets : rechercher dans le projet"
 
 #. project panel: collapse all entries
 msgctxt "action"

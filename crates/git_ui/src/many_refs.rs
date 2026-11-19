@@ -16,6 +16,7 @@ use gpui::{
 use notifications::status_toast::StatusToast;
 use picker::{Picker, PickerDelegate};
 use project::git_store::Repository;
+use settings::GitDateStyle;
 use ui::{HighlightedLabel, ListItem, ListItemSpacing, prelude::*};
 use util::ResultExt as _;
 use workspace::{ModalView, Workspace};
@@ -564,11 +565,13 @@ impl PickerDelegate for GraphTagPickerDelegate {
         ix: usize,
         selected: bool,
         _window: &mut Window,
-        _cx: &mut Context<Picker<Self>>,
+        cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
         let tag_match = self.matches.get(ix)?;
         let tag = self.tags.as_ref()?.get(tag_match.tag_index)?;
-        let date = tag.created_at_unix.map(format_timestamp);
+        let date = tag
+            .created_at_unix
+            .map(|timestamp| format_timestamp(timestamp, GitDateStyle::Absolute, cx));
         let subject = tag
             .subject
             .as_ref()

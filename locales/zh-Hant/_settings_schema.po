@@ -527,6 +527,10 @@ msgid "Command to automatically run when Zed creates a Terminal Thread shell in 
 msgstr "ForgeKairos 在代理面板中建立終端機會話 Shell 時自動執行的命令。\n命令會如同手動輸入般傳送至 Shell，因此由您設定的 Shell 解譯（包括 Windows 以及遠端/WSL 專案）。\n空字串會停用此行為。\n\n預設值：\"\""
 
 msgctxt "settings schema"
+msgid "Commit view settings."
+msgstr "提交檢視設定。"
+
+msgctxt "settings schema"
 msgid "Common language server settings."
 msgstr "通用語言伺服器設定。"
 
@@ -1373,6 +1377,10 @@ msgstr "使用目前的語言伺服器格式化程式碼。"
 msgctxt "settings schema"
 msgid "Format files using Zed's Prettier integration (if applicable),\nor falling back to formatting via language server."
 msgstr "使用 ForgeKairos 的 Prettier 整合格式化檔案（若適用），否則改用語言伺服器格式化。"
+
+msgctxt "settings schema"
+msgid "Format for absolute Git dates: \"locale\", \"iso\", or a strftime format\nsuch as \"%Y-%m-%d %H:%M\" or \"%b %d, %Y\". Invalid formats fall back to \"locale\".\n\nDefault: locale"
+msgstr "Git 絕對日期的格式：\"locale\"、\"iso\"，或 strftime 格式（例如 \"%Y-%m-%d %H:%M\" 或 \"%b %d, %Y\"）。格式無效時會使用 \"locale\"。\n\n預設值：locale"
 
 msgctxt "settings schema"
 msgid "Git accounts a repository can commit and push as. Which one a repository\nuses is picked in the git panel and kept in `project_accounts`. An\naccount's token is kept in the operating system's credential store, never\nin this file.\n\nDefault: []"
@@ -2587,6 +2595,10 @@ msgid "Start searching as you type in project search, without pressing Enter."
 msgstr "在專案搜尋中，輸入時立即開始搜尋，不需按 Enter。"
 
 msgctxt "settings schema"
+msgid "Stash picker settings."
+msgstr "貯藏選擇器設定。"
+
+msgctxt "settings schema"
 msgid "Sticky scroll related settings"
 msgstr "固定捲動相關設定"
 
@@ -2879,8 +2891,8 @@ msgid "The color of the scrollbar thumb."
 msgstr "捲軸滑桿的顏色。"
 
 msgctxt "settings schema"
-msgid "The column at which to soft-wrap lines, for buffers where soft-wrap\nis enabled.\n\nDefault: 80"
-msgstr "在啟用自動換行的緩衝區中，自動換行的欄位置。\n\n預設值：80"
+msgid "The column at which to soft-wrap lines, for buffers where soft-wrap\nis enabled. The `editor::Rewrap` action also wraps to this column by\ndefault, whether or not soft-wrap is enabled.\n\nDefault: 80"
+msgstr "在啟用自動換行的緩衝區中，自動換行的欄位置。`editor::Rewrap` 動作預設也會在此欄換行，不論是否啟用自動換行。\n\n預設值：80"
 
 msgctxt "settings schema"
 msgid "The command key, on macos\nthe windows key, on windows\nthe super key, on linux"
@@ -4003,6 +4015,14 @@ msgid "Whether invoking a panel's `ToggleFocus` action while the panel is\nalrea
 msgstr "在面板已取得焦點時叫用其 `ToggleFocus` 動作，是否會關閉面板，而非只是將焦點移回編輯器。這只適用於面板的焦點切換動作，不適用於其一般的顯示切換動作。\n\n預設值：false"
 
 msgctxt "settings schema"
+msgid "Whether newly opened commit views expand every changed file.\n\nDefault: true"
+msgstr "新開啟的提交檢視是否展開所有已變更的檔案。\n\n預設值：true"
+
+msgctxt "settings schema"
+msgid "Whether newly opened commit views show the full commit description.\n\nDefault: false"
+msgstr "新開啟的提交檢視是否顯示完整的提交描述。\n\n預設值：false"
+
+msgctxt "settings schema"
 msgid "Whether newly opened file diffs show the full file instead of changes only.\n\nDefault: true"
 msgstr "新開啟的檔案差異是否顯示完整檔案，而非只顯示變更。\n\n預設值：true"
 
@@ -4325,6 +4345,10 @@ msgstr "是否依據未命名緩衝區的內容自動偵測其語言。\n從語�
 msgctxt "settings schema"
 msgid "Whether to automatically discover models served by the llama.cpp server.\nDefaults to true."
 msgstr "是否自動探索 llama.cpp 伺服器提供的模型。\n預設為 true。"
+
+msgctxt "settings schema"
+msgid "Whether to automatically generate a title for Zed Agent threads using the\nsummary model. When disabled, titles are only created when manually\nrequested (e.g. via the thread's \"Regenerate Thread Title\" action).\n\nDefault: true"
+msgstr "是否使用摘要模型自動為 ForgeKairos Agent 會話產生標題。停用後，只有在手動要求時（例如透過會話的「重新產生會話標題」動作）才會建立標題。\n\n預設值：true"
 
 msgctxt "settings schema"
 msgid "Whether to automatically open Markdown files in the preview.\n\nDefault: false"
@@ -4785,6 +4809,22 @@ msgstr "是否將開啟的編輯器顯示為預覽分頁。\n預覽分頁不會�
 msgctxt "settings schema"
 msgid "Whether to show padding for zoomed panels.\nWhen enabled, zoomed bottom panels will have some top padding,\nwhile zoomed left/right panels will have padding to the right/left (respectively).\n\nDefault: true"
 msgstr "是否為放大的面板顯示邊框間距。\n啟用時，放大的底部面板上方會有一些邊框間距，\n而放大的左側/右側面板則分別在右側/左側有邊框間距。\n\n預設值：true"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in commit history.\n\nDefault: relative"
+msgstr "在提交歷程中以相對或絕對形式顯示日期。\n\n預設值：relative"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in graph rows.\n\nDefault: absolute"
+msgstr "在提交圖各列中以相對或絕對形式顯示日期。\n\n預設值：absolute"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates in the blame gutter.\n\nDefault: relative"
+msgstr "在 Blame 裝訂邊中以相對或絕對形式顯示日期。\n\n預設值：relative"
+
+msgctxt "settings schema"
+msgid "Whether to show relative or absolute dates.\n\nDefault: relative"
+msgstr "以相對或絕對形式顯示日期。\n\n預設值：relative"
 
 msgctxt "settings schema"
 msgid "Whether to show runnable buttons in the gutter.\n\nDefault: true"

@@ -598,10 +598,10 @@ pub(crate) async fn filter_agent_launch_entries(
     let matched = fuzzy_nucleo::match_strings_async(
         &candidates,
         query,
-        fuzzy_nucleo::Case::Ignore,
-        fuzzy_nucleo::LengthPenalty::On,
-        candidates.len(),
-        &Default::default(),
+        fuzzy_nucleo::StringMatchOptions {
+            case: fuzzy_nucleo::Case::Ignore,
+            ..Default::default()
+        },
         executor,
     )
     .await

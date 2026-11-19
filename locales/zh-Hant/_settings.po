@@ -436,6 +436,14 @@ msgctxt "FullscreenMode"
 msgid "Simple"
 msgstr "簡易"
 
+msgctxt "GitDateStyle"
+msgid "Absolute"
+msgstr "絕對"
+
+msgctxt "GitDateStyle"
+msgid "Relative"
+msgstr "相對"
+
 msgctxt "GitDiffBaseSetting"
 msgid "Default Branch"
 msgstr "預設分支"
@@ -1565,6 +1573,10 @@ msgid "Auto Update"
 msgstr "自動更新"
 
 msgctxt "settings"
+msgid "Auto-Generate Thread Titles"
+msgstr "自動產生會話標題"
+
+msgctxt "settings"
 msgid "Autoclose"
 msgstr "自動關閉"
 
@@ -2027,6 +2039,14 @@ msgstr "深色佈景主題"
 msgctxt "settings"
 msgid "Data Collection"
 msgstr "資料收集"
+
+msgctxt "settings"
+msgid "Date Format"
+msgstr "日期格式"
+
+msgctxt "settings"
+msgid "Date Style"
+msgstr "日期樣式"
 
 msgctxt "settings"
 msgid "Debounce"
@@ -2497,12 +2517,20 @@ msgid "Excluded Callees"
 msgstr "排除的被呼叫端"
 
 msgctxt "settings"
+msgid "Expand Description by Default"
+msgstr "預設展開描述"
+
+msgctxt "settings"
 msgid "Expand Edit Card"
 msgstr "展開編輯卡片"
 
 msgctxt "settings"
 msgid "Expand Excerpt Lines"
 msgstr "展開摘錄行數"
+
+msgctxt "settings"
+msgid "Expand Files by Default"
+msgstr "預設展開檔案"
 
 msgctxt "settings"
 msgid "Expand Outlines With Depth"
@@ -2753,6 +2781,10 @@ msgid "Format On Save"
 msgstr "儲存時格式化"
 
 msgctxt "settings"
+msgid "Format absolute dates using locale, iso (YYYY-MM-DD HH:MM), or a strftime format such as %Y-%m-%d %H:%M."
+msgstr "絕對日期的格式：locale、iso（YYYY-MM-DD HH:MM）或 strftime 格式（例如 %Y-%m-%d %H:%M）。"
+
+msgctxt "settings"
 msgid "Formatter"
 msgstr "格式器"
 
@@ -2785,8 +2817,16 @@ msgid "Git Blame View"
 msgstr "Git Blame 檢視"
 
 msgctxt "settings"
+msgid "Git Commit View"
+msgstr "Git 提交檢視"
+
+msgctxt "settings"
 msgid "Git Diff"
 msgstr "Git 差異"
+
+msgctxt "settings"
+msgid "Git Graph"
+msgstr "提交圖"
 
 msgctxt "settings"
 msgid "Git Gutter"
@@ -4401,6 +4441,30 @@ msgid "Show quick action buttons (e.g., search, selection, editor controls, etc.
 msgstr "顯示快速動作按鈕（例如搜尋、選取、編輯器控制項等）。"
 
 msgctxt "settings"
+msgid "Show relative or absolute dates in commit history."
+msgstr "以相對或絕對形式顯示提交歷程中的日期。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in graph rows."
+msgstr "以相對或絕對形式顯示提交圖各列中的日期。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the blame gutter."
+msgstr "以相對或絕對形式顯示 Blame 裝訂邊中的日期。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the branch picker."
+msgstr "以相對或絕對形式顯示分支選擇器中的日期。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the stash picker."
+msgstr "以相對或絕對形式顯示貯藏選擇器中的日期。"
+
+msgctxt "settings"
+msgid "Show relative or absolute dates inline and in the status bar."
+msgstr "以相對或絕對形式顯示內嵌和狀態列中的日期。"
+
+msgctxt "settings"
 msgid "Show runnable buttons in the gutter."
 msgstr "在裝訂邊中顯示執行按鈕。"
 
@@ -4643,6 +4707,10 @@ msgstr "在專案搜尋中，輸入時立即開始搜尋，不需按 Enter。"
 msgctxt "settings"
 msgid "Starts Open"
 msgstr "啟動時開啟"
+
+msgctxt "settings"
+msgid "Stash Picker"
+msgstr "貯藏選擇器"
 
 msgctxt "settings"
 msgid "Status Bar"
@@ -5521,6 +5589,14 @@ msgid "Whether invoking a panel's ToggleFocus action while it's already focused 
 msgstr "在面板已取得焦點時叫用其 ToggleFocus 動作，是否會關閉該面板，而不是僅將焦點移回編輯器。"
 
 msgctxt "settings"
+msgid "Whether newly opened commit views expand every changed file."
+msgstr "新開啟的提交檢視是否展開所有已變更的檔案。"
+
+msgctxt "settings"
+msgid "Whether newly opened commit views show the full commit description."
+msgstr "新開啟的提交檢視是否顯示完整的提交描述。"
+
+msgctxt "settings"
 msgid "Whether newly opened file diffs show the full file instead of changes only."
 msgstr "新開啟的檔案差異是否顯示完整檔案，而非僅顯示變更。"
 
@@ -5663,6 +5739,10 @@ msgstr "是否自動關閉 JSX 標籤。"
 msgctxt "settings"
 msgid "Whether to automatically enable case-sensitive search based on the search query."
 msgstr "是否根據搜尋查詢自動啟用區分大小寫搜尋。"
+
+msgctxt "settings"
+msgid "Whether to automatically generate a title for Zed Agent threads using the summary model. When disabled, titles are only created when manually requested."
+msgstr "是否使用摘要模型自動為 ForgeKairos Agent 會話產生標題。停用後，只有在手動要求時才會建立標題。"
 
 msgctxt "settings"
 msgid "Whether to automatically open Markdown files in the preview."

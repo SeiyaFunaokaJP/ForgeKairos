@@ -302,8 +302,14 @@ msgstr "言語サーバーからのリンクを開きますか?"
 msgid "Open in Default App"
 msgstr "既定のアプリで開く"
 
+msgid "Open in New Window"
+msgstr "新しいウィンドウで開く"
+
 msgid "Open in Terminal"
 msgstr "ターミナルで開く"
+
+msgid "Open in This Window"
+msgstr "このウィンドウで開く"
 
 msgid "Open in WSL"
 msgstr "WSL で開く"

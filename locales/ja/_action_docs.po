@@ -3492,6 +3492,11 @@ msgctxt "action documentation"
 msgid "git_panel::CollapseSelectedEntry"
 msgstr "選択したエントリを折りたたんで子エントリを非表示にします。"
 
+#. Picks a base branch and shows the files changed since it.
+msgctxt "action documentation"
+msgid "git_panel::CompareAgainstBase"
+msgstr "基準ブランチを選び、そのブランチ以降に変更されたファイルを表示します。"
+
 #. Expands the selected entry to show its children.
 msgctxt "action documentation"
 msgid "git_panel::ExpandSelectedEntry"
@@ -3556,6 +3561,16 @@ msgstr "項目を名前で並べ替えます。"
 msgctxt "action documentation"
 msgid "git_panel::SetSortByPath"
 msgstr "項目をパスで並べ替えます。"
+
+#. Shows the files changed on the current branch since its base branch.
+msgctxt "action documentation"
+msgid "git_panel::ShowBranchChanges"
+msgstr "現在のブランチで、基準ブランチ以降に変更されたファイルを表示します。"
+
+#. Shows the uncommitted changes.
+msgctxt "action documentation"
+msgid "git_panel::ShowUncommittedChanges"
+msgstr "未コミットの変更を表示します。"
 
 #. Toggles the git panel.
 msgctxt "action documentation"
@@ -4544,6 +4559,11 @@ msgstr "複数選択モードを切り替えます。このモードでは、項
 msgctxt "action documentation"
 msgid "picker::TogglePreview"
 msgstr "プレビューの表示/非表示を切り替えます。"
+
+#. Toggles the project bookmarks search.
+msgctxt "action documentation"
+msgid "project_bookmarks::Toggle"
+msgstr "プロジェクト内のブックマークの検索を開閉します。"
 
 #. Collapses all entries in the project tree.
 msgctxt "action documentation"

@@ -42,6 +42,9 @@ msgstr[0] "。{count} 个已更改的文件不来自开发分支"
 msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
 msgstr "1. 选择“开发分支”（提交的来源）和“基准”（MR 的目标）。2. 将提交图中的行拖入收集箱，或选中后点击“加入 MR 收集箱”。不应进入 MR 的内容，可右键点击其行并选择“从 MR 中排除”将其搁置。3. 收集箱下方的“未放置”显示为 0 时，表示没有遗漏（未放置的行在图中带有小 ●，“转到下一个未放置项”可逐个跳转）。4. 输入消息和 MR 分支名称，然后点击“创建并比较”：它会在基准之上以一个提交创建 MR 分支，并与开发分支进行比较。存在未提交的更改时无法创建，请先提交或储藏。"
 
+msgid "2 years, 11 months ago"
+msgstr "2 年 11 个月前"
+
 msgid "<no branch>"
 msgstr "<无分支>"
 
@@ -275,6 +278,9 @@ msgstr "作为比较来源的分支 / 标签（源）"
 msgid "Branch / tag to compare with (the target)"
 msgstr "作为比较对象的分支 / 标签（目标）"
 
+msgid "Branch Changes"
+msgstr "分支更改"
+
 msgid "Branched off at {}."
 msgstr "分叉于 {}。"
 
@@ -380,6 +386,9 @@ msgstr[0] "拣选 {count} 个提交：按从旧到新的顺序，将其作为新
 
 msgid "Choose What the Patch File Contains (Whole Repository: {})"
 msgstr "选择补丁文件包含的内容（整个仓库：{}）"
+
+msgid "Choose Which Changes to Show"
+msgstr "选择要显示的更改"
 
 msgid "Choose a Branch…"
 msgstr "选择分支…"
@@ -531,6 +540,9 @@ msgstr "SHA 以此开头的提交"
 msgid "Commits without the checks that run automatically before a commit (hooks)"
 msgstr "跳过提交前自动运行的检查（钩子）进行提交"
 
+msgid "Compare Against Base"
+msgstr "与基准分支比较"
+
 msgid "Compare two branches"
 msgstr "比较两个分支"
 
@@ -609,10 +621,16 @@ msgstr "复制邮箱"
 msgid "Copy Path"
 msgstr "复制路径"
 
+msgid "Copy Paths"
+msgstr "复制路径"
+
 msgid "Copy Ref Name"
 msgstr "复制引用名称"
 
 msgid "Copy Relative Path"
+msgstr "复制相对路径"
+
+msgid "Copy Relative Paths"
 msgstr "复制相对路径"
 
 msgid "Copy SHA"
@@ -723,6 +741,9 @@ msgstr "无法更新 MR 分支\n{reason}"
 
 msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
 msgstr "无法更新 MR 分支。仍在临时分支“{}”上。\n{reason}"
+
+msgid "Couldn't load branch changes"
+msgstr "无法加载分支更改"
 
 msgid "Create"
 msgstr "创建"
@@ -1375,6 +1396,9 @@ msgstr "正在加载"
 msgid "Loading Commit History…"
 msgstr "正在加载提交历史记录…"
 
+msgid "Loading branch changes…"
+msgstr "正在加载分支更改…"
+
 msgid "Loading comparison…"
 msgstr "正在加载比较…"
 
@@ -1512,6 +1536,9 @@ msgstr "未签出任何分支，因此没有可推送的内容。"
 msgid "No changes"
 msgstr "没有更改"
 
+msgid "No changes since {base_ref}"
+msgstr "自 {base_ref} 以来没有更改"
+
 msgid "No changes to commit"
 msgstr "没有可提交的更改"
 
@@ -1526,6 +1553,9 @@ msgstr "没有匹配的提交。请尝试减少条件。"
 
 msgid "No commits yet"
 msgstr "尚无提交"
+
+msgid "No default branch found. Pick a base branch."
+msgstr "未找到默认分支。请选择基准分支。"
 
 msgid "No development branch is chosen. Choose a development branch first."
 msgstr "未选择开发分支。请先选择开发分支。"
@@ -2143,6 +2173,9 @@ msgstr "选择上一个匹配项"
 msgid "Select a Patch File to Apply"
 msgstr "选择要应用的补丁文件"
 
+msgid "Select a branch…"
+msgstr "选择分支…"
+
 msgid "Select a repository..."
 msgstr "选择仓库..."
 
@@ -2256,6 +2289,9 @@ msgstr "以差异形式显示储藏区（stash）中这些更改的内容。不�
 
 msgid "Signoff"
 msgstr "签名确认"
+
+msgid "Since {base_ref}"
+msgstr "自 {base_ref} 以来"
 
 msgid "Skip Hooks"
 msgstr "跳过钩子"
@@ -2788,6 +2824,9 @@ msgstr "无法初始化 git 仓库"
 msgid "Uncommit"
 msgstr "撤销提交"
 
+msgid "Uncommitted"
+msgstr "未提交"
+
 msgid "Uncommitted Changes"
 msgstr "未提交的更改"
 
@@ -2905,8 +2944,14 @@ msgstr "查看差异"
 msgid "View File"
 msgstr "查看文件"
 
+msgid "View File Histories"
+msgstr "查看文件历史记录"
+
 msgid "View File History"
 msgstr "查看文件历史记录"
+
+msgid "View Files"
+msgstr "查看文件"
 
 msgid "View Log"
 msgstr "查看日志"

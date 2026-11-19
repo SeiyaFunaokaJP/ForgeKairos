@@ -43,6 +43,9 @@ msgstr[1] ". {count} fichiers modifiés ne provenant pas de la branche de dével
 msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
 msgstr "1. Choisissez la \"branche de développement\" (d'où viennent les validations) et la \"base\" (la cible de la MR). 2. Faites glisser des lignes du graphe des validations dans la boîte, ou sélectionnez-les et appuyez sur \"Ajouter à la boîte MR\". Mettez de côté ce qui doit rester hors de la MR en cliquant avec le bouton droit sur sa ligne et en choisissant \"Exclure de la MR\". 3. Lorsque \"non placées\" sous la boîte indique 0, rien n'a été oublié (les lignes non placées portent un petit ● dans le graphe, et \"Atteindre la suivante non placée\" les parcourt une à une). 4. Saisissez un message et un nom de branche MR, puis appuyez sur \"Créer et comparer\" : la branche MR est créée sous forme d'une seule validation au-dessus de la base, puis comparée à la branche de développement. Elle ne peut pas être créée tant qu'il reste des modifications non validées : validez-les ou remisez-les d'abord."
 
+msgid "2 years, 11 months ago"
+msgstr "il y a 2 ans et 11 mois"
+
 msgid "<no branch>"
 msgstr "<aucune branche>"
 
@@ -281,6 +284,9 @@ msgstr "Branche / étiquette de départ de la comparaison (la source)"
 msgid "Branch / tag to compare with (the target)"
 msgstr "Branche / étiquette à laquelle comparer (la cible)"
 
+msgid "Branch Changes"
+msgstr "Modifications de la branche"
+
 msgid "Branched off at {}."
 msgstr "Branche créée à partir de {}."
 
@@ -390,6 +396,9 @@ msgstr[1] "Applique {count} validations (cherry-pick) : les ajoute au sommet de 
 
 msgid "Choose What the Patch File Contains (Whole Repository: {})"
 msgstr "Choisir le contenu du fichier patch (dépôt entier : {})"
+
+msgid "Choose Which Changes to Show"
+msgstr "Choisir les modifications à afficher"
 
 msgid "Choose a Branch…"
 msgstr "Choisir une branche…"
@@ -541,6 +550,9 @@ msgstr "Validations dont le SHA commence ainsi"
 msgid "Commits without the checks that run automatically before a commit (hooks)"
 msgstr "Valide sans les vérifications exécutées automatiquement avant une validation (hooks)"
 
+msgid "Compare Against Base"
+msgstr "Comparer à la branche de base"
+
 msgid "Compare two branches"
 msgstr "Comparer deux branches"
 
@@ -619,11 +631,17 @@ msgstr "Copier l'adresse e-mail"
 msgid "Copy Path"
 msgstr "Copier le chemin d'accès"
 
+msgid "Copy Paths"
+msgstr "Copier les chemins d'accès"
+
 msgid "Copy Ref Name"
 msgstr "Copier le nom de la référence"
 
 msgid "Copy Relative Path"
 msgstr "Copier le chemin d'accès relatif"
+
+msgid "Copy Relative Paths"
+msgstr "Copier les chemins d'accès relatifs"
 
 msgid "Copy SHA"
 msgstr "Copier le SHA"
@@ -734,6 +752,9 @@ msgstr "Impossible de mettre à jour la branche MR\n{reason}"
 
 msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
 msgstr "Impossible de mettre à jour la branche MR. Toujours sur la branche temporaire \"{}\".\n{reason}"
+
+msgid "Couldn't load branch changes"
+msgstr "Impossible de charger les modifications de la branche"
 
 msgid "Create"
 msgstr "Créer"
@@ -1395,6 +1416,9 @@ msgstr "Chargement"
 msgid "Loading Commit History…"
 msgstr "Chargement de l'historique des validations…"
 
+msgid "Loading branch changes…"
+msgstr "Chargement des modifications de la branche…"
+
 msgid "Loading comparison…"
 msgstr "Chargement de la comparaison…"
 
@@ -1534,6 +1558,9 @@ msgstr "Aucune branche n'est extraite : il n'y a donc rien à envoyer."
 msgid "No changes"
 msgstr "Aucune modification"
 
+msgid "No changes since {base_ref}"
+msgstr "Aucune modification depuis {base_ref}"
+
 msgid "No changes to commit"
 msgstr "Aucune modification à valider"
 
@@ -1548,6 +1575,9 @@ msgstr "Aucune validation ne correspond. Essayez avec moins de conditions."
 
 msgid "No commits yet"
 msgstr "Aucune validation pour le moment"
+
+msgid "No default branch found. Pick a base branch."
+msgstr "Aucune branche par défaut trouvée. Choisissez une branche de base."
 
 msgid "No development branch is chosen. Choose a development branch first."
 msgstr "Aucune branche de développement n'est choisie. Choisissez d'abord une branche de développement."
@@ -2172,6 +2202,9 @@ msgstr "Sélectionner la correspondance précédente"
 msgid "Select a Patch File to Apply"
 msgstr "Sélectionner un fichier patch à appliquer"
 
+msgid "Select a branch…"
+msgstr "Sélectionner une branche…"
+
 msgid "Select a repository..."
 msgstr "Sélectionner un dépôt..."
 
@@ -2285,6 +2318,9 @@ msgstr "Affiche sous forme de différences le contenu de ces modifications mises
 
 msgid "Signoff"
 msgstr "Signer (Signed-off-by)"
+
+msgid "Since {base_ref}"
+msgstr "Depuis {base_ref}"
 
 msgid "Skip Hooks"
 msgstr "Ignorer les hooks"
@@ -2829,6 +2865,9 @@ msgstr "Impossible d'initialiser un dépôt Git"
 msgid "Uncommit"
 msgstr "Annuler la dernière validation"
 
+msgid "Uncommitted"
+msgstr "Non validées"
+
 msgid "Uncommitted Changes"
 msgstr "Modifications non validées"
 
@@ -2946,8 +2985,14 @@ msgstr "Afficher les différences"
 msgid "View File"
 msgstr "Afficher le fichier"
 
+msgid "View File Histories"
+msgstr "Afficher l'historique des fichiers"
+
 msgid "View File History"
 msgstr "Afficher l'historique du fichier"
+
+msgid "View Files"
+msgstr "Afficher les fichiers"
 
 msgid "View Log"
 msgstr "Afficher le journal"

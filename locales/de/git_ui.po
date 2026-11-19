@@ -43,6 +43,9 @@ msgstr[1] ". {count} geänderte Dateien nicht aus dem Entwicklungsbranch"
 msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
 msgstr "1. Wählen Sie den „Entwicklungsbranch“ (woher die Commits stammen) und die „Basis“ (worauf der MR abzielt). 2. Ziehen Sie Zeilen des Commit-Graphen in die Box, oder wählen Sie sie aus und klicken Sie auf „Zur MR-Box hinzufügen“. Legen Sie beiseite, was nicht in den MR gehört, indem Sie mit der rechten Maustaste auf die Zeile klicken und „Aus MR ausschließen“ wählen. 3. Wenn „nicht platziert“ unter der Box 0 anzeigt, wurde nichts vergessen (nicht platzierte Zeilen erhalten im Graphen ein kleines ●, und „Zum nächsten nicht platzierten“ springt nacheinander zu ihnen). 4. Geben Sie eine Nachricht und einen MR-Branch-Namen ein und klicken Sie auf „Erstellen und vergleichen“: Der MR-Branch wird als ein einziger Commit auf der Basis erstellt und mit dem Entwicklungsbranch verglichen. Solange nicht committete Änderungen vorhanden sind, kann er nicht erstellt werden; committen oder stashen Sie diese daher zuerst."
 
+msgid "2 years, 11 months ago"
+msgstr "vor 2 Jahren und 11 Monaten"
+
 msgid "<no branch>"
 msgstr "<kein Branch>"
 
@@ -281,6 +284,9 @@ msgstr "Branch / Tag, von dem aus verglichen wird (Quelle)"
 msgid "Branch / tag to compare with (the target)"
 msgstr "Branch / Tag, mit dem verglichen wird (Ziel)"
 
+msgid "Branch Changes"
+msgstr "Branch-Änderungen"
+
 msgid "Branched off at {}."
 msgstr "Abgezweigt bei {}."
 
@@ -390,6 +396,9 @@ msgstr[1] "Führt einen Cherry-Pick von {count} Commits aus: Sie werden, die äl
 
 msgid "Choose What the Patch File Contains (Whole Repository: {})"
 msgstr "Inhalt der Patchdatei auswählen (gesamtes Repository: {})"
+
+msgid "Choose Which Changes to Show"
+msgstr "Anzuzeigende Änderungen auswählen"
 
 msgid "Choose a Branch…"
 msgstr "Branch auswählen…"
@@ -541,6 +550,9 @@ msgstr "Commits, deren SHA so beginnt"
 msgid "Commits without the checks that run automatically before a commit (hooks)"
 msgstr "Committet ohne die Prüfungen, die automatisch vor einem Commit ausgeführt werden (Hooks)"
 
+msgid "Compare Against Base"
+msgstr "Mit Basis-Branch vergleichen"
+
 msgid "Compare two branches"
 msgstr "Zwei Branches vergleichen"
 
@@ -619,11 +631,17 @@ msgstr "E-Mail kopieren"
 msgid "Copy Path"
 msgstr "Pfad kopieren"
 
+msgid "Copy Paths"
+msgstr "Pfade kopieren"
+
 msgid "Copy Ref Name"
 msgstr "Ref-Namen kopieren"
 
 msgid "Copy Relative Path"
 msgstr "Relativen Pfad kopieren"
+
+msgid "Copy Relative Paths"
+msgstr "Relative Pfade kopieren"
 
 msgid "Copy SHA"
 msgstr "SHA kopieren"
@@ -734,6 +752,9 @@ msgstr "Der MR-Branch konnte nicht aktualisiert werden\n{reason}"
 
 msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
 msgstr "Der MR-Branch konnte nicht aktualisiert werden. Weiterhin auf dem temporären Branch „{}“.\n{reason}"
+
+msgid "Couldn't load branch changes"
+msgstr "Branch-Änderungen konnten nicht geladen werden"
 
 msgid "Create"
 msgstr "Erstellen"
@@ -1395,6 +1416,9 @@ msgstr "Wird geladen"
 msgid "Loading Commit History…"
 msgstr "Commit-Verlauf wird geladen…"
 
+msgid "Loading branch changes…"
+msgstr "Branch-Änderungen werden geladen…"
+
 msgid "Loading comparison…"
 msgstr "Vergleich wird geladen…"
 
@@ -1534,6 +1558,9 @@ msgstr "Es ist kein Branch ausgecheckt, daher gibt es nichts zu pushen."
 msgid "No changes"
 msgstr "Keine Änderungen"
 
+msgid "No changes since {base_ref}"
+msgstr "Keine Änderungen seit {base_ref}"
+
 msgid "No changes to commit"
 msgstr "Keine Änderungen zum Committen"
 
@@ -1548,6 +1575,9 @@ msgstr "Keine passenden Commits. Versuchen Sie es mit weniger Bedingungen."
 
 msgid "No commits yet"
 msgstr "Noch keine Commits"
+
+msgid "No default branch found. Pick a base branch."
+msgstr "Kein Standard-Branch gefunden. Wählen Sie einen Basis-Branch aus."
 
 msgid "No development branch is chosen. Choose a development branch first."
 msgstr "Es ist kein Entwicklungsbranch ausgewählt. Wählen Sie zuerst einen Entwicklungsbranch aus."
@@ -2172,6 +2202,9 @@ msgstr "Vorherigen Treffer auswählen"
 msgid "Select a Patch File to Apply"
 msgstr "Anzuwendende Patchdatei auswählen"
 
+msgid "Select a branch…"
+msgstr "Branch auswählen…"
+
 msgid "Select a repository..."
 msgstr "Repository auswählen..."
 
@@ -2285,6 +2318,9 @@ msgstr "Zeigt den Inhalt dieser in der Ablage (dem Stash) abgelegten Änderungen
 
 msgid "Signoff"
 msgstr "Signoff"
+
+msgid "Since {base_ref}"
+msgstr "Seit {base_ref}"
 
 msgid "Skip Hooks"
 msgstr "Hooks überspringen"
@@ -2829,6 +2865,9 @@ msgstr "Ein Git-Repository konnte nicht initialisiert werden"
 msgid "Uncommit"
 msgstr "Commit zurücknehmen"
 
+msgid "Uncommitted"
+msgstr "Nicht committet"
+
 msgid "Uncommitted Changes"
 msgstr "Nicht committete Änderungen"
 
@@ -2946,8 +2985,14 @@ msgstr "Diff anzeigen"
 msgid "View File"
 msgstr "Datei anzeigen"
 
+msgid "View File Histories"
+msgstr "Dateiverläufe anzeigen"
+
 msgid "View File History"
 msgstr "Dateiverlauf anzeigen"
+
+msgid "View Files"
+msgstr "Dateien anzeigen"
 
 msgid "View Log"
 msgstr "Protokoll anzeigen"

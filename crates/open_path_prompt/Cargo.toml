@@ -22,6 +22,7 @@ workspace.workspace = true
 [dev-dependencies]
 editor = {workspace = true, features = ["test-support"]}
 gpui = {workspace = true, features = ["test-support"]}
+menu.workspace = true
 serde_json.workspace = true
 theme = {workspace = true, features = ["test-support"]}
 theme_settings.workspace = true

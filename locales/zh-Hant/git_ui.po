@@ -42,6 +42,9 @@ msgstr[0] "。{count} 個變更的檔案不是來自開發分支"
 msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
 msgstr "1. 選擇「開發分支」（提交的來源）和「基底」（MR 的目標）。2. 將提交圖的列拖曳到盒中，或選取後按「放入 MR 盒」。不應放入 MR 的項目，請在該列按右鍵並選擇「從 MR 排除」將其擱置。3. 當盒子下方的「未放置」顯示為 0 時，表示沒有遺漏（未放置的列在圖中會標上小小的 ●，「前往下一個未放置項目」可逐一跳至這些列）。4. 輸入訊息和 MR 分支名稱後按「建立並比較」：會在基底之上將 MR 分支建立為一個提交，並與開發分支比較。有未提交的變更時無法建立，請先提交或貯藏這些變更。"
 
+msgid "2 years, 11 months ago"
+msgstr "2 年 11 個月前"
+
 msgid "<no branch>"
 msgstr "<無分支>"
 
@@ -275,6 +278,9 @@ msgstr "作為比較起點的分支 / 標籤（來源）"
 msgid "Branch / tag to compare with (the target)"
 msgstr "要比較的分支 / 標籤（目標）"
 
+msgid "Branch Changes"
+msgstr "分支變更"
+
 msgid "Branched off at {}."
 msgstr "分支點：{}。"
 
@@ -380,6 +386,9 @@ msgstr[0] "揀選 {count} 個提交：從最舊的開始，作為新提交依序
 
 msgid "Choose What the Patch File Contains (Whole Repository: {})"
 msgstr "選擇修補檔要包含的內容（整個儲存庫：{}）"
+
+msgid "Choose Which Changes to Show"
+msgstr "選擇要顯示的變更"
 
 msgid "Choose a Branch…"
 msgstr "選擇分支…"
@@ -531,6 +540,9 @@ msgstr "SHA 以此開頭的提交"
 msgid "Commits without the checks that run automatically before a commit (hooks)"
 msgstr "略過提交前自動執行的檢查（Hook）並提交"
 
+msgid "Compare Against Base"
+msgstr "與基底分支比較"
+
 msgid "Compare two branches"
 msgstr "比較兩個分支"
 
@@ -609,10 +621,16 @@ msgstr "複製電子郵件"
 msgid "Copy Path"
 msgstr "複製路徑"
 
+msgid "Copy Paths"
+msgstr "複製路徑"
+
 msgid "Copy Ref Name"
 msgstr "複製 ref 名稱"
 
 msgid "Copy Relative Path"
+msgstr "複製相對路徑"
+
+msgid "Copy Relative Paths"
 msgstr "複製相對路徑"
 
 msgid "Copy SHA"
@@ -723,6 +741,9 @@ msgstr "無法更新 MR 分支\n{reason}"
 
 msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
 msgstr "無法更新 MR 分支。仍在暫用分支「{}」上。\n{reason}"
+
+msgid "Couldn't load branch changes"
+msgstr "無法載入分支變更"
 
 msgid "Create"
 msgstr "建立"
@@ -1375,6 +1396,9 @@ msgstr "正在載入"
 msgid "Loading Commit History…"
 msgstr "正在載入提交歷程…"
 
+msgid "Loading branch changes…"
+msgstr "正在載入分支變更…"
+
 msgid "Loading comparison…"
 msgstr "正在載入比較…"
 
@@ -1512,6 +1536,9 @@ msgstr "未簽出任何分支，因此沒有可推送的內容。"
 msgid "No changes"
 msgstr "沒有變更"
 
+msgid "No changes since {base_ref}"
+msgstr "自 {base_ref} 以來沒有變更"
+
 msgid "No changes to commit"
 msgstr "沒有要提交的變更"
 
@@ -1526,6 +1553,9 @@ msgstr "沒有符合的提交。請嘗試減少條件。"
 
 msgid "No commits yet"
 msgstr "尚無提交"
+
+msgid "No default branch found. Pick a base branch."
+msgstr "找不到預設分支。請選取基底分支。"
 
 msgid "No development branch is chosen. Choose a development branch first."
 msgstr "尚未選擇開發分支。請先選擇開發分支。"
@@ -2143,6 +2173,9 @@ msgstr "選取上一個符合項目"
 msgid "Select a Patch File to Apply"
 msgstr "選取要套用的修補檔"
 
+msgid "Select a branch…"
+msgstr "選取分支…"
+
 msgid "Select a repository..."
 msgstr "選取儲存庫..."
 
@@ -2256,6 +2289,9 @@ msgstr "以差異顯示放入貯藏區（stash）的這些變更的內容。不�
 
 msgid "Signoff"
 msgstr "簽署"
+
+msgid "Since {base_ref}"
+msgstr "自 {base_ref} 以來"
 
 msgid "Skip Hooks"
 msgstr "略過 Hook"
@@ -2788,6 +2824,9 @@ msgstr "無法初始化 git 儲存庫"
 msgid "Uncommit"
 msgstr "取消提交"
 
+msgid "Uncommitted"
+msgstr "未提交"
+
 msgid "Uncommitted Changes"
 msgstr "未提交的變更"
 
@@ -2905,8 +2944,14 @@ msgstr "檢視差異"
 msgid "View File"
 msgstr "檢視檔案"
 
+msgid "View File Histories"
+msgstr "檢視檔案歷程"
+
 msgid "View File History"
 msgstr "檢視檔案歷程"
+
+msgid "View Files"
+msgstr "檢視檔案"
 
 msgid "View Log"
 msgstr "檢視記錄"

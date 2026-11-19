@@ -305,8 +305,14 @@ msgstr "是否打开来自语言服务器的链接？"
 msgid "Open in Default App"
 msgstr "用默认应用打开"
 
+msgid "Open in New Window"
+msgstr "在新窗口中打开"
+
 msgid "Open in Terminal"
 msgstr "在终端中打开"
+
+msgid "Open in This Window"
+msgstr "在此窗口中打开"
 
 msgid "Open in WSL"
 msgstr "在 WSL 中打开"

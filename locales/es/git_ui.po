@@ -43,6 +43,9 @@ msgstr[1] ". {count} archivos cambiados que no proceden de la rama de desarrollo
 msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
 msgstr "1. Elija la \"rama de desarrollo\" (de donde proceden los commits) y la \"base\" (el destino de la MR). 2. Arrastre filas del grafo de commits a la caja, o selecciónelas y presione \"Agregar a la caja de MR\". Aparte lo que no deba entrar en la MR haciendo clic con el botón derecho en su fila y eligiendo \"Excluir de la MR\". 3. Cuando \"sin colocar\" bajo la caja muestre 0, no se olvidó nada (las filas sin colocar llevan un pequeño ● en el grafo y \"Ir al siguiente sin colocar\" salta a ellas una por una). 4. Escriba un mensaje y un nombre de rama de MR y presione \"Crear y comparar\": se crea la rama de MR como un único commit sobre la base y se compara con la rama de desarrollo. No se puede crear mientras haya cambios sin commit, así que primero haga commit de ellos o guárdelos en el stash."
 
+msgid "2 years, 11 months ago"
+msgstr "hace 2 años y 11 meses"
+
 msgid "<no branch>"
 msgstr "<sin rama>"
 
@@ -281,6 +284,9 @@ msgstr "Rama / etiqueta desde la que comparar (el origen)"
 msgid "Branch / tag to compare with (the target)"
 msgstr "Rama / etiqueta con la que comparar (el destino)"
 
+msgid "Branch Changes"
+msgstr "Cambios de la rama"
+
 msgid "Branched off at {}."
 msgstr "Se bifurcó en {}."
 
@@ -390,6 +396,9 @@ msgstr[1] "Aplica {count} commits con cherry-pick: los agrega, empezando por el 
 
 msgid "Choose What the Patch File Contains (Whole Repository: {})"
 msgstr "Elegir qué contiene el archivo de parche (repositorio completo: {})"
+
+msgid "Choose Which Changes to Show"
+msgstr "Elegir qué cambios mostrar"
 
 msgid "Choose a Branch…"
 msgstr "Elegir una rama…"
@@ -541,6 +550,9 @@ msgstr "Commits cuyo SHA empieza así"
 msgid "Commits without the checks that run automatically before a commit (hooks)"
 msgstr "Hace commit sin las comprobaciones que se ejecutan automáticamente antes de un commit (hooks)"
 
+msgid "Compare Against Base"
+msgstr "Comparar con la rama base"
+
 msgid "Compare two branches"
 msgstr "Comparar dos ramas"
 
@@ -619,11 +631,17 @@ msgstr "Copiar correo electrónico"
 msgid "Copy Path"
 msgstr "Copiar ruta"
 
+msgid "Copy Paths"
+msgstr "Copiar rutas"
+
 msgid "Copy Ref Name"
 msgstr "Copiar nombre de referencia"
 
 msgid "Copy Relative Path"
 msgstr "Copiar ruta relativa"
+
+msgid "Copy Relative Paths"
+msgstr "Copiar rutas relativas"
 
 msgid "Copy SHA"
 msgstr "Copiar SHA"
@@ -734,6 +752,9 @@ msgstr "No se pudo actualizar la rama de MR\n{reason}"
 
 msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
 msgstr "No se pudo actualizar la rama de MR. Sigue en la rama temporal \"{}\".\n{reason}"
+
+msgid "Couldn't load branch changes"
+msgstr "No se pudieron cargar los cambios de la rama"
 
 msgid "Create"
 msgstr "Crear"
@@ -1395,6 +1416,9 @@ msgstr "Cargando"
 msgid "Loading Commit History…"
 msgstr "Cargando historial de commits…"
 
+msgid "Loading branch changes…"
+msgstr "Cargando los cambios de la rama…"
+
 msgid "Loading comparison…"
 msgstr "Cargando comparación…"
 
@@ -1534,6 +1558,9 @@ msgstr "No hay ninguna rama con checkout, así que no hay nada para hacer push."
 msgid "No changes"
 msgstr "No hay cambios"
 
+msgid "No changes since {base_ref}"
+msgstr "No hay cambios desde {base_ref}"
+
 msgid "No changes to commit"
 msgstr "No hay cambios para hacer commit"
 
@@ -1548,6 +1575,9 @@ msgstr "Ningún commit coincide. Pruebe con menos condiciones."
 
 msgid "No commits yet"
 msgstr "Aún no hay commits"
+
+msgid "No default branch found. Pick a base branch."
+msgstr "No se encontró la rama predeterminada. Elija una rama base."
 
 msgid "No development branch is chosen. Choose a development branch first."
 msgstr "No se eligió ninguna rama de desarrollo. Elija primero una rama de desarrollo."
@@ -2172,6 +2202,9 @@ msgstr "Seleccionar la coincidencia anterior"
 msgid "Select a Patch File to Apply"
 msgstr "Seleccionar un archivo de parche para aplicar"
 
+msgid "Select a branch…"
+msgstr "Seleccionar una rama…"
+
 msgid "Select a repository..."
 msgstr "Seleccionar un repositorio..."
 
@@ -2285,6 +2318,9 @@ msgstr "Muestra como diferencias el contenido de estos cambios guardados en el s
 
 msgid "Signoff"
 msgstr "Firmar"
+
+msgid "Since {base_ref}"
+msgstr "Desde {base_ref}"
 
 msgid "Skip Hooks"
 msgstr "Omitir hooks"
@@ -2829,6 +2865,9 @@ msgstr "No se pudo inicializar un repositorio Git"
 msgid "Uncommit"
 msgstr "Deshacer commit"
 
+msgid "Uncommitted"
+msgstr "Sin commit"
+
 msgid "Uncommitted Changes"
 msgstr "Cambios sin commit"
 
@@ -2946,8 +2985,14 @@ msgstr "Ver diferencias"
 msgid "View File"
 msgstr "Ver archivo"
 
+msgid "View File Histories"
+msgstr "Ver historial de los archivos"
+
 msgid "View File History"
 msgstr "Ver historial del archivo"
+
+msgid "View Files"
+msgstr "Ver archivos"
 
 msgid "View Log"
 msgstr "Ver registro"

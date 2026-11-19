@@ -1038,12 +1038,16 @@ impl Render for GraphSearchForm {
         v_flex()
             .key_context(format!("GitGraphSearchForm {}", ui::form::KEY_CONTEXT).as_str())
             .track_focus(&self.focus_handle)
-            .on_action(cx.listener(|this, _: &ui::form::FocusNextField, window, cx| {
-                this.focus_next_field(window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &ui::form::FocusPreviousField, window, cx| {
-                this.focus_adjacent_field(false, window, cx);
-            }))
+            .on_action(
+                cx.listener(|this, _: &ui::form::FocusNextField, window, cx| {
+                    this.focus_next_field(window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &ui::form::FocusPreviousField, window, cx| {
+                    this.focus_adjacent_field(false, window, cx);
+                }),
+            )
             .on_action(cx.listener(|this, _: &menu::Confirm, _window, cx| {
                 this.run_search(cx);
             }))

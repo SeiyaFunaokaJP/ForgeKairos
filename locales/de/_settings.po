@@ -436,6 +436,14 @@ msgctxt "FullscreenMode"
 msgid "Simple"
 msgstr "Einfach"
 
+msgctxt "GitDateStyle"
+msgid "Absolute"
+msgstr "Absolut"
+
+msgctxt "GitDateStyle"
+msgid "Relative"
+msgstr "Relativ"
+
 msgctxt "GitDiffBaseSetting"
 msgid "Default Branch"
 msgstr "Standardbranch"
@@ -1565,6 +1573,10 @@ msgid "Auto Update"
 msgstr "Automatische Aktualisierung"
 
 msgctxt "settings"
+msgid "Auto-Generate Thread Titles"
+msgstr "Thread-Titel automatisch generieren"
+
+msgctxt "settings"
 msgid "Autoclose"
 msgstr "Automatisches Schließen"
 
@@ -2027,6 +2039,14 @@ msgstr "Dunkles Design"
 msgctxt "settings"
 msgid "Data Collection"
 msgstr "Datenerfassung"
+
+msgctxt "settings"
+msgid "Date Format"
+msgstr "Datumsformat"
+
+msgctxt "settings"
+msgid "Date Style"
+msgstr "Datumsdarstellung"
 
 msgctxt "settings"
 msgid "Debounce"
@@ -2497,12 +2517,20 @@ msgid "Excluded Callees"
 msgstr "Ausgeschlossene Aufgerufene"
 
 msgctxt "settings"
+msgid "Expand Description by Default"
+msgstr "Beschreibung standardmäßig aufklappen"
+
+msgctxt "settings"
 msgid "Expand Edit Card"
 msgstr "Bearbeitungskarte aufklappen"
 
 msgctxt "settings"
 msgid "Expand Excerpt Lines"
 msgstr "Auszug-Erweiterungszeilen"
+
+msgctxt "settings"
+msgid "Expand Files by Default"
+msgstr "Dateien standardmäßig aufklappen"
 
 msgctxt "settings"
 msgid "Expand Outlines With Depth"
@@ -2753,6 +2781,10 @@ msgid "Format On Save"
 msgstr "Beim Speichern formatieren"
 
 msgctxt "settings"
+msgid "Format absolute dates using locale, iso (YYYY-MM-DD HH:MM), or a strftime format such as %Y-%m-%d %H:%M."
+msgstr "Format absoluter Datumsangaben: locale, iso (YYYY-MM-DD HH:MM) oder ein strftime-Format wie %Y-%m-%d %H:%M."
+
+msgctxt "settings"
 msgid "Formatter"
 msgstr "Formatierer"
 
@@ -2785,8 +2817,16 @@ msgid "Git Blame View"
 msgstr "Git-Blame-Ansicht"
 
 msgctxt "settings"
+msgid "Git Commit View"
+msgstr "Git-Commit-Ansicht"
+
+msgctxt "settings"
 msgid "Git Diff"
 msgstr "Git-Diff"
+
+msgctxt "settings"
+msgid "Git Graph"
+msgstr "Commit-Graph"
 
 msgctxt "settings"
 msgid "Git Gutter"
@@ -4401,6 +4441,30 @@ msgid "Show quick action buttons (e.g., search, selection, editor controls, etc.
 msgstr "Schaltflächen für Schnellaktionen anzeigen (z. B. Suche, Auswahl, Editor-Steuerelemente usw.)."
 
 msgctxt "settings"
+msgid "Show relative or absolute dates in commit history."
+msgstr "Zeigt Datumsangaben im Commit-Verlauf relativ oder absolut an."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in graph rows."
+msgstr "Zeigt Datumsangaben in den Zeilen des Commit-Graphs relativ oder absolut an."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the blame gutter."
+msgstr "Zeigt Datumsangaben in der Blame-Randleiste relativ oder absolut an."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the branch picker."
+msgstr "Zeigt Datumsangaben in der Branch-Auswahl relativ oder absolut an."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates in the stash picker."
+msgstr "Zeigt Datumsangaben in der Stash-Auswahl relativ oder absolut an."
+
+msgctxt "settings"
+msgid "Show relative or absolute dates inline and in the status bar."
+msgstr "Zeigt Datumsangaben inline und in der Statusleiste relativ oder absolut an."
+
+msgctxt "settings"
 msgid "Show runnable buttons in the gutter."
 msgstr "Zeigt Schaltflächen für ausführbare Elemente in der Randleiste an."
 
@@ -4643,6 +4707,10 @@ msgstr "Startet die Suche in der Projektsuche bereits beim Tippen, ohne Enter zu
 msgctxt "settings"
 msgid "Starts Open"
 msgstr "Beim Start geöffnet"
+
+msgctxt "settings"
+msgid "Stash Picker"
+msgstr "Stash-Auswahl"
 
 msgctxt "settings"
 msgid "Status Bar"
@@ -5521,6 +5589,14 @@ msgid "Whether invoking a panel's ToggleFocus action while it's already focused 
 msgstr "Legt fest, ob das Aufrufen der ToggleFocus-Aktion eines Panels, während es bereits fokussiert ist, das Panel schließt, anstatt nur den Fokus zurück zum Editor zu verschieben."
 
 msgctxt "settings"
+msgid "Whether newly opened commit views expand every changed file."
+msgstr "Legt fest, ob neu geöffnete Commit-Ansichten alle geänderten Dateien aufklappen."
+
+msgctxt "settings"
+msgid "Whether newly opened commit views show the full commit description."
+msgstr "Legt fest, ob neu geöffnete Commit-Ansichten die vollständige Commit-Beschreibung anzeigen."
+
+msgctxt "settings"
 msgid "Whether newly opened file diffs show the full file instead of changes only."
 msgstr "Legt fest, ob bei neu geöffneten Datei-Diffs die gesamte Datei statt nur der Änderungen angezeigt wird."
 
@@ -5663,6 +5739,10 @@ msgstr "Legt fest, ob JSX-Tags automatisch geschlossen werden."
 msgctxt "settings"
 msgid "Whether to automatically enable case-sensitive search based on the search query."
 msgstr "Legt fest, ob die Groß-/Kleinschreibung bei der Suche basierend auf der Suchabfrage automatisch berücksichtigt wird."
+
+msgctxt "settings"
+msgid "Whether to automatically generate a title for Zed Agent threads using the summary model. When disabled, titles are only created when manually requested."
+msgstr "Legt fest, ob Titel für Threads des ForgeKairos Agent automatisch mit dem Zusammenfassungsmodell generiert werden. Wenn deaktiviert, werden Titel nur auf Anforderung erstellt."
 
 msgctxt "settings"
 msgid "Whether to automatically open Markdown files in the preview."

@@ -3491,6 +3491,11 @@ msgctxt "action documentation"
 msgid "git_panel::CollapseSelectedEntry"
 msgstr "折叠选中条目以隐藏其子项。"
 
+#. Picks a base branch and shows the files changed since it.
+msgctxt "action documentation"
+msgid "git_panel::CompareAgainstBase"
+msgstr "选择基准分支，并显示自该分支以来更改的文件。"
+
 #. Expands the selected entry to show its children.
 msgctxt "action documentation"
 msgid "git_panel::ExpandSelectedEntry"
@@ -3555,6 +3560,16 @@ msgstr "按名称排序条目。"
 msgctxt "action documentation"
 msgid "git_panel::SetSortByPath"
 msgstr "按路径排序条目。"
+
+#. Shows the files changed on the current branch since its base branch.
+msgctxt "action documentation"
+msgid "git_panel::ShowBranchChanges"
+msgstr "显示当前分支自其基准分支以来更改的文件。"
+
+#. Shows the uncommitted changes.
+msgctxt "action documentation"
+msgid "git_panel::ShowUncommittedChanges"
+msgstr "显示未提交的更改。"
 
 #. Toggles the git panel.
 msgctxt "action documentation"
@@ -4543,6 +4558,11 @@ msgstr "切换多选模式。在该模式下，点击条目会将其选中，\n�
 msgctxt "action documentation"
 msgid "picker::TogglePreview"
 msgstr "切换预览的隐藏和显示。"
+
+#. Toggles the project bookmarks search.
+msgctxt "action documentation"
+msgid "project_bookmarks::Toggle"
+msgstr "显示或隐藏项目书签搜索。"
 
 #. Collapses all entries in the project tree.
 msgctxt "action documentation"

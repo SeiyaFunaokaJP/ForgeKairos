@@ -692,9 +692,13 @@ mod tests {
             .unwrap();
 
         workspace.update(cx, |workspace, _cx| {
-            workspace.set_prompt_for_open_path(Box::new(|_, _, _, _| {
+            workspace.set_prompt_for_open_path(Box::new(|_, _, _, _, _| {
                 let (tx, rx) = futures::channel::oneshot::channel();
-                tx.send(Some(vec![PathBuf::from(path!("/project2"))])).ok();
+                tx.send(Some(workspace::OpenPathPromptResult {
+                    paths: vec![PathBuf::from(path!("/project2"))],
+                    open_in_new_window: false,
+                }))
+                .ok();
                 rx
             }));
         });
