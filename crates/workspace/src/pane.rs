@@ -3083,6 +3083,14 @@ impl Pane {
                             focus_handle.dispatch_action(&*action, window, cx);
                             return;
                         }
+                        if let Some(action) = item_handle.tab_double_click_action(cx) {
+                            // Deferred because the handlers of workspace actions read this pane.
+                            let focus_handle = item_handle.item_focus_handle(cx);
+                            window.defer(cx, move |window, cx| {
+                                focus_handle.dispatch_action(&*action, window, cx);
+                            });
+                            return;
+                        }
                     }
                     pane.activate_item(ix, true, true, window, cx)
                 }
@@ -7758,6 +7766,61 @@ mod tests {
             assert_eq!(i18n::t!("Rename"), "名前の変更");
         }
         double_click_on_tab_renames(Some(japanese), cx).await;
+    }
+
+    #[gpui::test]
+    async fn test_double_click_on_tab_dispatches_the_action_of_the_item(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, None, cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+
+        let dispatch_count = Rc::new(Cell::new(0));
+        cx.update(|_, cx| {
+            let dispatch_count = dispatch_count.clone();
+            let pane = pane.clone();
+            cx.on_action(move |_: &RenameTestTab, cx| {
+                // Workspace actions such as the language selector read the pane.
+                assert_eq!(pane.read(cx).items_len(), 1);
+                dispatch_count.set(dispatch_count.get() + 1);
+            });
+        });
+
+        let item = add_labeled_item(&pane, "A", false, cx);
+        cx.run_until_parked();
+        let tab_bounds = cx
+            .debug_bounds("TAB-0")
+            .expect("tab A should have debug bounds");
+        let click = |click_count: usize, cx: &mut VisualTestContext| {
+            cx.simulate_event(MouseDownEvent {
+                position: tab_bounds.center(),
+                button: MouseButton::Left,
+                modifiers: Modifiers::default(),
+                click_count,
+                first_mouse: false,
+            });
+            cx.run_until_parked();
+            cx.simulate_event(MouseUpEvent {
+                position: tab_bounds.center(),
+                button: MouseButton::Left,
+                modifiers: Modifiers::default(),
+                click_count,
+            });
+            cx.run_until_parked();
+        };
+
+        click(2, cx);
+        assert_eq!(dispatch_count.get(), 0, "the item names no action");
+
+        item.update(cx, |item, _| {
+            item.tab_double_click_action = Some(|| Box::new(RenameTestTab) as Box<dyn Action>);
+        });
+        click(1, cx);
+        assert_eq!(dispatch_count.get(), 0, "a single click only activates");
+        click(2, cx);
+        assert_eq!(dispatch_count.get(), 1);
     }
 
     #[gpui::test]

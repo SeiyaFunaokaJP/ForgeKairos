@@ -407,6 +407,9 @@ msgstr "在網路上搜尋選取的文字"
 msgid "See Docs"
 msgstr "檢視文件"
 
+msgid "Select Language"
+msgstr "選取語言"
+
 msgid "Selections for '{title}'"
 msgstr "「{title}」的選取範圍"
 

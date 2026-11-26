@@ -407,6 +407,9 @@ msgstr "선택한 텍스트를 웹에서 검색"
 msgid "See Docs"
 msgstr "문서 보기"
 
+msgid "Select Language"
+msgstr "언어 선택"
+
 msgid "Selections for '{title}'"
 msgstr "'{title}'의 선택 영역"
 

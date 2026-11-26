@@ -6,7 +6,7 @@ use editor::Editor;
 use fuzzy::{StringMatch, StringMatchCandidate, match_strings};
 use gpui::{
     App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, ParentElement,
-    Render, TaskExt, WeakEntity, Window, actions,
+    Render, TaskExt, WeakEntity, Window,
 };
 use language::{Buffer, LanguageMatcher, LanguageName, LanguageRegistry};
 use open_path_prompt::file_finder_settings::FileFinderSettings;
@@ -18,13 +18,7 @@ use ui::{HighlightedLabel, ListItem, ListItemSpacing, prelude::*};
 use util::ResultExt;
 use workspace::{ModalView, Workspace};
 
-actions!(
-    language_selector,
-    [
-        /// Toggles the language selector modal.
-        Toggle
-    ]
-);
+pub use zed_actions::language_selector::Toggle;
 
 pub fn init(cx: &mut App) {
     cx.observe_new(LanguageSelector::register).detach();

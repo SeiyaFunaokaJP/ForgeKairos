@@ -2614,9 +2614,7 @@ fn initialize_new_window(
     let buffer = project.update(cx, |project, cx| {
         project.create_local_buffer("", None, true, cx)
     });
-    buffer.update(cx, |buffer, _| {
-        buffer.set_content_language_detection_enabled(true);
-    });
+    Editor::initialize_untitled_buffer(&buffer, &project, cx);
     let editor = cx.new(|cx| Editor::for_buffer(buffer, Some(project), window, cx));
     workspace.add_item_to_active_pane(Box::new(editor), None, true, window, cx);
 }
@@ -5053,14 +5051,15 @@ mod tests {
                 editor.update(cx, |editor, cx| {
                     assert!(!editor.is_dirty(cx));
                     assert_eq!(editor.title(cx), "untitled");
-                    assert!(Arc::ptr_eq(
-                        &editor
+                    assert_eq!(
+                        editor
                             .buffer()
                             .read(cx)
                             .language_at(MultiBufferOffset(0), cx)
-                            .unwrap(),
-                        &languages::PLAIN_TEXT
-                    ));
+                            .unwrap()
+                            .name(),
+                        "Markdown"
+                    );
                     editor.handle_input("hi", window, cx);
                     assert!(editor.is_dirty(cx));
                 });
@@ -5211,14 +5210,15 @@ mod tests {
         window
             .update(cx, |_, window, cx| {
                 editor.update(cx, |editor, cx| {
-                    assert!(Arc::ptr_eq(
-                        &editor
+                    assert_eq!(
+                        editor
                             .buffer()
                             .read(cx)
                             .language_at(MultiBufferOffset(0), cx)
-                            .unwrap(),
-                        &languages::PLAIN_TEXT
-                    ));
+                            .unwrap()
+                            .name(),
+                        "Markdown"
+                    );
                     editor.handle_input("hi", window, cx);
                     assert!(editor.is_dirty(cx));
                 });

@@ -3068,6 +3068,10 @@ msgid "The key to use for adding multiple cursors\n\nDefault: alt"
 msgstr "複数カーソルを追加するために使用するキーです\n\n既定値: alt"
 
 msgctxt "settings schema"
+msgid "The language of a new untitled file. Use \"Plain Text\" for no language.\n\nDefault: Markdown"
+msgstr "新しい無題のファイルの言語です。言語なしにするには \"Plain Text\" を指定します。\n\n既定値: Markdown"
+
+msgctxt "settings schema"
 msgid "The language of the UI: \"system\" to follow the operating system, or a BCP 47\ntag such as \"en\", \"ja\" or \"pt-BR\".\n\nDefault: \"system\""
 msgstr "UI の言語。オペレーティングシステムに従う \"system\"、または \"en\"、\"ja\"、\"pt-BR\" などの BCP 47 のタグ。\n\n既定値: \"system\""
 

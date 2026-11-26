@@ -107,6 +107,7 @@ fn fork_settings_are_read_from_their_keys() {
         r#"{
             "acknowledged_external_ai_providers": ["anthropic", "edit_prediction:copilot"],
             "ui_language": "en",
+            "new_file_language": "Plain Text",
             "ide_server": { "enabled": true, "share_task_output": false },
             "remote": { "relay_http_through_client": false, "max_cpu_cores": 4 },
             "read_ssh_config": false,
@@ -135,6 +136,10 @@ fn fork_settings_are_read_from_their_keys() {
     assert_eq!(
         settings.ui_language.map(|language| language.0),
         Some("en".into())
+    );
+    assert_eq!(
+        settings.editor.new_file_language.as_deref(),
+        Some("Plain Text")
     );
     let ide_server = settings.ide_server.expect("ide_server is read");
     assert_eq!(ide_server.enabled, Some(true));

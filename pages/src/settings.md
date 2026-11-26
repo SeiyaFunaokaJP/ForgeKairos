@@ -27,6 +27,7 @@ The outbound network allowlist is not a setting in `settings.json`; it is kept i
 
 | Key | Default | Description |
 |---|---|---|
+| `new_file_language` | `"Markdown"` | Language of a new untitled file. `"Plain Text"` for no language. Double-click the tab of an untitled file to pick another language. |
 | `toolbar.markdown_format_bar` | `true` | Show the Markdown formatting row below the editor toolbar while a Markdown file is open. |
 | `hard_break_on_newline` | `false` (`true` for Markdown) | Pressing Enter first appends the two trailing spaces of a Markdown hard line break. |
 | `markdown_preview.soft_break_as_hard_break` | `true` | Render a single newline in the Markdown preview as a line break. |

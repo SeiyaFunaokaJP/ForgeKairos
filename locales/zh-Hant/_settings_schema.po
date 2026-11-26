@@ -3067,6 +3067,10 @@ msgid "The key to use for adding multiple cursors\n\nDefault: alt"
 msgstr "用於新增多重游標的按鍵\n\n預設值：alt"
 
 msgctxt "settings schema"
+msgid "The language of a new untitled file. Use \"Plain Text\" for no language.\n\nDefault: Markdown"
+msgstr "新的未命名檔案的語言。使用 \"Plain Text\" 表示不指定語言。\n\n預設值：Markdown"
+
+msgctxt "settings schema"
 msgid "The language of the UI: \"system\" to follow the operating system, or a BCP 47\ntag such as \"en\", \"ja\" or \"pt-BR\".\n\nDefault: \"system\""
 msgstr "UI 的語言：\"system\" 表示依循作業系統，或使用 BCP 47 標籤，例如 \"en\"、\"ja\" 或 \"pt-BR\"。\n\n預設值：\"system\""
 

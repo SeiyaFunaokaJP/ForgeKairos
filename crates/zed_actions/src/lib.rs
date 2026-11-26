@@ -894,6 +894,18 @@ pub mod outline {
     pub static TOGGLE_OUTLINE: OnceLock<fn(AnyView, &mut Window, &mut App)> = OnceLock::new();
 }
 
+pub mod language_selector {
+    use gpui::actions;
+
+    actions!(
+        language_selector,
+        [
+            /// Toggles the language selector modal.
+            Toggle
+        ]
+    );
+}
+
 actions!(
     zed_predict_onboarding,
     [

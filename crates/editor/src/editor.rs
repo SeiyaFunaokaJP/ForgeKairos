@@ -3062,16 +3062,57 @@ impl Editor {
 
         cx.spawn_in(window, async move |workspace, cx| {
             let buffer = create.await?;
-            buffer.update(cx, |buffer, _| {
-                buffer.set_content_language_detection_enabled(true);
-            });
             workspace.update_in(cx, |workspace, window, cx| {
+                Self::initialize_untitled_buffer(&buffer, &project, cx);
                 let editor =
                     cx.new(|cx| Editor::for_buffer(buffer, Some(project.clone()), window, cx));
                 workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
                 editor
             })
         })
+    }
+
+    /// Turns on content language detection for the buffer of a new untitled file and gives
+    /// the buffer the language named by the `new_file_language` setting.
+    pub fn initialize_untitled_buffer(
+        buffer: &Entity<Buffer>,
+        project: &Entity<Project>,
+        cx: &mut App,
+    ) {
+        buffer.update(cx, |buffer, _| {
+            buffer.set_content_language_detection_enabled(true);
+        });
+        let language_name = EditorSettings::get_global(cx).new_file_language.clone();
+        if language_name.is_empty() || language_name == language::PLAIN_TEXT.name().as_ref() {
+            return;
+        }
+        let load_language = project
+            .read(cx)
+            .languages()
+            .language_for_name(&language_name);
+        let buffer = buffer.downgrade();
+        cx.spawn(async move |cx| match load_language.await {
+            Ok(language) => {
+                buffer
+                    .update(cx, |buffer, cx| {
+                        // The language may have been picked or detected while this one loaded.
+                        let has_no_language = buffer
+                            .language()
+                            .is_none_or(|current| *current == *language::PLAIN_TEXT);
+                        if has_no_language
+                            && buffer.file().is_none()
+                            && buffer.content_language_detection_enabled()
+                        {
+                            buffer.set_language(Some(language), cx);
+                        }
+                    })
+                    .ok();
+            }
+            Err(error) => {
+                log::warn!("`new_file_language` is set to {language_name:?}: {error:#}");
+            }
+        })
+        .detach();
     }
 
     fn new_file_vertical(
@@ -3112,10 +3153,8 @@ impl Editor {
 
         cx.spawn_in(window, async move |workspace, cx| {
             let buffer = create.await?;
-            buffer.update(cx, |buffer, _| {
-                buffer.set_content_language_detection_enabled(true);
-            });
             workspace.update_in(cx, move |workspace, window, cx| {
+                Self::initialize_untitled_buffer(&buffer, &project, cx);
                 workspace.split_item(
                     direction,
                     Box::new(

@@ -407,6 +407,9 @@ msgstr "Buscar la selección en la web"
 msgid "See Docs"
 msgstr "Ver documentación"
 
+msgid "Select Language"
+msgstr "Seleccionar lenguaje"
+
 msgid "Selections for '{title}'"
 msgstr "Selecciones de '{title}'"
 

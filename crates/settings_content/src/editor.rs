@@ -177,6 +177,11 @@ pub struct EditorSettingsContent {
     /// Default: true
     pub language_detection: Option<bool>,
 
+    /// The language of a new untitled file. Use "Plain Text" for no language.
+    ///
+    /// Default: Markdown
+    pub new_file_language: Option<String>,
+
     /// Whether to show the signature help pop-up after completions or bracket pairs inserted.
     ///
     /// Default: false
