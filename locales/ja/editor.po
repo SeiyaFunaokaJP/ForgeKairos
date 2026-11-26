@@ -404,6 +404,9 @@ msgstr "選択テキストを Web で検索"
 msgid "See Docs"
 msgstr "ドキュメントを見る"
 
+msgid "Select Language"
+msgstr "言語モードを選択"
+
 msgid "Selections for '{title}'"
 msgstr "'{title}' の選択範囲"
 

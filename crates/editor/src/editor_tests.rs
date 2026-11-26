@@ -12235,6 +12235,108 @@ async fn test_kill_ring_yank_pop_through_dispatched_actions(cx: &mut TestAppCont
 }
 
 #[gpui::test]
+async fn test_new_file_uses_new_file_language(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let fs = FakeFs::new(cx.executor());
+    let project = Project::test(fs, [], cx).await;
+    project.read_with(cx, |project, _| {
+        project.languages().add(markdown_lang());
+        project.languages().add(rust_lang());
+    });
+    let (multi_workspace, cx) =
+        cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let workspace =
+        multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+
+    async fn new_file_language(
+        workspace: &Entity<Workspace>,
+        cx: &mut VisualTestContext,
+    ) -> LanguageName {
+        let editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                Editor::new_in_workspace(workspace, window, cx)
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+        editor.read_with(cx, |editor, cx| {
+            let buffer = editor.buffer().read(cx).as_singleton().unwrap().read(cx);
+            assert!(buffer.content_language_detection_enabled());
+            assert!(!buffer.is_dirty());
+            assert!(editor.tab_double_click_action(cx).is_some());
+            buffer.language().unwrap().name()
+        })
+    }
+
+    assert_eq!(
+        new_file_language(&workspace, cx).await,
+        LanguageName::new("Markdown")
+    );
+    workspace.read_with(cx, |workspace, cx| {
+        let editor = workspace.active_item_as::<Editor>(cx).unwrap();
+        assert_eq!(
+            editor.read(cx).suggested_filename(cx).as_ref(),
+            "untitled.md"
+        );
+    });
+
+    cx.update(|_, cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.editor.new_file_language = Some("Rust".into());
+            });
+        })
+    });
+    assert_eq!(
+        new_file_language(&workspace, cx).await,
+        LanguageName::new("Rust")
+    );
+
+    for no_language in ["Plain Text", "", "No Such Language"] {
+        cx.update(|_, cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.editor.new_file_language = Some(no_language.into());
+                });
+            })
+        });
+        assert_eq!(
+            new_file_language(&workspace, cx).await,
+            PLAIN_TEXT.name(),
+            "new_file_language = {no_language:?}"
+        );
+    }
+}
+
+#[gpui::test]
+async fn test_new_file_language_keeps_a_language_picked_while_it_loads(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+
+    let fs = FakeFs::new(cx.executor());
+    let project = Project::test(fs, [], cx).await;
+    project.read_with(cx, |project, _| {
+        project.languages().add(markdown_lang());
+        project.languages().add(rust_lang());
+    });
+    let buffer = project
+        .update(cx, |project, cx| project.create_buffer(None, true, cx))
+        .await
+        .unwrap();
+
+    cx.update(|cx| Editor::initialize_untitled_buffer(&buffer, &project, cx));
+    project.update(cx, |project, cx| {
+        project.set_language_for_buffer(&buffer, rust_lang(), cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(
+        buffer.read_with(cx, |buffer, _| buffer.language().unwrap().name()),
+        LanguageName::new("Rust")
+    );
+}
+
+#[gpui::test]
 async fn test_editing_untitled_buffer_redetects_language(cx: &mut TestAppContext) {
     init_test(cx, |_| {});
     update_test_editor_settings(cx, &|settings| {

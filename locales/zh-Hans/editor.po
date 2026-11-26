@@ -407,6 +407,9 @@ msgstr "在网上搜索所选文本"
 msgid "See Docs"
 msgstr "查看文档"
 
+msgid "Select Language"
+msgstr "选择语言"
+
 msgid "Selections for '{title}'"
 msgstr "“{title}”的选区"
 

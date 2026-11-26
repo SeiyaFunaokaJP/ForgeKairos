@@ -3063,6 +3063,10 @@ msgid "The key to use for adding multiple cursors\n\nDefault: alt"
 msgstr "La tecla que se usa para agregar varios cursores\n\nValor predeterminado: alt"
 
 msgctxt "settings schema"
+msgid "The language of a new untitled file. Use \"Plain Text\" for no language.\n\nDefault: Markdown"
+msgstr "El lenguaje de un archivo nuevo sin título. Usa \"Plain Text\" para no asignar ningún lenguaje.\n\nValor predeterminado: Markdown"
+
+msgctxt "settings schema"
 msgid "The language of the UI: \"system\" to follow the operating system, or a BCP 47\ntag such as \"en\", \"ja\" or \"pt-BR\".\n\nDefault: \"system\""
 msgstr "El idioma de la interfaz: \"system\" para seguir el sistema operativo, o una etiqueta BCP 47 como \"en\", \"ja\" o \"pt-BR\".\n\nValor predeterminado: \"system\""
 

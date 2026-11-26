@@ -434,6 +434,11 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
     ) -> Vec<(SharedString, Box<dyn Action>)> {
         Vec::new()
     }
+
+    /// The action a double-click on the tab dispatches to the item.
+    fn tab_double_click_action(&self, _cx: &App) -> Option<Box<dyn Action>> {
+        None
+    }
 }
 
 pub trait SerializableItem: Item {
@@ -622,6 +627,7 @@ pub trait ItemHandle: 'static + Send {
         window: &mut Window,
         cx: &mut App,
     ) -> Vec<(SharedString, Box<dyn Action>)>;
+    fn tab_double_click_action(&self, cx: &App) -> Option<Box<dyn Action>>;
     fn can_autosave(&self, cx: &App) -> bool {
         let is_deleted = self.project_entry_ids(cx).is_empty();
         self.is_dirty(cx) && !self.has_conflict(cx) && self.can_save(cx) && !is_deleted
@@ -1252,6 +1258,10 @@ impl<T: Item> ItemHandle for Entity<T> {
             this.tab_extra_context_menu_actions(window, cx)
         })
     }
+
+    fn tab_double_click_action(&self, cx: &App) -> Option<Box<dyn Action>> {
+        self.read(cx).tab_double_click_action(cx)
+    }
 }
 
 impl From<Box<dyn ItemHandle>> for AnyView {
@@ -1536,6 +1546,7 @@ pub mod test {
         pub tab_descriptions: Option<Vec<&'static str>>,
         /// Built on every call, as items build their labels in the current language.
         pub tab_extra_actions: Vec<fn() -> (SharedString, Box<dyn Action>)>,
+        pub tab_double_click_action: Option<fn() -> Box<dyn Action>>,
         pub tab_detail: Cell<Option<usize>>,
         serialize: Option<Box<dyn Fn() -> Option<Task<anyhow::Result<()>>>>>,
         focus_handle: gpui::FocusHandle,
@@ -1639,6 +1650,7 @@ pub mod test {
                 nav_history: None,
                 tab_descriptions: None,
                 tab_extra_actions: Vec::new(),
+                tab_double_click_action: None,
                 tab_detail: Default::default(),
                 workspace_id: Default::default(),
                 focus_handle: cx.focus_handle(),
@@ -1787,6 +1799,11 @@ pub mod test {
                 .collect()
         }
 
+        fn tab_double_click_action(&self, _cx: &App) -> Option<Box<dyn Action>> {
+            self.tab_double_click_action
+                .map(|build_action| build_action())
+        }
+
         fn tab_content_text(&self, detail: usize, _cx: &App) -> SharedString {
             self.tab_descriptions
                 .as_ref()
@@ -1883,6 +1900,7 @@ pub mod test {
                     nav_history: None,
                     tab_descriptions: None,
                     tab_extra_actions: self.tab_extra_actions.clone(),
+                    tab_double_click_action: self.tab_double_click_action,
                     tab_detail: Default::default(),
                     workspace_id: self.workspace_id,
                     focus_handle: cx.focus_handle(),

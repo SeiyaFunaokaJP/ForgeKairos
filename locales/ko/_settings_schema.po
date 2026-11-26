@@ -3063,6 +3063,10 @@ msgid "The key to use for adding multiple cursors\n\nDefault: alt"
 msgstr "다중 커서를 추가하는 데 사용할 키\n\n기본값: alt"
 
 msgctxt "settings schema"
+msgid "The language of a new untitled file. Use \"Plain Text\" for no language.\n\nDefault: Markdown"
+msgstr "제목 없는 새 파일의 언어입니다. 언어를 지정하지 않으려면 \"Plain Text\"를 사용합니다.\n\n기본값: Markdown"
+
+msgctxt "settings schema"
 msgid "The language of the UI: \"system\" to follow the operating system, or a BCP 47\ntag such as \"en\", \"ja\" or \"pt-BR\".\n\nDefault: \"system\""
 msgstr "UI 언어입니다: 운영 체제를 따르려면 \"system\", 또는 \"en\", \"ja\", \"pt-BR\" 같은 BCP 47 태그입니다.\n\n기본값: \"system\""
 

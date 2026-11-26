@@ -26,6 +26,7 @@ ForgeKairos が Zed に足した設定と、既定値を変えた Zed の設定�
 
 | キー | 既定値 | 説明 |
 |---|---|---|
+| `new_file_language` | `"Markdown"` | 新しい無題のファイルの言語。言語なしにするには `"Plain Text"`。無題のファイルのタブをダブルクリックすると別の言語を選べる。 |
 | `toolbar.markdown_format_bar` | `true` | Markdown を開いている間、エディターのツールバーの下に整形の行を出す。 |
 | `hard_break_on_newline` | `false` (Markdown は `true`) | Enter を押したとき、先に Markdown の強制改行 (行末のスペース 2 つ) を足す。 |
 | `markdown_preview.soft_break_as_hard_break` | `true` | Markdown のプレビューで 1 つの改行を改行として表示する。 |

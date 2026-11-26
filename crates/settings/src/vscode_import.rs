@@ -271,6 +271,7 @@ impl VsCodeSettings {
         EditorSettingsContent {
             auto_signature_help: self.read_bool("editor.parameterHints.enabled"),
             language_detection: self.read_bool("workbench.editor.languageDetection"),
+            new_file_language: None,
             autoscroll_on_clicks: None,
             cursor_blink: self.read_enum("editor.cursorBlinking", |s| match s {
                 "blink" | "phase" | "expand" | "smooth" => Some(true),

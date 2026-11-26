@@ -1276,11 +1276,32 @@ impl Item for Editor {
             ));
         }
 
+        if self.is_untitled(cx) {
+            actions.push((
+                i18n::t!("Select Language").into(),
+                Box::new(zed_actions::language_selector::Toggle) as Box<dyn gpui::Action>,
+            ));
+        }
+
         actions
+    }
+
+    fn tab_double_click_action(&self, cx: &App) -> Option<Box<dyn gpui::Action>> {
+        self.is_untitled(cx)
+            .then(|| Box::new(zed_actions::language_selector::Toggle) as Box<dyn gpui::Action>)
     }
 
     fn preserve_preview(&self, cx: &App) -> bool {
         self.buffer.read(cx).preserve_preview(cx)
+    }
+}
+
+impl Editor {
+    fn is_untitled(&self, cx: &App) -> bool {
+        self.buffer
+            .read(cx)
+            .as_singleton()
+            .is_some_and(|buffer| buffer.read(cx).file().is_none())
     }
 }
 
@@ -1475,13 +1496,11 @@ impl SerializableItem for Editor {
                     .update(cx, |project, cx| project.create_buffer(None, true, cx))
                     .await
                     .context("Failed to create buffer")?;
-                if language.is_none() {
-                    buffer.update(cx, |buffer, _| {
-                        buffer.set_content_language_detection_enabled(true);
-                    });
-                }
 
                 cx.update(|window, cx| {
+                    if language.is_none() {
+                        Editor::initialize_untitled_buffer(&buffer, &project, cx);
+                    }
                     cx.new(|cx| {
                         let mut editor = Editor::for_buffer(buffer, Some(project), window, cx);
 
