@@ -1086,9 +1086,9 @@ p13.i4.link_description	AI が起点になる外部通信 (AI プロバイダー
 p13.i5.header	リモート
 p13.i6[remote.relay_http_through_client].title	リモートの通信をこの PC 経由にする
 p13.i6[remote.relay_http_through_client].description	オンにすると、SSH などのリモートホストが行う外部通信 (言語サーバーや node のダウンロード、拡張機能のアーカイブ、エージェントのバイナリ) をこの PC が代行します。インターネットに出られないリモートでも言語サーバーを自動取得できます。許可リストと同意ダイアログの対象になるのはエージェント関連の取得だけで、言語サーバーなど IDE の道具立ての取得は制限されません。オフにするとリモートが自分で外部に接続します。切り替えは再接続なしで反映されます。
-p13.i7.header	開発ツール
-p13.i8[dev_tools.suggest_missing].title	足りない開発ツールを知らせる
-p13.i8[dev_tools.suggest_missing].description	オンにすると、開いたファイルの言語に必要な言語サーバーやフォーマッタ (C なら clangd と clang-format、Python なら Ruff) が見つからないときに通知を出し、その場で導入できます。導入先はユーザーのデータディレクトリ内だけで、管理者権限は要らず、他のユーザーにも影響しません。リモート接続中は接続先を調べて接続先に導入し、取得はこの PC のネットワーク経由で行うので、接続先がインターネットに出られなくても入ります。個別に知らせないツールは settings.json の `dev_tools.ignored` に ID を並べます (通知の「今後表示しない」でも追加されます)。
+p13.i8.header	開発ツール
+p13.i9[dev_tools.suggest_missing].title	足りない開発ツールを知らせる
+p13.i9[dev_tools.suggest_missing].description	オンにすると、開いたファイルの言語に必要な言語サーバーやフォーマッタ (C なら clangd と clang-format、Python なら Ruff) が見つからないときに通知を出し、その場で導入できます。導入先はユーザーのデータディレクトリ内だけで、管理者権限は要らず、他のユーザーにも影響しません。リモート接続中は接続先を調べて接続先に導入し、取得はこの PC のネットワーク経由で行うので、接続先がインターネットに出られなくても入ります。個別に知らせないツールは settings.json の `dev_tools.ignored` に ID を並べます (通知の「今後表示しない」でも追加されます)。
 p14.title	ブラウザー
 p14.i0.header	ブラウジング
 p14.i1[browser.home_url].title	起動時に開くページ

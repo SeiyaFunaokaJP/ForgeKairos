@@ -108,7 +108,7 @@ fn fork_settings_are_read_from_their_keys() {
             "acknowledged_external_ai_providers": ["anthropic", "edit_prediction:copilot"],
             "ui_language": "en",
             "ide_server": { "enabled": true, "share_task_output": false },
-            "remote": { "relay_http_through_client": false },
+            "remote": { "relay_http_through_client": false, "max_cpu_cores": 4 },
             "read_ssh_config": false,
             "browser": { "starts_open": true },
             "tabular_data": { "open_as_grid": false },
@@ -139,13 +139,11 @@ fn fork_settings_are_read_from_their_keys() {
     let ide_server = settings.ide_server.expect("ide_server is read");
     assert_eq!(ide_server.enabled, Some(true));
     assert_eq!(ide_server.share_task_output, Some(false));
-    assert_eq!(
-        settings
-            .remote_host
-            .expect("`remote` is read into remote_host")
-            .relay_http_through_client,
-        Some(false)
-    );
+    let remote_host = settings
+        .remote_host
+        .expect("`remote` is read into remote_host");
+    assert_eq!(remote_host.relay_http_through_client, Some(false));
+    assert_eq!(remote_host.max_cpu_cores, Some(4));
     // The same top-level key space also feeds the flattened connection lists.
     assert_eq!(settings.remote.read_ssh_config, Some(false));
     assert_eq!(settings.browser.expect("browser").starts_open, Some(true));

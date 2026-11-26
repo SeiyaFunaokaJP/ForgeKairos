@@ -54,6 +54,14 @@ reconnecting.
 When a language server or formatter is missing, a notification offers to install it
 (`dev_tools.suggest_missing`). While connected to a remote host, it is installed on that host.
 
+## Limiting CPU use on the host
+
+Set `remote.max_cpu_cores` to keep the remote server on that many CPU cores of a Linux or
+WSL host. The limit also covers the language servers and git that the server starts, so
+indexing after a reconnect no longer takes every core of a shared host. Terminals, tasks,
+and agents are not limited: a build you run keeps all cores. `0` (the default)
+means no limit. The setting applies without reconnecting.
+
 ## File watching on Linux
 
 On Linux (locally and on remote hosts), ForgeKairos adds inotify watches only while all of

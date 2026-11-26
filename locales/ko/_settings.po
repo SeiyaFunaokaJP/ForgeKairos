@@ -3357,6 +3357,10 @@ msgid "Limit the diagnostics attached with @diagnostics to this many files. Valu
 msgstr "@diagnostics로 첨부하는 진단을 이 개수의 파일로 제한합니다. 1 미만의 값은 1로 처리됩니다."
 
 msgctxt "settings"
+msgid "Limits how many CPU cores the remote server uses on a Linux or WSL host. The limit also covers the language servers and git that the server starts. Terminals, tasks, and agents are not limited. 0 means no limit. Changes apply without reconnecting."
+msgstr "Linux 또는 WSL 호스트에서 원격 서버가 사용하는 CPU 코어 수를 제한합니다. 원격 서버가 시작하는 언어 서버와 git에도 제한이 적용됩니다. 터미널, 작업, 에이전트는 제한되지 않습니다. 0은 제한 없음을 의미합니다. 변경 사항은 다시 연결하지 않아도 적용됩니다."
+
+msgctxt "settings"
 msgid "Line Ending"
 msgstr "줄 끝 문자"
 
@@ -3871,6 +3875,10 @@ msgstr "원격 다운로드를 이 PC를 통해 중계"
 msgctxt "settings"
 msgid "Remote"
 msgstr "원격"
+
+msgctxt "settings"
+msgid "Remote CPU Core Limit"
+msgstr "원격 CPU 코어 수 제한"
 
 msgctxt "settings"
 msgid "Remote Terminal Persistence"

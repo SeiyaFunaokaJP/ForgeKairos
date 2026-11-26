@@ -1748,6 +1748,10 @@ msgid "Leave the window open when there are no tabs"
 msgstr "タブがないときもウィンドウを開いたままにします"
 
 msgctxt "settings schema"
+msgid "Limits how many CPU cores the remote server uses on a Linux or WSL host.\nThe limit also covers the language servers and git that the server\nstarts. Terminals, tasks, and agents are not limited. 0 means no limit.\n\nDefault: 0"
+msgstr "Linux または WSL のホストで、リモートサーバーが使う CPU コアの数を制限します。リモートサーバーが起動する言語サーバーと git も制限の対象です。ターミナル、タスク、エージェントは制限されません。0 は無制限です。\n\n既定値: 0"
+
+msgctxt "settings schema"
 msgid "Limits on how much of an attachment (a file, a directory, a selection,\na fetched page, diagnostics or a branch diff) is sent to the agent.\nAnything over these limits is sent as an outline or a reference the\nagent can follow up on instead of in full."
 msgstr "添付 (ファイル、ディレクトリ、選択範囲、取得したページ、診断、ブランチの差分) をエージェントにどれだけ送るかの上限。上限を超えた分は、全体の代わりに、アウトラインか、エージェントがたどれる参照として送ります。"
 

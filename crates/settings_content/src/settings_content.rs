@@ -1671,6 +1671,12 @@ pub struct RemoteHostSettingsContent {
     ///
     /// Default: true
     pub relay_http_through_client: Option<bool>,
+    /// Limits how many CPU cores the remote server uses on a Linux or WSL host.
+    /// The limit also covers the language servers and git that the server
+    /// starts. Terminals, tasks, and agents are not limited. 0 means no limit.
+    ///
+    /// Default: 0
+    pub max_cpu_cores: Option<u32>,
 }
 
 #[with_fallible_options]

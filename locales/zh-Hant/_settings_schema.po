@@ -1747,6 +1747,10 @@ msgid "Leave the window open when there are no tabs"
 msgstr "沒有分頁時保持視窗開啟"
 
 msgctxt "settings schema"
+msgid "Limits how many CPU cores the remote server uses on a Linux or WSL host.\nThe limit also covers the language servers and git that the server\nstarts. Terminals, tasks, and agents are not limited. 0 means no limit.\n\nDefault: 0"
+msgstr "限制遠端伺服器在 Linux 或 WSL 主機上使用的 CPU 核心數。遠端伺服器啟動的語言伺服器和 git 也受此限制。終端機、工作和代理不受限制。0 表示不設限。\n\n預設值：0"
+
+msgctxt "settings schema"
 msgid "Limits on how much of an attachment (a file, a directory, a selection,\na fetched page, diagnostics or a branch diff) is sent to the agent.\nAnything over these limits is sent as an outline or a reference the\nagent can follow up on instead of in full."
 msgstr "附件（檔案、資料夾、選取範圍、擷取的頁面、診斷或分支差異）傳送給代理之內容量的上限。超過這些上限的部分會以大綱或代理可後續追查的參考傳送，而非完整內容。"
 

@@ -11464,3 +11464,27 @@ async fn test_remote_restart_reopens_the_buffers_the_client_registered(
         "the restarted server gets the client's unsaved text, and not the buffer the client never registered"
     );
 }
+
+// A setting that only the host acts on, such as `remote.max_cpu_cores`, has to
+// reach it with the connection, not with the next unrelated settings change.
+#[gpui::test]
+async fn test_user_settings_from_before_the_connection_reach_the_host(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = remote_tree("{}".to_string(), server_cx).await;
+    cx.update(|cx| {
+        let mut settings_store = SettingsStore::test(cx);
+        settings_store
+            .set_user_settings(&json!({ "remote": { "max_cpu_cores": 3 } }).to_string(), cx)
+            .unwrap();
+        cx.set_global(settings_store);
+    });
+    let (_project, _headless) = init_test(&fs, cx, server_cx).await;
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+
+    let max_cpu_cores =
+        server_cx.update(|cx| crate::RemoteHostSettings::get_global(cx).max_cpu_cores);
+    assert_eq!(max_cpu_cores, 3);
+}

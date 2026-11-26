@@ -1,3 +1,4 @@
+mod cpu_limit;
 mod daemon;
 pub mod display_language;
 mod headless_project;
@@ -661,6 +662,7 @@ pub fn execute_daemon(log_file: PathBuf, state_dir: PathBuf) -> Result<()> {
             cx,
         );
         let relay_http_through_client = watch_relay_http_setting(cx);
+        cpu_limit::init(cx);
 
         let fs = RealFs::new(None, cx.background_executor().clone());
         let node_settings_rx = initialize_settings(router.clone(), fs.clone(), cx);
@@ -1878,6 +1880,9 @@ pub fn handle_settings_file_changes(
 #[derive(Clone, Debug, PartialEq, RegisterSetting)]
 pub struct RemoteHostSettings {
     pub relay_http_through_client: bool,
+    /// How many CPU cores the daemon and the processes it starts may use
+    /// (see `cpu_limit`). 0 for all of them.
+    pub max_cpu_cores: u32,
 }
 
 impl Settings for RemoteHostSettings {
@@ -1885,6 +1890,7 @@ impl Settings for RemoteHostSettings {
         let remote_host = content.remote_host.clone().unwrap_or_default();
         Self {
             relay_http_through_client: remote_host.relay_http_through_client.unwrap_or(true),
+            max_cpu_cores: remote_host.max_cpu_cores.unwrap_or(0),
         }
     }
 }

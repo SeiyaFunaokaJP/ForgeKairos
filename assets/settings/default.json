@@ -3591,7 +3591,13 @@
     // fetched automatically even on a remote without internet access, and the
     // downloads fall under this machine's allowlist, consent dialogs and proxy.
     // Changes apply without reconnecting.
-    "relay_http_through_client": true
+    "relay_http_through_client": true,
+    // Limits how many CPU cores the remote server uses on a Linux or WSL
+    // host, so that indexing does not saturate a host shared with other work.
+    // The limit also covers the language servers and git that the server
+    // starts. Terminals, tasks, and agents are not limited. 0 means no limit.
+    // Changes apply without reconnecting.
+    "max_cpu_cores": 0
   },
   // Default timeout in seconds for all context server tool calls.
   // Individual servers can override this in their configuration.

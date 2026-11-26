@@ -3354,6 +3354,10 @@ msgid "Limit the diagnostics attached with @diagnostics to this many files. Valu
 msgstr "@diagnostics で添付する診断を、この数のファイルまでに絞ります。1 未満は 1 として扱われます。"
 
 msgctxt "settings"
+msgid "Limits how many CPU cores the remote server uses on a Linux or WSL host. The limit also covers the language servers and git that the server starts. Terminals, tasks, and agents are not limited. 0 means no limit. Changes apply without reconnecting."
+msgstr "Linux または WSL のホストで、リモートサーバーが使う CPU コアの数を制限します。リモートサーバーが起動する言語サーバーと git も制限の対象です。ターミナル、タスク、エージェントは制限されません。0 は無制限です。変更は再接続なしで反映されます。"
+
+msgctxt "settings"
 msgid "Line Ending"
 msgstr "改行コード"
 
@@ -3868,6 +3872,10 @@ msgstr "リモートの通信をこの PC 経由にする"
 msgctxt "settings"
 msgid "Remote"
 msgstr "リモート"
+
+msgctxt "settings"
+msgid "Remote CPU Core Limit"
+msgstr "リモートの CPU コア数の上限"
 
 msgctxt "settings"
 msgid "Remote Terminal Persistence"

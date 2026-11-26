@@ -1747,6 +1747,10 @@ msgid "Leave the window open when there are no tabs"
 msgstr "Deixa a janela aberta quando não há abas"
 
 msgctxt "settings schema"
+msgid "Limits how many CPU cores the remote server uses on a Linux or WSL host.\nThe limit also covers the language servers and git that the server\nstarts. Terminals, tasks, and agents are not limited. 0 means no limit.\n\nDefault: 0"
+msgstr "Limita quantos núcleos de CPU o servidor remoto usa em um host Linux ou WSL. O limite também vale para os servidores de linguagem e o git que o servidor remoto inicia. Terminais, tarefas e agentes não são limitados. 0 significa sem limite.\n\nPadrão: 0"
+
+msgctxt "settings schema"
 msgid "Limits on how much of an attachment (a file, a directory, a selection,\na fetched page, diagnostics or a branch diff) is sent to the agent.\nAnything over these limits is sent as an outline or a reference the\nagent can follow up on instead of in full."
 msgstr "Limites de quanto de um anexo (um arquivo, um diretório, uma seleção, uma página obtida, diagnósticos ou um diff de branch) é enviado ao agente.\nTudo o que ultrapassar esses limites é enviado como uma estrutura ou uma referência que o agente pode acompanhar, em vez de completo."
 

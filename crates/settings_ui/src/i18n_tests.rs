@@ -552,6 +552,16 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p12.i38[agent.auto_generate_thread_titles].description",
         "要約用のモデルで ForgeKairos Agent のスレッドのタイトルを自動生成するかどうかを設定します。オフにすると、タイトルは手動で要求したときだけ作成されます。",
     ),
+    // ForgeKairos: the remote host's CPU core limit, which moves the
+    // development tools' rows (renumbered in the fixture) down.
+    (
+        "p13.i7[remote.max_cpu_cores].title",
+        "リモートの CPU コア数の上限",
+    ),
+    (
+        "p13.i7[remote.max_cpu_cores].description",
+        "Linux または WSL のホストで、リモートサーバーが使う CPU コアの数を制限します。リモートサーバーが起動する言語サーバーと git も制限の対象です。ターミナル、タスク、エージェントは制限されません。0 は無制限です。変更は再接続なしで反映されます。",
+    ),
 ];
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.

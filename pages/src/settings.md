@@ -119,6 +119,7 @@ The browser panel uses Microsoft Edge WebView2 on Windows. On other platforms it
 | Key | Default | Description |
 |---|---|---|
 | `remote.relay_http_through_client` | `true` | Route the remote host's downloads (language servers, node, extensions, agent binaries) through this machine. |
+| `remote.max_cpu_cores` | `0` | Limit how many CPU cores the remote server uses on a Linux or WSL host, including the language servers and git the server starts. Terminals, tasks, and agents are not limited. 0 means no limit. |
 | `dev_tools.suggest_missing` | `true` | Notify about missing language servers and formatters, with a button to install them into your data folder. |
 | `dev_tools.ignored` | `[]` | Tools not to suggest (for example `"clangd"`). |
 

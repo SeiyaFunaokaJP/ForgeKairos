@@ -3357,6 +3357,10 @@ msgid "Limit the diagnostics attached with @diagnostics to this many files. Valu
 msgstr "Limita los diagnósticos adjuntados con @diagnostics a este número de archivos. Los valores inferiores a 1 se tratan como 1."
 
 msgctxt "settings"
+msgid "Limits how many CPU cores the remote server uses on a Linux or WSL host. The limit also covers the language servers and git that the server starts. Terminals, tasks, and agents are not limited. 0 means no limit. Changes apply without reconnecting."
+msgstr "Limita cuántos núcleos de CPU usa el servidor remoto en un host Linux o WSL. El límite también se aplica a los servidores de lenguaje y a git que inicia el servidor remoto. Los terminales, las tareas y los agentes no se limitan. 0 significa que no hay límite. Los cambios se aplican sin volver a conectar."
+
+msgctxt "settings"
 msgid "Line Ending"
 msgstr "Final de línea"
 
@@ -3871,6 +3875,10 @@ msgstr "Retransmitir las descargas remotas a través de este equipo"
 msgctxt "settings"
 msgid "Remote"
 msgstr "Remoto"
+
+msgctxt "settings"
+msgid "Remote CPU Core Limit"
+msgstr "Límite de núcleos de CPU en hosts remotos"
 
 msgctxt "settings"
 msgid "Remote Terminal Persistence"
