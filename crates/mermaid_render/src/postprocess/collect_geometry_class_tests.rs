@@ -12,7 +12,7 @@ use quick_xml::events::Event;
 use crate::{DiagramGeometry, MermaidTheme, NodeGeometry, render_to_svg_with_geometry};
 
 fn geometry_of(source: &str) -> (String, DiagramGeometry) {
-    render_to_svg_with_geometry(source, &MermaidTheme::default())
+    render_to_svg_with_geometry(source, &MermaidTheme::default(), crate::test_svg_renderer())
         .expect("mermaid diagram should render to SVG")
 }
 

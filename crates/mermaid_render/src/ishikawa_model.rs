@@ -396,7 +396,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -422,19 +422,23 @@ mod tests {
         let RenderSemanticModel::Ishikawa(model) = parsed.into_parts().1 else {
             panic!("{source:?} should be an Ishikawa diagram");
         };
-        let Some(root) = model.root else {
+        let Some(root) = model.root.and_then(|index| model.nodes.get(index)) else {
             return (None, Vec::new());
         };
         let mut edges = Vec::new();
-        let mut pending = vec![&root];
+        let mut pending = vec![root];
         while let Some(node) = pending.pop() {
-            for child in &node.children {
+            for child in node
+                .children
+                .iter()
+                .filter_map(|&index| model.nodes.get(index))
+            {
                 edges.push((node.text.clone(), child.text.clone()));
                 pending.push(child);
             }
         }
         edges.sort();
-        (Some(root.text), edges)
+        (Some(root.text.clone()), edges)
     }
 
     fn model_fish(document: &IshikawaDocument) -> (Option<String>, Vec<(String, String)>) {

@@ -19,9 +19,9 @@
 //!   children), then the services and junctions, then the edges.
 //! - An arrow head is written `<` or `>` on either end; the model writes `<` on
 //!   the left and `>` on the right, which read the same.
-//! - `merman` 0.8 reads a `[title]` bare only when it is ASCII letters, digits,
-//!   `_` and spaces; anything else (Japanese included) has to be quoted, and the
-//!   model writes it in double quotes.
+//! - The model writes a `[title]` bare only when it is ASCII letters, digits,
+//!   `_` and spaces, which every `merman` version reads bare; anything else
+//!   (Japanese included) is written in double quotes.
 //!
 //! What the parser rewrites, all of it stable from the first emit: the
 //! quoting of a title (bare where it can be, otherwise `"…"`), the
@@ -605,8 +605,8 @@ pub fn is_valid_architecture_label(label: &str) -> bool {
         && !label.ends_with('\\')
 }
 
-/// Whether `label` can be written between the brackets without quotes, which
-/// `merman` 0.8 allows only for ASCII letters, digits, `_` and spaces.
+/// Whether the model writes `label` between the brackets without quotes: only
+/// ASCII letters, digits, `_` and spaces, which `merman` 0.8 also read bare.
 fn is_plain_architecture_label(label: &str) -> bool {
     !label.trim().is_empty()
         && label
@@ -1399,7 +1399,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -1737,11 +1737,9 @@ mod tests {
                 "the reason for `{source}` should mention {expected}: {message}"
             );
         }
-        // What `merman` itself refuses is refused with its reason: since 0.8
-        // that includes a bare title that is not ASCII, an empty title or
-        // icon, and an id that starts like a keyword or a side.
+        // What `merman` itself refuses is refused with its reason: an empty
+        // title or icon, and an id that starts like a keyword or a side.
         for source in [
-            "architecture-beta\n    group g[クラウド]",
             "architecture-beta\n    service a[]",
             "architecture-beta\n    service a()",
             "architecture-beta\n    service a(my icon)",
@@ -1755,6 +1753,12 @@ mod tests {
         ] {
             assert!(parse_architecture(source).is_err(), "{source}");
         }
+        // Mermaid reads a bare title that is not ASCII, and so does `merman`
+        // since 0.9 (0.8 refused it). The model writes it in quotes.
+        assert_eq!(
+            assert_stable("architecture-beta\n    group g[クラウド]"),
+            "architecture-beta\n    group g[\"クラウド\"]"
+        );
         // `merman` 0.7 dropped a service above the group it is in; 0.8 reads
         // it, and the model writes the group first.
         let source = "architecture-beta\n    service a in g\n    group g";
@@ -1949,7 +1953,9 @@ mod tests {
     #[test]
     fn an_edge_cannot_end_on_a_group() {
         let source = "architecture-beta\n    group g\n    service a\n    a:R -- L:g";
-        assert!(render_to_svg(source, &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer()).is_err()
+        );
         let error = parse_architecture(source).expect_err("an edge to a group should be refused");
         assert!(format!("{error}").contains("is a group"), "{error}");
 
@@ -1962,7 +1968,14 @@ mod tests {
         document.edges = vec![edge("a", "h")];
         let error = document.structure_error().expect("a service-to-group edge");
         assert!(error.contains("`h` is a group"), "{error}");
-        assert!(render_to_svg(&emit_architecture(&document), &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(
+                &emit_architecture(&document),
+                &MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err()
+        );
     }
 
     /// `merman` cuts every `%%{...}%%` out of the text before reading
@@ -2231,7 +2244,13 @@ mod tests {
             assert_eq!(reparsed, document, "{path:?}");
             assert_eq!(emit_architecture(&reparsed), emitted, "{path:?}");
             assert_same_diagram(&source, &emitted);
-            if render_to_svg(&source, &MermaidTheme::default()).is_ok() {
+            if render_to_svg(
+                &source,
+                &MermaidTheme::default(),
+                crate::test_svg_renderer(),
+            )
+            .is_ok()
+            {
                 assert_renders(&emitted);
             }
         }

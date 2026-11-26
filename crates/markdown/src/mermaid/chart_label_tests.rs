@@ -107,6 +107,7 @@ fn double_click(
         let (svg, geometry) = mermaid_render::render_to_svg_with_geometry(
             &contents.contents,
             &super::build_mermaid_theme(cx),
+            &cx.svg_renderer(),
         )
         .expect("the diagram should render");
         let parsed = Arc::new(

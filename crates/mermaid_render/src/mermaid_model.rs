@@ -692,6 +692,58 @@ pub(crate) fn preprocessing_problem_for_parsed_labels(source: &str) -> Option<St
     directive_problem(source).or_else(|| html_attribute_problem(source, true))
 }
 
+/// `text` with every `="…"` between a `<tag` and the next `>` turned into
+/// `='…'`, which is how Mermaid reads it before it parses a line.
+///
+/// The flowchart editor writes labels this way: `merman` hands a label back the
+/// way Mermaid's sanitizer writes it, with `"` around a tag's attributes.
+pub(crate) fn with_mermaid_attribute_quotes(text: &str) -> String {
+    let is_word = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_';
+    let bytes = text.as_bytes();
+    let mut out = bytes.to_vec();
+    let mut probe = 0;
+    while let Some(relative) = text.get(probe..).and_then(|rest| rest.find('<')) {
+        let tag_start = probe + relative + 1;
+        if !bytes.get(tag_start).copied().is_some_and(is_word) {
+            probe = tag_start;
+            continue;
+        }
+        let mut tag_end = tag_start + 1;
+        while bytes.get(tag_end).copied().is_some_and(is_word) {
+            tag_end += 1;
+        }
+        let Some(end) = text
+            .get(tag_end..)
+            .and_then(|rest| rest.find('>'))
+            .map(|relative| tag_end + relative)
+        else {
+            break;
+        };
+        let mut cursor = tag_end;
+        while let Some(relative) = text.get(cursor..end).and_then(|rest| rest.find("=\"")) {
+            let opening = cursor + relative + 1;
+            let Some(closing) = text
+                .get(opening + 1..end)
+                .and_then(|rest| rest.find('"'))
+                .map(|relative| opening + 1 + relative)
+            else {
+                cursor = opening + 1;
+                continue;
+            };
+            for quote in [opening, closing] {
+                if let Some(byte) = out.get_mut(quote) {
+                    *byte = b'\'';
+                }
+            }
+            cursor = closing + 1;
+        }
+        probe = end + 1;
+    }
+    // Only ASCII `"` bytes were replaced, by ASCII `'`, so the text is still
+    // valid UTF-8.
+    String::from_utf8(out).unwrap_or_else(|_| text.to_string())
+}
+
 /// Whether `value`, written into a field, would start a `%%{ … }%%` directive
 /// that `merman` cuts out of the text wherever it stands, quotes or not.
 pub fn opens_directive(value: &str) -> bool {
@@ -1276,9 +1328,10 @@ flowchart TD
             let emitted = document.emit();
             assert!(!emitted.contains("=\""), "{emitted}");
             let theme = crate::MermaidTheme::default();
-            let drawn = crate::render_to_svg(source, &theme).expect("the source should render");
-            let redrawn =
-                crate::render_to_svg(&emitted, &theme).expect("the emitted text should render");
+            let drawn = crate::render_to_svg(source, &theme, crate::test_svg_renderer())
+                .expect("the source should render");
+            let redrawn = crate::render_to_svg(&emitted, &theme, crate::test_svg_renderer())
+                .expect("the emitted text should render");
             assert_eq!(
                 without_render_ids(&redrawn),
                 without_render_ids(&drawn),
@@ -1356,8 +1409,12 @@ pub(crate) mod preprocessing_cases {
                 .unwrap_or_else(|error| panic!("{source}\nshould open: {error}"));
             assert_eq!(document.structure_error(), None, "{source}");
             let emitted = document.emit();
-            render_to_svg(&emitted, &MermaidTheme::default())
-                .unwrap_or_else(|error| panic!("{emitted}\nshould render: {error}"));
+            render_to_svg(
+                &emitted,
+                &MermaidTheme::default(),
+                crate::test_svg_renderer(),
+            )
+            .unwrap_or_else(|error| panic!("{emitted}\nshould render: {error}"));
             let again = parse_document(&emitted)
                 .unwrap_or_else(|error| panic!("{emitted}\nshould reopen: {error}"));
             assert_eq!(again.emit(), emitted, "{source}");

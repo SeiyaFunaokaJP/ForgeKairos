@@ -595,15 +595,6 @@ msgstr "Copier le contenu d'origine et la preuve de réception au format JSON"
 msgid "Cost"
 msgstr "Coût"
 
-msgid "Cost Multiplier: {}"
-msgstr "Multiplicateur de coût : {}"
-
-msgid "Cost per Million Tokens: {}"
-msgstr "Coût par million de jetons : {}"
-
-msgid "Cost: {}"
-msgstr "Coût : {}"
-
 msgid "Could not authenticate with {provider}."
 msgstr "Impossible de s'authentifier auprès de {provider}."
 
@@ -963,9 +954,6 @@ msgstr "Échec de l'analyse des données de conversation depuis le presse-papier
 msgid "Favorite"
 msgstr "Ajouter aux favoris"
 
-msgid "Favorite Model"
-msgstr "Ajouter le modèle aux favoris"
-
 msgid "Favorites"
 msgstr "Favoris"
 
@@ -1167,9 +1155,6 @@ msgstr "Tout conserver"
 
 msgid "Later"
 msgstr "Plus tard"
-
-msgid "Latest"
-msgstr "Dernier"
 
 msgid "Launch Claude Code"
 msgstr "Lancer Claude Code"
@@ -1474,6 +1459,9 @@ msgstr "Ouvrir le fichier"
 msgid "Open Global Rules"
 msgstr "Ouvrir les règles globales"
 
+msgid "Open Plan File"
+msgstr "Ouvrir le fichier du plan"
+
 msgid "Open Project Rules"
 msgstr "Ouvrir les règles du projet"
 
@@ -1656,9 +1644,6 @@ msgstr "Se réauthentifier"
 
 msgid "Recent Projects"
 msgstr "Projets récents"
-
-msgid "Recommended"
-msgstr "Recommandé"
 
 msgid "Reconnect"
 msgstr "Se reconnecter"
@@ -2532,9 +2517,6 @@ msgstr "Forme inattendue du répertoire personnel distant (erreur interne) : {ho
 msgid "Unfavorite"
 msgstr "Retirer des favoris"
 
-msgid "Unfavorite Model"
-msgstr "Retirer le modèle des favoris"
-
 msgid "Unknown"
 msgstr "Inconnu"
 
@@ -3000,10 +2982,6 @@ msgstr ", "
 msgctxt "mention type"
 msgid "Fetch"
 msgstr "Récupérer"
-
-msgctxt "model list section"
-msgid "Favorite"
-msgstr "Favoris"
 
 msgctxt "model or effort"
 msgid "Default"

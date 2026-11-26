@@ -30,7 +30,7 @@ fn assert_stable(source: &str) -> String {
 }
 
 fn assert_renders(source: &str) {
-    let svg = render_to_svg(source, &MermaidTheme::default())
+    let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
         .unwrap_or_else(|error| panic!("the source should render: {error}\n{source}"));
     assert!(
         !svg.contains("Syntax error in text"),
@@ -453,15 +453,18 @@ fn the_insert_template_round_trips_byte_for_byte() {
 /// blocks without one (anonymous groups, whose ids are random), in
 /// drawing order. Rounded, so that the same layout compares equal.
 fn drawn_positions(source: &str) -> (Vec<(String, [i64; 4])>, Vec<[i64; 4]>) {
-    let layout = merman::svg::layout_json_sync(
-        &Engine::new(),
-        source,
-        ParseOptions::strict(),
-        &merman::svg::headless_layout_options(),
-    )
-    .unwrap_or_else(|error| panic!("merman should lay out {source}: {error}"))
-    .unwrap_or_else(|| panic!("merman should find a diagram in {source}"));
-    let nodes = layout["layout"]["BlockDiagram"]["nodes"]
+    let output = merman::Renderer::new()
+        .with_parse_options(ParseOptions::strict())
+        .render(merman::RenderRequest::layout_json(
+            source,
+            merman::OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .unwrap_or_else(|error| panic!("merman should lay out {source}: {error}"));
+    let merman::RenderOutput::LayoutJson(Some(layout)) = output else {
+        panic!("merman should find a diagram in {source}");
+    };
+    let nodes = layout.layout()["layout"]["BlockDiagram"]["nodes"]
         .as_array()
         .cloned()
         .unwrap_or_default();
@@ -764,7 +767,7 @@ fn a_group_left_open_is_refused_and_a_block_line_with_blocks_is_split() {
     // model closed it too; 0.8 refuses it, and so does the model.
     let open =
         "block\n  columns 3\n  B space\n  block BL\n    D\n  end\n  BL --> B\n  block\n    E";
-    assert!(render_to_svg(open, &MermaidTheme::default()).is_err());
+    assert!(render_to_svg(open, &MermaidTheme::default(), crate::test_svg_renderer()).is_err());
     let error = parse_block(open).expect_err("a group left open");
     assert!(
         error.to_string().contains("is not closed with `end`"),

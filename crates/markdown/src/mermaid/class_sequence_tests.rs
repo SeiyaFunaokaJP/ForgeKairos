@@ -102,6 +102,7 @@ impl<'a> Harness<'a> {
             let (svg, geometry) = mermaid_render::render_to_svg_with_geometry(
                 &contents.contents,
                 &super::build_mermaid_theme(cx),
+                &cx.svg_renderer(),
             )
             .expect("the diagram should render");
             let parsed = Arc::new(
@@ -354,8 +355,12 @@ fn written_labels_render_as_typed() {
     let typed = "a;b #1 50%% c";
     let span = find_transition_label(sequence, 0).expect("the message is found");
     let edited = write(sequence, span, typed);
-    let (_, geometry) =
-        mermaid_render::render_to_svg_with_geometry(&edited, &theme).expect("still renders");
+    let (_, geometry) = mermaid_render::render_to_svg_with_geometry(
+        &edited,
+        &theme,
+        mermaid_render::test_svg_renderer(),
+    )
+    .expect("still renders");
     let labels: Vec<Option<&str>> = geometry
         .edges
         .iter()
@@ -364,8 +369,12 @@ fn written_labels_render_as_typed() {
     assert_eq!(labels, vec![Some(typed), Some("next")], "{edited}");
     let span = find_node_label(&edited, "A").expect("the alias is found");
     let renamed = write(&edited, span, "\u{9867}\u{5ba2} #2");
-    let (_, geometry) =
-        mermaid_render::render_to_svg_with_geometry(&renamed, &theme).expect("still renders");
+    let (_, geometry) = mermaid_render::render_to_svg_with_geometry(
+        &renamed,
+        &theme,
+        mermaid_render::test_svg_renderer(),
+    )
+    .expect("still renders");
     assert!(
         geometry
             .nodes
@@ -381,8 +390,12 @@ fn written_labels_render_as_typed() {
     let edited = write(class, span, "say \"hi\"");
     let span = find_edge_label(&edited, "A", "B", 0).expect("the relation label is found");
     let edited = write(&edited, span, "\u{95a2}\u{9023} #3");
-    let (_, geometry) =
-        mermaid_render::render_to_svg_with_geometry(&edited, &theme).expect("still renders");
+    let (_, geometry) = mermaid_render::render_to_svg_with_geometry(
+        &edited,
+        &theme,
+        mermaid_render::test_svg_renderer(),
+    )
+    .expect("still renders");
     let a = geometry
         .nodes
         .iter()
@@ -421,6 +434,7 @@ fn assert_sequence_items_match_the_source(fence_body: &str) {
     let (_, geometry) = mermaid_render::render_to_svg_with_geometry(
         fence_body,
         &mermaid_render::MermaidTheme::default(),
+        mermaid_render::test_svg_renderer(),
     )
     .expect("the diagram should render");
     assert!(
@@ -494,27 +508,29 @@ fn sequence_numbering_matches_merman_across_every_block_kind() {
     ));
 }
 
-/// merman reads an id followed by an arrow as a message before it looks for
-/// a keyword, so a participant named like one still sends messages.
+/// A participant whose name only starts with a keyword sends messages like
+/// any other. One named exactly like a keyword (`Box`, `Note`, `End`) is
+/// read as the keyword by Mermaid and by `merman` since 0.9, which refuse the
+/// diagram.
 #[test]
 fn sequence_numbering_matches_merman_for_participants_named_like_keywords() {
     assert_sequence_items_match_the_source(concat!(
         "sequenceDiagram\n",
-        "    participant Box\n",
-        "    participant Note\n",
-        "    participant End\n",
-        "    Box->>End: one\n",
-        "    Note ->> Box: two\n",
-        "    End->>Note: three\n",
-        "    loop->>Box: four\n",
-        "    Note over Box: five\n",
+        "    participant Boxes\n",
+        "    participant Notes\n",
+        "    participant Ending\n",
+        "    Boxes->>Ending: one\n",
+        "    Notes ->> Boxes: two\n",
+        "    Ending->>Notes: three\n",
+        "    loops->>Boxes: four\n",
+        "    Note over Boxes: five\n",
     ));
     assert_sequence_items_match_the_source(concat!(
         "sequenceDiagram\n",
-        "    participant Box\n",
-        "    Box->>A: one\n",
-        "    A->>Box: two\n",
-        "    Alt->>Box: three\n",
+        "    participant Boxes\n",
+        "    Boxes->>A: one\n",
+        "    A->>Boxes: two\n",
+        "    Alternative->>Boxes: three\n",
     ));
 }
 
@@ -544,6 +560,7 @@ fn class_labels_match_merman_for_repeated_and_reversed_relations() {
     let (_, geometry) = mermaid_render::render_to_svg_with_geometry(
         fence_body,
         &mermaid_render::MermaidTheme::default(),
+        mermaid_render::test_svg_renderer(),
     )
     .expect("the diagram should render");
     assert_eq!(geometry.edges.len(), 6, "{:?}", geometry.edges);

@@ -2006,6 +2006,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("merman should read {source}: {error}"))
             .unwrap_or_else(|| panic!("merman should find a diagram in {source}"))
             .model
+            .into_unmanaged_value()
     }
 
     /// The round trip changes nothing `merman` reads.
@@ -2018,7 +2019,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -2082,7 +2083,14 @@ mod tests {
         // `merman` 0.8 no longer draws a C4 diagram with no statement in it,
         // so the blank diagram opens without asking it (the editor asks for
         // an element before it writes the fence), comments and all.
-        assert!(render_to_svg("C4Context", &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(
+                "C4Context",
+                &MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err()
+        );
         let commented = parse("C4Container\n    %% メモ");
         assert_eq!(commented.diagram_type, C4DiagramType::Container);
         assert_eq!(emit_c4(&commented), "C4Container\n    %% メモ");
@@ -2134,7 +2142,9 @@ mod tests {
     #[test]
     fn a_boundary_left_open_is_refused() {
         let source = "C4Context\n    Boundary(b, \"B\") {\n    Person(p, \"P\")";
-        assert!(render_to_svg(source, &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer()).is_err()
+        );
         let error = parse_c4(source).expect_err("an open boundary should be refused");
         assert!(
             error.to_string().contains("a boundary that is not closed"),
@@ -2247,7 +2257,14 @@ mod tests {
         );
         let error = document.structure_error().expect("an empty boundary");
         assert!(error.contains("`b1` is empty"), "{error}");
-        assert!(render_to_svg(&emit_c4(&document), &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(
+                &emit_c4(&document),
+                &MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err()
+        );
         let start = document.insertion_point(None) - 2;
         document
             .items
@@ -2260,7 +2277,14 @@ mod tests {
             .structure_error()
             .expect("a title before the element");
         assert!(error.contains("after the first element"), "{error}");
-        assert!(render_to_svg(&emit_c4(&document), &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(
+                &emit_c4(&document),
+                &MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err()
+        );
         document.items.swap(start + 1, start + 2);
         assert!(
             document
@@ -2612,10 +2636,14 @@ mod tests {
             model["boundaries"][1]["descr"]["text"],
             serde_json::json!("サーバー")
         );
-        // `merman` reads the named description into the technology's place
-        // and then writes the unwritten description position over it, which
-        // is why the form leaves both alone.
-        assert_eq!(model["shapes"][1]["descr"]["text"], serde_json::json!(""));
+        // Since Mermaid 12 (and `merman` 0.9) a named description in the
+        // technology's place is kept: the unwritten description position no
+        // longer clears it. The form still leaves both alone, because the
+        // position the name sits in is the technology's.
+        assert_eq!(
+            model["shapes"][1]["descr"]["text"],
+            serde_json::json!("named")
+        );
         assert_eq!(model["rels"][0]["techn"]["text"], serde_json::json!(""));
         assert_eq!(model["rels"][0]["descr"]["text"], serde_json::json!("説明"));
     }
@@ -2657,11 +2685,14 @@ mod tests {
             model["shapes"][2]["descr"]["text"],
             serde_json::json!("説明")
         );
-        // `merman` 0.8, like Mermaid's own C4 database, assigns every position
-        // in turn, so the unwritten tags position after `$tags` clears it:
-        // the tags are drawn neither before nor after the change.
-        assert_eq!(model["shapes"][2].get("tags"), None);
-        assert_eq!(merman_model(source)["shapes"][2].get("tags"), None);
+        // Since Mermaid 12 (and `merman` 0.9) an unwritten position no longer
+        // clears a `$tags` written before it, so the tags are drawn both
+        // before and after the change.
+        assert_eq!(model["shapes"][2]["tags"], serde_json::json!("x"));
+        assert_eq!(
+            merman_model(source)["shapes"][2]["tags"],
+            serde_json::json!("x")
+        );
         assert_renders(&emitted);
     }
 
@@ -2747,7 +2778,13 @@ mod tests {
                     opened += 1;
                     let emitted = assert_stable(&source);
                     assert_same_meaning(&source, &emitted);
-                    if render_to_svg(&source, &MermaidTheme::default()).is_ok() {
+                    if render_to_svg(
+                        &source,
+                        &MermaidTheme::default(),
+                        crate::test_svg_renderer(),
+                    )
+                    .is_ok()
+                    {
                         assert_renders(&emitted);
                     }
                     if let Some(error) = document.structure_error() {

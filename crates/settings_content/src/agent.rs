@@ -538,7 +538,7 @@ pub struct AgentSettingsContent {
     pub claude_code_run_outside_sandbox: Option<bool>,
     /// How thinking blocks should be displayed by default in the agent panel.
     ///
-    /// Default: automatic
+    /// Default: auto
     pub thinking_display: Option<ThinkingBlockDisplay>,
     /// Whether clicking the stop button on a running terminal tool should also cancel the agent's generation.
     /// Note that this only applies to the stop button, not to ctrl+c inside the terminal.
@@ -657,6 +657,16 @@ impl AgentSettingsContent {
 
     pub fn set_permission_judge_model(&mut self, provider: String, model: String) {
         self.permission_judge_model = Some(LanguageModelSelection {
+            provider: provider.into(),
+            model,
+            enable_thinking: false,
+            effort: None,
+            speed: None,
+        });
+    }
+
+    pub fn set_commit_message_model(&mut self, provider: String, model: String) {
+        self.commit_message_model = Some(LanguageModelSelection {
             provider: provider.into(),
             model,
             enable_thinking: false,
@@ -1467,7 +1477,9 @@ pub enum ToolPermissionMode {
     Allow,
     /// Auto-reject with an error.
     Deny,
-    /// Always prompt for confirmation (default behavior).
+    /// Prompt for confirmation (default behavior).
+    /// The `edit_file` and `write_file` tools don't prompt for files inside
+    /// the project unless an `always_confirm` pattern matches.
     #[default]
     Confirm,
     /// Ask a separate, cheap language model whether the operation is dangerous,

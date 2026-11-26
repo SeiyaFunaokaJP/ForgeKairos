@@ -1176,7 +1176,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -1500,7 +1500,14 @@ mod tests {
     #[test]
     fn separators_are_normalized_and_continued_lists_refused() {
         let continued = "xychart\n  bar [1,\n    2]";
-        assert!(render_to_svg(continued, &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(
+                continued,
+                &MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err()
+        );
         assert!(parse_xychart(continued).is_err());
 
         let source = "xychart\n  title \"a; b\"; x-axis [p, q]\n  bar [1, 2]";

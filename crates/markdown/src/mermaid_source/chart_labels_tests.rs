@@ -15,8 +15,12 @@ fn apply(source: &str, span: &MermaidLabelSpan, new_label: &str) -> String {
     let written = encode_label(new_label, span.quoting, replaced);
     let mut edited = source.to_string();
     edited.replace_range(span.range.clone(), &written);
-    render_to_svg(&edited, &MermaidTheme::default())
-        .unwrap_or_else(|error| panic!("{edited:?} should still render: {error:#}"));
+    render_to_svg(
+        &edited,
+        &MermaidTheme::default(),
+        mermaid_render::test_svg_renderer(),
+    )
+    .unwrap_or_else(|error| panic!("{edited:?} should still render: {error:#}"));
     edited
 }
 
@@ -90,7 +94,14 @@ fn a_pie_label_keeps_its_value_and_comments() {
     // merman 0.8 refuses the line. Nothing is drawn to click on, and the
     // lookup has to learn the separator if merman comes to read it.
     let separated = "pie showData\n  \"a\" : 1; \"b\" : 2\n";
-    assert!(render_to_svg(separated, &MermaidTheme::default()).is_err());
+    assert!(
+        render_to_svg(
+            separated,
+            &MermaidTheme::default(),
+            mermaid_render::test_svg_renderer()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -450,8 +461,12 @@ fn er_attributes_are_counted_the_way_merman_reads_the_block() {
             vec![(1, 20), (1, 26), (3, 11), (4, 8), (7, 8)],
         ),
     ] {
-        let (_, geometry) = render_to_svg_with_geometry(source, &MermaidTheme::default())
-            .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
+        let (_, geometry) = render_to_svg_with_geometry(
+            source,
+            &MermaidTheme::default(),
+            mermaid_render::test_svg_renderer(),
+        )
+        .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
         for (index, (line, column)) in expected.into_iter().enumerate() {
             let item = LabelItem::ErAttribute {
                 entity: "CUSTOMER".into(),
@@ -498,8 +513,12 @@ fn labels_holding_xml_special_characters_resolve() {
             "R&D <\u{8a2d}\u{8a08}> \"x\"",
         ),
     ] {
-        let (_, geometry) = render_to_svg_with_geometry(source, &MermaidTheme::default())
-            .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
+        let (_, geometry) = render_to_svg_with_geometry(
+            source,
+            &MermaidTheme::default(),
+            mermaid_render::test_svg_renderer(),
+        )
+        .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
         let rendered = &geometry
             .labels
             .iter()
@@ -521,8 +540,12 @@ fn every_mapped_label_resolves_to_its_token() {
         GANTT,
         ER,
     ] {
-        let (_, geometry) = render_to_svg_with_geometry(source, &MermaidTheme::default())
-            .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
+        let (_, geometry) = render_to_svg_with_geometry(
+            source,
+            &MermaidTheme::default(),
+            mermaid_render::test_svg_renderer(),
+        )
+        .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
         assert!(!geometry.labels.is_empty(), "{source:?} maps no labels");
         for label in &geometry.labels {
             match lookup(source, label.item.clone(), &label.label) {

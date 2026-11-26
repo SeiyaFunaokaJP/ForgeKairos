@@ -20,6 +20,32 @@ anyhow.workspace = true
 gpui.workspace = true
 i18n.workspace = true
 merman = { workspace = true, features = [
+    "diagram-architecture",
+    "diagram-block",
+    "diagram-c4",
+    "diagram-class",
+    "diagram-er",
+    "diagram-event-modeling",
+    "diagram-flowchart",
+    "diagram-gantt",
+    "diagram-git-graph",
+    "diagram-ishikawa",
+    "diagram-journey",
+    "diagram-kanban",
+    "diagram-mindmap",
+    "diagram-packet",
+    "diagram-pie",
+    "diagram-quadrant-chart",
+    "diagram-radar",
+    "diagram-requirement",
+    "diagram-sankey",
+    "diagram-sequence",
+    "diagram-state",
+    "diagram-timeline",
+    "diagram-tree-view",
+    "diagram-treemap",
+    "diagram-venn",
+    "diagram-xychart",
     "layout-cytoscape",
     "svg",
 ] }
@@ -29,6 +55,7 @@ tracing.workspace = true
 ztracing.workspace = true
 
 [dev-dependencies]
+assets.workspace = true
 gpui = { workspace = true, features = ["test-support"] }
 i18n_catalog = { workspace = true, features = ["test-support"] }
 mermaid_render = { workspace = true, features = ["test-support"] }

@@ -1,6 +1,6 @@
 use crate::{
     Thread, ToolCallEventStream, ToolPermissionContext, ToolPermissionDecision,
-    decide_permission_for_path,
+    decide_permission_for_path, path_matches_always_confirm,
 };
 use agent_client_protocol::v2::schema as acp;
 use agent_skills::is_agents_skills_path;
@@ -845,6 +845,13 @@ pub(crate) enum AmbiguousWrite {
 /// two sequential prompts for the same operation would degrade UX without
 /// meaningfully improving security, since the user must already approve the
 /// more specific symlink-escape prompt.
+///
+/// # Edits inside the project
+///
+/// A `confirm` default deliberately doesn't prompt for edits inside the
+/// project, because those are reviewed after the fact. An `always_confirm`
+/// pattern is an explicit request to prompt for a path, so it prompts inside
+/// the project too.
 pub fn authorize_file_edit(
     tool_name: &str,
     path: &Path,
@@ -860,6 +867,8 @@ pub fn authorize_file_edit(
     if let ToolPermissionDecision::Deny(reason) = decision {
         return Task::ready(Err(anyhow!("{}", reason)));
     }
+
+    let matches_always_confirm = path_matches_always_confirm(tool_name, &path_str, settings);
 
     let path_owned = path.to_path_buf();
     let title = i18n::t!("Edit {}", util::markdown::MarkdownInlineCode(&path_str));
@@ -1016,6 +1025,19 @@ pub fn authorize_file_edit(
         }
 
         if in_project {
+            // Settings are not consulted again here because they are only
+            // evaluated against the raw path, which can miss a pattern that
+            // matched the normalized one.
+            if matches_always_confirm {
+                let authorize = cx.update(|cx| {
+                    let context = ToolPermissionContext::new(
+                        &tool_name,
+                        vec![path_owned.to_string_lossy().to_string()],
+                    );
+                    event_stream.authorize_always_prompt(&title, context, cx)
+                });
+                return authorize.await;
+            }
             Ok(())
         } else {
             // 決定 1: with several worktrees the write silently lands in the

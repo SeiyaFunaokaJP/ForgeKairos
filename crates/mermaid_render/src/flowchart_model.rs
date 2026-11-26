@@ -512,7 +512,7 @@ pub fn parse_flowchart(source: &str) -> Result<FlowchartDocument> {
 
     let mut document = document_from_model(model, scan.keyword, scan.preserved, &scan.edge_ids);
     if let Some(problem) = unsupported_construct(&scan.statements, &document, &scan.edge_ids)
-        .or_else(|| shared_edge_id(&document))
+        .or_else(|| shared_edge_id(&document, &scan.statements, &scan.edge_ids))
         .or_else(|| preserved_line_with_a_statement(&document.preserved_lines))
     {
         bail!("{problem}");
@@ -1048,10 +1048,15 @@ fn label_text(label: &str, markdown: bool) -> String {
     if label.is_empty() {
         return "\" \"".to_string();
     }
-    if needs_quoting(label) {
-        format!("\"{}\"", escape_quoted(label))
+    // `merman` hands back a label the way Mermaid's sanitizer writes it, with
+    // `"` around the attributes of a tag. Written as `#quot;` they would be
+    // decoded only after the sanitizer has run, and the tag would lose them;
+    // Mermaid reads `='…'` the same as `="…"`.
+    let label = crate::mermaid_model::with_mermaid_attribute_quotes(label);
+    if needs_quoting(&label) {
+        format!("\"{}\"", escape_quoted(&label))
     } else {
-        label.to_string()
+        label
     }
 }
 
@@ -1065,7 +1070,8 @@ fn quoted_label(label: &str, markdown: bool) -> String {
 /// label at `;` or a newline, and trims it, so anything that would come back
 /// different has to be quoted. `/` and `\` close the parallelogram and
 /// trapezoid shapes, and are quoted everywhere so the check does not depend on
-/// which shape the label ends up in.
+/// which shape the label ends up in. An unquoted `@` right after a word is read
+/// as an edge id, which Mermaid refuses inside a label.
 fn needs_quoting(label: &str) -> bool {
     label.is_empty()
         || label.trim() != label
@@ -1084,6 +1090,7 @@ fn needs_quoting(label: &str) -> bool {
                     | '`'
                     | '/'
                     | '\\'
+                    | '@'
                     | '\n'
                     | '\r'
             )
@@ -1226,9 +1233,8 @@ pub fn is_valid_node_id(id: &str) -> bool {
 /// Keywords that start a statement of their own. Mermaid's best known trap is a
 /// node called `end`, which closes the enclosing subgraph instead.
 ///
-/// `callback` is not one of them: it starts no statement, and treating it as a
-/// reserved id left a diagram that spells `callback A myFn` — which `merman`
-/// reads as three node declarations — unconfirmable from the form.
+/// `callback` is not one of them: it starts no statement, so a node may be
+/// called `callback`.
 fn is_reserved_id(id: &str) -> bool {
     const RESERVED: [&str; 11] = [
         "end",
@@ -1360,10 +1366,8 @@ fn header_keyword(line: &str) -> Option<FlowchartKeyword> {
 ///
 /// `class` is deliberately absent: the model does carry class membership, so
 /// keeping the statement as well as re-emitting it from the model would apply
-/// it twice. `callback` is absent for the opposite reason: Mermaid has no
-/// statement of that name — the word only appears inside `click A callback fn`
-/// — so `merman` reads a line that opens with it as bare node declarations,
-/// which the model does carry.
+/// it twice. `callback` is absent because Mermaid has no statement of that
+/// name: the word only appears inside `click A callback fn`.
 fn preserved_keyword(line: &str) -> bool {
     const KEYWORDS: [&str; 6] = [
         "classDef",
@@ -1678,15 +1682,51 @@ fn opens_a_link(rest: &str) -> bool {
 /// id, so a node of the same name whose shape the emitter writes that way would
 /// lose it, and the statement that was meant for the edge would decide what
 /// happens to the node once the edge is deleted.
-fn shared_edge_id(document: &FlowchartDocument) -> Option<String> {
-    let id = document.edges.iter().find_map(|edge| {
-        let id = edge.user_id.as_deref()?;
-        (document.node_index(id).is_some() || document.subgraphs.iter().any(|group| group.id == id))
+///
+/// A node declared after the edge never reaches the model: Mermaid, and
+/// `merman` since 0.9, ignore a vertex whose id an edge already has. Writing
+/// the diagram back would drop that statement, so the statements are searched
+/// for the id as well.
+fn shared_edge_id(
+    document: &FlowchartDocument,
+    statements: &[String],
+    edge_ids: &[String],
+) -> Option<String> {
+    let id = document
+        .edges
+        .iter()
+        .find_map(|edge| {
+            let id = edge.user_id.as_deref()?;
+            (document.node_index(id).is_some()
+                || document.subgraphs.iter().any(|group| group.id == id))
             .then_some(id)
-    })?;
+        })
+        .or_else(|| {
+            edge_ids
+                .iter()
+                .find(|id| {
+                    statements
+                        .iter()
+                        .any(|statement| names_outside_an_edge_id(&outside_labels(statement), id))
+                })
+                .map(String::as_str)
+        })?;
     Some(i18n::t!(
         "Diagrams where the edge ID `{id}` is the same as a node or group ID are not supported by the structured editor. Edit it as text."
     ))
+}
+
+/// Whether `outside` names `id` as a word that is not the `id@` naming a link.
+fn names_outside_an_edge_id(outside: &str, id: &str) -> bool {
+    let is_word = |character: char| character.is_alphanumeric() || character == '_';
+    outside.match_indices(id).any(|(at, _)| {
+        let before = outside.get(..at).and_then(|text| text.chars().next_back());
+        let after = outside
+            .get(at + id.len()..)
+            .and_then(|text| text.chars().next());
+        !before.is_some_and(is_word)
+            && !after.is_some_and(|character| is_word(character) || character == '@')
+    })
 }
 
 /// A kept line that carries a statement the model also reads, which the parser
@@ -2072,7 +2112,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -2226,8 +2266,12 @@ mod tests {
                 // ("No such shape: ellipse"); `merman` 0.7 drew one anyway, 0.8
                 // fails the way Mermaid does. The shape menu does not offer it.
                 assert!(!NodeShape::PRESETS.contains(&shape));
-                let error = render_to_svg(&source, &MermaidTheme::default())
-                    .expect_err("merman 0.8 has no ellipse to draw");
+                let error = render_to_svg(
+                    &source,
+                    &MermaidTheme::default(),
+                    crate::test_svg_renderer(),
+                )
+                .expect_err("merman 0.8 has no ellipse to draw");
                 assert!(format!("{error:#}").contains("No such shape"), "{error:#}");
             } else {
                 assert_renders(&source);
@@ -2376,8 +2420,9 @@ mod tests {
     /// the parser refuses instead.
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
+        // Mermaid, and `merman` since 0.9, refuse a comment after a statement.
+        assert!(parse_flowchart("flowchart TD\n  A --> B %% 行末のメモ").is_err());
         for source in [
-            "flowchart TD\n  A --> B %% 行末のメモ",
             // The second `e1` is not the user's any more: `merman` numbers it
             // itself, so `e1@{ … }` would land on the first link alone.
             "flowchart TD\n  A e1@--> B\n  B e1@--> C",
@@ -2396,9 +2441,13 @@ mod tests {
         // The same characters inside a label are the user's text, not syntax,
         // and the shape attribute they resemble is carried by the model.
         for source in [
-            "flowchart TD\n  A[メール a@b.example] --> B",
+            // An unquoted `@` right after a word is an edge id to Mermaid,
+            // which refuses it inside a label; quoted or after a space it is
+            // text.
+            "flowchart TD\n  A[\"メール a@b.example\"] --> B",
             "flowchart TD\n  A[\"100%% 完了\"] --> B",
-            "flowchart TD\n  A -->|a@b| B",
+            "flowchart TD\n  A -->|\"a@b\"| B",
+            "flowchart TD\n  A -->|mail @b| B",
             "flowchart TD\n  A@{ shape: hourglass, label: \"砂時計\" } --> B",
         ] {
             assert!(
@@ -2501,13 +2550,14 @@ mod tests {
     }
 
     /// Mermaid has no statement that opens with `callback` — the word only
-    /// appears inside `click A callback fn` — and `merman` reads such a line as
-    /// bare node declarations. Treating it as a statement of its own left the
-    /// diagram unopenable: `callback` came back as a node whose id the editor
-    /// called reserved.
+    /// appears inside `click A callback fn` — so `callback` is an ordinary node
+    /// id. A line `callback A myFn` is three words in a row, which Mermaid and
+    /// `merman` 0.9 refuse (`merman` 0.8 read them as three nodes).
     #[test]
-    fn a_line_that_opens_with_callback_is_read_as_node_declarations() {
-        let source = "flowchart TD\n  A --> B\n  callback A myFn";
+    fn callback_is_an_ordinary_node_id() {
+        assert!(parse_flowchart("flowchart TD\n  A --> B\n  callback A myFn").is_err());
+
+        let source = "flowchart TD\n  A --> callback";
         let document = parse_flowchart(source).expect("source should parse");
         assert_eq!(
             document
@@ -2515,13 +2565,7 @@ mod tests {
                 .iter()
                 .map(|node| node.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["A", "B", "callback", "myFn"],
-            "`merman` declares the words as nodes, and the editor has to agree"
-        );
-        assert!(
-            document.preserved_lines.is_empty(),
-            "keeping the line as well would declare the nodes twice: {:?}",
-            document.preserved_lines
+            vec!["A", "callback"],
         );
         assert!(
             is_valid_node_id("callback"),
@@ -2538,7 +2582,8 @@ mod tests {
     #[test]
     fn an_at_that_opens_no_link_is_not_an_edge_id() {
         for source in [
-            "flowchart TD\n  A -->|mail@x| B",
+            "flowchart TD\n  A -->|\"mail@x\"| B",
+            "flowchart TD\n  A -- mail@x --> B",
             "flowchart TD\n  A --> B\n  A@{ shape: circle }",
             "flowchart TD\n  A[\"e1@--> B\"] --> B",
             "flowchart TD\n  %% 迂回路は e1@--> C で書く\n  A --> B",
@@ -2550,6 +2595,14 @@ mod tests {
                 document.edges
             );
             assert_renders(&assert_stable(source));
+        }
+        // Unquoted between `|` or in a shape, Mermaid reads `mail@` as an edge
+        // id and refuses the line.
+        for source in [
+            "flowchart TD\n  A -->|mail@x| B",
+            "flowchart TD\n  A[mail@x] --> B",
+        ] {
+            assert!(parse_flowchart(source).is_err(), "{source}");
         }
 
         // The shape has to reach the node rather than be kept as a line about
@@ -2719,7 +2772,7 @@ mod tests {
     /// The drawing of `source`, with the document id every drawing gets from
     /// a process wide counter replaced so that two drawings can be compared.
     fn render(source: &str) -> String {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("source should render: {error}\n{source}"));
         let id = svg
             .strip_prefix("<svg id=\"")
@@ -3083,6 +3136,29 @@ mod tests {
                 .and_then(|edge| edge.link_style.clone()),
             Some("interpolate linear stroke:#f00".to_string())
         );
+    }
+
+    /// `merman` hands back a label the way Mermaid's sanitizer writes it, with
+    /// `"` around a tag's attributes, whichever quotes the source used. The
+    /// editor writes them as `'`, which Mermaid reads the same; a `#quot;`
+    /// would be decoded only after the sanitizer ran.
+    #[test]
+    fn attribute_quotes_are_written_the_way_mermaid_reads_them() {
+        for source in [
+            "flowchart TD
+  A[\"<b class=\"x\">t</b>\"]",
+            "flowchart TD
+  A[\"<b class='x'>t</b>\"]",
+        ] {
+            let document = parse_flowchart(source).expect("source should parse");
+            assert_eq!(
+                document.nodes.first().map(|node| node.label.as_str()),
+                Some("<b class=\"x\">t</b>"),
+                "{source}"
+            );
+            let emitted = assert_stable(source);
+            assert!(emitted.contains("<b class='x'>t</b>"), "{emitted}");
+        }
     }
 
     /// Text in an edge label written between the dashes is not blanked out

@@ -1533,7 +1533,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -1868,7 +1868,7 @@ mod tests {
     /// The drawing with `merman`'s own id blanked out, so that two renderings
     /// of the same chart compare equal.
     fn drawing_of(source: &str) -> String {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("`{source}` should render: {error}"));
         let mut out = String::new();
         let mut rest = svg.as_str();

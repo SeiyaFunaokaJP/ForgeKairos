@@ -1208,6 +1208,18 @@ msgctxt "ThinkingBlockDisplay"
 msgid "Preview"
 msgstr "預覽"
 
+msgctxt "TitleBarVisibility"
+msgid "Always"
+msgstr "一律"
+
+msgctxt "TitleBarVisibility"
+msgid "Hide In Full Screen"
+msgstr "全螢幕時隱藏"
+
+msgctxt "TitleBarVisibility"
+msgid "Never"
+msgstr "永不"
+
 msgctxt "UseSystemClipboard"
 msgid "Always"
 msgstr "一律"
@@ -4293,6 +4305,10 @@ msgid "Show Tab Bar Buttons"
 msgstr "顯示分頁列按鈕"
 
 msgctxt "settings"
+msgid "Show Title Bar"
+msgstr "顯示標題列"
+
+msgctxt "settings"
 msgid "Show Turn Stats"
 msgstr "顯示回合統計"
 
@@ -5499,6 +5515,10 @@ msgstr "在編輯器中顯示捲軸的時機。"
 msgctxt "settings"
 msgid "When to show the scrollbar in the terminal."
 msgstr "在終端機中顯示捲軸的時機。"
+
+msgctxt "settings"
+msgid "When to show the title bar and its window controls."
+msgstr "顯示標題列及其視窗控制按鈕的時機。"
 
 msgctxt "settings"
 msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."

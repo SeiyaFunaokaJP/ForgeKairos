@@ -1746,6 +1746,12 @@ msgctxt "action documentation"
 msgid "editor::FoldAll"
 msgstr "折叠编辑器中所有可折叠区域。"
 
+#. Folds all code blocks at the same indentation level of the current
+#. line.
+msgctxt "action documentation"
+msgid "editor::FoldAtCurrentIndentationLevel"
+msgstr "折叠与当前行处于相同缩进级别的所有代码块。"
+
 #. Folds all code blocks at the specified indentation level.
 msgctxt "action documentation"
 msgid "editor::FoldAtLevel"
@@ -6795,9 +6801,10 @@ msgstr "清除所有导航历史记录，包括前进/后退导航、最近打�
 
 #. Clears all trusted worktrees, placing them in restricted mode on next open.
 #. Requires restart to take effect on already opened projects.
+#. Also forgets which worktrees were chosen to stay in restricted mode.
 msgctxt "action documentation"
 msgid "workspace::ClearTrustedWorktrees"
-msgstr "清除对所有工作树的信任，使其在下次打开时进入受限模式。\n需要重启才能对已打开的项目生效。"
+msgstr "清除对所有工作树的信任，使其在下次打开时进入受限模式。\n需要重启才能对已打开的项目生效。\n同时清除已选择保持受限模式的工作树记录。"
 
 #. Closes the active dock.
 msgctxt "action documentation"

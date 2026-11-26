@@ -112,6 +112,7 @@ crates/sandbox/src/remote_sandbox_test_helper.rs	dev	Zed's database
 crates/sandbox/src/remote_sandbox_test_helper.rs	dev	and Zed's answer reaches the command on that same connection
 crates/sandbox/src/remote_sandbox_test_helper.rs	dev	the rest of Zed's data, the other agents and the credentials stay hidden, and only the way down to what may be read is in the data directory — so what is added to it while the command runs is not there either
 crates/sandbox/src/remote_sandbox_test_helper.rs	dev	the rest of Zed's data, the other agents, the other projects and the credentials are as unreadable as the covers would have made them
+crates/sandbox_linux/src/helper.rs	log	Zed closed the setup channel
 crates/settings_ui/src/settings_ui.rs	fact	Zed Keybind Context
 crates/theme/src/fallback_themes.rs	identifier	Zed Default
 crates/theme/src/icon_theme.rs	identifier	Zed (Default)

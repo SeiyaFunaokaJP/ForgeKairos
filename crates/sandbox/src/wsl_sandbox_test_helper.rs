@@ -1,16 +1,12 @@
 //! Behavior test helper for the Windows WSL sandbox (ADR-F46: the sandbox
-//! helper bundled with Zed, run inside WSL) — the Windows analog of
-//! `bwrap-test-helper`.
+//! helper bundled with Zed, run inside WSL).
 //!
 //! It finds the helper artifacts the way Zed does, so put a Linux
 //! `remote_server` build (`zed-remote-server-linux-x86_64[.gz]`) and
 //! `slirp4netns-linux-x86_64` next to this executable, or set
-//! `ZED_WSL_SANDBOX_HELPER`.
-//!
-//! Where the Linux helper is the sandboxed process itself (it re-execs under
-//! the launcher), here the sandboxed process is a *Linux* program inside WSL
-//! while this helper runs on Windows. So instead of a status channel and a
-//! launcher, the helper drives the real [`sandbox::Sandbox`] (`new` + `wrap`),
+//! `ZED_WSL_SANDBOX_HELPER`.//!
+//! The sandboxed process is a *Linux* program inside WSL while this helper runs
+//! on Windows. The helper drives the real [`sandbox::Sandbox`] (`new` + `wrap`),
 //! spawns the command line it produces, and inspects exit codes and
 //! host-side filesystem effects to confirm every grant the sandbox makes and
 //! every restriction it imposes actually holds — including the Windows-specific
@@ -19,8 +15,8 @@
 //!
 //! It targets the **default** WSL distro (matching real Zed usage for native
 //! Windows paths); provision that distro before running (see
-//! `script/test-wsl-sandbox.ps1`). Like the Linux helper, it **skips** (rather
-//! than fails) the enforcement assertions when the environment can't actually
+//! `script/test-wsl-sandbox.ps1`). It **skips** (rather than fails) the
+//! enforcement assertions when the environment can't actually
 //! enforce a sandbox, so a misconfigured WSL doesn't masquerade as a sandbox
 //! regression. Set `ZED_TEST_SANDBOX_REQUIRE_ENFORCED=1` to turn that skip into
 //! a failure once you've provisioned an environment that *should* enforce.
@@ -78,8 +74,6 @@ mod imp {
         allow_fs_write: bool,
     }
 
-    /// Tag prefixed to every result line, matching `bwrap-test-helper` so both
-    /// helpers' output reads the same.
     const RESULT_TAG: &str = "[sandbox_test]:";
 
     /// `CREATE_NO_WINDOW`: keep `wsl.exe` (a console-subsystem binary) from
@@ -1158,8 +1152,7 @@ mod imp {
         }
     }
 
-    /// Tracks assertion results so the helper can report a summary and a single
-    /// exit code, mirroring `bwrap-test-helper`.
+    /// Tracks assertion results so the helper can report a summary and a single exit code.
     struct Checks {
         passed: usize,
         failed: usize,

@@ -33,7 +33,10 @@
 //! background `<rect>`) appended at the end of the document, carrying absolute
 //! coordinates and the ancestors' classes but no id. Those are matched back
 //! onto the boxes collected above by position, and only when exactly one box
-//! claims them.
+//! claims them. Since `merman` 0.9 the replacement holds a `<use>` instead,
+//! and the `<text>` lines it points at are drawn once in a `<defs>` group
+//! after the diagram, so the lines are read from there and placed where the
+//! `<use>` puts them.
 //!
 //! This pass walks the event stream and turns all of that into a
 //! [`DiagramGeometry`] in `viewBox` coordinates. It runs after
@@ -220,6 +223,40 @@ struct PendingFallback {
     first_anchor: Option<(f64, f64)>,
     bounds: Option<BoundingBox>,
     font_size: Option<f64>,
+    /// The label definitions the replacement draws through `<use>`, by id,
+    /// with where each one is placed.
+    uses: Vec<(String, f64, f64)>,
+}
+
+impl PendingFallback {
+    fn start_line(&mut self, anchor: (Option<f64>, Option<f64>), font_size: Option<f64>) {
+        if !self.text.is_empty() {
+            self.text.push('\n');
+        }
+        if let (Some(x), Some(y)) = anchor {
+            let (first_x, first_y) = *self.first_anchor.get_or_insert((x, y));
+            self.anchor = Some(((first_x + x) / 2.0, (first_y + y) / 2.0));
+        }
+        if font_size.is_some() {
+            self.font_size = font_size;
+        }
+    }
+}
+
+/// A label `merman` draws once inside `<defs>` and places with `<use>`.
+/// Everything in it is kept relative to the definition's own origin.
+struct LabelDefinition {
+    id: String,
+    start_depth: usize,
+    origin: (f64, f64),
+    lines: Vec<DefinitionLine>,
+    bounds: Option<BoundingBox>,
+}
+
+struct DefinitionLine {
+    anchor: (Option<f64>, Option<f64>),
+    font_size: Option<f64>,
+    text: String,
 }
 
 struct CollectGeometry<I> {
@@ -236,6 +273,10 @@ struct CollectGeometry<I> {
     node: Option<PendingNode>,
     edge_label: Option<PendingEdgeLabel>,
     fallback: Option<PendingFallback>,
+    /// The depth of the open `<defs>` element, if any.
+    defs_depth: Option<usize>,
+    definition: Option<LabelDefinition>,
+    definitions: Vec<LabelDefinition>,
     nodes: Vec<NodeGeometry>,
     /// The element id suffix of each collected node, positionally matching
     /// `nodes`.
@@ -612,6 +653,32 @@ impl<I> CollectGeometry<I> {
             return;
         }
 
+        if self.definition.is_some() {
+            self.on_definition_element(element, frame);
+            return;
+        }
+        if element.name().as_ref() == b"defs" {
+            if !empty && self.defs_depth.is_none() {
+                self.defs_depth = Some(depth);
+            }
+            return;
+        }
+        if self.defs_depth.is_some() {
+            if !empty
+                && let Some(id) = attribute(element, "id")
+                && id.contains("-foreignobject-label-")
+            {
+                self.definition = Some(LabelDefinition {
+                    id,
+                    start_depth: depth,
+                    origin: (frame.dx, frame.dy),
+                    lines: Vec::new(),
+                    bounds: None,
+                });
+            }
+            return;
+        }
+
         // The fallback labels sit outside the diagram's sections, and carry the
         // classes of the element they were lifted out of, so they have to be
         // recognized before anything else would read those classes as a section
@@ -630,6 +697,7 @@ impl<I> CollectGeometry<I> {
                     first_anchor: None,
                     bounds: None,
                     font_size: None,
+                    uses: Vec::new(),
                 });
             }
             return;
@@ -735,6 +803,19 @@ impl<I> CollectGeometry<I> {
     }
 
     fn on_fallback_element(&mut self, element: &BytesStart<'_>, frame: Frame) {
+        if element.name().as_ref() == b"use" {
+            let reference = attribute(element, "href").or_else(|| attribute(element, "xlink:href"));
+            if let Some(id) = reference.as_deref().and_then(|href| href.strip_prefix('#'))
+                && frame.usable
+                && let Some((dx, dy)) = own_translate(element)
+                && let Some(fallback) = self.fallback.as_mut()
+            {
+                let x = attribute_f64(element, "x").unwrap_or(0.0) + frame.dx + dx;
+                let y = attribute_f64(element, "y").unwrap_or(0.0) + frame.dy + dy;
+                fallback.uses.push((id.to_string(), x, y));
+            }
+            return;
+        }
         let is_text = element.name().as_ref() == b"text";
         let is_rect = element.name().as_ref() == b"rect";
         if !is_text && !is_rect {
@@ -752,18 +833,62 @@ impl<I> CollectGeometry<I> {
             return;
         };
         if is_text {
-            if !fallback.text.is_empty() {
-                fallback.text.push('\n');
-            }
-            if let (Some(x), Some(y)) = anchor {
-                let (first_x, first_y) = *fallback.first_anchor.get_or_insert((x, y));
-                fallback.anchor = Some(((first_x + x) / 2.0, (first_y + y) / 2.0));
-            }
-            if font_size.is_some() {
-                fallback.font_size = font_size;
-            }
+            fallback.start_line(anchor, font_size);
         } else if let Some(bounds) = bounds {
             extend_optional(&mut fallback.bounds, bounds.translated(frame.dx, frame.dy));
+        }
+    }
+
+    fn on_definition_element(&mut self, element: &BytesStart<'_>, frame: Frame) {
+        let is_text = element.name().as_ref() == b"text";
+        let is_rect = element.name().as_ref() == b"rect";
+        if !is_text && !is_rect {
+            return;
+        }
+        let Some(definition) = self.definition.as_mut() else {
+            return;
+        };
+        let (origin_x, origin_y) = definition.origin;
+        let dx = frame.dx - origin_x;
+        let dy = frame.dy - origin_y;
+        if is_text {
+            definition.lines.push(DefinitionLine {
+                anchor: (
+                    attribute_f64(element, "x").map(|x| x + dx),
+                    attribute_f64(element, "y").map(|y| y + dy),
+                ),
+                font_size: chart_labels::font_size_of(element),
+                text: String::new(),
+            });
+        } else if frame.usable
+            && let Some(bounds) = shape_bounds(element)
+        {
+            extend_optional(&mut definition.bounds, bounds.translated(dx, dy));
+        }
+    }
+
+    /// Fills the replacements drawn through `<use>` with the lines of the
+    /// definitions they point at.
+    fn resolve_label_definitions(&mut self) {
+        let definitions = &self.definitions;
+        if definitions.is_empty() {
+            return;
+        }
+        for fallback in &mut self.fallbacks {
+            for (id, dx, dy) in std::mem::take(&mut fallback.uses) {
+                let Some(definition) = definitions.iter().find(|definition| definition.id == id)
+                else {
+                    continue;
+                };
+                for line in &definition.lines {
+                    let (x, y) = line.anchor;
+                    fallback.start_line((x.map(|x| x + dx), y.map(|y| y + dy)), line.font_size);
+                    fallback.text.push_str(&line.text);
+                }
+                if let Some(bounds) = definition.bounds {
+                    extend_optional(&mut fallback.bounds, bounds.translated(dx, dy));
+                }
+            }
         }
     }
 
@@ -946,6 +1071,17 @@ impl<I> CollectGeometry<I> {
         {
             self.fallbacks.push(fallback);
         }
+        if self
+            .definition
+            .as_ref()
+            .is_some_and(|definition| definition.start_depth == depth)
+            && let Some(definition) = self.definition.take()
+        {
+            self.definitions.push(definition);
+        }
+        if self.defs_depth == Some(depth) {
+            self.defs_depth = None;
+        }
         if let Some((_, section_depth)) = self.sections.last().copied()
             && section_depth == depth
         {
@@ -967,6 +1103,12 @@ impl<I> CollectGeometry<I> {
             .as_ref()
             .is_some_and(|node| node.muted_depth.is_some())
         {
+            return;
+        }
+        if let Some(definition) = self.definition.as_mut() {
+            if let Some(line) = definition.lines.last_mut() {
+                line.text.push_str(text);
+            }
             return;
         }
         if let Some(fallback) = self.fallback.as_mut() {
@@ -998,6 +1140,7 @@ impl<I> CollectGeometry<I> {
         }
         let mut nodes = std::mem::take(&mut self.nodes);
         let mut edge_labels = std::mem::take(&mut self.edge_labels);
+        self.resolve_label_definitions();
         let attribute_names = self.apply_fallback_labels(&mut nodes, &mut edge_labels);
         let labels = self.finish_chart_labels(attribute_names);
         let node_ids: Vec<&str> = nodes.iter().map(|node| node.node_id.as_str()).collect();
@@ -1173,7 +1316,12 @@ fn transition_index(edge_id: &str) -> Option<usize> {
 /// members and methods, which `merman` 0.8 lifts out as well: only its
 /// `label-group` holds the name.
 fn fallback_role(element: &BytesStart<'_>) -> Option<FallbackRole> {
-    let class = attribute(element, "class")?;
+    // `merman` 0.9 keeps the lifted element's classes apart from the group's own.
+    let mut class = attribute(element, "class")?;
+    if let Some(source_classes) = attribute(element, "data-merman-source-classes") {
+        class.push(' ');
+        class.push_str(&source_classes);
+    }
     if class
         .split_ascii_whitespace()
         .any(|token| token == "attribute-name")
@@ -1322,6 +1470,7 @@ impl<I> CollectGeometry<I> {
                 if self.node.is_some()
                     || self.edge_label.is_some()
                     || self.fallback.is_some()
+                    || self.definition.is_some()
                     || self.chart.has_open_text()
                     || self.kind == Some(DiagramKind::Sequence)
                 {
@@ -1344,6 +1493,7 @@ impl<I> CollectGeometry<I> {
                 if self.node.is_some()
                     || self.edge_label.is_some()
                     || self.fallback.is_some()
+                    || self.definition.is_some()
                     || self.chart.has_open_text()
                     || self.kind == Some(DiagramKind::Sequence)
                 {
@@ -1380,6 +1530,9 @@ pub(super) fn process<'a>(
         node: None,
         edge_label: None,
         fallback: None,
+        defs_depth: None,
+        definition: None,
+        definitions: Vec::new(),
         nodes: Vec::new(),
         node_suffixes: Vec::new(),
         edge_ids: Vec::new(),

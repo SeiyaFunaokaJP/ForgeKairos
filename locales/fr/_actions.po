@@ -1854,6 +1854,11 @@ msgctxt "action"
 msgid "editor::FoldAll"
 msgstr "Tout replier"
 
+#. editor: fold at current indentation level
+msgctxt "action"
+msgid "editor::FoldAtCurrentIndentationLevel"
+msgstr "Repli : replier au niveau d'indentation actuel"
+
 #. editor: fold at level
 msgctxt "action"
 msgid "editor::FoldAtLevel"

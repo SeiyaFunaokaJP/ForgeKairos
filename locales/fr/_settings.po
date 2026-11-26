@@ -1208,6 +1208,18 @@ msgctxt "ThinkingBlockDisplay"
 msgid "Preview"
 msgstr "Aperçu"
 
+msgctxt "TitleBarVisibility"
+msgid "Always"
+msgstr "Toujours"
+
+msgctxt "TitleBarVisibility"
+msgid "Hide In Full Screen"
+msgstr "Masquer en plein écran"
+
+msgctxt "TitleBarVisibility"
+msgid "Never"
+msgstr "Jamais"
+
 msgctxt "UseSystemClipboard"
 msgid "Always"
 msgstr "Toujours"
@@ -4293,6 +4305,10 @@ msgid "Show Tab Bar Buttons"
 msgstr "Afficher les boutons de la barre d'onglets"
 
 msgctxt "settings"
+msgid "Show Title Bar"
+msgstr "Afficher la barre de titre"
+
+msgctxt "settings"
 msgid "Show Turn Stats"
 msgstr "Afficher les statistiques de tour"
 
@@ -5499,6 +5515,10 @@ msgstr "Quand afficher la barre de défilement dans l'éditeur."
 msgctxt "settings"
 msgid "When to show the scrollbar in the terminal."
 msgstr "Quand afficher la barre de défilement dans le terminal."
+
+msgctxt "settings"
+msgid "When to show the title bar and its window controls."
+msgstr "Quand afficher la barre de titre et ses boutons de fenêtre."
 
 msgctxt "settings"
 msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."

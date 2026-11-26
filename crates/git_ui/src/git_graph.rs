@@ -3806,11 +3806,19 @@ impl GitGraph {
             return;
         };
 
+        let commit_view_options = CommitViewOptions {
+            reveal_file: match &self.log_source {
+                LogSource::Path(path) => Some(path.clone()),
+                _ => None,
+            },
+            ..Default::default()
+        };
+
         CommitView::open(
             commit_entry.data.sha.to_string(),
             repository.downgrade(),
             self.workspace.clone(),
-            Default::default(),
+            commit_view_options,
             window,
             cx,
         );
@@ -4760,7 +4768,7 @@ impl GitGraph {
             move |bounds: Bounds<Pixels>, _: (), window: &mut Window, cx: &mut App| {
                 graph_canvas_bounds.set(Some(bounds));
 
-                window.paint_layer(bounds, |window| {
+                window.paint_layer(|window| {
                     let theme = cx.theme();
                     let accent_colors = theme.accents();
                     let background = theme.colors().editor_background;
@@ -4797,6 +4805,38 @@ impl GitGraph {
                             };
                             window.paint_quad(gpui::fill(row_bounds, bg_color));
                         }
+                    }
+
+                    // Commit nodes are painted before the lines, which are drawn
+                    // over the nodes' halos to meet their rings.
+                    for (row_idx, row) in rows.into_iter().enumerate() {
+                        let absolute_row_idx = first_visible_row + row_idx;
+                        let row_color = accent_colors.color_for_index(row.color_idx as u32);
+                        let row_y_center =
+                            bounds.origin.y + row_idx as f32 * row_height + row_height / 2.0
+                                - vertical_scroll_offset;
+
+                        let commit_x = lane_center_x(bounds, row.lane as f32);
+
+                        // Match the node halo to the row's effective background so
+                        // the ring blends seamlessly on hovered/selected rows.
+                        let node_background = if selected_entry_idx == Some(absolute_row_idx)
+                            || context_menu_target_index == Some(absolute_row_idx)
+                        {
+                            background.blend(selected_bg)
+                        } else if hovered_entry_idx == Some(absolute_row_idx) {
+                            background.blend(hover_bg)
+                        } else {
+                            background
+                        };
+
+                        draw_commit_circle(
+                            commit_x,
+                            row_y_center,
+                            row_color,
+                            node_background,
+                            window,
+                        );
                     }
 
                     for line in commit_lines {
@@ -4954,45 +4994,9 @@ impl GitGraph {
 
                         for builder in builders {
                             if let Ok(path) = builder.build() {
-                                // we paint each color on it's own layer to stop overlapping lines
-                                // of different colors changing the color of a line
-                                window.paint_layer(bounds, |window| {
-                                    window.paint_path(path, line_color);
-                                });
+                                window.paint_path(path, line_color);
                             }
                         }
-                    }
-
-                    // Commit nodes are painted last so they sit on top of the
-                    // connector lines, keeping each commit a clear, distinct point.
-                    for (row_idx, row) in rows.into_iter().enumerate() {
-                        let absolute_row_idx = first_visible_row + row_idx;
-                        let row_color = accent_colors.color_for_index(row.color_idx as u32);
-                        let row_y_center =
-                            bounds.origin.y + row_idx as f32 * row_height + row_height / 2.0
-                                - vertical_scroll_offset;
-
-                        let commit_x = lane_center_x(bounds, row.lane as f32);
-
-                        // Match the node halo to the row's effective background so
-                        // the ring blends seamlessly on hovered/selected rows.
-                        let node_background = if selected_entry_idx == Some(absolute_row_idx)
-                            || context_menu_target_index == Some(absolute_row_idx)
-                        {
-                            background.blend(selected_bg)
-                        } else if hovered_entry_idx == Some(absolute_row_idx) {
-                            background.blend(hover_bg)
-                        } else {
-                            background
-                        };
-
-                        draw_commit_circle(
-                            commit_x,
-                            row_y_center,
-                            row_color,
-                            node_background,
-                            window,
-                        );
                     }
                 })
             },
@@ -8645,6 +8649,7 @@ mod tests {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
             theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
             language_model::init(cx);
             // The tag picker's search box is built through the editor factory, which only
             // `editor::init` registers; without it the test depends on another test running first.

@@ -811,21 +811,23 @@ async fn renaming_a_state_follows_into_its_transitions_and_notes(cx: &mut TestAp
 
 /// Mermaid lets `class` and `style` address a comma separated list of states,
 /// so a rename has to reach into the list and a deletion has to take one name
-/// out of it rather than drop the whole statement.
+/// out of it rather than drop the whole statement. Mermaid reads only ASCII
+/// letters, digits and `_` in the ids of `style` (and of `class` and `classDef`
+/// as well), so the ids here are ASCII.
 #[gpui::test]
 async fn a_state_in_a_comma_list_is_renamed_and_deleted_on_its_own(cx: &mut TestAppContext) {
     let (mut cx, modal, _app_state) = open_on(
         indoc! {"
             ```mermaid
             stateDiagram-v2ˇ
-                [*] --> 待機
-                待機 --> 待機中
-                待機中 --> 実行
-                実行 : 実行中
-                実行 --> [*]
-                class 待機, 待機中,実行 強調
-                style 待機,実行 fill:#f96
-                classDef 強調 fill:#ff0
+                [*] --> Wait
+                Wait --> Waiting
+                Waiting --> Run
+                Run : 実行中
+                Run --> [*]
+                class Wait, Waiting,Run hot
+                style Wait,Run fill:#f96
+                classDef hot fill:#ff0
             ```
         "},
         cx,
@@ -840,7 +842,7 @@ async fn a_state_in_a_comma_list_is_renamed_and_deleted_on_its_own(cx: &mut Test
             // The first entry of the list and one in the middle of it, so that
             // the entry the separators and their spaces sit around is renamed
             // as well as the one that starts the list.
-            for (old, new) in [("待機", "Idle"), ("待機中", "Busy")] {
+            for (old, new) in [("Wait", "Idle"), ("Waiting", "Busy")] {
                 let row = form
                     .ids
                     .iter()
@@ -855,15 +857,15 @@ async fn a_state_in_a_comma_list_is_renamed_and_deleted_on_its_own(cx: &mut Test
 
     let body = fence_body(&mut cx);
     assert!(
-        body.contains("class Idle, Busy,実行 強調"),
+        body.contains("class Idle, Busy,Run hot"),
         "each entry should have been rewritten in place, spacing and all:\n{body}"
     );
     assert!(
-        body.contains("style Idle,実行 fill:#f96"),
+        body.contains("style Idle,Run fill:#f96"),
         "`style` takes a list too:\n{body}"
     );
     assert!(
-        body.contains("classDef 強調 fill:#ff0"),
+        body.contains("classDef hot fill:#ff0"),
         "`classDef` names a class, not a state:\n{body}"
     );
 
@@ -876,8 +878,8 @@ async fn a_state_in_a_comma_list_is_renamed_and_deleted_on_its_own(cx: &mut Test
                     .body
                     .items
                     .iter()
-                    .position(|item| matches!(item, StateItem::State(entry) if entry.id == "実行"))
-                    .expect("実行 is declared by a statement of its own"),
+                    .position(|item| matches!(item, StateItem::State(entry) if entry.id == "Run"))
+                    .expect("Run is declared by a statement of its own"),
                 _ => panic!("the fence holds a state diagram"),
             };
             modal.remove_state_item(Vec::new(), index, window, cx);
@@ -900,11 +902,11 @@ async fn a_state_in_a_comma_list_is_renamed_and_deleted_on_its_own(cx: &mut Test
     assert_eq!(
         kept,
         vec![
-            "class Idle, Busy 強調".to_string(),
+            "class Idle, Busy hot".to_string(),
             "style Idle fill:#f96".to_string(),
-            "classDef 強調 fill:#ff0".to_string(),
+            "classDef hot fill:#ff0".to_string(),
         ],
-        "実行 should have left the lists without taking the others with it"
+        "Run should have left the lists without taking the others with it"
     );
 }
 

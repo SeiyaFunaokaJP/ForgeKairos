@@ -171,10 +171,6 @@ msgid "Always populate the search query with the word under the cursor."
 msgstr "始终使用光标下的单词填充搜索查询。"
 
 msgctxt "settings schema"
-msgid "Always prompt for confirmation (default behavior)."
-msgstr "始终提示确认（默认行为）。"
-
-msgctxt "settings schema"
 msgid "Always reduce motion"
 msgstr "始终减少动态效果"
 
@@ -201,6 +197,10 @@ msgstr "始终在左侧显示侧边栏。"
 msgctxt "settings schema"
 msgid "Always show the sidebar on the right side."
 msgstr "始终在右侧显示侧边栏。"
+
+msgctxt "settings schema"
+msgid "Always show the title bar."
+msgstr "始终显示标题栏。"
 
 msgctxt "settings schema"
 msgid "Always start with an empty editor tab"
@@ -1035,12 +1035,12 @@ msgid "Dim yellow ANSI terminal color."
 msgstr "暗黄色 ANSI 终端颜色。"
 
 msgctxt "settings schema"
-msgid "Direction to split horizontally.\n\nDefault: \"up\""
-msgstr "水平拆分的方向。\n\n默认值：\"up\""
+msgid "Direction to split horizontally.\n\nDefault: \"down\""
+msgstr "水平拆分的方向。\n\n默认值：\"down\""
 
 msgctxt "settings schema"
-msgid "Direction to split vertically.\n\nDefault: \"left\""
-msgstr "垂直拆分的方向。\n\n默认值：\"left\""
+msgid "Direction to split vertically.\n\nDefault: \"right\""
+msgstr "垂直拆分的方向。\n\n默认值：\"right\""
 
 msgctxt "settings schema"
 msgid "Directory subtrees that sandboxed terminal commands may always write\nto without prompting. Each entry is either a bare path string or an\nobject `{requested, resolved}`; Zed writes objects (the canonical,\nsymlink-resolved target established at approval time), while\nhand-authored entries may be bare path strings. Paths written by Zed\nare absolute.\nDefault: []"
@@ -1507,8 +1507,8 @@ msgid "How many lines of context to provide in multibuffer excerpts by default\n
 msgstr "多缓冲区摘录中默认提供的上下文行数。\n\n默认值：2"
 
 msgctxt "settings schema"
-msgid "How many lines to expand the multibuffer excerpts by default\n\nDefault: 3"
-msgstr "多缓冲区摘录默认展开的行数。\n\n默认值：3"
+msgid "How many lines to expand the multibuffer excerpts by default\n\nDefault: 5"
+msgstr "多缓冲区摘录默认展开的行数。\n\n默认值：5"
 
 msgctxt "settings schema"
 msgid "How many minutes an external agent's connection is kept once no thread\nof that agent is open any more. The agent (and the sandbox it runs in)\nis stopped after that, and opening one of its threads again connects\nanew. `0` keeps every connection until the window closes.\n\nDefault: 5"
@@ -1531,8 +1531,8 @@ msgid "How thinking blocks should be displayed by default in the agent panel."
 msgstr "思考块在智能体面板中的默认显示方式。"
 
 msgctxt "settings schema"
-msgid "How thinking blocks should be displayed by default in the agent panel.\n\nDefault: automatic"
-msgstr "智能体面板中思考块的默认显示方式。\n\n默认值：automatic"
+msgid "How thinking blocks should be displayed by default in the agent panel.\n\nDefault: auto"
+msgstr "智能体面板中思考块的默认显示方式。\n\n默认值：auto"
 
 msgctxt "settings schema"
 msgid "How to display diffs in the editor.\n\nDefault: split"
@@ -1959,6 +1959,10 @@ msgid "Never show the scrollbar."
 msgstr "从不显示滚动条。"
 
 msgctxt "settings schema"
+msgid "Never show the title bar."
+msgstr "从不显示标题栏。"
+
+msgctxt "settings schema"
 msgid "No automatic indentation. New lines start at column 0."
 msgstr "无自动缩进。新行从第 0 列开始。"
 
@@ -2155,6 +2159,10 @@ msgid "Preserve the indentation of the current line when creating new lines,\nbu
 msgstr "创建新行时保留当前行的缩进，但不根据语法上下文进行调整。"
 
 msgctxt "settings schema"
+msgid "Prompt for confirmation (default behavior).\nThe `edit_file` and `write_file` tools don't prompt for files inside\nthe project unless an `always_confirm` pattern matches."
+msgstr "提示确认（默认行为）。除非匹配 `always_confirm` 模式，否则 `edit_file` 和 `write_file` 工具不会对项目内的文件提示确认。"
+
+msgctxt "settings schema"
 msgid "Pure Unicode codepoint comparison. No case folding, no natural number sorting.\nUppercase ASCII sorts before lowercase. Accented characters sort after ASCII."
 msgstr "纯 Unicode 码位比较。不进行大小写折叠，也不进行自然数排序。大写 ASCII 排在小写之前。带重音符号的字符排在 ASCII 之后。"
 
@@ -2323,8 +2331,8 @@ msgid "Sets the terminal's font weight in CSS weight units 0-900."
 msgstr "以 CSS 字重单位 0-900 设置终端的字体粗细。"
 
 msgctxt "settings schema"
-msgid "Sets the terminal's line height.\n\nDefault: comfortable"
-msgstr "设置终端的行高。\n\n默认值：comfortable"
+msgid "Sets the terminal's line height.\n\nDefault: standard"
+msgstr "设置终端的行高。\n\n默认值：standard"
 
 msgctxt "settings schema"
 msgid "Sets whether Alternate Scroll mode (code: ?1007) is active by default.\nAlternate Scroll mode converts mouse scroll events into up / down key\npresses when in the alternate screen (e.g. when running applications\nlike vim or  less). The terminal can still set and unset this mode.\n\nDefault: on"
@@ -2561,6 +2569,10 @@ msgstr "仅在鼠标悬停于缩略图时显示缩略图滑块。"
 msgctxt "settings schema"
 msgid "Show the scrollbar if there's important information or\nfollow the system's configured behavior."
 msgstr "在有重要信息时显示滚动条，或遵循系统配置的行为。"
+
+msgctxt "settings schema"
+msgid "Show the title bar, but hide it while the window is in full screen."
+msgstr "显示标题栏，但在窗口全屏时隐藏。"
 
 msgctxt "settings schema"
 msgid "Show unstaged hunks hollow and staged hunks with a filled background."
@@ -3499,8 +3511,8 @@ msgid "Thinking effort levels this model accepts in Ollama's `think` parameter,\
 msgstr "此模型在 Ollama 的 `think` 参数中接受的思考深度级别，例如 `[\"low\", \"medium\", \"high\"]`。只有部分模型（例如 `gpt-oss`）接受级别而非简单的开/关；对于不支持的模型，请不要设置。"
 
 msgctxt "settings schema"
-msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed's keymap closely follows VSCode's\nkeymap, with minor adjustments, this corresponds to the \"VSCode\" setting.\n\nDefault: VSCode"
-msgstr "此基础键映射设置会调整 ForgeKairos 中的默认键绑定，使其与其他常见代码编辑器相似。默认情况下，ForgeKairos 的键映射与 VSCode 的键映射基本一致，仅有少量调整，对应于 \"VSCode\" 设置。\n\n默认值：VSCode"
+msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed uses its own keymap, which\ncorresponds to the \"Zed\" setting.\n\nDefault: Zed"
+msgstr "此基础键映射设置会调整 ForgeKairos 中的默认键绑定，使其与其他常见代码编辑器相似。默认情况下，ForgeKairos 使用自己的键映射，对应于 \"Zed\" 设置。\n\n默认值：Zed"
 
 msgctxt "settings schema"
 msgid "Time in milliseconds until timeout error when connecting to a TCP debug adapter\n\nDefault: 2000ms"
@@ -3759,8 +3771,8 @@ msgid "What to do when multibuffer is double clicked in some of its excerpts (pa
 msgstr "在多缓冲区的某个摘录（单例缓冲区的片段）中双击时执行的操作。"
 
 msgctxt "settings schema"
-msgid "What to do when the `BEL` character (`\\a`) is printed to terminal.\n\nDefault: \"system\""
-msgstr "终端输出 `BEL` 字符（`\\a`）时的行为。\n\n默认值：\"system\""
+msgid "What to do when the `BEL` character (`\\a`) is printed to terminal.\n\nDefault: \"off\""
+msgstr "终端输出 `BEL` 字符（`\\a`）时的行为。\n\n默认值：\"off\""
 
 msgctxt "settings schema"
 msgid "What to do when the last window is closed\n\nDefault: auto (nothing on macOS, \"app quit\" otherwise)"
@@ -3847,6 +3859,10 @@ msgid "When to scan content of linked directories.\n\nDefault: expanded"
 msgstr "何时扫描链接目录的内容。\n\n默认值：expanded"
 
 msgctxt "settings schema"
+msgid "When to show the close button on tabs.\n\nDefault: hover"
+msgstr "何时在标签页上显示关闭按钮。\n\n默认值：hover"
+
+msgctxt "settings schema"
 msgid "When to show the minimap in the editor.\n\nDefault: never"
 msgstr "何时在编辑器中显示缩略图。\n\n默认值：never"
 
@@ -3877,6 +3893,10 @@ msgstr "何时在终端中显示滚动条。\n\n默认值：继承编辑器的�
 msgctxt "settings schema"
 msgid "When to show the scrollbar.\n\nDefault: auto"
 msgstr "何时显示滚动条。\n\n默认值：auto"
+
+msgctxt "settings schema"
+msgid "When to show the title bar.\n\nDefault: always"
+msgstr "何时显示标题栏。\n\n默认值：always"
 
 msgctxt "settings schema"
 msgid "When true, enables drag and drop text selection in buffer.\n\nDefault: true"
@@ -4319,10 +4339,6 @@ msgid "Whether to allow windows to tab together based on the user's tabbing pref
 msgstr "是否允许根据用户的标签页偏好将窗口合并为标签页（仅限 macOS）。\n\n默认值：false"
 
 msgctxt "settings schema"
-msgid "Whether to always show the close button on tabs.\n\nDefault: false"
-msgstr "是否始终在标签页上显示关闭按钮。\n\n默认值：false"
-
-msgctxt "settings schema"
 msgid "Whether to always use cmd-enter (or ctrl-enter on Linux or Windows) to send messages in the agent panel.\n\nDefault: false"
 msgstr "在智能体面板中是否始终使用 cmd-enter（Linux 或 Windows 上为 ctrl-enter）发送消息。\n\n默认值：false"
 
@@ -4643,6 +4659,10 @@ msgid "Whether to pop the completions menu while typing in an editor without\nex
 msgstr "在编辑器中输入时，是否无需明确请求即弹出补全菜单。\n\n默认值：true"
 
 msgctxt "settings schema"
+msgid "Whether to pre-fill the file finder's query with the text selected in the\nfocused item (e.g. an editor or a terminal) when it is opened.\n\nDefault: false"
+msgstr "打开文件查找器时，是否用当前焦点项（例如编辑器或终端）中所选的文本预先填充查询。\n\n默认值：false"
+
+msgctxt "settings schema"
 msgid "Whether to prefix each logged line with `[YYYY-MM-DD HH:MM:SS] `.\n\nDefault: false"
 msgstr "是否为记录的每一行添加前缀 `[YYYY-MM-DD HH:MM:SS] `。\n\n默认值：false"
 
@@ -4731,8 +4751,8 @@ msgid "Whether to show an indicator while multi-stroke input is pending.\nIf the
 msgstr "是否在多键输入等待中时显示指示器。\n如果输入有超时，会显示倒计时，悬停在指示器上会暂停倒计时。\n启用 which-key 弹出窗口时，其键绑定预览弹出框会被禁用。\n\n默认值：true"
 
 msgctxt "settings schema"
-msgid "Whether to show author name as part of the commit information.\n\nDefault: false"
-msgstr "是否在提交信息中显示作者姓名。\n\n默认值：false"
+msgid "Whether to show author name as part of the commit information.\n\nDefault: true"
+msgstr "是否在提交信息中显示作者姓名。\n\n默认值：true"
 
 msgctxt "settings schema"
 msgid "Whether to show bookmarks in the gutter.\n\nDefault: true"
@@ -5115,8 +5135,8 @@ msgid "Which information to show in the branch picker.\n\nDefault: on"
 msgstr "在分支选择器中显示哪些信息。\n\n默认值：on"
 
 msgctxt "settings schema"
-msgid "Which level to use to filter out diagnostics displayed in the editor.\n\nAffects the editor rendering only, and does not interrupt\nthe functionality of diagnostics fetching and project diagnostics editor.\nWhich files containing diagnostic errors/warnings to mark in the tabs.\nDiagnostics are only shown when file icons are also active.\n\nShows all diagnostics if not specified.\n\nDefault: warning"
-msgstr "用于筛选编辑器中显示的诊断的级别。\n\n只影响编辑器的渲染，不会妨碍诊断获取和项目诊断编辑器的功能。\n在标签页中标记哪些包含诊断错误/警告的文件。\n只有在文件图标也处于启用状态时才会显示诊断。\n\n未指定时显示所有诊断。\n\n默认值：warning"
+msgid "Which level to use to filter out diagnostics displayed in the editor.\n\nAffects the editor rendering only, and does not interrupt\nthe functionality of diagnostics fetching and project diagnostics editor.\nWhich files containing diagnostic errors/warnings to mark in the tabs.\nDiagnostics are only shown when file icons are also active.\n\nShows all diagnostics if not specified.\n\nDefault: all"
+msgstr "用于筛选编辑器中显示的诊断的级别。\n\n只影响编辑器的渲染，不会妨碍诊断获取和项目诊断编辑器的功能。\n在标签页中标记哪些包含诊断错误/警告的文件。\n只有在文件图标也处于启用状态时才会显示诊断。\n\n未指定时显示所有诊断。\n\n默认值：all"
 
 msgctxt "settings schema"
 msgid "Which sources the panel lists calls from: the language server, which\nis exact, the symbol index of C and C++ files, which matches names, or\nboth.\n\nDefault: all"

@@ -591,15 +591,6 @@ msgstr "元の内容と受け付けの記録を JSON でコピーします"
 msgid "Cost"
 msgstr "コスト"
 
-msgid "Cost Multiplier: {}"
-msgstr "コスト倍率: {}"
-
-msgid "Cost per Million Tokens: {}"
-msgstr "100 万トークンあたりのコスト: {}"
-
-msgid "Cost: {}"
-msgstr "コスト: {}"
-
 msgid "Could not authenticate with {provider}."
 msgstr "{provider} で認証できませんでした。"
 
@@ -958,9 +949,6 @@ msgstr "クリップボードのスレッドデータを解析できませんで
 msgid "Favorite"
 msgstr "お気に入りに追加"
 
-msgid "Favorite Model"
-msgstr "お気に入りに追加"
-
 msgid "Favorites"
 msgstr "お気に入り"
 
@@ -1160,9 +1148,6 @@ msgstr "すべて採用"
 
 msgid "Later"
 msgstr "後で"
-
-msgid "Latest"
-msgstr "最新"
 
 msgid "Launch Claude Code"
 msgstr "Claude Code を起動"
@@ -1467,6 +1452,9 @@ msgstr "ファイルを開く"
 msgid "Open Global Rules"
 msgstr "グローバルルールを開く"
 
+msgid "Open Plan File"
+msgstr "計画ファイルを開く"
+
 msgid "Open Project Rules"
 msgstr "プロジェクトルールを開く"
 
@@ -1649,9 +1637,6 @@ msgstr "再認証"
 
 msgid "Recent Projects"
 msgstr "最近のプロジェクト"
-
-msgid "Recommended"
-msgstr "推奨"
 
 msgid "Reconnect"
 msgstr "再接続"
@@ -2524,9 +2509,6 @@ msgstr "接続先のホームディレクトリの形が想定と違います (�
 msgid "Unfavorite"
 msgstr "お気に入りから削除"
 
-msgid "Unfavorite Model"
-msgstr "お気に入りから削除"
-
 msgid "Unknown"
 msgstr "不明"
 
@@ -2983,10 +2965,6 @@ msgstr "、"
 msgctxt "mention type"
 msgid "Fetch"
 msgstr "URL を取得"
-
-msgctxt "model list section"
-msgid "Favorite"
-msgstr "お気に入り"
 
 msgctxt "model or effort"
 msgid "Default"

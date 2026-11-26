@@ -17,31 +17,6 @@ the fork changed.
 
 ## Distributed with the application
 
-### merman-render (modified)
-
-| | |
-|---|---|
-| Used for | Rendering Mermaid diagrams (through the `merman` crate, as upstream Zed does) |
-| Version | 0.8.0-alpha.5, as published on crates.io (checksum `cd17bfdd6866df20f34a8697eba00e0b86efa734de0b6a629b07a755d748fd68`) |
-| Source | <https://github.com/Latias94/merman> |
-| License | MIT OR Apache-2.0 |
-| Copyright | Copyright (c) 2026 merman contributors |
-| Location | `third_party/merman-render/`, substituted through `[patch.crates-io]` in the root `Cargo.toml` |
-| License texts | `third_party/merman-render/LICENSE-MIT`, `third_party/merman-render/LICENSE-APACHE` |
-| Its own notices | `third_party/merman-render/THIRD_PARTY_NOTICES.md`, `third_party/merman-render/THIRD_PARTY_LICENSES` |
-
-Changed by this fork: the fallback text of HTML labels wraps at the same line
-break opportunities the layout measures with, so that labels without spaces
-(Japanese, Chinese) stay inside their node. Two files, described in
-`third_party/merman-render/FORK_CHANGES.md`. The change is not submitted to the
-merman project.
-
-The other merman crates (`merman`, `merman-core`, …) are used unmodified from
-crates.io at the same version and are covered by `assets/licenses.md`.
-
-merman is an independent implementation and is not affiliated with the Mermaid
-project.
-
 ### zed-i18n translations (modified)
 
 | | |
@@ -85,7 +60,7 @@ name. The other entries are the fork's own translations.
 | | |
 |---|---|
 | Used for | Checking that the Mermaid text this fork writes out is valid for the official parser (`tooling/mermaid-conformance/`) |
-| Version | 11.16.1 (the version merman 0.8.0-alpha.5 targets) |
+| Version | 12.1.0 (the version merman 0.9.3 targets) |
 | Source | <https://github.com/mermaid-js/mermaid>, npm package `mermaid` |
 | License | MIT |
 | Copyright | Copyright (c) 2014 - 2022 Knut Sveidqvist |
@@ -103,8 +78,8 @@ name. The other entries are the fork's own translations.
 | In the repository | No. Installed the same way |
 
 Both bring further packages, pinned in
-`tooling/mermaid-conformance/package-lock.json` (148 in total). By the license
+`tooling/mermaid-conformance/package-lock.json` (154 in total). By the license
 each package declares: MIT 96 (including `khroma`, which declares it in its
-license file only), ISC 34, BSD-3-Clause 4, BSD-2-Clause 2, Apache-2.0 2,
-MIT-0 1, Unlicense 1 (`robust-predicates`), and MPL-2.0 OR Apache-2.0 1
-(`dompurify`). None of them is copied into the repository or into a release.
+license file only), ISC 34, Apache-2.0 7, BSD-3-Clause 4, BSD-2-Clause 2,
+MIT-0 1, Unlicense 1 (`robust-predicates`), MPL-2.0 OR Apache-2.0 1
+(`dompurify`), and EPL-2.0 1 (`elkjs`). None of them is copied into the repository or into a release.

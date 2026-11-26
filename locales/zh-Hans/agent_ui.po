@@ -594,15 +594,6 @@ msgstr "以 JSON 格式复制原始内容和接收凭据"
 msgid "Cost"
 msgstr "费用"
 
-msgid "Cost Multiplier: {}"
-msgstr "费用倍率：{}"
-
-msgid "Cost per Million Tokens: {}"
-msgstr "每百万 Token 费用：{}"
-
-msgid "Cost: {}"
-msgstr "费用：{}"
-
 msgid "Could not authenticate with {provider}."
 msgstr "无法向 {provider} 认证。"
 
@@ -961,9 +952,6 @@ msgstr "解析剪贴板中的会话数据失败"
 msgid "Favorite"
 msgstr "收藏"
 
-msgid "Favorite Model"
-msgstr "收藏模型"
-
 msgid "Favorites"
 msgstr "收藏夹"
 
@@ -1163,9 +1151,6 @@ msgstr "全部保留"
 
 msgid "Later"
 msgstr "稍后"
-
-msgid "Latest"
-msgstr "最新"
 
 msgid "Launch Claude Code"
 msgstr "启动 Claude Code"
@@ -1470,6 +1455,9 @@ msgstr "打开文件"
 msgid "Open Global Rules"
 msgstr "打开全局规则"
 
+msgid "Open Plan File"
+msgstr "打开计划文件"
+
 msgid "Open Project Rules"
 msgstr "打开项目规则"
 
@@ -1652,9 +1640,6 @@ msgstr "重新认证"
 
 msgid "Recent Projects"
 msgstr "最近的项目"
-
-msgid "Recommended"
-msgstr "推荐"
 
 msgid "Reconnect"
 msgstr "重新连接"
@@ -2527,9 +2512,6 @@ msgstr "远程主目录的形式不符合预期（内部错误）：{home}"
 msgid "Unfavorite"
 msgstr "取消收藏"
 
-msgid "Unfavorite Model"
-msgstr "取消收藏模型"
-
 msgid "Unknown"
 msgstr "未知"
 
@@ -2986,10 +2968,6 @@ msgstr "、"
 msgctxt "mention type"
 msgid "Fetch"
 msgstr "获取"
-
-msgctxt "model list section"
-msgid "Favorite"
-msgstr "收藏"
 
 msgctxt "model or effort"
 msgid "Default"

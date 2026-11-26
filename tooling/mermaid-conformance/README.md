@@ -14,7 +14,7 @@ at the repository root for versions and licenses.
 
 ## Setup
 
-Needs Node.js 22 or later and network access to the npm registry, once:
+Needs Node.js 22.12 or later and network access to the npm registry, once:
 
 ```sh
 cd tooling/mermaid-conformance

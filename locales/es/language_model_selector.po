@@ -1,0 +1,49 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Change Model"
+msgstr "Cambiar modelo"
+
+msgid "Configure"
+msgstr "Configurar"
+
+msgid "Cost Multiplier: {}"
+msgstr "Multiplicador de costo: {}"
+
+msgid "Cost per Million Tokens: {}"
+msgstr "Costo por millón de tokens: {}"
+
+msgid "Cost: {}"
+msgstr "Costo: {}"
+
+msgid "Cycle Favorite Models"
+msgstr "Alternar modelos favoritos"
+
+msgid "Favorite Model"
+msgstr "Agregar modelo a favoritos"
+
+msgid "Latest"
+msgstr "Más reciente"
+
+msgid "Recommended"
+msgstr "Recomendado"
+
+msgid "Select a Model"
+msgstr "Seleccionar un modelo"
+
+msgid "Select a model…"
+msgstr "Seleccionar un modelo…"
+
+msgid "Unfavorite Model"
+msgstr "Quitar modelo de favoritos"
+
+msgctxt "model list section"
+msgid "Favorite"
+msgstr "Favorito"

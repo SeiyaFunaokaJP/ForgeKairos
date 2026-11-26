@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{Context as _, Result, anyhow};
 use fs::{Fs, RemoveOptions};
+use gpui::SvgRenderer;
 use markdown::parser::{
     Alignment, CodeBlockKind, HeadingLevel, MarkdownEvent, MarkdownTag, MarkdownTagEnd,
     extract_code_content_range, parse_markdown_events,
@@ -91,6 +92,7 @@ pub fn render_html_document(
     title: &str,
     base_directory: Option<&Path>,
     soft_break_as_hard_break: bool,
+    svg_renderer: &SvgRenderer,
 ) -> String {
     let mut document = String::with_capacity(source.len() * 2 + DOCUMENT_CSS.len() + 512);
     document
@@ -103,6 +105,7 @@ pub fn render_html_document(
         source,
         base_directory,
         soft_break_as_hard_break,
+        svg_renderer,
         &mut document,
     );
     document.push_str("</body>\n</html>\n");
@@ -166,12 +169,12 @@ pub(crate) fn print_mermaid_theme() -> mermaid_render::MermaidTheme {
 }
 
 /// The SVG for a fenced mermaid block, or the reason it could not be drawn.
-fn render_mermaid_block(contents: &str) -> Result<String, String> {
+fn render_mermaid_block(contents: &str, svg_renderer: &SvgRenderer) -> Result<String, String> {
     if !markdown::is_supported_diagram_type(contents) {
         return Err(i18n::t!("Unsupported diagram type").to_owned());
     }
 
-    mermaid_render::render_to_svg(contents, &print_mermaid_theme())
+    mermaid_render::render_to_svg(contents, &print_mermaid_theme(), svg_renderer)
         .map_err(|error| format!("{error:#}"))
 }
 
@@ -179,6 +182,7 @@ fn render_body(
     source: &str,
     base_directory: Option<&Path>,
     soft_break_as_hard_break: bool,
+    svg_renderer: &SvgRenderer,
     output: &mut String,
 ) {
     let events = parse_markdown_events(source);
@@ -258,7 +262,7 @@ fn render_body(
                         _ => None,
                     };
                     if let Some(contents) = mermaid_contents {
-                        match render_mermaid_block(contents.trim_end_matches('\n')) {
+                        match render_mermaid_block(contents.trim_end_matches('\n'), svg_renderer) {
                             Ok(svg) => {
                                 output.push_str("<figure class=\"mermaid\">");
                                 output.push_str(&svg);
@@ -765,6 +769,7 @@ pub async fn export_to_pdf(
     markdown_path: &Path,
     source: &str,
     soft_break_as_hard_break: bool,
+    svg_renderer: &SvgRenderer,
 ) -> Result<PathBuf> {
     let title = markdown_path
         .file_name()
@@ -775,6 +780,7 @@ pub async fn export_to_pdf(
         &title,
         markdown_path.parent(),
         soft_break_as_hard_break,
+        svg_renderer,
     );
 
     let html_path = temp_html_path(markdown_path);
@@ -807,16 +813,17 @@ pub async fn export_to_pdf(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mermaid_render::test_svg_renderer;
 
     fn render(source: &str) -> String {
         let mut html = String::new();
-        render_body(source, None, false, &mut html);
+        render_body(source, None, false, test_svg_renderer(), &mut html);
         html
     }
 
     fn render_with_soft_breaks_as_hard_breaks(source: &str) -> String {
         let mut html = String::new();
-        render_body(source, None, true, &mut html);
+        render_body(source, None, true, test_svg_renderer(), &mut html);
         html
     }
 
@@ -975,6 +982,7 @@ mod tests {
             "[説明](sub/page.md) と ![図](<img/a b.png>)",
             Some(base),
             false,
+            test_svg_renderer(),
             &mut html,
         );
         assert!(
@@ -1010,6 +1018,7 @@ mod tests {
             "[a](https://example.com/x) [b](#section) [c](mailto:a@example.com)",
             Some(base),
             false,
+            test_svg_renderer(),
             &mut html,
         );
         assert!(html.contains("href=\"https://example.com/x\""), "{html}");
@@ -1124,7 +1133,8 @@ mod tests {
 
     #[test]
     fn test_document_is_self_contained() {
-        let document = render_html_document("# タイトル\n", "doc.md", None, true);
+        let document =
+            render_html_document("# タイトル\n", "doc.md", None, true, test_svg_renderer());
         assert!(document.starts_with("<!DOCTYPE html>"));
         assert!(document.contains("<title>doc.md</title>"));
         assert!(document.contains("<style>"));

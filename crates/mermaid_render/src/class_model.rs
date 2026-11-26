@@ -1539,7 +1539,7 @@ mod tests {
     /// Class diagrams draw with Zed's own font stack, unlike the state and ER
     /// diagrams, so the theme here is the one the editor really uses.
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -2087,18 +2087,17 @@ mod tests {
             );
         }
         // A `}` with nothing but whitespace after it is the closing brace it
-        // looks like. `merman` 0.7 counted an ideographic space as whitespace
-        // there; 0.8 does not, and refuses the line.
-        assert_eq!(
-            assert_stable("classDiagram\n  class A {\n    +x()\n  } \t\n  class B"),
-            "classDiagram\n    class A {\n        +x()\n    }\n    class B"
-        );
-        let error = parse_class("classDiagram\n  class A {\n    +x()\n  }\u{3000}\n  class B")
-            .expect_err("an ideographic space after the brace");
-        assert!(
-            format!("{error}").contains("Mermaid could not parse"),
-            "{error}"
-        );
+        // looks like. That includes an ideographic space, which Mermaid counts
+        // as whitespace there (`merman` 0.8 refused the line, 0.9 reads it).
+        for source in [
+            "classDiagram\n  class A {\n    +x()\n  } \t\n  class B",
+            "classDiagram\n  class A {\n    +x()\n  }\u{3000}\n  class B",
+        ] {
+            assert_eq!(
+                assert_stable(source),
+                "classDiagram\n    class A {\n        +x()\n    }\n    class B"
+            );
+        }
     }
 
     /// A `%%` line inside a member block is part of the block, not a comment
@@ -2195,7 +2194,14 @@ mod tests {
         assert_eq!(emit_class(&document), CLASS_KEYWORD);
         // `merman` 0.8 no longer draws the keyword on its own (the editor asks
         // for a class before it writes the fence), but the editor still opens it.
-        assert!(render_to_svg(CLASS_KEYWORD, &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(
+                CLASS_KEYWORD,
+                &MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err()
+        );
         assert_eq!(
             parse_class(CLASS_KEYWORD).expect("the keyword alone should open"),
             ClassDocument::empty()
@@ -2538,7 +2544,9 @@ mod tests {
             assert_stable(source),
             "classDiagram\n    namespace N {\n    }"
         );
-        assert!(render_to_svg(source, &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer()).is_err()
+        );
     }
 
     /// A member block on one line is not one Mermaid reads: its lexer takes a
@@ -2677,7 +2685,12 @@ mod tests {
         let whole = crate::mermaid_model::MermaidDocument::Class(document.clone());
         assert!(whole.structure_error().is_some(), "{}", whole.emit());
         assert!(
-            crate::render_to_svg(&whole.emit(), &crate::MermaidTheme::default()).is_err(),
+            crate::render_to_svg(
+                &whole.emit(),
+                &crate::MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err(),
             "the reason for the refusal no longer holds:
 {}",
             whole.emit()

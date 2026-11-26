@@ -1,4 +1,4 @@
-@.rules
+@AGENTS.md
 
 ---
 
@@ -14,5 +14,5 @@ upstream のファイルへの変更は最小に保つ (包むだけ、または
 必読 (この順): `.forgekairos-docs/TODO.md` (今の状態と次にやること) → `.forgekairos-docs/DESIGN.md` (ADR-F0x) →
 `.forgekairos-docs/DEVLOG.md` (履歴)。ビルドは `.forgekairos-docs/BUILD-WINDOWS.md`。
 
-upstream の開発規約 (上記 .rules、`./script/clippy`、GPUI イディオム) は遵守する。
+upstream の開発規約 (上記 AGENTS.md、`./script/clippy`、GPUI イディオム) は遵守する。
 git commit はマイルストーン単位。ドキュメント更新 (TODO/DEVLOG/DESIGN) をコミットに含めること。

@@ -39,6 +39,23 @@ phrase	fact	-	upstream の Zed
 phrase	fact	-	上流の Zed
 phrase	fact	-	Zed's context_servers format
 phrase	fact	-	Zed の context_servers
+phrase	identifier	-	the \"Zed\" setting
+phrase	identifier	-	Default: Zed
+phrase	identifier	-	\"Zed\" 設定
+phrase	identifier	-	既定値: Zed
+phrase	identifier	-	Einstellung \"Zed\"
+phrase	identifier	-	Standard: Zed
+phrase	identifier	-	opción \"Zed\"
+phrase	identifier	-	Valor predeterminado: Zed
+phrase	identifier	-	paramètre \"Zed\"
+phrase	identifier	-	Valeur par défaut : Zed
+phrase	identifier	-	\"Zed\" 설정
+phrase	identifier	-	기본값: Zed
+phrase	identifier	-	configuração \"Zed\"
+phrase	identifier	-	Padrão: Zed
+phrase	identifier	-	\"Zed\" 设置
+phrase	identifier	-	默认值：Zed
+phrase	identifier	-	預設值：Zed
 
 message	fact	menu	Zed Repository
 message	fact	menu	Zed Twitter

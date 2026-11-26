@@ -964,7 +964,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -1075,7 +1075,14 @@ mod tests {
         });
         let error = document.structure_error().expect("a one-line block");
         assert!(error.contains("cannot be written on one line"), "{error}");
-        assert!(render_to_svg(&emit_event_modeling(&document), &MermaidTheme::default()).is_err());
+        assert!(
+            render_to_svg(
+                &emit_event_modeling(&document),
+                &MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err()
+        );
 
         if let Some(block) = document.data_blocks.first_mut() {
             block.value = "{\n  id: 1\n}".to_string();
@@ -1433,7 +1440,8 @@ eventmodeling
             "eventmodeling\n  tf 01 ui 画面.Cart",
         ] {
             assert!(
-                render_to_svg(source, &MermaidTheme::default()).is_err(),
+                render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
+                    .is_err(),
                 "{source}"
             );
             refusal(source);

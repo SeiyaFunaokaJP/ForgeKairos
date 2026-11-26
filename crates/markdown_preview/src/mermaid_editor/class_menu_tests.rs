@@ -63,8 +63,12 @@ fn fence_body(cx: &mut EditorTestContext) -> String {
 }
 
 fn assert_renders(source: &str) {
-    let svg = render_to_svg(source, &crate::markdown_export::print_mermaid_theme())
-        .unwrap_or_else(|error| panic!("the written diagram should render: {error}\n{source}"));
+    let svg = render_to_svg(
+        source,
+        &crate::markdown_export::print_mermaid_theme(),
+        mermaid_render::test_svg_renderer(),
+    )
+    .unwrap_or_else(|error| panic!("the written diagram should render: {error}\n{source}"));
     assert!(
         !svg.contains("Syntax error in text"),
         "the written diagram rendered an error:\n{source}"

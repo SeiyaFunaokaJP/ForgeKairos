@@ -2044,13 +2044,15 @@ mod tests {
             "flowchart TD\n  A[\u{958b}\u{59cb}] -->|\u{306f}\u{3044}| B{\u{5224}\u{5b9a}}\n  subgraph S[\u{7fa4}]\n    B -- \u{3044}\u{3044}\u{3048} --> C((\u{7d42}\u{4e86}))\n  end",
             "flowchart TD\n  A[first]\n  A[second with %% inside]",
             "flowchart TD\n  A -->|one %% two| B\n  A -->|x| B",
-            "flowchart TD\n  A[x] --> B[y] %% A[z]",
+            // A `%%` after a statement is refused by Mermaid and `merman` 0.9,
+            // so `A[x] --> B[y] %% A[z]` is no longer here.
             "flowchart TD\n  A(50%% \u{5f15}) --> B{40%% \u{5f15}}",
         ];
         for source in sources {
             let (_, geometry) = mermaid_render::render_to_svg_with_geometry(
                 source,
                 &mermaid_render::MermaidTheme::default(),
+                mermaid_render::test_svg_renderer(),
             )
             .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
             assert!(
@@ -2101,6 +2103,7 @@ mod tests {
         let (_, geometry) = mermaid_render::render_to_svg_with_geometry(
             source,
             &mermaid_render::MermaidTheme::default(),
+            mermaid_render::test_svg_renderer(),
         )
         .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
         geometry
@@ -2180,8 +2183,12 @@ mod tests {
             edited,
             "erDiagram\n  a ||--o{ b : \"\u{8a00}\u{3046} #quot;\u{306f}\u{3044}#quot;\"\n"
         );
-        let svg = mermaid_render::render_to_svg(&edited, &mermaid_render::MermaidTheme::default())
-            .unwrap_or_else(|error| panic!("{edited:?} should render: {error:#}"));
+        let svg = mermaid_render::render_to_svg(
+            &edited,
+            &mermaid_render::MermaidTheme::default(),
+            mermaid_render::test_svg_renderer(),
+        )
+        .unwrap_or_else(|error| panic!("{edited:?} should render: {error:#}"));
         // merman 0.7 put each word in a `<tspan>` of its own; 0.8 writes the
         // label as one text, with the quotes escaped or not.
         let label = "\u{8a00}\u{3046} \"\u{306f}\u{3044}\"";

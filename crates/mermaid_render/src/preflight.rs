@@ -224,8 +224,7 @@ fn check_config_number(number: f64, key: &str) -> Result<()> {
 fn check_model(model: &RenderSemanticModel) -> Result<()> {
     match model {
         RenderSemanticModel::Block(block) => {
-            let mut pending = block.blocks_flat.iter().collect::<Vec<_>>();
-            while let Some(node) = pending.pop() {
+            for node in &block.blocks_flat {
                 if let Some(columns) = node.columns {
                     // `columns 0` divides by zero in merman's grid placement.
                     if columns == 0 || columns > MAX_BLOCK_COLUMNS {
@@ -242,7 +241,6 @@ fn check_model(model: &RenderSemanticModel) -> Result<()> {
                         );
                     }
                 }
-                pending.extend(node.children.iter());
             }
         }
         RenderSemanticModel::C4(c4) => {
@@ -292,7 +290,11 @@ mod tests {
         let source = source.to_string();
         std::thread::spawn(move || {
             sender
-                .send(render_to_svg(&source, &MermaidTheme::default()))
+                .send(render_to_svg(
+                    &source,
+                    &MermaidTheme::default(),
+                    crate::test_svg_renderer(),
+                ))
                 .ok();
         });
         receiver

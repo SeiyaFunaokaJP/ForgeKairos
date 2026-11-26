@@ -172,10 +172,6 @@ msgid "Always populate the search query with the word under the cursor."
 msgstr "カーソル下の単語を常に検索クエリに設定します。"
 
 msgctxt "settings schema"
-msgid "Always prompt for confirmation (default behavior)."
-msgstr "常に確認を求めます (既定動作)。"
-
-msgctxt "settings schema"
 msgid "Always reduce motion"
 msgstr "常にモーションを軽減します"
 
@@ -202,6 +198,10 @@ msgstr "サイドバーを常に左側に表示します。"
 msgctxt "settings schema"
 msgid "Always show the sidebar on the right side."
 msgstr "サイドバーを常に右側に表示します。"
+
+msgctxt "settings schema"
+msgid "Always show the title bar."
+msgstr "タイトルバーを常に表示します。"
 
 msgctxt "settings schema"
 msgid "Always start with an empty editor tab"
@@ -1036,12 +1036,12 @@ msgid "Dim yellow ANSI terminal color."
 msgstr "暗い黄色の ANSI ターミナルカラー。"
 
 msgctxt "settings schema"
-msgid "Direction to split horizontally.\n\nDefault: \"up\""
-msgstr "水平分割の方向を設定します。\n\n既定値: \"up\""
+msgid "Direction to split horizontally.\n\nDefault: \"down\""
+msgstr "水平分割の方向を設定します。\n\n既定値: \"down\""
 
 msgctxt "settings schema"
-msgid "Direction to split vertically.\n\nDefault: \"left\""
-msgstr "垂直分割の方向を設定します。\n\n既定値: \"left\""
+msgid "Direction to split vertically.\n\nDefault: \"right\""
+msgstr "垂直分割の方向を設定します。\n\n既定値: \"right\""
 
 msgctxt "settings schema"
 msgid "Directory subtrees that sandboxed terminal commands may always write\nto without prompting. Each entry is either a bare path string or an\nobject `{requested, resolved}`; Zed writes objects (the canonical,\nsymlink-resolved target established at approval time), while\nhand-authored entries may be bare path strings. Paths written by Zed\nare absolute.\nDefault: []"
@@ -1508,8 +1508,8 @@ msgid "How many lines of context to provide in multibuffer excerpts by default\n
 msgstr "マルチバッファーの抜粋で既定として提供するコンテキストの行数です。\n\n既定値: 2"
 
 msgctxt "settings schema"
-msgid "How many lines to expand the multibuffer excerpts by default\n\nDefault: 3"
-msgstr "マルチバッファーの抜粋を既定で展開する行数です。\n\n既定値: 3"
+msgid "How many lines to expand the multibuffer excerpts by default\n\nDefault: 5"
+msgstr "マルチバッファーの抜粋を既定で展開する行数です。\n\n既定値: 5"
 
 msgctxt "settings schema"
 msgid "How many minutes an external agent's connection is kept once no thread\nof that agent is open any more. The agent (and the sandbox it runs in)\nis stopped after that, and opening one of its threads again connects\nanew. `0` keeps every connection until the window closes.\n\nDefault: 5"
@@ -1532,8 +1532,8 @@ msgid "How thinking blocks should be displayed by default in the agent panel."
 msgstr "エージェントパネルで思考ブロックを既定でどのように表示するかを設定します。"
 
 msgctxt "settings schema"
-msgid "How thinking blocks should be displayed by default in the agent panel.\n\nDefault: automatic"
-msgstr "エージェントパネルで思考ブロックを既定でどのように表示するかを設定します。\n\n既定値: automatic"
+msgid "How thinking blocks should be displayed by default in the agent panel.\n\nDefault: auto"
+msgstr "エージェントパネルで思考ブロックを既定でどのように表示するかを設定します。\n\n既定値: auto"
 
 msgctxt "settings schema"
 msgid "How to display diffs in the editor.\n\nDefault: split"
@@ -1960,6 +1960,10 @@ msgid "Never show the scrollbar."
 msgstr "スクロールバーを常に非表示にします。"
 
 msgctxt "settings schema"
+msgid "Never show the title bar."
+msgstr "タイトルバーを表示しません。"
+
+msgctxt "settings schema"
 msgid "No automatic indentation. New lines start at column 0."
 msgstr "自動インデントなし。新しい行は列 0 から始まります。"
 
@@ -2156,6 +2160,10 @@ msgid "Preserve the indentation of the current line when creating new lines,\nbu
 msgstr "新しい行を作成する際に現在の行のインデントを保持します。ただし、構文コンテキストに基づいた調整は行いません。"
 
 msgctxt "settings schema"
+msgid "Prompt for confirmation (default behavior).\nThe `edit_file` and `write_file` tools don't prompt for files inside\nthe project unless an `always_confirm` pattern matches."
+msgstr "確認を求めます (既定動作)。`edit_file` ツールと `write_file` ツールは、`always_confirm` パターンに一致しない限り、プロジェクト内のファイルについては確認を求めません。"
+
+msgctxt "settings schema"
 msgid "Pure Unicode codepoint comparison. No case folding, no natural number sorting.\nUppercase ASCII sorts before lowercase. Accented characters sort after ASCII."
 msgstr "純粋な Unicode コードポイント比較です。大文字・小文字の折りたたみおよび自然数ソートは行いません。大文字の ASCII は小文字より前に並べ替えられます。アクセント付き文字は ASCII の後に並べ替えられます。"
 
@@ -2324,8 +2332,8 @@ msgid "Sets the terminal's font weight in CSS weight units 0-900."
 msgstr "ターミナルのフォントウェイトを CSS ウェイト単位 0〜900 で設定します。"
 
 msgctxt "settings schema"
-msgid "Sets the terminal's line height.\n\nDefault: comfortable"
-msgstr "ターミナルの行の高さを設定します。\n\n既定値: comfortable"
+msgid "Sets the terminal's line height.\n\nDefault: standard"
+msgstr "ターミナルの行の高さを設定します。\n\n既定値: standard"
 
 msgctxt "settings schema"
 msgid "Sets whether Alternate Scroll mode (code: ?1007) is active by default.\nAlternate Scroll mode converts mouse scroll events into up / down key\npresses when in the alternate screen (e.g. when running applications\nlike vim or  less). The terminal can still set and unset this mode.\n\nDefault: on"
@@ -2562,6 +2570,10 @@ msgstr "マウスがミニマップ上にあるときのみミニマップのつ
 msgctxt "settings schema"
 msgid "Show the scrollbar if there's important information or\nfollow the system's configured behavior."
 msgstr "重要な情報がある場合にスクロールバーを表示するか、システムで設定された動作に従います。"
+
+msgctxt "settings schema"
+msgid "Show the title bar, but hide it while the window is in full screen."
+msgstr "タイトルバーを表示しますが、ウィンドウが全画面表示のときは隠します。"
 
 msgctxt "settings schema"
 msgid "Show unstaged hunks hollow and staged hunks with a filled background."
@@ -3500,8 +3512,8 @@ msgid "Thinking effort levels this model accepts in Ollama's `think` parameter,\
 msgstr "このモデルが Ollama の `think` パラメーターで受け付ける思考の強さ (例: `[\"low\", \"medium\", \"high\"]`)。オン / オフではなく強さを受け付けるのは一部のモデル (`gpt-oss` など) だけです。受け付けないモデルでは設定しないでください。"
 
 msgctxt "settings schema"
-msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed's keymap closely follows VSCode's\nkeymap, with minor adjustments, this corresponds to the \"VSCode\" setting.\n\nDefault: VSCode"
-msgstr "このベースキーマップ設定は、ForgeKairos の既定キーバインドを他の一般的なコードエディターのキーバインドに近くなるよう調整します。既定では、ForgeKairos のキーマップは VSCode のキーマップに細かな調整を加えたものに近く、これは \"VSCode\" 設定に対応します。\n\n既定値: VSCode"
+msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed uses its own keymap, which\ncorresponds to the \"Zed\" setting.\n\nDefault: Zed"
+msgstr "このベースキーマップ設定は、ForgeKairos の既定キーバインドを他の一般的なコードエディターのキーバインドに近くなるよう調整します。既定では ForgeKairos 独自のキーマップを使用し、これは \"Zed\" 設定に対応します。\n\n既定値: Zed"
 
 msgctxt "settings schema"
 msgid "Time in milliseconds until timeout error when connecting to a TCP debug adapter\n\nDefault: 2000ms"
@@ -3760,8 +3772,8 @@ msgid "What to do when multibuffer is double clicked in some of its excerpts (pa
 msgstr "マルチバッファーの抜粋 (シングルトンバッファーの一部) をダブルクリックしたときの動作を設定します。"
 
 msgctxt "settings schema"
-msgid "What to do when the `BEL` character (`\\a`) is printed to terminal.\n\nDefault: \"system\""
-msgstr "ターミナルに `BEL` 文字 (`\\a`) が出力されたときの動作を設定します。\n\n既定値: \"system\""
+msgid "What to do when the `BEL` character (`\\a`) is printed to terminal.\n\nDefault: \"off\""
+msgstr "ターミナルに `BEL` 文字 (`\\a`) が出力されたときの動作を設定します。\n\n既定値: \"off\""
 
 msgctxt "settings schema"
 msgid "What to do when the last window is closed\n\nDefault: auto (nothing on macOS, \"app quit\" otherwise)"
@@ -3848,6 +3860,10 @@ msgid "When to scan content of linked directories.\n\nDefault: expanded"
 msgstr "リンクされたディレクトリの内容をいつスキャンするかを指定します。\n\n既定値: expanded"
 
 msgctxt "settings schema"
+msgid "When to show the close button on tabs.\n\nDefault: hover"
+msgstr "タブに閉じるボタンを表示するタイミングを設定します。\n\n既定値: hover"
+
+msgctxt "settings schema"
 msgid "When to show the minimap in the editor.\n\nDefault: never"
 msgstr "エディターにミニマップを表示するタイミングを設定します。\n\n既定値: never"
 
@@ -3878,6 +3894,10 @@ msgstr "ターミナルにスクロールバーを表示するタイミングを
 msgctxt "settings schema"
 msgid "When to show the scrollbar.\n\nDefault: auto"
 msgstr "スクロールバーを表示するタイミングを設定します。\n\n既定値: auto"
+
+msgctxt "settings schema"
+msgid "When to show the title bar.\n\nDefault: always"
+msgstr "タイトルバーを表示するタイミングを設定します。\n\n既定値: always"
 
 msgctxt "settings schema"
 msgid "When true, enables drag and drop text selection in buffer.\n\nDefault: true"
@@ -4320,10 +4340,6 @@ msgid "Whether to allow windows to tab together based on the user's tabbing pref
 msgstr "ユーザーのタブ設定に基づいてウィンドウをまとめてタブ表示することを許可するかどうかを設定します (macOS のみ)。\n\n既定値: false"
 
 msgctxt "settings schema"
-msgid "Whether to always show the close button on tabs.\n\nDefault: false"
-msgstr "タブに閉じるボタンを常に表示するかどうかを設定します。\n\n既定値: false"
-
-msgctxt "settings schema"
 msgid "Whether to always use cmd-enter (or ctrl-enter on Linux or Windows) to send messages in the agent panel.\n\nDefault: false"
 msgstr "エージェントパネルでメッセージを送信する際に、常に cmd-enter (Linux または Windows では ctrl-enter) を使用するかどうかを設定します。\n\n既定値: false"
 
@@ -4644,6 +4660,10 @@ msgid "Whether to pop the completions menu while typing in an editor without\nex
 msgstr "エディターでの入力中に補完メニューを明示的な要求なしに表示するかどうかを設定します。\n\n既定値: true"
 
 msgctxt "settings schema"
+msgid "Whether to pre-fill the file finder's query with the text selected in the\nfocused item (e.g. an editor or a terminal) when it is opened.\n\nDefault: false"
+msgstr "ファイル検索を開いたときに、フォーカスのある項目 (エディターやターミナルなど) で選択しているテキストを検索語にあらかじめ入れるかどうかを設定します。\n\n既定値: false"
+
+msgctxt "settings schema"
 msgid "Whether to prefix each logged line with `[YYYY-MM-DD HH:MM:SS] `.\n\nDefault: false"
 msgstr "記録する各行の先頭に `[YYYY-MM-DD HH:MM:SS] ` を付けるかどうか。\n\n既定値: false"
 
@@ -4732,8 +4752,8 @@ msgid "Whether to show an indicator while multi-stroke input is pending.\nIf the
 msgstr "複数キーの入力が保留されている間、インジケーターを表示するかどうかを設定します。入力にタイムアウトがあるときはカウントダウンを表示し、インジケーターにホバーすると一時停止します。which-key ポップアップが有効な場合、バインドプレビューポップオーバーは無効になります。\n\n既定値: true"
 
 msgctxt "settings schema"
-msgid "Whether to show author name as part of the commit information.\n\nDefault: false"
-msgstr "コミット情報の一部として作成者名を表示するかどうかを設定します。\n\n既定値: false"
+msgid "Whether to show author name as part of the commit information.\n\nDefault: true"
+msgstr "コミット情報の一部として作成者名を表示するかどうかを設定します。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to show bookmarks in the gutter.\n\nDefault: true"
@@ -5116,8 +5136,8 @@ msgid "Which information to show in the branch picker.\n\nDefault: on"
 msgstr "ブランチピッカーに表示する情報を指定します。\n\n既定値: on"
 
 msgctxt "settings schema"
-msgid "Which level to use to filter out diagnostics displayed in the editor.\n\nAffects the editor rendering only, and does not interrupt\nthe functionality of diagnostics fetching and project diagnostics editor.\nWhich files containing diagnostic errors/warnings to mark in the tabs.\nDiagnostics are only shown when file icons are also active.\n\nShows all diagnostics if not specified.\n\nDefault: warning"
-msgstr "エディターに表示する診断のフィルタリングに使用するレベルを指定します。\n\nエディターのレンダリングのみに影響し、診断の取得やプロジェクト診断エディターの機能を妨げません。タブで診断エラー/警告を含むファイルにマークを付ける対象を指定します。診断はファイルアイコンも有効な場合にのみ表示されます。\n\n指定がない場合はすべての診断を表示します。\n\n既定値: warning"
+msgid "Which level to use to filter out diagnostics displayed in the editor.\n\nAffects the editor rendering only, and does not interrupt\nthe functionality of diagnostics fetching and project diagnostics editor.\nWhich files containing diagnostic errors/warnings to mark in the tabs.\nDiagnostics are only shown when file icons are also active.\n\nShows all diagnostics if not specified.\n\nDefault: all"
+msgstr "エディターに表示する診断のフィルタリングに使用するレベルを指定します。\n\nエディターのレンダリングのみに影響し、診断の取得やプロジェクト診断エディターの機能を妨げません。タブで診断エラー/警告を含むファイルにマークを付ける対象を指定します。診断はファイルアイコンも有効な場合にのみ表示されます。\n\n指定がない場合はすべての診断を表示します。\n\n既定値: all"
 
 msgctxt "settings schema"
 msgid "Which sources the panel lists calls from: the language server, which\nis exact, the symbol index of C and C++ files, which matches names, or\nboth.\n\nDefault: all"

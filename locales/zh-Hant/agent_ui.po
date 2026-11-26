@@ -594,15 +594,6 @@ msgstr "以 JSON 格式複製原始內容與接收憑據"
 msgid "Cost"
 msgstr "費用"
 
-msgid "Cost Multiplier: {}"
-msgstr "費用倍率：{}"
-
-msgid "Cost per Million Tokens: {}"
-msgstr "每百萬個 Token 費用：{}"
-
-msgid "Cost: {}"
-msgstr "費用：{}"
-
 msgid "Could not authenticate with {provider}."
 msgstr "無法向 {provider} 進行驗證。"
 
@@ -961,9 +952,6 @@ msgstr "無法從剪貼簿解析會話資料"
 msgid "Favorite"
 msgstr "加入最愛"
 
-msgid "Favorite Model"
-msgstr "將模型加入最愛"
-
 msgid "Favorites"
 msgstr "最愛"
 
@@ -1163,9 +1151,6 @@ msgstr "全部保留"
 
 msgid "Later"
 msgstr "稍後"
-
-msgid "Latest"
-msgstr "最新"
 
 msgid "Launch Claude Code"
 msgstr "啟動 Claude Code"
@@ -1470,6 +1455,9 @@ msgstr "開啟檔案"
 msgid "Open Global Rules"
 msgstr "開啟全域規則"
 
+msgid "Open Plan File"
+msgstr "開啟計畫檔案"
+
 msgid "Open Project Rules"
 msgstr "開啟專案規則"
 
@@ -1652,9 +1640,6 @@ msgstr "重新驗證"
 
 msgid "Recent Projects"
 msgstr "最近的專案"
-
-msgid "Recommended"
-msgstr "建議"
 
 msgid "Reconnect"
 msgstr "重新連線"
@@ -2527,9 +2512,6 @@ msgstr "遠端主目錄的格式不符預期（內部錯誤）：{home}"
 msgid "Unfavorite"
 msgstr "從最愛移除"
 
-msgid "Unfavorite Model"
-msgstr "將模型從最愛移除"
-
 msgid "Unknown"
 msgstr "未知"
 
@@ -2986,10 +2968,6 @@ msgstr "、"
 msgctxt "mention type"
 msgid "Fetch"
 msgstr "擷取"
-
-msgctxt "model list section"
-msgid "Favorite"
-msgstr "最愛"
 
 msgctxt "model or effort"
 msgid "Default"

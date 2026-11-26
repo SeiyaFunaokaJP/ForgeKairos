@@ -1,0 +1,49 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Change Model"
+msgstr "모델 변경"
+
+msgid "Configure"
+msgstr "구성"
+
+msgid "Cost Multiplier: {}"
+msgstr "비용 배수: {}"
+
+msgid "Cost per Million Tokens: {}"
+msgstr "백만 토큰당 비용: {}"
+
+msgid "Cost: {}"
+msgstr "비용: {}"
+
+msgid "Cycle Favorite Models"
+msgstr "즐겨찾는 모델 순환"
+
+msgid "Favorite Model"
+msgstr "모델 즐겨찾기"
+
+msgid "Latest"
+msgstr "최신"
+
+msgid "Recommended"
+msgstr "권장"
+
+msgid "Select a Model"
+msgstr "모델 선택"
+
+msgid "Select a model…"
+msgstr "모델 선택…"
+
+msgid "Unfavorite Model"
+msgstr "모델 즐겨찾기 해제"
+
+msgctxt "model list section"
+msgid "Favorite"
+msgstr "즐겨찾기"

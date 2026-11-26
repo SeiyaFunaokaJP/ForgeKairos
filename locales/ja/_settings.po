@@ -1205,6 +1205,18 @@ msgctxt "ThinkingBlockDisplay"
 msgid "Preview"
 msgstr "プレビュー"
 
+msgctxt "TitleBarVisibility"
+msgid "Always"
+msgstr "常に表示"
+
+msgctxt "TitleBarVisibility"
+msgid "Hide In Full Screen"
+msgstr "全画面表示では隠す"
+
+msgctxt "TitleBarVisibility"
+msgid "Never"
+msgstr "表示しない"
+
 msgctxt "UseSystemClipboard"
 msgid "Always"
 msgstr "常に使う"
@@ -4290,6 +4302,10 @@ msgid "Show Tab Bar Buttons"
 msgstr "タブバーのボタンを表示"
 
 msgctxt "settings"
+msgid "Show Title Bar"
+msgstr "タイトルバーを表示"
+
+msgctxt "settings"
 msgid "Show Turn Stats"
 msgstr "ターンの統計を表示"
 
@@ -5496,6 +5512,10 @@ msgstr "エディターにスクロールバーを表示するタイミングで
 msgctxt "settings"
 msgid "When to show the scrollbar in the terminal."
 msgstr "ターミナルにスクロールバーを表示するタイミングです。"
+
+msgctxt "settings"
+msgid "When to show the title bar and its window controls."
+msgstr "タイトルバーとウィンドウのボタンを表示するタイミングです。"
 
 msgctxt "settings"
 msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."
