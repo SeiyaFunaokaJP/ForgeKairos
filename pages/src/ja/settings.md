@@ -117,6 +117,7 @@ ForgeKairos が Zed に足した設定と、既定値を変えた Zed の設定�
 | キー | 既定値 | 説明 |
 |---|---|---|
 | `remote.relay_http_through_client` | `true` | リモートのダウンロード (言語サーバー、node、拡張機能、エージェント) をこの PC 経由で行う。 |
+| `remote.max_cpu_cores` | `0` | Linux または WSL のホストで、リモートサーバーが使う CPU コアの数を制限する。リモートサーバーが起動する言語サーバーと git も対象。ターミナル、タスク、エージェントは制限されない。0 は無制限。 |
 | `dev_tools.suggest_missing` | `true` | 足りない言語サーバーとフォーマッターを通知し、データフォルダーに入れるボタンを出す。 |
 | `dev_tools.ignored` | `[]` | 通知しないツール (例: `"clangd"`)。 |
 

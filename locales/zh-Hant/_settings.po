@@ -3357,6 +3357,10 @@ msgid "Limit the diagnostics attached with @diagnostics to this many files. Valu
 msgstr "將以 @diagnostics 附加的診斷限制在這麼多個檔案。小於 1 的值會視為 1。"
 
 msgctxt "settings"
+msgid "Limits how many CPU cores the remote server uses on a Linux or WSL host. The limit also covers the language servers and git that the server starts. Terminals, tasks, and agents are not limited. 0 means no limit. Changes apply without reconnecting."
+msgstr "限制遠端伺服器在 Linux 或 WSL 主機上使用的 CPU 核心數。遠端伺服器啟動的語言伺服器和 git 也受此限制。終端機、工作和代理不受限制。0 表示不設限。變更不需重新連線即可套用。"
+
+msgctxt "settings"
 msgid "Line Ending"
 msgstr "行尾序列"
 
@@ -3871,6 +3875,10 @@ msgstr "透過這台電腦轉送遠端的下載"
 msgctxt "settings"
 msgid "Remote"
 msgstr "遠端"
+
+msgctxt "settings"
+msgid "Remote CPU Core Limit"
+msgstr "遠端 CPU 核心數上限"
 
 msgctxt "settings"
 msgid "Remote Terminal Persistence"

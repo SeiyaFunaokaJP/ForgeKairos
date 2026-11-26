@@ -5,7 +5,7 @@ use dap::adapters::DebugAdapterName;
 use fs::Fs;
 use futures::StreamExt as _;
 use git::repository::{DEFAULT_WORKTREE_DIRECTORY, StatusUntrackedFiles};
-use gpui::{AsyncApp, BorrowAppContext, Context, Entity, EventEmitter, Subscription, Task};
+use gpui::{App, AsyncApp, BorrowAppContext, Context, Entity, EventEmitter, Subscription, Task};
 use lsp::{DEFAULT_LSP_REQUEST_TIMEOUT_SECS, LanguageServerName};
 use paths::{
     EDITORCONFIG_NAME, debug_task_file_name, local_debug_file_relative_path,
@@ -1199,7 +1199,7 @@ impl SettingsObserver {
         if cx.try_global::<SettingsStore>().is_some() {
             if let Some(upstream_client) = upstream_client {
                 let mut user_settings = None;
-                user_settings_watcher = Some(cx.observe_global::<SettingsStore>(move |_, cx| {
+                let mut send_user_settings = move |cx: &App| {
                     if let Some(new_settings) = cx.global::<SettingsStore>().raw_user_settings() {
                         if Some(new_settings) != user_settings.as_ref() {
                             if let Some(new_settings_string) =
@@ -1215,7 +1215,13 @@ impl SettingsObserver {
                             }
                         }
                     }
-                }));
+                };
+                // ForgeKairos: sent once now as well. The observer only runs when
+                // the settings change after this, and a host-side setting such as
+                // `remote.max_cpu_cores` must not wait for an unrelated change.
+                send_user_settings(cx);
+                user_settings_watcher =
+                    Some(cx.observe_global::<SettingsStore>(move |_, cx| send_user_settings(cx)));
             }
         };
 

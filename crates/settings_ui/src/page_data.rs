@@ -11056,7 +11056,7 @@ fn network_page() -> SettingsPage {
     /// The egress allowlist is this fork's own (`.forgekairos-docs/DESIGN.md` §4), and
     /// it does not live in settings.json, so it gets a section of its own rather
     /// than sitting next to the proxy and server-URL settings.
-    fn remote_section() -> [SettingsPageItem; 2] {
+    fn remote_section() -> [SettingsPageItem; 3] {
         [
             SettingsPageItem::SectionHeader("Remote"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -11077,6 +11077,29 @@ fn network_page() -> SettingsPage {
                             .remote_host
                             .get_or_insert_default()
                             .relay_http_through_client = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Remote CPU Core Limit",
+                description: "Limits how many CPU cores the remote server uses on a Linux or WSL host. The limit also covers the language servers and git that the server starts. Terminals, tasks, and agents are not limited. 0 means no limit. Changes apply without reconnecting.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("remote.max_cpu_cores"),
+                    pick: |settings_content| {
+                        settings_content
+                            .remote_host
+                            .as_ref()?
+                            .max_cpu_cores
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .remote_host
+                            .get_or_insert_default()
+                            .max_cpu_cores = value;
                     },
                 }),
                 metadata: None,
