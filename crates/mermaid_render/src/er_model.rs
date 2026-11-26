@@ -1535,7 +1535,7 @@ mod tests {
     /// working around it with a plain family, and go red again if that repair
     /// is ever lost.
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -2195,8 +2195,12 @@ mod tests {
             emitted.contains("accDescr { this graph is\n  about\n  stuff\n  }"),
             "{emitted}"
         );
-        render_to_svg(&emitted, &MermaidTheme::default())
-            .unwrap_or_else(|error| panic!("`{emitted}` should render: {error}"));
+        render_to_svg(
+            &emitted,
+            &MermaidTheme::default(),
+            crate::test_svg_renderer(),
+        )
+        .unwrap_or_else(|error| panic!("`{emitted}` should render: {error}"));
     }
 
     /// `#34;` in a relationship label reads as a quotation mark, is written
@@ -2225,8 +2229,9 @@ mod tests {
                 format!(">{}<", label.replace('"', "&quot;")),
             ];
             for drawn in [source, emitted.as_str()] {
-                let svg = render_to_svg(drawn, &MermaidTheme::default())
-                    .unwrap_or_else(|error| panic!("`{drawn}` should render: {error}"));
+                let svg =
+                    render_to_svg(drawn, &MermaidTheme::default(), crate::test_svg_renderer())
+                        .unwrap_or_else(|error| panic!("`{drawn}` should render: {error}"));
                 assert!(
                     drawn_forms.iter().any(|form| svg.contains(form.as_str())),
                     "`{drawn}` should draw {label:?}"
@@ -2611,8 +2616,12 @@ mod tests {
         let whole = crate::mermaid_model::MermaidDocument::Er(document.clone());
         assert_eq!(whole.structure_error(), None);
         let emitted = emit_er(&document);
-        crate::render_to_svg(&emitted, &crate::MermaidTheme::default())
-            .expect("the emitted diagram should render");
+        crate::render_to_svg(
+            &emitted,
+            &crate::MermaidTheme::default(),
+            crate::test_svg_renderer(),
+        )
+        .expect("the emitted diagram should render");
         let again = parse_er(&emitted).expect("the emitted diagram should reopen");
         assert_eq!(again.relationships, document.relationships);
     }

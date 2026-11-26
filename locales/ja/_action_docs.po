@@ -1747,6 +1747,12 @@ msgctxt "action documentation"
 msgid "editor::FoldAll"
 msgstr "エディター内のすべての折りたたみ可能な領域を折りたたみます。"
 
+#. Folds all code blocks at the same indentation level of the current
+#. line.
+msgctxt "action documentation"
+msgid "editor::FoldAtCurrentIndentationLevel"
+msgstr "現在の行と同じインデントレベルのすべてのコードブロックを折りたたみます。"
+
 #. Folds all code blocks at the specified indentation level.
 msgctxt "action documentation"
 msgid "editor::FoldAtLevel"
@@ -6796,9 +6802,10 @@ msgstr "前後の移動の履歴、最近開いたファイル、最近閉じた
 
 #. Clears all trusted worktrees, placing them in restricted mode on next open.
 #. Requires restart to take effect on already opened projects.
+#. Also forgets which worktrees were chosen to stay in restricted mode.
 msgctxt "action documentation"
 msgid "workspace::ClearTrustedWorktrees"
-msgstr "信頼済みワークツリーをすべて消去し、次に開いたときに制限モードで開くようにします。すでに開いているプロジェクトに反映するには再起動が必要です。"
+msgstr "信頼済みワークツリーをすべて消去し、次に開いたときに制限モードで開くようにします。すでに開いているプロジェクトに反映するには再起動が必要です。制限モードのままにするよう選んだワークツリーの記録も消去します。"
 
 #. Closes the active dock.
 msgctxt "action documentation"

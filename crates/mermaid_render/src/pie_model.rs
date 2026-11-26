@@ -412,7 +412,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -624,7 +624,8 @@ mod tests {
             "pie\n  \"a\" : 1 each",
         ] {
             assert!(
-                render_to_svg(source, &MermaidTheme::default()).is_err(),
+                render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
+                    .is_err(),
                 "{source}"
             );
             let error = parse_pie(source)
@@ -721,7 +722,12 @@ mod tests {
         }
         let emitted = emit_pie(&document);
         assert!(
-            crate::render_to_svg(&emitted, &crate::MermaidTheme::default()).is_err(),
+            crate::render_to_svg(
+                &emitted,
+                &crate::MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err(),
             "the reason for the refusal no longer holds:\n{emitted}"
         );
         let whole = crate::mermaid_model::MermaidDocument::Pie(document.clone());

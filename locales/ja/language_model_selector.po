@@ -1,0 +1,46 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Change Model"
+msgstr "モデルを変更"
+
+msgid "Configure"
+msgstr "設定"
+
+msgid "Cost Multiplier: {}"
+msgstr "コスト倍率: {}"
+
+msgid "Cost per Million Tokens: {}"
+msgstr "100 万トークンあたりのコスト: {}"
+
+msgid "Cost: {}"
+msgstr "コスト: {}"
+
+msgid "Cycle Favorite Models"
+msgstr "お気に入りモデルを順に切り替え"
+
+msgid "Favorite Model"
+msgstr "お気に入りに追加"
+
+msgid "Latest"
+msgstr "最新"
+
+msgid "Recommended"
+msgstr "推奨"
+
+msgid "Select a Model"
+msgstr "モデルを選択"
+
+msgid "Select a model…"
+msgstr "モデルを選択…"
+
+msgid "Unfavorite Model"
+msgstr "お気に入りから削除"
+
+msgctxt "model list section"
+msgid "Favorite"
+msgstr "お気に入り"

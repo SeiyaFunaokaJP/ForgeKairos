@@ -244,6 +244,7 @@ impl CachedMermaidDiagram {
                             mermaid_render::render_to_svg_with_geometry(
                                 &contents.contents,
                                 &mermaid_theme,
+                                &svg_renderer,
                             )?;
                         let tree = svg_renderer
                             .parse_svg(svg_string.as_bytes())
@@ -373,27 +374,6 @@ impl CachedMermaidDiagram {
     }
 }
 
-/// Merman has somewhat limited text measurement capabilities.
-///
-/// When it doesn't have metrics for any of the specified fonts, it chooses a
-/// fairly narrow width, which causes visible overflow. Adding `sans-serif`
-/// allows it to fall back to a more conservative (i.e. wider) measurement.
-///
-/// This isn't perfect - very wide fonts will likely still cause overflow. A
-/// proper fix would involve somehow piping `resvg`'s actual measurements into
-/// `merman`, but that is a lot of work for a fairly uncommon edge case.
-fn mermaid_font_family(font_family: &str) -> String {
-    let font_family = gpui::font_name_with_fallbacks(font_family, "system-ui");
-    if font_family
-        .split(',')
-        .any(|family| family.trim().eq_ignore_ascii_case("sans-serif"))
-    {
-        font_family.to_string()
-    } else {
-        format!("{font_family}, sans-serif")
-    }
-}
-
 /// The Mermaid palette derived from the user's Zed theme.
 ///
 /// Public so that the structured flowchart editor's live preview draws with the
@@ -409,7 +389,11 @@ pub fn build_mermaid_theme(cx: &App) -> mermaid_render::MermaidTheme {
 
     mermaid_render::MermaidTheme {
         dark_mode: is_dark,
-        font_family: mermaid_font_family(theme_settings.mermaid_font_family().as_ref()),
+        font_family: gpui::font_name_with_fallbacks(
+            theme_settings.mermaid_font_family().as_ref(),
+            "system-ui",
+        )
+        .to_string(),
         background: colors.editor_background,
         primary_color: colors.surface_background,
         primary_text_color: colors.text,
@@ -1934,6 +1918,7 @@ mod tests {
             let (svg, geometry) = mermaid_render::render_to_svg_with_geometry(
                 &contents.contents,
                 &super::build_mermaid_theme(cx),
+                &cx.svg_renderer(),
             )
             .expect("the diagram should render");
             let parsed = Arc::new(
@@ -2223,31 +2208,6 @@ mod tests {
             .position(|diagram| diagram == &new_content)?;
         MermaidState::get_fallback_image(idx, old_full_order, new_full_order.len(), cache)
             .map(|(image, _)| image)
-    }
-
-    #[test]
-    fn test_mermaid_font_family_resolves_zed_virtual_fonts() {
-        assert_eq!(
-            super::mermaid_font_family(".ZedSans"),
-            "IBM Plex Sans, sans-serif"
-        );
-        assert_eq!(
-            super::mermaid_font_family("Zed Plex Sans"),
-            "IBM Plex Sans, sans-serif"
-        );
-        assert_eq!(super::mermaid_font_family(".ZedMono"), "Lilex, sans-serif");
-        assert_eq!(
-            super::mermaid_font_family(".SystemUIFont"),
-            "system-ui, sans-serif"
-        );
-        assert_eq!(
-            super::mermaid_font_family("Custom Font"),
-            "Custom Font, sans-serif"
-        );
-        assert_eq!(
-            super::mermaid_font_family("Custom Font, sans-serif"),
-            "Custom Font, sans-serif"
-        );
     }
 
     #[test]

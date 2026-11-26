@@ -583,15 +583,22 @@ fn check_against_merman(source: &str, document: &TreemapDocument) -> Result<()> 
         .iter()
         .flatten()
         .rev()
+        .filter_map(|&index| model.nodes.get(index))
         .map(|node| (0, node))
         .collect::<Vec<_>>();
     while let Some((depth, node)) = pending.pop() {
+        // Children are indices into `model.nodes`; stop rather than loop if
+        // they ever form a cycle.
+        if drawn.len() > model.nodes.len() {
+            break;
+        }
         drawn.push((depth, node));
         pending.extend(
             node.children
                 .iter()
                 .flatten()
                 .rev()
+                .filter_map(|&index| model.nodes.get(index))
                 .map(|child| (depth + 1, child)),
         );
     }
@@ -816,7 +823,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),

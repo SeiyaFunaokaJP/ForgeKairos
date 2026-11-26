@@ -1069,7 +1069,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),

@@ -13,19 +13,7 @@ path = "src/sandbox.rs"
 doctest = false
 
 [features]
-# Builds `bwrap-test-helper`, the behavior helper driven by the NixOS sandbox
-# VM tests in `nix/tests/sandboxing`. Off by default so normal builds don't
-# produce the test binary. Pulls in serde only when enabled (the helper parses
-# its check list as JSON), and enables the matching `http_proxy` escape hatch so
-# the in-process proxy can reach the VM's private-network echo servers.
-nixos-test = [
-    "dep:serde",
-    "dep:serde_json",
-    "http_proxy/nixos-integration-tests",
-]
-
-# Builds `wsl-sandbox-test-helper`, the Windows analog of `bwrap-test-helper`.
-# It drives the real WSL/Bubblewrap sandbox end-to-end (see
+# Builds `wsl-sandbox-test-helper`, which drives the WSL/Bubblewrap sandbox (see
 # `script/test-wsl-sandbox.ps1` / `cargo xtask wsl-sandbox-tests`). Off by
 # default so normal builds and the workspace test run don't produce it.
 wsl-test = []
@@ -35,13 +23,6 @@ wsl-test = []
 # Linux host (see `.forgekairos-docs/DESIGN.md` §4.18). Off by default and only
 # meaningful cross-compiled to a Linux target.
 remote-sandbox-test = []
-
-# Behavior test helper for the Linux Bubblewrap sandbox. Only built when the
-# `nixos-test` feature is enabled (and only meaningful on Linux).
-[[bin]]
-name = "bwrap-test-helper"
-path = "src/bwrap_test_helper.rs"
-required-features = ["nixos-test"]
 
 # Behavior test helper for the Windows WSL/Bubblewrap sandbox. Only built when
 # the `wsl-test` feature is enabled (and only meaningful on Windows).
@@ -71,10 +52,6 @@ log.workspace = true
 # namespace (ADR-F49 `new_inner_ide_port`); the client that picks it may be any
 # OS, since an SSH host's bridge is started from there too (ADR-F53).
 rand = { workspace = true, features = ["thread_rng"] }
-# Used only by the `nixos-test` helper binary to parse its check list; gated
-# behind the `nixos-test` feature so normal builds don't pull it in.
-serde = { workspace = true, features = ["derive"], optional = true }
-serde_json = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc.workspace = true

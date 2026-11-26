@@ -23,8 +23,7 @@
 //! `<foreignObject>` and CSS/attribute forms that rasterizers do not handle.
 //! Since merman 0.6, that generic cleanup is exposed as merman's raster-safe SVG
 //! pipeline. Zed opts into that pipeline during rendering, then keeps
-//! editor-specific theme and accent color rules in this crate. The [`gpui`]
-//! dependency is only needed for the [`Hsla`] and [`Rgba`] color types.
+//! editor-specific theme and accent color rules in this crate.
 //!
 //! The [`render_to_svg`] function operates in two stages:
 //! - [`render`] the mermaid text to raster-safe SVG using [`merman`].
@@ -95,7 +94,7 @@ pub mod venn_model;
 pub mod xychart_model;
 
 use anyhow::{Context as _, Result, anyhow};
-use gpui::{Hsla, Rgba};
+use gpui::{Hsla, Rgba, SvgRenderer};
 
 #[derive(Debug, Clone, Copy)]
 pub struct AccentColor {
@@ -305,8 +304,12 @@ pub struct EdgeGeometry {
 
 /// See the [module-level docs][crate] for more info.
 #[ztracing::instrument(skip_all)]
-pub fn render_to_svg(source: &str, theme: &MermaidTheme) -> Result<String> {
-    render_to_svg_with_geometry(source, theme).map(|(svg, _)| svg)
+pub fn render_to_svg(
+    source: &str,
+    theme: &MermaidTheme,
+    svg_renderer: &SvgRenderer,
+) -> Result<String> {
+    render_to_svg_with_geometry(source, theme, svg_renderer).map(|(svg, _)| svg)
 }
 
 /// Threads whose name starts with `recoverable-panic:` are ones whose panics
@@ -325,16 +328,92 @@ const MERMAN_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
 pub fn render_to_svg_with_geometry(
     source: &str,
     theme: &MermaidTheme,
+    svg_renderer: &SvgRenderer,
 ) -> Result<(String, DiagramGeometry)> {
     // merman panics on some incomplete input (for example a C4 boundary whose
     // arguments are still being typed), and the preview renders after every
     // keystroke. A panic on a background executor thread would take Zed down.
     let source = source.to_string();
     let theme = theme.clone();
+    let svg_renderer = svg_renderer.clone();
     run_merman_isolated("rendering", move || {
-        let svg = render::render_mermaid(&source, &theme)?;
+        let svg = render::render_mermaid(&source, &theme, &svg_renderer)?;
         postprocess::postprocess(&svg, &theme)
     })
+}
+
+/// `svg` with every label `merman` draws once in `<defs>` copied to the
+/// `<use>` that places it, the way `merman` 0.8 drew labels in place, so that
+/// a test can read a label where it is drawn. The nested `<svg>` of a label
+/// becomes a `<g>`: it sits at its origin and its `viewBox` matches its size.
+#[cfg(test)]
+pub(crate) fn inline_label_uses(svg: &str) -> String {
+    const DEFINITION_START: &str = "<g id=\"";
+    let mut definitions = Vec::new();
+    let mut without_definitions = String::with_capacity(svg.len());
+    let mut rest = svg;
+    while let Some(start) = rest.find(DEFINITION_START) {
+        let after_start = &rest[start + DEFINITION_START.len()..];
+        let id = after_start.split('"').next().unwrap_or_default();
+        let content_start = after_start.find('>').map(|index| index + 1);
+        let content_end = after_start.find("</g>");
+        let (true, Some(content_start), Some(content_end)) = (
+            id.contains("-foreignobject-label-"),
+            content_start,
+            content_end,
+        ) else {
+            without_definitions.push_str(&rest[..start + DEFINITION_START.len()]);
+            rest = after_start;
+            continue;
+        };
+        let content = after_start[content_start..content_end]
+            .replace("<svg ", "<g ")
+            .replace("</svg>", "</g>");
+        definitions.push((id.to_string(), content));
+        without_definitions.push_str(&rest[..start]);
+        rest = &after_start[content_end + "</g>".len()..];
+    }
+    without_definitions.push_str(rest);
+
+    let mut inlined = String::with_capacity(without_definitions.len());
+    let mut rest = without_definitions.as_str();
+    while let Some(start) = rest.find("<use ") {
+        let Some(length) = rest[start..].find("/>") else {
+            break;
+        };
+        let tag = &rest[start..start + length];
+        let attribute = |name: &str| {
+            tag.split(&format!(" {name}=\""))
+                .nth(1)
+                .and_then(|value| value.split('"').next())
+        };
+        let content = attribute("href")
+            .and_then(|href| href.strip_prefix('#'))
+            .and_then(|id| definitions.iter().find(|(known, _)| known == id));
+        inlined.push_str(&rest[..start]);
+        match content {
+            Some((_, content)) => {
+                let x = attribute("x").unwrap_or("0");
+                let y = attribute("y").unwrap_or("0");
+                inlined.push_str(&format!(
+                    "<g transform=\"translate({x},{y})\">{content}</g>"
+                ));
+            }
+            None => inlined.push_str(&rest[start..start + length + 2]),
+        }
+        rest = &rest[start + length + 2..];
+    }
+    inlined.push_str(rest);
+    inlined
+}
+
+/// A renderer for tests that have no `App` to take one from. It is shared
+/// because each renderer copies the system font database on its first use.
+#[cfg(any(test, feature = "test-support"))]
+pub fn test_svg_renderer() -> &'static SvgRenderer {
+    static SVG_RENDERER: std::sync::LazyLock<SvgRenderer> =
+        std::sync::LazyLock::new(|| SvgRenderer::new(std::sync::Arc::new(())));
+    &SVG_RENDERER
 }
 
 /// Parses `source` into merman's render model for the structured editor.
@@ -466,7 +545,7 @@ mod tests {
 
         let zalgo = "Ne\u{0301}\u{0302}\u{0303}\u{0304}\u{0306}\u{0307}\u{0308}\u{030a}d";
         let source = format!("flowchart TD\n  A[\"**{zalgo}** {zalgo}\"]");
-        let svg = render_to_svg(&source, &MermaidTheme::default())
+        let svg = render_to_svg(&source, &MermaidTheme::default(), &svg_renderer())
             .expect("mermaid diagram should render to SVG");
 
         let mut db = usvg::fontdb::Database::new();
@@ -488,7 +567,7 @@ mod tests {
     #[test]
     fn er_multibyte_attribute_does_not_crash() {
         let source = "erDiagram\n顧客 {\n  文字列 名前\n}";
-        let _ = render_to_svg(source, &MermaidTheme::default());
+        let _ = render_to_svg(source, &MermaidTheme::default(), &svg_renderer());
     }
 
     /// A flowchart with mutually nested subgraphs (`A` contains `B` and `B`
@@ -497,7 +576,7 @@ mod tests {
     #[test]
     fn cyclic_subgraphs_do_not_crash() {
         let source = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    A\n  end";
-        let result = render_to_svg(source, &MermaidTheme::default());
+        let result = render_to_svg(source, &MermaidTheme::default(), &svg_renderer());
         if let Err(err) = result {
             let message = format!("{err:#}");
             assert!(
@@ -592,6 +671,10 @@ mod tests {
             .is_ok()
         );
     }
+
+    fn svg_renderer() -> SvgRenderer {
+        SvgRenderer::new(std::sync::Arc::new(()))
+    }
 }
 
 #[cfg(test)]
@@ -599,8 +682,12 @@ mod geometry_tests {
     use super::*;
 
     fn geometry_of(source: &str) -> DiagramGeometry {
-        let (_, geometry) = render_to_svg_with_geometry(source, &MermaidTheme::default())
-            .expect("mermaid diagram should render to SVG");
+        let (_, geometry) = render_to_svg_with_geometry(
+            source,
+            &MermaidTheme::default(),
+            crate::test_svg_renderer(),
+        )
+        .expect("mermaid diagram should render to SVG");
         geometry
     }
 
@@ -782,6 +869,7 @@ mod geometry_tests {
         let (svg, geometry) = render_to_svg_with_geometry(
             "flowchart TD\n  A[one] -->|yes| B[two]",
             &MermaidTheme::default(),
+            crate::test_svg_renderer(),
         )
         .expect("mermaid diagram should render to SVG");
 
@@ -1011,8 +1099,11 @@ mod geometry_tests {
             // A diagram kind merman cannot render at all is not this test's
             // concern, but enough of them have to actually render for the
             // assertion below to mean anything.
-            let Ok((_, geometry)) = render_to_svg_with_geometry(source, &MermaidTheme::default())
-            else {
+            let Ok((_, geometry)) = render_to_svg_with_geometry(
+                source,
+                &MermaidTheme::default(),
+                crate::test_svg_renderer(),
+            ) else {
                 continue;
             };
             rendered += 1;

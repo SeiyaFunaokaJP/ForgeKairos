@@ -443,12 +443,17 @@ mod tests {
     /// drew it, which still carries the point on the edge. Those anchors are
     /// matched to the fallback labels in document order.
     fn collect(svg: &str) -> (Vec<Rect>, Vec<EdgeLabel>) {
-        let mut reader = Reader::from_str(svg);
+        let svg = crate::inline_label_uses(svg);
+        let mut reader = Reader::from_str(&svg);
         reader.config_mut().check_end_names = false;
         let mut offsets = vec![(0.0, 0.0)];
         let mut node_depth: Option<usize> = None;
         let mut edge_label_depth: Option<usize> = None;
         let mut in_fallback = false;
+        // The depth of a `merman-foreignobject-fallback` group inside an
+        // in-place `<g class="edgeLabel">`, where `merman` 0.9 draws the label:
+        // its first `<rect>` is the label's background.
+        let mut nested_fallback_depth: Option<usize> = None;
         let mut nodes = Vec::new();
         let mut labels: Vec<EdgeLabel> = Vec::new();
         let mut fallback_labels: Vec<EdgeLabel> = Vec::new();
@@ -483,6 +488,9 @@ mod tests {
                     if edge_label_depth == Some(depth) {
                         edge_label_depth = None;
                         in_fallback = false;
+                    }
+                    if nested_fallback_depth == Some(depth) {
+                        nested_fallback_depth = None;
                     }
                     if text_depth == Some(depth) {
                         text_depth = None;
@@ -524,6 +532,9 @@ mod tests {
                     nodes.push(rect);
                 }
             }
+            if edge_label_depth.is_some() && !in_fallback && is_fallback && is_start {
+                nested_fallback_depth = Some(depth);
+            }
             if edge_label_depth.is_some() {
                 let list = if in_fallback {
                     &mut fallback_labels
@@ -531,7 +542,13 @@ mod tests {
                     &mut labels
                 };
                 if let Some(label) = list.last_mut() {
-                    if is_background || (in_fallback && e.name().as_ref() == b"rect") {
+                    let is_nested_background = nested_fallback_depth.is_some()
+                        && e.name().as_ref() == b"rect"
+                        && label.background.is_none();
+                    if is_background
+                        || is_nested_background
+                        || (in_fallback && e.name().as_ref() == b"rect")
+                    {
                         label.background = shape_rect(e, x, y);
                     }
                     if e.name().as_ref() == b"text" {
@@ -603,7 +620,7 @@ mod tests {
     #[test]
     fn edge_labels_sit_on_their_background_and_clear_the_nodes() {
         for (name, source) in DIAGRAMS {
-            let svg = crate::render_to_svg(source, &theme())
+            let svg = crate::render_to_svg(source, &theme(), crate::test_svg_renderer())
                 .unwrap_or_else(|err| panic!("{name} failed to render: {err:#}"));
             let (nodes, labels) = collect(&svg);
             assert!(
@@ -651,7 +668,7 @@ mod tests {
     #[test]
     fn edge_label_backgrounds_are_centered_on_their_anchor() {
         for (name, source) in DIAGRAMS {
-            let svg = crate::render_to_svg(source, &theme())
+            let svg = crate::render_to_svg(source, &theme(), crate::test_svg_renderer())
                 .unwrap_or_else(|err| panic!("{name} failed to render: {err:#}"));
             let (_, labels) = collect(&svg);
             assert!(
@@ -681,7 +698,7 @@ mod tests {
     #[test]
     fn already_centered_labels_are_left_alone() {
         let source = "stateDiagram-v2\n    [*] --> 待機中\n    待機中 --> 実行中: 開始要求を受理";
-        let svg = crate::render_to_svg(source, &theme())
+        let svg = crate::render_to_svg(source, &theme(), crate::test_svg_renderer())
             .unwrap_or_else(|err| panic!("{source} failed to render: {err:#}"));
         assert!(
             !svg.contains(r#"<text transform="translate("#),
@@ -697,7 +714,7 @@ mod tests {
     #[test]
     fn is_idempotent_on_its_own_output() {
         for (name, source) in DIAGRAMS {
-            let svg = crate::render_to_svg(source, &theme())
+            let svg = crate::render_to_svg(source, &theme(), crate::test_svg_renderer())
                 .unwrap_or_else(|err| panic!("{name} failed to render: {err:#}"));
             let twice = apply(&svg);
             assert_eq!(

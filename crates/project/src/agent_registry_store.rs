@@ -438,7 +438,7 @@ async fn build_registry_agents(
         fs.create_dir(&icons_dir).await?;
     }
 
-    let current_platform = current_platform_key();
+    let current_platform_keys = current_platform_keys().await;
     let icon_paths = resolve_icon_paths(
         &index.agents,
         &icons_dir,
@@ -481,9 +481,9 @@ async fn build_registry_agents(
                 );
             }
 
-            let supports_current_platform = current_platform
-                .as_ref()
-                .is_some_and(|platform| targets.contains_key(*platform));
+            let supports_current_platform = current_platform_keys
+                .iter()
+                .any(|platform_key| targets.contains_key(*platform_key));
 
             Some(RegistryBinaryAgent {
                 metadata: metadata.clone(),
@@ -643,48 +643,46 @@ fn resolve_icon_url(entry: &RegistryEntry) -> Option<String> {
 
 /// The `{os}-{arch}` key `RegistryBinaryAgent::targets` is keyed by for the
 /// platform this process is running on, matching the format the registry
-/// schema and `agent_server_store::LocalRegistryArchiveAgent::get_command`
-/// both build independently (`{darwin,linux,windows}-{aarch64,x86_64}`).
+/// schema uses (`{darwin,linux,windows}-{aarch64,x86_64}`).
 /// Exposed so callers outside this module (the F2-5 install consent flow in
 /// `agent_ui`) can look up the archive a binary agent would actually download
-/// without re-deriving the OS/arch pair themselves.
+/// without re-deriving the OS/arch pair themselves. It is synchronous, so it
+/// can't probe the host libc: on a musl host the install may pick the
+/// `-musl` target that [`current_platform_keys`] prefers instead.
 pub fn current_platform_key() -> Option<&'static str> {
-    let os = if cfg!(target_os = "macos") {
-        "darwin"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else {
-        return None;
+    platform_keys(std::env::consts::OS, std::env::consts::ARCH, false)
+        .first()
+        .copied()
+}
+
+/// Registry platform keys for the current host, in order of preference.
+pub(crate) async fn current_platform_keys() -> &'static [&'static str] {
+    // The probe spawns a process and reads the real filesystem, which the
+    // deterministic test scheduler can't drive, so tests assume glibc.
+    let prefers_musl = cfg_select! {
+        all(target_os = "linux", not(any(test, feature = "test-support"))) => {
+            util::libc_type::host_libc_type().await == util::libc_type::LibcType::Musl
+        }
+        _ => false,
     };
 
-    let arch = if cfg!(target_arch = "aarch64") {
-        "aarch64"
-    } else if cfg!(target_arch = "x86_64") {
-        "x86_64"
-    } else {
-        return None;
-    };
+    platform_keys(std::env::consts::OS, std::env::consts::ARCH, prefers_musl)
+}
 
-    Some(match os {
-        "darwin" => match arch {
-            "aarch64" => "darwin-aarch64",
-            "x86_64" => "darwin-x86_64",
-            _ => return None,
-        },
-        "linux" => match arch {
-            "aarch64" => "linux-aarch64",
-            "x86_64" => "linux-x86_64",
-            _ => return None,
-        },
-        "windows" => match arch {
-            "aarch64" => "windows-aarch64",
-            "x86_64" => "windows-x86_64",
-            _ => return None,
-        },
-        _ => return None,
-    })
+fn platform_keys(os: &str, arch: &str, prefers_musl: bool) -> &'static [&'static str] {
+    match (os, arch, prefers_musl) {
+        ("macos", "aarch64", _) => &["darwin-aarch64"],
+        ("macos", "x86_64", _) => &["darwin-x86_64"],
+        ("windows", "aarch64", _) => &["windows-aarch64"],
+        ("windows", "x86_64", _) => &["windows-x86_64"],
+        ("linux", "aarch64", false) => &["linux-aarch64"],
+        ("linux", "x86_64", false) => &["linux-x86_64"],
+        // Not every agent publishes a musl build, and the glibc one may still
+        // run through a compatibility layer, so keep it as a fallback.
+        ("linux", "aarch64", true) => &["linux-aarch64-musl", "linux-aarch64"],
+        ("linux", "x86_64", true) => &["linux-x86_64-musl", "linux-x86_64"],
+        _ => &[],
+    }
 }
 
 fn registry_cache_dir() -> PathBuf {
@@ -861,5 +859,22 @@ mod tests {
             assert_eq!(web_link(Some(link.to_string())), None, "{link}");
         }
         assert_eq!(web_link(None), None);
+    }
+
+    #[test]
+    fn test_platform_keys() {
+        assert_eq!(platform_keys("macos", "aarch64", false), ["darwin-aarch64"]);
+        assert_eq!(
+            platform_keys("windows", "x86_64", false),
+            ["windows-x86_64"]
+        );
+        assert_eq!(platform_keys("linux", "x86_64", false), ["linux-x86_64"]);
+        assert_eq!(
+            platform_keys("linux", "aarch64", true),
+            ["linux-aarch64-musl", "linux-aarch64"]
+        );
+        assert_eq!(platform_keys("macos", "aarch64", true), ["darwin-aarch64"]);
+        assert!(platform_keys("freebsd", "x86_64", false).is_empty());
+        assert!(platform_keys("linux", "riscv64", false).is_empty());
     }
 }

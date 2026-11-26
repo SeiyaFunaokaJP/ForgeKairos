@@ -56,11 +56,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "プロジェクト内検索で、Enter を押さなくても入力に合わせて検索を始めます。",
     ),
     (
-        "p6.i66[close_panel_on_toggle].title",
+        "p6.i67[close_panel_on_toggle].title",
         "切り替え時にパネルを閉じる",
     ),
     (
-        "p6.i66[close_panel_on_toggle].description",
+        "p6.i67[close_panel_on_toggle].description",
         "フォーカスのあるパネルで ToggleFocus アクションを実行したときに、フォーカスをエディターに戻す代わりに、パネルを閉じるかどうかを設定します。",
     ),
     (
@@ -140,24 +140,24 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p6.i6[status_bar.pending_keystrokes_indicator].description",
         "複数ストロークのキーバインドの入力中に、カウントダウン付きのインジケーターを表示します。Which-key メニューが有効なときは、そのキーバインドのプレビューのポップオーバーは無効になります。",
     ),
-    ("p6.i57[window_title_format].title", "タイトルの書式"),
+    ("p6.i58[window_title_format].title", "タイトルの書式"),
     (
-        "p6.i57[window_title_format].description",
+        "p6.i58[window_title_format].description",
         "ウィンドウのタイトルのテンプレートです。使える変数は `${projectName}`、`${fileName}`、`${filePath}`、`${relativePath}`、`${fileStem}`、`${remoteName}`、`${remoteHost}`、`${appName}`、`${branch}`、`${separator}` です。`${separator}` は隣の変数が空のときは省かれますが、文字どおりに書いたテキストは残ります。共同作業のインジケーターがある場合は、展開したテンプレートの後ろに付きます。テンプレートを展開した結果が空のときは、既定のテンプレートを使います。",
     ),
     (
-        "p6.i57[window_title_format].placeholder",
+        "p6.i58[window_title_format].placeholder",
         "${projectName}${separator}${fileName}",
     ),
     (
-        "p6.i58[window_title_separator].title",
+        "p6.i59[window_title_separator].title",
         "タイトルの区切り文字",
     ),
     (
-        "p6.i58[window_title_separator].description",
+        "p6.i59[window_title_separator].description",
         "ウィンドウのタイトルの書式で `${separator}` に入る文字列です。前後の空白も値に含めてください。",
     ),
-    ("p6.i58[window_title_separator].placeholder", " — "),
+    ("p6.i59[window_title_separator].placeholder", " — "),
     (
         "p7.i3[project_panel.title_tooltip_delay$].title",
         "プロジェクトパネルの項目名のツールチップの遅延",
@@ -402,11 +402,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "セッションを読み込み直せるアイドル状態のエージェントのスレッドを、読み込んだまま残しておく最大数です。上限を超えると、更新の古いスレッドから解放します。",
     ),
     (
-        "p6.i24[title_bar.open_menus_on_hover].title",
+        "p6.i25[title_bar.open_menus_on_hover].title",
         "ホバーでメニューを開く",
     ),
     (
-        "p6.i24[title_bar.open_menus_on_hover].description",
+        "p6.i25[title_bar.open_menus_on_hover].description",
         "タイトルバーのメニューを、ホバーしたときに自動で開きます。",
     ),
     ("p0.i27.header", "拡張機能"),
@@ -561,6 +561,13 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     (
         "p13.i7[remote.max_cpu_cores].description",
         "Linux または WSL のホストで、リモートサーバーが使う CPU コアの数を制限します。リモートサーバーが起動する言語サーバーと git も制限の対象です。ターミナル、タスク、エージェントは制限されません。0 は無制限です。変更は再接続なしで反映されます。",
+    ),
+    // Added by upstream v1.30.2 at the top of the Title Bar section, which
+    // moves the rows below it down (renumbered in the fixture).
+    ("p6.i14[title_bar.show].title", "タイトルバーを表示"),
+    (
+        "p6.i14[title_bar.show].description",
+        "タイトルバーとウィンドウのボタンを表示するタイミングです。",
     ),
 ];
 
@@ -1243,6 +1250,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         ThemeAppearanceMode,
         ThemeSelectionDiscriminants,
         ThinkingBlockDisplay,
+        TitleBarVisibility,
         UseSystemClipboard,
         VimInsertModeCursorShape,
         WindowButtonLayoutContentDiscriminants,

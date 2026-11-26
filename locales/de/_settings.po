@@ -1208,6 +1208,18 @@ msgctxt "ThinkingBlockDisplay"
 msgid "Preview"
 msgstr "Vorschau"
 
+msgctxt "TitleBarVisibility"
+msgid "Always"
+msgstr "Immer"
+
+msgctxt "TitleBarVisibility"
+msgid "Hide In Full Screen"
+msgstr "Im Vollbild ausblenden"
+
+msgctxt "TitleBarVisibility"
+msgid "Never"
+msgstr "Nie"
+
 msgctxt "UseSystemClipboard"
 msgid "Always"
 msgstr "Immer"
@@ -4293,6 +4305,10 @@ msgid "Show Tab Bar Buttons"
 msgstr "Tableisten-Schaltflächen anzeigen"
 
 msgctxt "settings"
+msgid "Show Title Bar"
+msgstr "Titelleiste anzeigen"
+
+msgctxt "settings"
 msgid "Show Turn Stats"
 msgstr "Antwortstatistiken anzeigen"
 
@@ -5499,6 +5515,10 @@ msgstr "Legt fest, wann die Scrollleiste im Editor angezeigt wird."
 msgctxt "settings"
 msgid "When to show the scrollbar in the terminal."
 msgstr "Legt fest, wann die Scrollleiste im Terminal angezeigt wird."
+
+msgctxt "settings"
+msgid "When to show the title bar and its window controls."
+msgstr "Legt fest, wann die Titelleiste mit ihren Fenstersteuerelementen angezeigt wird."
 
 msgctxt "settings"
 msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."

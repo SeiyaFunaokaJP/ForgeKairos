@@ -72,7 +72,7 @@ See [Building on Windows](pages/src/building.md) for the options, and
 
 - Forked from [zed-industries/zed](https://github.com/zed-industries/zed) v1.17.2; each
   upstream release tag is merged in turn (no rebasing).
-- Upstream's development guidelines (`.rules`, `./script/clippy`, GPUI idioms) still apply.
+- Upstream's development guidelines (`AGENTS.md`, `./script/clippy`, GPUI idioms) still apply.
 - Upstream's documentation (`docs/src/`, `CONTRIBUTING.md` and so on) is kept as it is;
   for what this fork adds, this README is the reference.
 

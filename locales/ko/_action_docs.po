@@ -1746,6 +1746,12 @@ msgctxt "action documentation"
 msgid "editor::FoldAll"
 msgstr "편집기의 모든 접을 수 있는 영역을 접습니다."
 
+#. Folds all code blocks at the same indentation level of the current
+#. line.
+msgctxt "action documentation"
+msgid "editor::FoldAtCurrentIndentationLevel"
+msgstr "현재 줄과 같은 들여쓰기 수준의 모든 코드 블록을 접습니다."
+
 #. Folds all code blocks at the specified indentation level.
 msgctxt "action documentation"
 msgid "editor::FoldAtLevel"
@@ -6795,9 +6801,10 @@ msgstr "앞으로/뒤로 탐색, 최근 연 파일, 최근 닫은 탭을 포함�
 
 #. Clears all trusted worktrees, placing them in restricted mode on next open.
 #. Requires restart to take effect on already opened projects.
+#. Also forgets which worktrees were chosen to stay in restricted mode.
 msgctxt "action documentation"
 msgid "workspace::ClearTrustedWorktrees"
-msgstr "모든 신뢰된 워크트리의 신뢰 등록을 해제하여, 다음에 열 때 제한 모드가 되도록 합니다.\n이미 열려 있는 프로젝트에 적용하려면 다시 시작해야 합니다."
+msgstr "모든 신뢰된 워크트리의 신뢰 등록을 해제하여, 다음에 열 때 제한 모드가 되도록 합니다.\n이미 열려 있는 프로젝트에 적용하려면 다시 시작해야 합니다.\n제한 모드로 유지하도록 선택한 워크트리 정보도 지웁니다."
 
 #. Closes the active dock.
 msgctxt "action documentation"

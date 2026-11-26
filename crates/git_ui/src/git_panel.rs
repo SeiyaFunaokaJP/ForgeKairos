@@ -2,6 +2,7 @@ mod branch_mode;
 
 use git_ui_core::askpass_modal::AskPassModal;
 pub(crate) use git_ui_core::notifications::{open_output, show_error_toast};
+use language_model_selector::{LanguageModelSelector, language_model_picker, toggle_in_settings};
 
 use crate::branch_diff::BranchDiff;
 use crate::commit_context_menu::{
@@ -1760,6 +1761,7 @@ pub struct GitPanel {
     git_access: Option<GitAccess>,
     commit_menu_handle: PopoverMenuHandle<ContextMenu>,
     changes_actions_menu_handle: PopoverMenuHandle<ContextMenu>,
+    commit_message_model_selector: Entity<LanguageModelSelector>,
     remote_action_menu_handle: PopoverMenuHandle<ContextMenu>,
     /// Whether the commit an amend would replace is already pushed, keyed by its SHA, so that the
     /// amend checkbox can say a force push will be needed afterwards. `None` beside the SHA while
@@ -2099,6 +2101,40 @@ impl GitPanel {
             )
             .detach();
 
+            let picker = cx.new(|cx| {
+                language_model_picker(
+                    |cx| LanguageModelRegistry::read_global(cx).commit_message_model(cx),
+                    {
+                        let fs = fs.clone();
+
+                        move |model, cx| {
+                            let provider = model.provider_id().0.to_string();
+                            let model_id = model.id().0.to_string();
+
+                            update_settings_file(fs.clone(), cx, move |settings, _cx| {
+                                settings
+                                    .agent
+                                    .get_or_insert_default()
+                                    .set_commit_message_model(provider, model_id);
+                            });
+                        }
+                    },
+                    {
+                        let fs = fs.clone();
+
+                        move |model, should_be_favorite, cx| {
+                            toggle_in_settings(model, should_be_favorite, fs.clone(), cx)
+                        }
+                    },
+                    true,
+                    focus_handle.clone(),
+                    window,
+                    cx,
+                )
+            });
+            let model_selector =
+                cx.new(|_| LanguageModelSelector::new(picker).cycle_favorite_models_enabled(false));
+
             let mut this = Self {
                 active_repository,
                 commit_editor,
@@ -2165,6 +2201,7 @@ impl GitPanel {
                 git_access: None,
                 commit_menu_handle: PopoverMenuHandle::default(),
                 changes_actions_menu_handle: PopoverMenuHandle::default(),
+                commit_message_model_selector: model_selector,
                 remote_action_menu_handle: PopoverMenuHandle::default(),
                 amend_target_pushed: None,
                 _amend_pushed_probe: Task::ready(()),
@@ -8361,6 +8398,7 @@ impl GitPanel {
 
     pub(crate) fn render_generate_commit_message_button(
         &self,
+        model_selector_enabled: bool,
         cx: &Context<Self>,
     ) -> Option<AnyElement> {
         if !agent_settings::AgentSettings::get_global(cx).enabled(cx) {
@@ -8430,7 +8468,18 @@ impl GitPanel {
             })
         };
 
-        Some(button.into_any_element())
+        if !model_selector_enabled {
+            return Some(button.into_any_element());
+        }
+
+        Some(
+            h_flex()
+                .gap_0p5()
+                .child(button)
+                .child(Divider::vertical())
+                .child(self.commit_message_model_selector.clone())
+                .into_any_element(),
+        )
     }
 
     pub(crate) fn render_co_authors(&self, cx: &Context<Self>) -> Option<AnyElement> {
@@ -9057,7 +9106,7 @@ impl GitPanel {
                                 h_flex()
                                     .gap_0p5()
                                     .child(toggle_commit_editor_button)
-                                    .children(self.render_generate_commit_message_button(cx)),
+                                    .children(self.render_generate_commit_message_button(true, cx)),
                             )
                             .child(
                                 h_flex()

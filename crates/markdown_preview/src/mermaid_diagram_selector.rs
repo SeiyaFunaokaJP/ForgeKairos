@@ -202,6 +202,7 @@ mod tests {
             let svg = mermaid_render::render_to_svg(
                 template,
                 &crate::markdown_export::print_mermaid_theme(),
+                mermaid_render::test_svg_renderer(),
             )
             .unwrap_or_else(|error| {
                 panic!("the {} template should render: {error}", diagram.label())

@@ -595,15 +595,6 @@ msgstr "Den ursprünglichen Inhalt und den Empfangsnachweis als JSON kopieren"
 msgid "Cost"
 msgstr "Kosten"
 
-msgid "Cost Multiplier: {}"
-msgstr "Kostenmultiplikator: {}"
-
-msgid "Cost per Million Tokens: {}"
-msgstr "Kosten pro Million Token: {}"
-
-msgid "Cost: {}"
-msgstr "Kosten: {}"
-
 msgid "Could not authenticate with {provider}."
 msgstr "Authentifizierung bei {provider} fehlgeschlagen."
 
@@ -963,9 +954,6 @@ msgstr "Thread-Daten aus der Zwischenablage konnten nicht geparst werden"
 msgid "Favorite"
 msgstr "Favorit"
 
-msgid "Favorite Model"
-msgstr "Modell zu Favoriten hinzufügen"
-
 msgid "Favorites"
 msgstr "Favoriten"
 
@@ -1167,9 +1155,6 @@ msgstr "Alle beibehalten"
 
 msgid "Later"
 msgstr "Später"
-
-msgid "Latest"
-msgstr "Neueste"
 
 msgid "Launch Claude Code"
 msgstr "Claude Code starten"
@@ -1474,6 +1459,9 @@ msgstr "Datei öffnen"
 msgid "Open Global Rules"
 msgstr "Globale Regeln öffnen"
 
+msgid "Open Plan File"
+msgstr "Plandatei öffnen"
+
 msgid "Open Project Rules"
 msgstr "Projektregeln öffnen"
 
@@ -1656,9 +1644,6 @@ msgstr "Erneut authentifizieren"
 
 msgid "Recent Projects"
 msgstr "Zuletzt verwendete Projekte"
-
-msgid "Recommended"
-msgstr "Empfohlen"
 
 msgid "Reconnect"
 msgstr "Erneut verbinden"
@@ -2532,9 +2517,6 @@ msgstr "Unerwartete Form des Remote-Basisverzeichnisses (interner Fehler): {home
 msgid "Unfavorite"
 msgstr "Aus Favoriten entfernen"
 
-msgid "Unfavorite Model"
-msgstr "Modell aus Favoriten entfernen"
-
 msgid "Unknown"
 msgstr "Unbekannt"
 
@@ -3000,10 +2982,6 @@ msgstr ", "
 msgctxt "mention type"
 msgid "Fetch"
 msgstr "URL abrufen"
-
-msgctxt "model list section"
-msgid "Favorite"
-msgstr "Favorit"
 
 msgctxt "model or effort"
 msgid "Default"

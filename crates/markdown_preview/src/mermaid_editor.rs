@@ -1413,7 +1413,7 @@ impl MermaidEditor {
             let rendered = cx
                 .background_spawn({
                     async move {
-                        let svg = mermaid_render::render_to_svg(&source, &theme)?;
+                        let svg = mermaid_render::render_to_svg(&source, &theme, &svg_renderer)?;
                         let tree = svg_renderer
                             .parse_svg(svg.as_bytes())
                             .map_err(|error| anyhow::anyhow!("{error}"))?;

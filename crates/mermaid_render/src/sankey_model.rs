@@ -512,7 +512,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("source should render: {error}\n{source}"));
         assert!(!svg.contains("Syntax error in text"), "{source}");
     }
@@ -686,7 +686,11 @@ mod tests {
             .expect("a loop should be refused");
         assert!(error.contains("Power → Factory → Power"), "{error}");
         // The reason still holds: `merman` gives up on the loop.
-        let looped = render_to_svg(&emit_sankey(&document), &MermaidTheme::default());
+        let looped = render_to_svg(
+            &emit_sankey(&document),
+            &MermaidTheme::default(),
+            crate::test_svg_renderer(),
+        );
         assert!(
             looped.is_err() || looped.is_ok_and(|svg| svg.contains("Syntax error in text")),
             "merman should not draw a loop"

@@ -2211,7 +2211,8 @@ impl ProjectPanel {
         };
         let filename = self.filename_editor.read(cx).text(cx);
         if !filename.is_empty() {
-            if filename.is_empty() {
+            let trimmed_filename = filename.trim();
+            if trimmed_filename.is_empty() {
                 edit_state.validation_state = ValidationState::Error(
                     i18n::t!("File or directory name cannot be empty.").to_string(),
                 );
@@ -2219,7 +2220,6 @@ impl ProjectPanel {
                 return;
             }
 
-            let trimmed_filename = filename.trim();
             if trimmed_filename != filename {
                 edit_state.validation_state = ValidationState::Warning(
                     i18n::t!("File or directory name contains leading or trailing whitespace.")

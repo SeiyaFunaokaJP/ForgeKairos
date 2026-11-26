@@ -906,7 +906,8 @@ fn strip_prefix_ignoring_case<'a>(text: &'a str, prefix: &str) -> Option<&'a str
     None
 }
 
-/// Writes `document` back as Mermaid source, without a trailing newline.
+/// Writes `document` back as Mermaid source, without a trailing newline
+/// unless the keyword is the last line.
 pub fn emit_state(document: &StateDocument) -> String {
     let mut out = String::new();
 
@@ -917,6 +918,7 @@ pub fn emit_state(document: &StateDocument) -> String {
 
     out.push_str(document.keyword.as_str());
     out.push('\n');
+    let after_keyword = out.len();
 
     for line in preserved_at(document, PreservedPosition::Top) {
         out.push_str(line);
@@ -930,7 +932,17 @@ pub fn emit_state(document: &StateDocument) -> String {
         out.push('\n');
     }
 
-    while out.ends_with('\n') {
+    // Mermaid reads the keyword only when whitespace follows it, so a
+    // document with nothing after the keyword keeps its line break.
+    let nothing_after_keyword = out
+        .get(after_keyword..)
+        .is_none_or(|rest| rest.trim().is_empty());
+    let keep = if nothing_after_keyword {
+        after_keyword
+    } else {
+        0
+    };
+    while out.len() > keep && out.ends_with('\n') {
         out.pop();
     }
     out
@@ -1313,7 +1325,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -1520,7 +1532,12 @@ mod tests {
             emitted.contains("12#58;30"),
             "the transition label should escape its colon:\n{emitted}"
         );
-        let svg = render_to_svg(&emitted, &MermaidTheme::default()).expect("should render");
+        let svg = render_to_svg(
+            &emitted,
+            &MermaidTheme::default(),
+            crate::test_svg_renderer(),
+        )
+        .expect("should render");
         assert!(
             svg.contains("12:30"),
             "the escaped colon should be drawn as a colon:\n{emitted}"
@@ -1675,7 +1692,12 @@ mod tests {
     fn an_empty_fence_opens_as_a_blank_diagram() {
         let document = parse_state("").expect("an empty fence should parse");
         assert_eq!(document, StateDocument::empty());
-        assert_eq!(emit_state(&document), "stateDiagram-v2");
+        // Mermaid reads the keyword only when whitespace follows it.
+        assert_eq!(
+            emit_state(&document),
+            "stateDiagram-v2
+"
+        );
     }
 
     #[test]
@@ -1710,7 +1732,12 @@ mod tests {
     #[test]
     fn a_chain_of_transitions_is_not_a_diagram_mermaid_draws() {
         assert!(
-            render_to_svg("stateDiagram-v2\n  A --> B --> C", &MermaidTheme::default()).is_err()
+            render_to_svg(
+                "stateDiagram-v2\n  A --> B --> C",
+                &MermaidTheme::default(),
+                crate::test_svg_renderer()
+            )
+            .is_err()
         );
     }
 
@@ -1964,10 +1991,18 @@ mod tests {
         ] {
             let document = parse_state(source).expect("the diagram should open");
             let emitted = emit_state(&document);
-            let drawn = crate::render_to_svg(source, &crate::MermaidTheme::default())
-                .expect("the source should render");
-            let redrawn = crate::render_to_svg(&emitted, &crate::MermaidTheme::default())
-                .expect("the emitted diagram should render");
+            let drawn = crate::render_to_svg(
+                source,
+                &crate::MermaidTheme::default(),
+                crate::test_svg_renderer(),
+            )
+            .expect("the source should render");
+            let redrawn = crate::render_to_svg(
+                &emitted,
+                &crate::MermaidTheme::default(),
+                crate::test_svg_renderer(),
+            )
+            .expect("the emitted diagram should render");
             assert_eq!(
                 without_render_ids(&redrawn),
                 without_render_ids(&drawn),

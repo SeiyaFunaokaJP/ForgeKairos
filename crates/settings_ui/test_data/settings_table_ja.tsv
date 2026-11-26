@@ -559,106 +559,106 @@ p6.i11[debugger.button].description	ステータスバーにデバッガーの�
 p6.i12[status_bar.show_active_file].title	現在のファイル名
 p6.i12[status_bar.show_active_file].description	ステータスバーに現在のファイル名を表示します。
 p6.i13.header	タイトルバー
-p6.i14[title_bar.show_branch_status_icon].title	ブランチの状態アイコンを表示
-p6.i14[title_bar.show_branch_status_icon].description	タイトルバーのブランチアイコンに git の状態インジケーターを表示します。
-p6.i15[title_bar.show_branch_name].title	ブランチ名を表示
-p6.i15[title_bar.show_branch_name].description	タイトルバーにブランチ名のボタンを表示します。
-p6.i16[title_bar.show_worktree_name].title	ワークツリー名を表示
-p6.i16[title_bar.show_worktree_name].description	タイトルバーにワークツリー名のボタンを表示します。
-p6.i17[title_bar.show_project_items].title	プロジェクト情報を表示
-p6.i17[title_bar.show_project_items].description	タイトルバーにプロジェクトのホストと名前を表示します。
-p6.i18[title_bar.show_onboarding_banner].title	お知らせバナーを表示
-p6.i18[title_bar.show_onboarding_banner].description	タイトルバーに新機能を知らせるバナーを表示します。
-p6.i19[title_bar.show_sign_in].title	サインインを表示
-p6.i19[title_bar.show_sign_in].description	タイトルバーにサインインのボタンを表示します。
-p6.i20[title_bar.show_user_menu].title	ユーザーメニューを表示
-p6.i20[title_bar.show_user_menu].description	タイトルバーにユーザーメニューのボタンを表示します。
-p6.i21[title_bar.show_user_picture].title	ユーザーの画像を表示
-p6.i21[title_bar.show_user_picture].description	タイトルバーにユーザーの画像を表示します。
-p6.i22[title_bar.show_menus].title	メニューを表示
-p6.i22[title_bar.show_menus].description	タイトルバーにメニューを表示します。
-p6.i23[title_bar.button_layout$].title	ボタンの配置
-p6.i23[title_bar.button_layout$].description	(Linux のみ) タイトルバーのウィンドウ操作ボタンの配置を選択します。
-p6.i23.v2.f0[title_bar.button_layout].title	カスタムのボタン配置
-p6.i23.v2.f0[title_bar.button_layout].description	"close:minimize,maximize" のような GNOME 形式の配置文字列です。
-p6.i23.v2.f0[title_bar.button_layout].placeholder	close:minimize,maximize
-p6.i25.header	タブバー
-p6.i26[tab_bar.show].title	タブバーを表示
-p6.i26[tab_bar.show].description	エディターにタブバーを表示します。
-p6.i27[tabs.git_status].title	タブに Git の状態を表示
-p6.i27[tabs.git_status].description	タブの項目に Git のファイルの状態を表示します。
-p6.i28[tabs.file_icons].title	タブにファイルアイコンを表示
-p6.i28[tabs.file_icons].description	タブにファイルのアイコンを表示します。
-p6.i29[tabs.close_position].title	タブの閉じるボタンの位置
-p6.i29[tabs.close_position].description	タブ内の閉じるボタンの位置です。
-p6.i30[max_tabs].title	タブの最大数
-p6.i30[max_tabs].description	1 つのペインで開けるタブの最大数です。未保存のタブは閉じられません。
-p6.i31[tab_bar.show_nav_history_buttons].title	ナビゲーション履歴のボタンを表示
-p6.i31[tab_bar.show_nav_history_buttons].description	タブバーにナビゲーション履歴のボタンを表示します。
-p6.i32[tab_bar.show_tab_bar_buttons].title	タブバーのボタンを表示
-p6.i32[tab_bar.show_tab_bar_buttons].description	タブバーのボタン (新規・ペインの分割・ズーム) を表示します。
-p6.i33[tab_bar.show_buttons_on_inactive_panes].title	非アクティブなペインにもボタンを表示
-p6.i33[tab_bar.show_buttons_on_inactive_panes].description	フォーカスされていないペインのタブバーにも、新規・ペインの分割・ズームなどのボタンを表示します。
-p6.i34[tab_bar.show_pinned_tabs_in_separate_row].title	ピン留めタブの配置
-p6.i34[tab_bar.show_pinned_tabs_in_separate_row].description	ピン留めしたタブを、ピン留めしていないタブの上の別の行に表示します。
-p6.i35.header	タブの設定
-p6.i36[tabs.activate_on_close].title	閉じた後にアクティブにするタブ
-p6.i36[tabs.activate_on_close].description	現在のタブを閉じた後の動作です。
-p6.i37[tabs.show_diagnostics].title	タブに診断を表示
-p6.i37[tabs.show_diagnostics].description	診断のエラー・警告を含むファイルのうち、どれをタブ上で示すかを設定します。
-p6.i38[tabs.show_close_button].title	閉じるボタンを表示
-p6.i38[tabs.show_close_button].description	タブの閉じるボタンの表示動作を設定します。
-p6.i39.header	プレビュータブ
-p6.i40[preview_tabs.enabled].title	プレビュータブを有効にする
-p6.i40[preview_tabs.enabled].description	開いたエディターをプレビュータブとして表示します。
-p6.i41[preview_tabs.enable_preview_from_project_panel].title	プロジェクトパネルからのプレビュー
-p6.i41[preview_tabs.enable_preview_from_project_panel].description	プロジェクトパネルからシングルクリックまたは「開く」アクションで開いたときに、プレビューモードのタブで開くかどうかを設定します。
-p6.i42[preview_tabs.enable_preview_from_file_finder].title	ファイル検索からのプレビュー
-p6.i42[preview_tabs.enable_preview_from_file_finder].description	ファイル検索から選んだときに、プレビューモードのタブで開くかどうかを設定します。
-p6.i43[preview_tabs.enable_preview_from_multibuffer].title	マルチバッファーからのプレビュー
-p6.i43[preview_tabs.enable_preview_from_multibuffer].description	マルチバッファーから開いたときに、プレビューモードのタブで開くかどうかを設定します。
-p6.i44[preview_tabs.enable_preview_multibuffer_from_code_navigation].title	コードナビゲーションからのマルチバッファーのプレビュー
-p6.i44[preview_tabs.enable_preview_multibuffer_from_code_navigation].description	コードナビゲーションでマルチバッファーを開いたときに、プレビューモードのタブで開くかどうかを設定します。
-p6.i45[preview_tabs.enable_preview_file_from_code_navigation].title	コードナビゲーションからのファイルのプレビュー
-p6.i45[preview_tabs.enable_preview_file_from_code_navigation].description	コードナビゲーションで単一のファイルを開いたときに、プレビューモードのタブで開くかどうかを設定します。
-p6.i46[preview_tabs.enable_keep_preview_on_code_navigation].title	コードナビゲーション時にプレビューを維持
-p6.i46[preview_tabs.enable_keep_preview_on_code_navigation].description	コードナビゲーションでタブから移動したときに、そのタブをプレビューモードのまま維持するかどうかを設定します。`enable_preview_file_from_code_navigation` または `enable_preview_multibuffer_from_code_navigation` も true の場合、新しいタブが既存のタブを置き換えることがあります。
-p6.i47.header	レイアウト
-p6.i48[default_stacked_dock].title	既定でパネルを 2 枚並べるドック
-p6.i48[default_stacked_dock].description	プロジェクトを初めて開いたときに、パネルを 2 枚 (左右のドックは縦、下ドックは横) 並べておくドックです。ドック自体は開きません (起動時に開くかどうかは各パネルの「起動時に開く」で設定します)。以降はプロジェクトごとに保存されたレイアウトが優先されます。
-p6.i49[default_stacked_panel].title	既定で並べる 1 枚目のパネル
-p6.i49[default_stacked_panel].description	そのドックを埋めるパネルです。「並べない」にすると、初回のレイアウトを組みません。
-p6.i50[default_stacked_secondary_panel].title	既定で並べる 2 枚目のパネル
-p6.i50[default_stacked_secondary_panel].description	1 枚目の隣に並べて表示するパネルです。「並べない」にすると、上流の Zed と同じく 1 枚だけを表示します。
-p6.i51[bottom_dock_layout].title	下ドックのレイアウト
-p6.i51[bottom_dock_layout].description	下ドックのレイアウトモードです。
-p6.i52[centered_layout.left_padding].title	中央寄せレイアウトの左余白
-p6.i52[centered_layout.left_padding].description	中央寄せレイアウトの左側の余白です。
-p6.i53[centered_layout.right_padding].title	中央寄せレイアウトの右余白
-p6.i53[centered_layout.right_padding].description	中央寄せレイアウトの右側の余白です。
-p6.i54[focus_follows_mouse.enabled].title	マウスでフォーカスを移動
-p6.i54[focus_follows_mouse.enabled].description	マウスがペインの上に来たときに、そのペインへフォーカスを移すかどうかを設定します。
-p6.i55[focus_follows_mouse.debounce_ms].title	フォーカス移動のデバウンス (ミリ秒)
-p6.i55[focus_follows_mouse.debounce_ms].description	フォーカスを移すまでの待ち時間です。
-p6.i56.header	ウィンドウ
-p6.i59[use_system_window_tabs].title	システムのウィンドウタブを使用
-p6.i59[use_system_window_tabs].description	(macOS のみ) ウィンドウをタブとしてまとめられるようにするかどうかを設定します。
-p6.i60[fullscreen_mode].title	全画面表示のモード
-p6.i60[fullscreen_mode].description	(macOS のみ) 全画面表示の切り替えアクションで入る全画面モードを設定します。
-p6.i61[window_decorations].title	ウィンドウの装飾
-p6.i61[window_decorations].description	(Linux のみ) ウィンドウの装飾を ForgeKairos が描画するか、コンポジターに任せるかを設定します。
-p6.i62.header	ペインの表示調整
-p6.i63[active_pane_modifiers.inactive_opacity].title	非アクティブ時の不透明度
-p6.i63[active_pane_modifiers.inactive_opacity].description	非アクティブなパネルの不透明度です (0.0〜1.0)。
-p6.i64[active_pane_modifiers.border_size].title	境界線の太さ
-p6.i64[active_pane_modifiers.border_size].description	アクティブなペインを囲む境界線の太さです。
-p6.i65[zoomed_padding].title	ズーム時の余白
-p6.i65[zoomed_padding].description	ズームしたペインに余白を表示します。
-p6.i67.header	ペインの分割方向
-p6.i68[pane_split_direction_vertical].title	垂直分割の方向
-p6.i68[pane_split_direction_vertical].description	垂直に分割するときの方向です。
-p6.i69[pane_split_direction_horizontal].title	水平分割の方向
-p6.i69[pane_split_direction_horizontal].description	水平に分割するときの方向です。
+p6.i15[title_bar.show_branch_status_icon].title	ブランチの状態アイコンを表示
+p6.i15[title_bar.show_branch_status_icon].description	タイトルバーのブランチアイコンに git の状態インジケーターを表示します。
+p6.i16[title_bar.show_branch_name].title	ブランチ名を表示
+p6.i16[title_bar.show_branch_name].description	タイトルバーにブランチ名のボタンを表示します。
+p6.i17[title_bar.show_worktree_name].title	ワークツリー名を表示
+p6.i17[title_bar.show_worktree_name].description	タイトルバーにワークツリー名のボタンを表示します。
+p6.i18[title_bar.show_project_items].title	プロジェクト情報を表示
+p6.i18[title_bar.show_project_items].description	タイトルバーにプロジェクトのホストと名前を表示します。
+p6.i19[title_bar.show_onboarding_banner].title	お知らせバナーを表示
+p6.i19[title_bar.show_onboarding_banner].description	タイトルバーに新機能を知らせるバナーを表示します。
+p6.i20[title_bar.show_sign_in].title	サインインを表示
+p6.i20[title_bar.show_sign_in].description	タイトルバーにサインインのボタンを表示します。
+p6.i21[title_bar.show_user_menu].title	ユーザーメニューを表示
+p6.i21[title_bar.show_user_menu].description	タイトルバーにユーザーメニューのボタンを表示します。
+p6.i22[title_bar.show_user_picture].title	ユーザーの画像を表示
+p6.i22[title_bar.show_user_picture].description	タイトルバーにユーザーの画像を表示します。
+p6.i23[title_bar.show_menus].title	メニューを表示
+p6.i23[title_bar.show_menus].description	タイトルバーにメニューを表示します。
+p6.i24[title_bar.button_layout$].title	ボタンの配置
+p6.i24[title_bar.button_layout$].description	(Linux のみ) タイトルバーのウィンドウ操作ボタンの配置を選択します。
+p6.i24.v2.f0[title_bar.button_layout].title	カスタムのボタン配置
+p6.i24.v2.f0[title_bar.button_layout].description	"close:minimize,maximize" のような GNOME 形式の配置文字列です。
+p6.i24.v2.f0[title_bar.button_layout].placeholder	close:minimize,maximize
+p6.i26.header	タブバー
+p6.i27[tab_bar.show].title	タブバーを表示
+p6.i27[tab_bar.show].description	エディターにタブバーを表示します。
+p6.i28[tabs.git_status].title	タブに Git の状態を表示
+p6.i28[tabs.git_status].description	タブの項目に Git のファイルの状態を表示します。
+p6.i29[tabs.file_icons].title	タブにファイルアイコンを表示
+p6.i29[tabs.file_icons].description	タブにファイルのアイコンを表示します。
+p6.i30[tabs.close_position].title	タブの閉じるボタンの位置
+p6.i30[tabs.close_position].description	タブ内の閉じるボタンの位置です。
+p6.i31[max_tabs].title	タブの最大数
+p6.i31[max_tabs].description	1 つのペインで開けるタブの最大数です。未保存のタブは閉じられません。
+p6.i32[tab_bar.show_nav_history_buttons].title	ナビゲーション履歴のボタンを表示
+p6.i32[tab_bar.show_nav_history_buttons].description	タブバーにナビゲーション履歴のボタンを表示します。
+p6.i33[tab_bar.show_tab_bar_buttons].title	タブバーのボタンを表示
+p6.i33[tab_bar.show_tab_bar_buttons].description	タブバーのボタン (新規・ペインの分割・ズーム) を表示します。
+p6.i34[tab_bar.show_buttons_on_inactive_panes].title	非アクティブなペインにもボタンを表示
+p6.i34[tab_bar.show_buttons_on_inactive_panes].description	フォーカスされていないペインのタブバーにも、新規・ペインの分割・ズームなどのボタンを表示します。
+p6.i35[tab_bar.show_pinned_tabs_in_separate_row].title	ピン留めタブの配置
+p6.i35[tab_bar.show_pinned_tabs_in_separate_row].description	ピン留めしたタブを、ピン留めしていないタブの上の別の行に表示します。
+p6.i36.header	タブの設定
+p6.i37[tabs.activate_on_close].title	閉じた後にアクティブにするタブ
+p6.i37[tabs.activate_on_close].description	現在のタブを閉じた後の動作です。
+p6.i38[tabs.show_diagnostics].title	タブに診断を表示
+p6.i38[tabs.show_diagnostics].description	診断のエラー・警告を含むファイルのうち、どれをタブ上で示すかを設定します。
+p6.i39[tabs.show_close_button].title	閉じるボタンを表示
+p6.i39[tabs.show_close_button].description	タブの閉じるボタンの表示動作を設定します。
+p6.i40.header	プレビュータブ
+p6.i41[preview_tabs.enabled].title	プレビュータブを有効にする
+p6.i41[preview_tabs.enabled].description	開いたエディターをプレビュータブとして表示します。
+p6.i42[preview_tabs.enable_preview_from_project_panel].title	プロジェクトパネルからのプレビュー
+p6.i42[preview_tabs.enable_preview_from_project_panel].description	プロジェクトパネルからシングルクリックまたは「開く」アクションで開いたときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i43[preview_tabs.enable_preview_from_file_finder].title	ファイル検索からのプレビュー
+p6.i43[preview_tabs.enable_preview_from_file_finder].description	ファイル検索から選んだときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i44[preview_tabs.enable_preview_from_multibuffer].title	マルチバッファーからのプレビュー
+p6.i44[preview_tabs.enable_preview_from_multibuffer].description	マルチバッファーから開いたときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i45[preview_tabs.enable_preview_multibuffer_from_code_navigation].title	コードナビゲーションからのマルチバッファーのプレビュー
+p6.i45[preview_tabs.enable_preview_multibuffer_from_code_navigation].description	コードナビゲーションでマルチバッファーを開いたときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i46[preview_tabs.enable_preview_file_from_code_navigation].title	コードナビゲーションからのファイルのプレビュー
+p6.i46[preview_tabs.enable_preview_file_from_code_navigation].description	コードナビゲーションで単一のファイルを開いたときに、プレビューモードのタブで開くかどうかを設定します。
+p6.i47[preview_tabs.enable_keep_preview_on_code_navigation].title	コードナビゲーション時にプレビューを維持
+p6.i47[preview_tabs.enable_keep_preview_on_code_navigation].description	コードナビゲーションでタブから移動したときに、そのタブをプレビューモードのまま維持するかどうかを設定します。`enable_preview_file_from_code_navigation` または `enable_preview_multibuffer_from_code_navigation` も true の場合、新しいタブが既存のタブを置き換えることがあります。
+p6.i48.header	レイアウト
+p6.i49[default_stacked_dock].title	既定でパネルを 2 枚並べるドック
+p6.i49[default_stacked_dock].description	プロジェクトを初めて開いたときに、パネルを 2 枚 (左右のドックは縦、下ドックは横) 並べておくドックです。ドック自体は開きません (起動時に開くかどうかは各パネルの「起動時に開く」で設定します)。以降はプロジェクトごとに保存されたレイアウトが優先されます。
+p6.i50[default_stacked_panel].title	既定で並べる 1 枚目のパネル
+p6.i50[default_stacked_panel].description	そのドックを埋めるパネルです。「並べない」にすると、初回のレイアウトを組みません。
+p6.i51[default_stacked_secondary_panel].title	既定で並べる 2 枚目のパネル
+p6.i51[default_stacked_secondary_panel].description	1 枚目の隣に並べて表示するパネルです。「並べない」にすると、上流の Zed と同じく 1 枚だけを表示します。
+p6.i52[bottom_dock_layout].title	下ドックのレイアウト
+p6.i52[bottom_dock_layout].description	下ドックのレイアウトモードです。
+p6.i53[centered_layout.left_padding].title	中央寄せレイアウトの左余白
+p6.i53[centered_layout.left_padding].description	中央寄せレイアウトの左側の余白です。
+p6.i54[centered_layout.right_padding].title	中央寄せレイアウトの右余白
+p6.i54[centered_layout.right_padding].description	中央寄せレイアウトの右側の余白です。
+p6.i55[focus_follows_mouse.enabled].title	マウスでフォーカスを移動
+p6.i55[focus_follows_mouse.enabled].description	マウスがペインの上に来たときに、そのペインへフォーカスを移すかどうかを設定します。
+p6.i56[focus_follows_mouse.debounce_ms].title	フォーカス移動のデバウンス (ミリ秒)
+p6.i56[focus_follows_mouse.debounce_ms].description	フォーカスを移すまでの待ち時間です。
+p6.i57.header	ウィンドウ
+p6.i60[use_system_window_tabs].title	システムのウィンドウタブを使用
+p6.i60[use_system_window_tabs].description	(macOS のみ) ウィンドウをタブとしてまとめられるようにするかどうかを設定します。
+p6.i61[fullscreen_mode].title	全画面表示のモード
+p6.i61[fullscreen_mode].description	(macOS のみ) 全画面表示の切り替えアクションで入る全画面モードを設定します。
+p6.i62[window_decorations].title	ウィンドウの装飾
+p6.i62[window_decorations].description	(Linux のみ) ウィンドウの装飾を ForgeKairos が描画するか、コンポジターに任せるかを設定します。
+p6.i63.header	ペインの表示調整
+p6.i64[active_pane_modifiers.inactive_opacity].title	非アクティブ時の不透明度
+p6.i64[active_pane_modifiers.inactive_opacity].description	非アクティブなパネルの不透明度です (0.0〜1.0)。
+p6.i65[active_pane_modifiers.border_size].title	境界線の太さ
+p6.i65[active_pane_modifiers.border_size].description	アクティブなペインを囲む境界線の太さです。
+p6.i66[zoomed_padding].title	ズーム時の余白
+p6.i66[zoomed_padding].description	ズームしたペインに余白を表示します。
+p6.i68.header	ペインの分割方向
+p6.i69[pane_split_direction_vertical].title	垂直分割の方向
+p6.i69[pane_split_direction_vertical].description	垂直に分割するときの方向です。
+p6.i70[pane_split_direction_horizontal].title	水平分割の方向
+p6.i70[pane_split_direction_horizontal].description	水平に分割するときの方向です。
 p7.title	パネル
 p7.i0.header	プロジェクトパネル
 p7.i1[project_panel.dock].title	プロジェクトパネルのドック位置

@@ -57,6 +57,7 @@ i18n_catalog = { workspace = true, features = ["test-support"] }
 indoc.workspace = true
 language = { workspace = true, features = ["test-support"] }
 markdown = { workspace = true, features = ["test-support"] }
+mermaid_render = { workspace = true, features = ["test-support"] }
 node_runtime.workspace = true
 project = { workspace = true, features = ["test-support"] }
 release_channel.workspace = true

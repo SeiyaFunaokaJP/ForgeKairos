@@ -3,9 +3,9 @@
 //! its declaration.
 //!
 //! merman's lexer ends every one of those texts at a `;` (which separates
-//! statements just like a line break does), at a `#` that does not start a
-//! `#…;` entity, and at a `%%`; the last two open a comment that runs to the
-//! end of the line. The scan here ends them at the same places, so that the
+//! statements just like a line break does) and at a `#` that does not start a
+//! `#…;` entity, which opens a comment that runs to the end of the line. A
+//! `%%` inside the text is part of it, as in Mermaid. The scan here ends them at the same places, so that the
 //! token it reports is the text that is actually drawn.
 //!
 //! The SVG numbers messages and notes together in the order they were written,
@@ -35,7 +35,7 @@ struct SequenceScan {
 enum Terminator {
     /// A `;`, after which another statement may follow on the same line.
     Semicolon,
-    /// A `#` or a `%%`, which comment out the rest of the line.
+    /// A `#`, which comments out the rest of the line.
     Comment,
     EndOfLine,
 }
@@ -133,9 +133,6 @@ fn read_rest(line: &str, start: usize) -> (usize, Terminator) {
                 }
                 None => return (position, Terminator::Comment),
             },
-            b'%' if bytes.get(position + 1) == Some(&b'%') => {
-                return (position, Terminator::Comment);
-            }
             _ => {}
         }
         position += 1;
@@ -592,19 +589,21 @@ mod tests {
         );
     }
 
-    /// A `%%` or a bare `#` ends the text and comments out the rest of the
-    /// line, so neither is part of the token. An entity is not a comment.
+    /// A bare `#` ends the text and comments out the rest of the line, so it
+    /// is not part of the token. An entity is not a comment, and neither is a
+    /// `%%` inside the text: Mermaid draws `本文 %% メモ` as written.
     #[test]
     fn a_comment_ends_the_text_and_an_entity_does_not() {
         let fence_body = "sequenceDiagram\n    A->>B: \u{672c}\u{6587} %% \u{30e1}\u{30e2}; B->>A: gone\n    A->>B: x #59; y # tail\n";
-        assert_eq!(item(fence_body, 0), "\u{672c}\u{6587}");
-        assert_eq!(item(fence_body, 1), "x #59; y");
+        assert_eq!(item(fence_body, 0), "\u{672c}\u{6587} %% \u{30e1}\u{30e2}");
+        assert_eq!(item(fence_body, 1), "gone");
+        assert_eq!(item(fence_body, 2), "x #59; y");
         assert_eq!(
-            find_item_label(fence_body, 1).map(|span| span.label),
+            find_item_label(fence_body, 2).map(|span| span.label),
             Ok("x ; y".to_string())
         );
         assert_eq!(
-            find_item_label(fence_body, 2),
+            find_item_label(fence_body, 3),
             Err(MermaidLabelRefusal::NotLocated),
             "the statement after the comment is not a message"
         );
@@ -615,8 +614,8 @@ mod tests {
             "50%% #1",
         );
         assert!(
-            edited.contains("A->>B: 50#37;% #35;1 %% "),
-            "a written `%%` or `#` must not open a comment: {edited}"
+            edited.contains("A->>B: 50#37;% #35;1; B->>A: gone"),
+            "a written `#` must not open a comment: {edited}"
         );
     }
 

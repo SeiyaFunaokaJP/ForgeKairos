@@ -21,7 +21,7 @@ fn round_trip(source: &str) -> String {
 }
 
 fn drawing_of(source: &str) -> String {
-    let svg = render_to_svg(source, &MermaidTheme::default())
+    let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
         .unwrap_or_else(|error| panic!("`{source}` should render: {error}"));
     assert!(
         !svg.contains("Syntax error in text"),

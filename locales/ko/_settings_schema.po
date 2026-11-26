@@ -171,10 +171,6 @@ msgid "Always populate the search query with the word under the cursor."
 msgstr "항상 커서 아래 단어로 검색어를 채웁니다."
 
 msgctxt "settings schema"
-msgid "Always prompt for confirmation (default behavior)."
-msgstr "항상 확인을 요청합니다 (기본 동작)."
-
-msgctxt "settings schema"
 msgid "Always reduce motion"
 msgstr "항상 모션 줄이기"
 
@@ -201,6 +197,10 @@ msgstr "사이드바를 항상 왼쪽에 표시합니다."
 msgctxt "settings schema"
 msgid "Always show the sidebar on the right side."
 msgstr "사이드바를 항상 오른쪽에 표시합니다."
+
+msgctxt "settings schema"
+msgid "Always show the title bar."
+msgstr "제목 표시줄을 항상 표시합니다."
 
 msgctxt "settings schema"
 msgid "Always start with an empty editor tab"
@@ -1035,12 +1035,12 @@ msgid "Dim yellow ANSI terminal color."
 msgstr "흐린 노란색 ANSI 터미널 색입니다."
 
 msgctxt "settings schema"
-msgid "Direction to split horizontally.\n\nDefault: \"up\""
-msgstr "가로로 분할할 방향입니다.\n\n기본값: \"up\""
+msgid "Direction to split horizontally.\n\nDefault: \"down\""
+msgstr "가로로 분할할 방향입니다.\n\n기본값: \"down\""
 
 msgctxt "settings schema"
-msgid "Direction to split vertically.\n\nDefault: \"left\""
-msgstr "세로로 분할할 방향입니다.\n\n기본값: \"left\""
+msgid "Direction to split vertically.\n\nDefault: \"right\""
+msgstr "세로로 분할할 방향입니다.\n\n기본값: \"right\""
 
 msgctxt "settings schema"
 msgid "Directory subtrees that sandboxed terminal commands may always write\nto without prompting. Each entry is either a bare path string or an\nobject `{requested, resolved}`; Zed writes objects (the canonical,\nsymlink-resolved target established at approval time), while\nhand-authored entries may be bare path strings. Paths written by Zed\nare absolute.\nDefault: []"
@@ -1507,8 +1507,8 @@ msgid "How many lines of context to provide in multibuffer excerpts by default\n
 msgstr "멀티버퍼 발췌에서 기본으로 제공할 컨텍스트 줄 수입니다.\n\n기본값: 2"
 
 msgctxt "settings schema"
-msgid "How many lines to expand the multibuffer excerpts by default\n\nDefault: 3"
-msgstr "멀티버퍼 발췌를 기본으로 확장할 줄 수입니다.\n\n기본값: 3"
+msgid "How many lines to expand the multibuffer excerpts by default\n\nDefault: 5"
+msgstr "멀티버퍼 발췌를 기본으로 확장할 줄 수입니다.\n\n기본값: 5"
 
 msgctxt "settings schema"
 msgid "How many minutes an external agent's connection is kept once no thread\nof that agent is open any more. The agent (and the sandbox it runs in)\nis stopped after that, and opening one of its threads again connects\nanew. `0` keeps every connection until the window closes.\n\nDefault: 5"
@@ -1531,8 +1531,8 @@ msgid "How thinking blocks should be displayed by default in the agent panel."
 msgstr "에이전트 패널에서 사고 과정 블록을 기본적으로 표시하는 방식입니다."
 
 msgctxt "settings schema"
-msgid "How thinking blocks should be displayed by default in the agent panel.\n\nDefault: automatic"
-msgstr "에이전트 패널에서 사고 블록을 기본으로 표시하는 방법입니다.\n\n기본값: automatic"
+msgid "How thinking blocks should be displayed by default in the agent panel.\n\nDefault: auto"
+msgstr "에이전트 패널에서 사고 블록을 기본으로 표시하는 방법입니다.\n\n기본값: auto"
 
 msgctxt "settings schema"
 msgid "How to display diffs in the editor.\n\nDefault: split"
@@ -1959,6 +1959,10 @@ msgid "Never show the scrollbar."
 msgstr "스크롤바를 표시하지 않습니다."
 
 msgctxt "settings schema"
+msgid "Never show the title bar."
+msgstr "제목 표시줄을 표시하지 않습니다."
+
+msgctxt "settings schema"
 msgid "No automatic indentation. New lines start at column 0."
 msgstr "자동 들여쓰기를 적용하지 않습니다. 새 줄은 0번 열에서 시작합니다."
 
@@ -2155,6 +2159,10 @@ msgid "Preserve the indentation of the current line when creating new lines,\nbu
 msgstr "새 줄을 만들 때 현재 줄의 들여쓰기를 유지하지만, 구문 컨텍스트에 따라 조정하지는 않습니다."
 
 msgctxt "settings schema"
+msgid "Prompt for confirmation (default behavior).\nThe `edit_file` and `write_file` tools don't prompt for files inside\nthe project unless an `always_confirm` pattern matches."
+msgstr "확인을 요청합니다 (기본 동작). `edit_file` 및 `write_file` 도구는 `always_confirm` 패턴과 일치하지 않는 한 프로젝트 안의 파일에 대해서는 확인을 요청하지 않습니다."
+
+msgctxt "settings schema"
 msgid "Pure Unicode codepoint comparison. No case folding, no natural number sorting.\nUppercase ASCII sorts before lowercase. Accented characters sort after ASCII."
 msgstr "순수한 Unicode 코드 포인트 비교입니다. 대소문자 통합이나 자연수 정렬을 하지 않습니다.\n대문자 ASCII가 소문자보다 앞에 정렬됩니다. 악센트가 있는 문자는 ASCII 뒤에 정렬됩니다."
 
@@ -2323,8 +2331,8 @@ msgid "Sets the terminal's font weight in CSS weight units 0-900."
 msgstr "터미널의 글꼴 두께를 CSS 두께 단위(0-900)로 설정합니다."
 
 msgctxt "settings schema"
-msgid "Sets the terminal's line height.\n\nDefault: comfortable"
-msgstr "터미널의 줄 높이를 설정합니다.\n\n기본값: comfortable"
+msgid "Sets the terminal's line height.\n\nDefault: standard"
+msgstr "터미널의 줄 높이를 설정합니다.\n\n기본값: standard"
 
 msgctxt "settings schema"
 msgid "Sets whether Alternate Scroll mode (code: ?1007) is active by default.\nAlternate Scroll mode converts mouse scroll events into up / down key\npresses when in the alternate screen (e.g. when running applications\nlike vim or  less). The terminal can still set and unset this mode.\n\nDefault: on"
@@ -2561,6 +2569,10 @@ msgstr "마우스가 미니맵 위에 있을 때만 미니맵 슬라이더를 �
 msgctxt "settings schema"
 msgid "Show the scrollbar if there's important information or\nfollow the system's configured behavior."
 msgstr "중요한 정보가 있으면 스크롤바를 표시하거나 시스템에 구성된 동작을 따릅니다."
+
+msgctxt "settings schema"
+msgid "Show the title bar, but hide it while the window is in full screen."
+msgstr "제목 표시줄을 표시하되, 창이 전체 화면일 때는 숨깁니다."
 
 msgctxt "settings schema"
 msgid "Show unstaged hunks hollow and staged hunks with a filled background."
@@ -3499,8 +3511,8 @@ msgid "Thinking effort levels this model accepts in Ollama's `think` parameter,\
 msgstr "이 모델이 Ollama의 `think` 매개변수에서 허용하는 사고 강도 수준입니다(예: `[\"low\", \"medium\", \"high\"]`). 단순한 켜기/끄기 대신 수준을 허용하는 모델은 일부(예: `gpt-oss`)뿐이므로, 허용하지 않는 모델에서는 설정하지 마세요."
 
 msgctxt "settings schema"
-msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed's keymap closely follows VSCode's\nkeymap, with minor adjustments, this corresponds to the \"VSCode\" setting.\n\nDefault: VSCode"
-msgstr "이 기본 키맵 설정은 ForgeKairos의 기본 키 바인딩을 다른 일반적인 코드 편집기와 비슷하게 조정합니다. 기본적으로 ForgeKairos의 키맵은 약간의 조정을 거친 VSCode 키맵을 거의 그대로 따르며, 이는 \"VSCode\" 설정에 해당합니다.\n\n기본값: VSCode"
+msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed uses its own keymap, which\ncorresponds to the \"Zed\" setting.\n\nDefault: Zed"
+msgstr "이 기본 키맵 설정은 ForgeKairos의 기본 키 바인딩을 다른 일반적인 코드 편집기와 비슷하게 조정합니다. 기본적으로 ForgeKairos는 자체 키맵을 사용하며, 이는 \"Zed\" 설정에 해당합니다.\n\n기본값: Zed"
 
 msgctxt "settings schema"
 msgid "Time in milliseconds until timeout error when connecting to a TCP debug adapter\n\nDefault: 2000ms"
@@ -3759,8 +3771,8 @@ msgid "What to do when multibuffer is double clicked in some of its excerpts (pa
 msgstr "멀티버퍼의 일부 발췌 부분(단일 버퍼의 일부)에서 더블 클릭 시 수행할 작업입니다."
 
 msgctxt "settings schema"
-msgid "What to do when the `BEL` character (`\\a`) is printed to terminal.\n\nDefault: \"system\""
-msgstr "`BEL` 문자(`\\a`)가 터미널에 출력될 때 수행할 동작입니다.\n\n기본값: \"system\""
+msgid "What to do when the `BEL` character (`\\a`) is printed to terminal.\n\nDefault: \"off\""
+msgstr "`BEL` 문자(`\\a`)가 터미널에 출력될 때 수행할 동작입니다.\n\n기본값: \"off\""
 
 msgctxt "settings schema"
 msgid "What to do when the last window is closed\n\nDefault: auto (nothing on macOS, \"app quit\" otherwise)"
@@ -3847,6 +3859,10 @@ msgid "When to scan content of linked directories.\n\nDefault: expanded"
 msgstr "연결된 디렉터리의 내용을 검색(스캔)할 시기입니다.\n\n기본값: expanded"
 
 msgctxt "settings schema"
+msgid "When to show the close button on tabs.\n\nDefault: hover"
+msgstr "탭에 닫기 버튼을 표시할 시점입니다.\n\n기본값: hover"
+
+msgctxt "settings schema"
 msgid "When to show the minimap in the editor.\n\nDefault: never"
 msgstr "편집기에 미니맵을 표시할 시기입니다.\n\n기본값: never"
 
@@ -3877,6 +3893,10 @@ msgstr "터미널에 스크롤바를 표시할 시기입니다.\n\n기본값: �
 msgctxt "settings schema"
 msgid "When to show the scrollbar.\n\nDefault: auto"
 msgstr "스크롤바를 표시할 시기입니다.\n\n기본값: auto"
+
+msgctxt "settings schema"
+msgid "When to show the title bar.\n\nDefault: always"
+msgstr "제목 표시줄을 표시할 시기입니다.\n\n기본값: always"
 
 msgctxt "settings schema"
 msgid "When true, enables drag and drop text selection in buffer.\n\nDefault: true"
@@ -4319,10 +4339,6 @@ msgid "Whether to allow windows to tab together based on the user's tabbing pref
 msgstr "사용자의 탭 기본 설정에 따라 창을 탭으로 함께 묶을 수 있게 할지 여부입니다(macOS 전용).\n\n기본값: false"
 
 msgctxt "settings schema"
-msgid "Whether to always show the close button on tabs.\n\nDefault: false"
-msgstr "탭에 닫기 버튼을 항상 표시할지 여부입니다.\n\n기본값: false"
-
-msgctxt "settings schema"
 msgid "Whether to always use cmd-enter (or ctrl-enter on Linux or Windows) to send messages in the agent panel.\n\nDefault: false"
 msgstr "에이전트 패널에서 메시지를 보낼 때 항상 cmd-enter(Linux 또는 Windows에서는 ctrl-enter)를 사용할지 여부입니다.\n\n기본값: false"
 
@@ -4643,6 +4659,10 @@ msgid "Whether to pop the completions menu while typing in an editor without\nex
 msgstr "명시적으로 요청하지 않아도 편집기에서 입력하는 동안 자동 완성 메뉴를 표시할지 여부입니다.\n\n기본값: true"
 
 msgctxt "settings schema"
+msgid "Whether to pre-fill the file finder's query with the text selected in the\nfocused item (e.g. an editor or a terminal) when it is opened.\n\nDefault: false"
+msgstr "파일 찾기를 열 때 포커스된 항목(예: 편집기 또는 터미널)에서 선택한 텍스트로 검색어를 미리 채울지 여부입니다.\n\n기본값: false"
+
+msgctxt "settings schema"
 msgid "Whether to prefix each logged line with `[YYYY-MM-DD HH:MM:SS] `.\n\nDefault: false"
 msgstr "기록하는 각 줄 앞에 `[YYYY-MM-DD HH:MM:SS] `을(를) 붙일지 여부입니다.\n\n기본값: false"
 
@@ -4731,8 +4751,8 @@ msgid "Whether to show an indicator while multi-stroke input is pending.\nIf the
 msgstr "여러 키 입력이 대기 중인 동안 표시기를 표시할지 여부입니다. 입력에 시간 제한이 있으면 카운트다운이 표시되며, 표시기에 마우스를 올리면 일시 중지됩니다. which-key 팝업이 활성화되어 있으면 바인딩 미리 보기 팝오버는 비활성화됩니다.\n\n기본값: true"
 
 msgctxt "settings schema"
-msgid "Whether to show author name as part of the commit information.\n\nDefault: false"
-msgstr "커밋 정보의 일부로 작성자 이름을 표시할지 여부입니다.\n\n기본값: false"
+msgid "Whether to show author name as part of the commit information.\n\nDefault: true"
+msgstr "커밋 정보의 일부로 작성자 이름을 표시할지 여부입니다.\n\n기본값: true"
 
 msgctxt "settings schema"
 msgid "Whether to show bookmarks in the gutter.\n\nDefault: true"
@@ -5115,8 +5135,8 @@ msgid "Which information to show in the branch picker.\n\nDefault: on"
 msgstr "브랜치 선택기에 표시할 정보입니다.\n\n기본값: on"
 
 msgctxt "settings schema"
-msgid "Which level to use to filter out diagnostics displayed in the editor.\n\nAffects the editor rendering only, and does not interrupt\nthe functionality of diagnostics fetching and project diagnostics editor.\nWhich files containing diagnostic errors/warnings to mark in the tabs.\nDiagnostics are only shown when file icons are also active.\n\nShows all diagnostics if not specified.\n\nDefault: warning"
-msgstr "편집기에 표시되는 진단을 필터링하는 데 사용할 수준입니다.\n\n편집기 렌더링에만 영향을 주며, 진단 가져오기 및 프로젝트 진단 편집기의 기능은 방해하지 않습니다. 탭에서 진단 오류/경고가 포함된 파일 중 표시할 대상입니다. 진단은 파일 아이콘도 활성화된 경우에만 표시됩니다.\n\n지정하지 않으면 모든 진단을 표시합니다.\n\n기본값: warning"
+msgid "Which level to use to filter out diagnostics displayed in the editor.\n\nAffects the editor rendering only, and does not interrupt\nthe functionality of diagnostics fetching and project diagnostics editor.\nWhich files containing diagnostic errors/warnings to mark in the tabs.\nDiagnostics are only shown when file icons are also active.\n\nShows all diagnostics if not specified.\n\nDefault: all"
+msgstr "편집기에 표시되는 진단을 필터링하는 데 사용할 수준입니다.\n\n편집기 렌더링에만 영향을 주며, 진단 가져오기 및 프로젝트 진단 편집기의 기능은 방해하지 않습니다. 탭에서 진단 오류/경고가 포함된 파일 중 표시할 대상입니다. 진단은 파일 아이콘도 활성화된 경우에만 표시됩니다.\n\n지정하지 않으면 모든 진단을 표시합니다.\n\n기본값: all"
 
 msgctxt "settings schema"
 msgid "Which sources the panel lists calls from: the language server, which\nis exact, the symbol index of C and C++ files, which matches names, or\nboth.\n\nDefault: all"

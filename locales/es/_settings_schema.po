@@ -171,10 +171,6 @@ msgid "Always populate the search query with the word under the cursor."
 msgstr "Rellena siempre la consulta de búsqueda con la palabra bajo el cursor."
 
 msgctxt "settings schema"
-msgid "Always prompt for confirmation (default behavior)."
-msgstr "Solicitar siempre confirmación (comportamiento predeterminado)."
-
-msgctxt "settings schema"
 msgid "Always reduce motion"
 msgstr "Reducir siempre el movimiento"
 
@@ -201,6 +197,10 @@ msgstr "Muestra siempre la barra lateral en el lado izquierdo."
 msgctxt "settings schema"
 msgid "Always show the sidebar on the right side."
 msgstr "Muestra siempre la barra lateral en el lado derecho."
+
+msgctxt "settings schema"
+msgid "Always show the title bar."
+msgstr "Mostrar siempre la barra de título."
 
 msgctxt "settings schema"
 msgid "Always start with an empty editor tab"
@@ -1035,12 +1035,12 @@ msgid "Dim yellow ANSI terminal color."
 msgstr "Color ANSI amarillo atenuado del terminal."
 
 msgctxt "settings schema"
-msgid "Direction to split horizontally.\n\nDefault: \"up\""
-msgstr "Dirección de la división horizontal.\n\nValor predeterminado: \"up\""
+msgid "Direction to split horizontally.\n\nDefault: \"down\""
+msgstr "Dirección de la división horizontal.\n\nValor predeterminado: \"down\""
 
 msgctxt "settings schema"
-msgid "Direction to split vertically.\n\nDefault: \"left\""
-msgstr "Dirección de la división vertical.\n\nValor predeterminado: \"left\""
+msgid "Direction to split vertically.\n\nDefault: \"right\""
+msgstr "Dirección de la división vertical.\n\nValor predeterminado: \"right\""
 
 msgctxt "settings schema"
 msgid "Directory subtrees that sandboxed terminal commands may always write\nto without prompting. Each entry is either a bare path string or an\nobject `{requested, resolved}`; Zed writes objects (the canonical,\nsymlink-resolved target established at approval time), while\nhand-authored entries may be bare path strings. Paths written by Zed\nare absolute.\nDefault: []"
@@ -1507,8 +1507,8 @@ msgid "How many lines of context to provide in multibuffer excerpts by default\n
 msgstr "Cuántas líneas de contexto se incluyen de forma predeterminada en los extractos del multibúfer\n\nValor predeterminado: 2"
 
 msgctxt "settings schema"
-msgid "How many lines to expand the multibuffer excerpts by default\n\nDefault: 3"
-msgstr "Cuántas líneas se expanden de forma predeterminada los extractos del multibúfer\n\nValor predeterminado: 3"
+msgid "How many lines to expand the multibuffer excerpts by default\n\nDefault: 5"
+msgstr "Cuántas líneas se expanden de forma predeterminada los extractos del multibúfer\n\nValor predeterminado: 5"
 
 msgctxt "settings schema"
 msgid "How many minutes an external agent's connection is kept once no thread\nof that agent is open any more. The agent (and the sandbox it runs in)\nis stopped after that, and opening one of its threads again connects\nanew. `0` keeps every connection until the window closes.\n\nDefault: 5"
@@ -1531,8 +1531,8 @@ msgid "How thinking blocks should be displayed by default in the agent panel."
 msgstr "Cómo deben mostrarse de forma predeterminada los bloques de razonamiento en el panel del agente."
 
 msgctxt "settings schema"
-msgid "How thinking blocks should be displayed by default in the agent panel.\n\nDefault: automatic"
-msgstr "Cómo se muestran de forma predeterminada los bloques de razonamiento en el panel del agente.\n\nValor predeterminado: automatic"
+msgid "How thinking blocks should be displayed by default in the agent panel.\n\nDefault: auto"
+msgstr "Cómo se muestran de forma predeterminada los bloques de razonamiento en el panel del agente.\n\nValor predeterminado: auto"
 
 msgctxt "settings schema"
 msgid "How to display diffs in the editor.\n\nDefault: split"
@@ -1959,6 +1959,10 @@ msgid "Never show the scrollbar."
 msgstr "No muestra nunca la barra de desplazamiento."
 
 msgctxt "settings schema"
+msgid "Never show the title bar."
+msgstr "Nunca mostrar la barra de título."
+
+msgctxt "settings schema"
 msgid "No automatic indentation. New lines start at column 0."
 msgstr "Sin sangría automática. Las líneas nuevas empiezan en la columna 0."
 
@@ -2155,6 +2159,10 @@ msgid "Preserve the indentation of the current line when creating new lines,\nbu
 msgstr "Conserva la sangría de la línea actual al crear líneas nuevas, pero no la ajusta según el contexto sintáctico."
 
 msgctxt "settings schema"
+msgid "Prompt for confirmation (default behavior).\nThe `edit_file` and `write_file` tools don't prompt for files inside\nthe project unless an `always_confirm` pattern matches."
+msgstr "Solicitar confirmación (comportamiento predeterminado). Las herramientas `edit_file` y `write_file` no la solicitan para los archivos del proyecto, salvo que coincida un patrón `always_confirm`."
+
+msgctxt "settings schema"
 msgid "Pure Unicode codepoint comparison. No case folding, no natural number sorting.\nUppercase ASCII sorts before lowercase. Accented characters sort after ASCII."
 msgstr "Comparación pura por punto de código Unicode. Sin unificar mayúsculas y minúsculas ni ordenación natural de números.\nLas mayúsculas ASCII se ordenan antes que las minúsculas. Los caracteres acentuados se ordenan después de ASCII."
 
@@ -2323,8 +2331,8 @@ msgid "Sets the terminal's font weight in CSS weight units 0-900."
 msgstr "Establece el peso de la fuente del terminal en unidades de peso CSS de 0 a 900."
 
 msgctxt "settings schema"
-msgid "Sets the terminal's line height.\n\nDefault: comfortable"
-msgstr "Establece el alto de línea del terminal.\n\nValor predeterminado: comfortable"
+msgid "Sets the terminal's line height.\n\nDefault: standard"
+msgstr "Establece el alto de línea del terminal.\n\nValor predeterminado: standard"
 
 msgctxt "settings schema"
 msgid "Sets whether Alternate Scroll mode (code: ?1007) is active by default.\nAlternate Scroll mode converts mouse scroll events into up / down key\npresses when in the alternate screen (e.g. when running applications\nlike vim or  less). The terminal can still set and unset this mode.\n\nDefault: on"
@@ -2561,6 +2569,10 @@ msgstr "Muestra el control deslizante del minimapa solo cuando el mouse pasa sob
 msgctxt "settings schema"
 msgid "Show the scrollbar if there's important information or\nfollow the system's configured behavior."
 msgstr "Mostrar la barra de desplazamiento si hay información importante o seguir el comportamiento configurado en el sistema."
+
+msgctxt "settings schema"
+msgid "Show the title bar, but hide it while the window is in full screen."
+msgstr "Mostrar la barra de título, pero ocultarla mientras la ventana está en pantalla completa."
 
 msgctxt "settings schema"
 msgid "Show unstaged hunks hollow and staged hunks with a filled background."
@@ -3499,8 +3511,8 @@ msgid "Thinking effort levels this model accepts in Ollama's `think` parameter,\
 msgstr "Niveles de razonamiento que este modelo acepta en el parámetro `think` de Ollama, por ejemplo `[\"low\", \"medium\", \"high\"]`. Solo algunos modelos (p. ej., `gpt-oss`) aceptan un nivel en lugar de un simple activado/desactivado; déjelo sin establecer para los que no lo aceptan."
 
 msgctxt "settings schema"
-msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed's keymap closely follows VSCode's\nkeymap, with minor adjustments, this corresponds to the \"VSCode\" setting.\n\nDefault: VSCode"
-msgstr "Esta opción de mapa de teclas base ajusta los atajos de teclado predeterminados de ForgeKairos para que se parezcan a los de otros editores de código habituales. De forma predeterminada, el mapa de teclas de ForgeKairos sigue de cerca el de VSCode, con pequeños ajustes; esto corresponde a la opción \"VSCode\".\n\nValor predeterminado: VSCode"
+msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed uses its own keymap, which\ncorresponds to the \"Zed\" setting.\n\nDefault: Zed"
+msgstr "Esta opción de mapa de teclas base ajusta los atajos de teclado predeterminados de ForgeKairos para que se parezcan a los de otros editores de código habituales. De forma predeterminada, ForgeKairos usa su propio mapa de teclas, que corresponde a la opción \"Zed\".\n\nValor predeterminado: Zed"
 
 msgctxt "settings schema"
 msgid "Time in milliseconds until timeout error when connecting to a TCP debug adapter\n\nDefault: 2000ms"
@@ -3759,8 +3771,8 @@ msgid "What to do when multibuffer is double clicked in some of its excerpts (pa
 msgstr "Indica qué hacer cuando se hace doble clic en el multibúfer en algunos de sus extractos (partes de búferes únicos)."
 
 msgctxt "settings schema"
-msgid "What to do when the `BEL` character (`\\a`) is printed to terminal.\n\nDefault: \"system\""
-msgstr "Qué hacer cuando se imprime el carácter `BEL` (`\\a`) en el terminal.\n\nValor predeterminado: \"system\""
+msgid "What to do when the `BEL` character (`\\a`) is printed to terminal.\n\nDefault: \"off\""
+msgstr "Qué hacer cuando se imprime el carácter `BEL` (`\\a`) en el terminal.\n\nValor predeterminado: \"off\""
 
 msgctxt "settings schema"
 msgid "What to do when the last window is closed\n\nDefault: auto (nothing on macOS, \"app quit\" otherwise)"
@@ -3847,6 +3859,10 @@ msgid "When to scan content of linked directories.\n\nDefault: expanded"
 msgstr "Cuándo se analiza el contenido de los directorios enlazados.\n\nValor predeterminado: expanded"
 
 msgctxt "settings schema"
+msgid "When to show the close button on tabs.\n\nDefault: hover"
+msgstr "Indica cuándo se muestra el botón de cerrar en las pestañas.\n\nValor predeterminado: hover"
+
+msgctxt "settings schema"
 msgid "When to show the minimap in the editor.\n\nDefault: never"
 msgstr "Cuándo se muestra el minimapa en el editor.\n\nValor predeterminado: never"
 
@@ -3877,6 +3893,10 @@ msgstr "Cuándo se muestra la barra de desplazamiento en el terminal.\n\nValor p
 msgctxt "settings schema"
 msgid "When to show the scrollbar.\n\nDefault: auto"
 msgstr "Cuándo se muestra la barra de desplazamiento.\n\nValor predeterminado: auto"
+
+msgctxt "settings schema"
+msgid "When to show the title bar.\n\nDefault: always"
+msgstr "Cuándo se muestra la barra de título.\n\nValor predeterminado: always"
 
 msgctxt "settings schema"
 msgid "When true, enables drag and drop text selection in buffer.\n\nDefault: true"
@@ -4319,10 +4339,6 @@ msgid "Whether to allow windows to tab together based on the user's tabbing pref
 msgstr "Indica si se permite agrupar las ventanas en pestañas según la preferencia de pestañas del usuario (solo macOS).\n\nValor predeterminado: false"
 
 msgctxt "settings schema"
-msgid "Whether to always show the close button on tabs.\n\nDefault: false"
-msgstr "Indica si se muestra siempre el botón de cerrar en las pestañas.\n\nValor predeterminado: false"
-
-msgctxt "settings schema"
 msgid "Whether to always use cmd-enter (or ctrl-enter on Linux or Windows) to send messages in the agent panel.\n\nDefault: false"
 msgstr "Indica si se usa siempre cmd-enter (o ctrl-enter en Linux o Windows) para enviar mensajes en el panel del agente.\n\nValor predeterminado: false"
 
@@ -4643,6 +4659,10 @@ msgid "Whether to pop the completions menu while typing in an editor without\nex
 msgstr "Indica si se muestra el menú de autocompletado mientras se escribe en un editor sin solicitarlo explícitamente.\n\nValor predeterminado: true"
 
 msgctxt "settings schema"
+msgid "Whether to pre-fill the file finder's query with the text selected in the\nfocused item (e.g. an editor or a terminal) when it is opened.\n\nDefault: false"
+msgstr "Indica si, al abrir el buscador de archivos, su consulta se rellena previamente con el texto seleccionado en el elemento con el foco (por ejemplo, un editor o un terminal).\n\nValor predeterminado: false"
+
+msgctxt "settings schema"
 msgid "Whether to prefix each logged line with `[YYYY-MM-DD HH:MM:SS] `.\n\nDefault: false"
 msgstr "Indica si cada línea registrada lleva el prefijo `[YYYY-MM-DD HH:MM:SS] `.\n\nValor predeterminado: false"
 
@@ -4731,8 +4751,8 @@ msgid "Whether to show an indicator while multi-stroke input is pending.\nIf the
 msgstr "Indica si se muestra un indicador mientras hay una entrada de varias pulsaciones pendiente. Si la entrada tiene un tiempo de espera, se muestra una cuenta atrás que se pausa al pasar el cursor por encima del indicador. Su ventana emergente de vista previa de atajos se deshabilita cuando está habilitada la ventana emergente which-key.\n\nValor predeterminado: true"
 
 msgctxt "settings schema"
-msgid "Whether to show author name as part of the commit information.\n\nDefault: false"
-msgstr "Indica si se muestra el nombre del autor como parte de la información del commit.\n\nValor predeterminado: false"
+msgid "Whether to show author name as part of the commit information.\n\nDefault: true"
+msgstr "Indica si se muestra el nombre del autor como parte de la información del commit.\n\nValor predeterminado: true"
 
 msgctxt "settings schema"
 msgid "Whether to show bookmarks in the gutter.\n\nDefault: true"
@@ -5115,8 +5135,8 @@ msgid "Which information to show in the branch picker.\n\nDefault: on"
 msgstr "Información que se muestra en el selector de ramas.\n\nValor predeterminado: on"
 
 msgctxt "settings schema"
-msgid "Which level to use to filter out diagnostics displayed in the editor.\n\nAffects the editor rendering only, and does not interrupt\nthe functionality of diagnostics fetching and project diagnostics editor.\nWhich files containing diagnostic errors/warnings to mark in the tabs.\nDiagnostics are only shown when file icons are also active.\n\nShows all diagnostics if not specified.\n\nDefault: warning"
-msgstr "Nivel que se usa para filtrar los diagnósticos que se muestran en el editor.\n\nSolo afecta a la representación del editor y no interrumpe la obtención de diagnósticos ni el editor de diagnósticos del proyecto. Archivos con errores/advertencias de diagnóstico que se marcan en las pestañas. Los diagnósticos solo se muestran cuando los iconos de archivo también están activos.\n\nSi no se especifica, se muestran todos los diagnósticos.\n\nValor predeterminado: warning"
+msgid "Which level to use to filter out diagnostics displayed in the editor.\n\nAffects the editor rendering only, and does not interrupt\nthe functionality of diagnostics fetching and project diagnostics editor.\nWhich files containing diagnostic errors/warnings to mark in the tabs.\nDiagnostics are only shown when file icons are also active.\n\nShows all diagnostics if not specified.\n\nDefault: all"
+msgstr "Nivel que se usa para filtrar los diagnósticos que se muestran en el editor.\n\nSolo afecta a la representación del editor y no interrumpe la obtención de diagnósticos ni el editor de diagnósticos del proyecto. Archivos con errores/advertencias de diagnóstico que se marcan en las pestañas. Los diagnósticos solo se muestran cuando los iconos de archivo también están activos.\n\nSi no se especifica, se muestran todos los diagnósticos.\n\nValor predeterminado: all"
 
 msgctxt "settings schema"
 msgid "Which sources the panel lists calls from: the language server, which\nis exact, the symbol index of C and C++ files, which matches names, or\nboth.\n\nDefault: all"

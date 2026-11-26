@@ -4,8 +4,9 @@
 use crate::{DiagramGeometry, LabelGeometry, LabelItem, MermaidTheme, render_to_svg_with_geometry};
 
 fn geometry_of(source: &str) -> DiagramGeometry {
-    let (_, geometry) = render_to_svg_with_geometry(source, &MermaidTheme::default())
-        .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
+    let (_, geometry) =
+        render_to_svg_with_geometry(source, &MermaidTheme::default(), crate::test_svg_renderer())
+            .unwrap_or_else(|error| panic!("{source:?} should render: {error:#}"));
     geometry
 }
 

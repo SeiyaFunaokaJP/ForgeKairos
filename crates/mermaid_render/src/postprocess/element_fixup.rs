@@ -474,9 +474,9 @@ mod tests {
                     font_family: font_family.clone(),
                     ..MermaidTheme::default()
                 };
-                let svg = render_to_svg(source, &theme).unwrap_or_else(|error| {
-                    panic!("`{source}` should render with {font_family:?}: {error}")
-                });
+                let svg = render_to_svg(source, &theme, crate::test_svg_renderer()).unwrap_or_else(
+                    |error| panic!("`{source}` should render with {font_family:?}: {error}"),
+                );
 
                 let mut reader = Reader::from_str(&svg);
                 reader.config_mut().check_end_names = false;

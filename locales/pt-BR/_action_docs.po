@@ -1746,6 +1746,12 @@ msgctxt "action documentation"
 msgid "editor::FoldAll"
 msgstr "Dobra todas as regiões dobráveis no editor."
 
+#. Folds all code blocks at the same indentation level of the current
+#. line.
+msgctxt "action documentation"
+msgid "editor::FoldAtCurrentIndentationLevel"
+msgstr "Dobra todos os blocos de código no mesmo nível de recuo da linha atual."
+
 #. Folds all code blocks at the specified indentation level.
 msgctxt "action documentation"
 msgid "editor::FoldAtLevel"
@@ -6795,9 +6801,10 @@ msgstr "Limpa todo o histórico de navegação, incluindo navegação para frent
 
 #. Clears all trusted worktrees, placing them in restricted mode on next open.
 #. Requires restart to take effect on already opened projects.
+#. Also forgets which worktrees were chosen to stay in restricted mode.
 msgctxt "action documentation"
 msgid "workspace::ClearTrustedWorktrees"
-msgstr "Remove o status de confiável de todas as árvores de trabalho, fazendo com que sejam abertas no modo restrito na próxima vez.\nRequer reinicialização para ter efeito em projetos já abertos."
+msgstr "Remove o status de confiável de todas as árvores de trabalho, fazendo com que sejam abertas no modo restrito na próxima vez.\nRequer reinicialização para ter efeito em projetos já abertos.\nTambém esquece quais árvores de trabalho foram escolhidas para permanecer no modo restrito."
 
 #. Closes the active dock.
 msgctxt "action documentation"

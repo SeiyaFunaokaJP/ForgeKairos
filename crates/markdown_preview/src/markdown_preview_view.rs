@@ -482,6 +482,7 @@ impl MarkdownPreviewView {
         let fs = workspace.project().read(cx).fs().clone();
         let soft_break_as_hard_break =
             MarkdownPreviewSettings::get_global(cx).soft_break_as_hard_break;
+        let svg_renderer = cx.svg_renderer();
         Self::show_pdf_export_toast(workspace, i18n::t!("Exporting to PDF…"), cx);
 
         cx.spawn(async move |workspace, cx| {
@@ -490,6 +491,7 @@ impl MarkdownPreviewView {
                 &source_path,
                 &source,
                 soft_break_as_hard_break,
+                &svg_renderer,
             )
             .await;
             if let Err(error) = &result {

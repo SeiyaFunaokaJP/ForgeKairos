@@ -1503,7 +1503,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -2028,9 +2028,13 @@ mod tests {
             out
         }
         let drawing = |source: &str| {
-            render_to_svg(&format!("{SEEDED}{source}"), &MermaidTheme::default())
-                .map(without_svg_numbers)
-                .unwrap_or_else(|error| panic!("source should render: {error}\n{source}"))
+            render_to_svg(
+                &format!("{SEEDED}{source}"),
+                &MermaidTheme::default(),
+                crate::test_svg_renderer(),
+            )
+            .map(without_svg_numbers)
+            .unwrap_or_else(|error| panic!("source should render: {error}\n{source}"))
         };
         assert_eq!(
             drawing("gitGraph\n  commit\n  commit"),
@@ -2157,8 +2161,12 @@ mod tests {
         assert!(is_valid_gitgraph_text("c>"));
         let whole = crate::mermaid_model::MermaidDocument::GitGraph(document.clone());
         assert!(whole.structure_error().is_some(), "{}", whole.emit());
-        let drawn = crate::render_to_svg(&whole.emit(), &crate::MermaidTheme::default())
-            .expect("merman draws the rewritten line");
+        let drawn = crate::render_to_svg(
+            &whole.emit(),
+            &crate::MermaidTheme::default(),
+            crate::test_svg_renderer(),
+        )
+        .expect("merman draws the rewritten line");
         assert!(
             !drawn.contains("a&lt;b="),
             "the reason for the refusal no longer holds:

@@ -15,6 +15,7 @@ use gpui::{
     Subscription, Task, TaskExt,
 };
 use http_client::HttpClient;
+use itertools::Itertools as _;
 use node_runtime::NodeRuntime;
 use percent_encoding::percent_decode_str;
 use remote::RemoteClient;
@@ -518,7 +519,7 @@ impl AgentServerStore {
                 CustomAgentServerSettings::Custom { command, .. } => {
                     let agent_name = AgentId(name.clone().into());
                     self.external_agents.insert(
-                        agent_name.clone(),
+                        agent_name,
                         ExternalAgentEntry::new(
                             Box::new(LocalCustomAgent {
                                 command: command.clone(),
@@ -551,7 +552,7 @@ impl AgentServerStore {
                             }
 
                             self.external_agents.insert(
-                                agent_name.clone(),
+                                agent_name,
                                 ExternalAgentEntry::new(
                                     Box::new(LocalRegistryArchiveAgent {
                                         fs: fs.clone(),
@@ -576,7 +577,7 @@ impl AgentServerStore {
                         }
                         RegistryAgent::Npx(agent) => {
                             self.external_agents.insert(
-                                agent_name.clone(),
+                                agent_name,
                                 ExternalAgentEntry::new(
                                     Box::new(LocalRegistryNpxAgent {
                                         fs: fs.clone(),
@@ -1794,36 +1795,18 @@ async fn install_host_registry_archive(
     targets: &HashMap<String, RegistryTargetConfig>,
     mut loading_status_tx: Option<watch::Sender<Option<String>>>,
 ) -> Result<HostArchiveLaunch> {
-    let os = if cfg!(target_os = "macos") {
-        "darwin"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else {
-        anyhow::bail!("unsupported OS");
-    };
-
-    let arch = if cfg!(target_arch = "aarch64") {
-        "aarch64"
-    } else if cfg!(target_arch = "x86_64") {
-        "x86_64"
-    } else {
-        anyhow::bail!("unsupported architecture");
-    };
-
-    let platform_key = format!("{}-{}", os, arch);
-    let target_config = targets.get(&platform_key).with_context(|| {
-        format!(
-            "no target specified for platform '{}'. Available platforms: {}",
-            platform_key,
-            targets
-                .keys()
-                .map(|k| k.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    })?;
+    let platform_keys = crate::agent_registry_store::current_platform_keys().await;
+    anyhow::ensure!(!platform_keys.is_empty(), "unsupported platform");
+    let target_config = platform_keys
+        .iter()
+        .find_map(|platform_key| targets.get(*platform_key))
+        .with_context(|| {
+            format!(
+                "no target specified for platform '{}'. Available platforms: {}",
+                platform_keys.join("' or '"),
+                targets.keys().join(", ")
+            )
+        })?;
 
     let archive_url = &target_config.archive;
     let version_dir = versioned_archive_cache_dir(
@@ -2814,6 +2797,10 @@ impl CustomAgentServerSettings {
     }
 
     pub fn default_config_option(&self, config_id: &str) -> Option<&AgentConfigOptionValue> {
+        self.default_config_options().get(config_id)
+    }
+
+    pub fn default_config_options(&self) -> &HashMap<String, AgentConfigOptionValue> {
         match self {
             CustomAgentServerSettings::Custom {
                 default_config_options,
@@ -2822,7 +2809,7 @@ impl CustomAgentServerSettings {
             | CustomAgentServerSettings::Registry {
                 default_config_options,
                 ..
-            } => default_config_options.get(config_id),
+            } => default_config_options,
         }
     }
 

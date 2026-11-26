@@ -1705,19 +1705,27 @@ fn is_writable_participant_id(id: &str) -> bool {
         || id.starts_with(['-', '#', '%', '('])
         || id.ends_with("()")
         || id.contains("%%")
+        || starts_with_sequence_keyword(id)
     {
         return false;
     }
     let mut characters = id.chars().peekable();
     while let Some(character) = characters.next() {
-        if character.is_whitespace() || matches!(character, ':' | '+' | ',' | ';' | '<') {
+        // Since Mermaid 12 an id in a message or a note also ends at the
+        // characters of the half arrows and of the central connection, and
+        // a declaration ends at `@` and `>`.
+        if character.is_whitespace()
+            || matches!(
+                character,
+                ':' | '+' | ',' | ';' | '<' | '>' | '@' | '(' | ')' | '/' | '\\'
+            )
+        {
             return false;
         }
         let ends_the_id = match character {
-            '@' => characters.peek() == Some(&'{'),
             '-' => characters
                 .peek()
-                .is_some_and(|next| matches!(next, '-' | '>' | 'x' | ')')),
+                .is_some_and(|next| matches!(next, '-' | '>' | 'x' | ')' | '|')),
             _ => false,
         };
         if ends_the_id {
@@ -1725,6 +1733,51 @@ fn is_writable_participant_id(id: &str) -> bool {
         }
     }
     true
+}
+
+/// Whether Mermaid's lexer reads the start of `id` as a statement keyword
+/// rather than a participant. A keyword counts when no letter, digit or `_`
+/// follows it, and case does not matter.
+fn starts_with_sequence_keyword(id: &str) -> bool {
+    const KEYWORDS: [&str; 24] = [
+        "sequenceDiagram",
+        "participant",
+        "actor",
+        "create",
+        "destroy",
+        "box",
+        "loop",
+        "rect",
+        "opt",
+        "alt",
+        "else",
+        "par",
+        "par_over",
+        "and",
+        "critical",
+        "option",
+        "break",
+        "end",
+        "note",
+        "autonumber",
+        "off",
+        "activate",
+        "deactivate",
+        "over",
+    ];
+    // These open a statement only when a `:` follows, which a message to the
+    // participant supplies.
+    const TITLES: [&str; 3] = ["title", "accTitle", "accDescr"];
+    let starts_with_word = |keyword: &str| {
+        id.get(..keyword.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(keyword))
+            && !id
+                .get(keyword.len()..)
+                .and_then(|rest| rest.chars().next())
+                .is_some_and(|next| next.is_ascii_alphanumeric() || next == '_')
+    };
+    KEYWORDS.iter().any(|keyword| starts_with_word(keyword))
+        || TITLES.iter().any(|title| id.eq_ignore_ascii_case(title))
 }
 
 /// `id` with every `#…;` shorthand replaced by one ordinary character, which
@@ -2376,7 +2429,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
@@ -3027,7 +3080,7 @@ mod tests {
     /// still opens and still round-trips.
     #[test]
     fn ids_the_editor_would_not_offer_still_round_trip() {
-        for id in ["a@b", "a%b", "a\"b", "a>b", "a(b)", "A-"] {
+        for id in ["a%b", "a\"b", "A-", "endpoint", "notes"] {
             assert!(
                 is_writable_participant_id(id),
                 "`{id}` should be writable back"
@@ -3070,6 +3123,11 @@ mod tests {
         for id in [
             "", "-a", "a b", "a:b", "a,b", "a+b", "a;b", "a<b", "a@{b", "a()", "a%%b", "007",
             "a-->b",
+            // Since Mermaid 12 (`merman` 0.9) these end the id in a message,
+            // a note or a declaration.
+            "a@b", "a>b", "a(b)", "a/b", r"a\b",
+            // Statement keywords, which Mermaid reads before an id.
+            "end", "End", "note", "loop", "end-x", "note.x", "box", "title",
         ] {
             assert!(!is_writable_participant_id(id), "`{id}` should be refused");
         }
@@ -3079,7 +3137,16 @@ mod tests {
     /// point of the check above.
     #[test]
     fn accepted_ids_round_trip() {
-        for id in ["A", "app_1", "アプリ", "a.b", "a-b", "end", "note", "loop"] {
+        for id in [
+            "A",
+            "app_1",
+            "アプリ",
+            "a.b",
+            "a-b",
+            "endpoint",
+            "notes",
+            "box1",
+        ] {
             assert!(is_valid_participant_id(id), "`{id}` should be accepted");
             let source = format!("sequenceDiagram\n{INDENT}{id}->>{id}: x");
             let document = parse_sequence(&source)
@@ -4466,8 +4533,12 @@ mod tests {
         let whole = crate::mermaid_model::MermaidDocument::Sequence(document.clone());
         assert_eq!(whole.structure_error(), None);
         let emitted = emit_sequence(&document);
-        crate::render_to_svg(&emitted, &crate::MermaidTheme::default())
-            .expect("the emitted diagram should render");
+        crate::render_to_svg(
+            &emitted,
+            &crate::MermaidTheme::default(),
+            crate::test_svg_renderer(),
+        )
+        .expect("the emitted diagram should render");
         let again = parse_sequence(&emitted).expect("the emitted diagram should reopen");
         assert_eq!(again.items, document.items);
     }

@@ -1,4 +1,6 @@
-use gpui::Hsla;
+use std::sync::Arc;
+
+use gpui::{Hsla, SvgRenderer};
 use mermaid_render::MermaidTheme;
 
 fn rgb(r: u8, g: u8, b: u8) -> Hsla {
@@ -425,7 +427,8 @@ fn accent_colors_auto_applied_to_nodes() {
     // automatic accent colors applied to its node groups.
     let source = "stateDiagram-v2\n    [*] --> Idle\n    Idle --> Processing\n    Processing --> Done\n    Done --> [*]";
 
-    let svg = mermaid_render::render_to_svg(source, &theme).expect("render failed");
+    let svg =
+        mermaid_render::render_to_svg(source, &theme, &svg_renderer()).expect("render failed");
 
     // accent_fill_and_text darkens the background color for dark mode.
     // The stroke colors are direct hex conversions of the accent rgb values.
@@ -451,7 +454,8 @@ fn accent_colors_auto_applied_to_nodes() {
 fn generics_not_double_escaped() {
     let theme = rgb_theme();
     let source = "classDiagram\n    class Shelter {\n        -List~Animal~ animals\n        +adopt(Animal a) bool\n    }";
-    let svg = mermaid_render::render_to_svg(source, &theme).expect("render failed");
+    let svg =
+        mermaid_render::render_to_svg(source, &theme, &svg_renderer()).expect("render failed");
     assert!(
         !svg.contains("&amp;lt;"),
         "Double-escaped &amp;lt; found in SVG"
@@ -474,9 +478,10 @@ fn class_diagram_label_text_uses_accent_classes() {
         +String breed
         +bark() void
     }
-    Dog --|> Animal"#;
+    Dog --|> Animal : inherits"#;
 
-    let svg = mermaid_render::render_to_svg(source, &theme).expect("render failed");
+    let svg =
+        mermaid_render::render_to_svg(source, &theme, &svg_renderer()).expect("render failed");
 
     use quick_xml::XmlVersion;
     use quick_xml::events::Event;
@@ -502,9 +507,16 @@ fn class_diagram_label_text_uses_accent_classes() {
         }
     }
 
-    assert!(
-        !accent_classes.is_empty(),
-        "expected zed-accent-N classes on label text elements",
+    assert_eq!(
+        accent_classes,
+        [
+            "zed-accent-0",
+            "zed-accent-0",
+            "zed-accent-0",
+            "zed-accent-1",
+            "zed-accent-1",
+            "zed-accent-1",
+        ],
     );
 }
 
@@ -512,7 +524,8 @@ fn class_diagram_label_text_uses_accent_classes() {
 fn sequence_diagram_tspan_uses_accent_classes() {
     let theme = rgb_theme();
     let source = "sequenceDiagram\n    participant Database";
-    let svg = mermaid_render::render_to_svg(source, &theme).expect("render failed");
+    let svg =
+        mermaid_render::render_to_svg(source, &theme, &svg_renderer()).expect("render failed");
 
     use quick_xml::XmlVersion;
     use quick_xml::events::Event;
@@ -550,7 +563,7 @@ fn no_empty_attributes_or_nan_with_rgb_theme() {
     let mut all_issues = Vec::new();
 
     for (name, source) in DIAGRAMS {
-        match mermaid_render::render_to_svg(source, &theme) {
+        match mermaid_render::render_to_svg(source, &theme, &svg_renderer()) {
             Ok(svg) => all_issues.extend(check_svg_issues(name, &svg)),
             Err(e) => eprintln!("{name}: render failed (skipped): {e}"),
         }
@@ -609,7 +622,7 @@ fn render_newer(name: &str, theme_name: &str, theme: &MermaidTheme) -> String {
         .find(|(sample_name, _)| *sample_name == name)
         .map(|(_, source)| *source)
         .unwrap_or_else(|| panic!("no sample named {name}"));
-    mermaid_render::render_to_svg(source, theme).unwrap_or_else(|error| {
+    mermaid_render::render_to_svg(source, theme, &svg_renderer()).unwrap_or_else(|error| {
         panic!("{name} should render with the {theme_name} theme: {error:#}")
     })
 }
@@ -786,7 +799,8 @@ fn c4_relations_and_boundaries_use_the_theme_instead_of_fixed_gray() {
 #[test]
 fn c4_keeps_colors_the_diagram_sets_itself() {
     let source = "C4Context\n    Person(a, \"A\")\n    System(b, \"B\")\n    Rel(a, b, \"uses\")\n    UpdateRelStyle(a, b, $textColor=\"#ff0000\", $lineColor=\"#00ff00\")";
-    let svg = mermaid_render::render_to_svg(source, &rgb_theme()).expect("render failed");
+    let svg = mermaid_render::render_to_svg(source, &rgb_theme(), &svg_renderer())
+        .expect("render failed");
     assert!(svg.contains("#ff0000"), "{svg}");
     assert!(svg.contains("#00ff00"), "{svg}");
 }
@@ -817,7 +831,8 @@ fn sankey_nodes_keep_their_colors_and_links_stay_visible_on_dark() {
 fn treemap_labels_follow_the_theme_but_keep_class_def_colors() {
     let source = "treemap-beta\n\"Products\"\n    \"Electronics\":::whiteText\n        \"Phones\": 40\n    \"Furniture\"\n        \"Chairs\": 25\n\nclassDef whiteText fill:#2c3e50,color:#ffffff;";
     for (theme_name, theme) in both_themes() {
-        let svg = mermaid_render::render_to_svg(source, &theme).expect("render failed");
+        let svg =
+            mermaid_render::render_to_svg(source, &theme, &svg_renderer()).expect("render failed");
         let text = format!("fill:{};", css_hex(theme.text_color));
         let furniture_label = svg
             .split("<text")
@@ -861,4 +876,8 @@ fn css_hex(color: Hsla) -> String {
         [rgba.r, rgba.g, rgba.b].map(|channel| (channel * 255.0).round() as u8)
     };
     format!("#{red:02x}{green:02x}{blue:02x}")
+}
+
+fn svg_renderer() -> SvgRenderer {
+    SvgRenderer::new(Arc::new(()))
 }

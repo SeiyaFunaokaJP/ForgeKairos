@@ -2704,7 +2704,7 @@ pub(crate) fn render(
                     Icon::new(IconName::ArrowCircle)
                         .size(IconSize::XSmall)
                         .color(muted)
-                        .with_keyed_rotate_animation(row_id("spinner"), 2),
+                        .with_rotate_animation(2),
                 )
                 .child(
                     Label::new(i18n::t!("Loading…"))
@@ -2882,7 +2882,7 @@ fn toggle_element(
                 Icon::new(IconName::ArrowCircle)
                     .size(IconSize::XSmall)
                     .color(Color::Muted)
-                    .with_keyed_rotate_animation(id, 2),
+                    .with_rotate_animation(2),
             )
             .into_any_element(),
         Toggle::Collapsed | Toggle::Expanded => slot

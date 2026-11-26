@@ -115,7 +115,7 @@ Linux と macOS のパッケージは `pwsh script/bundle.ps1 -Os linux|macos|al
 
 - fork 元: [zed-industries/zed](https://github.com/zed-industries/zed) v1.17.2。
   upstream のリリースタグを `git merge` で 1 版ずつ取り込む (rebase はしない。ADR-F63)。現在 v1.23.3 ベース
-- upstream の開発規約 (`.rules`、`./script/clippy`、GPUI イディオム) は引き続き遵守する
+- upstream の開発規約 (`AGENTS.md`、`./script/clippy`、GPUI イディオム) は引き続き遵守する
 - upstream 由来のドキュメント (`docs/src/`、`CONTRIBUTING.md` 等) はそのまま残っているが、
   フォーク独自機能の記述は本 README が正
 

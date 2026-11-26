@@ -1208,6 +1208,18 @@ msgctxt "ThinkingBlockDisplay"
 msgid "Preview"
 msgstr "미리 보기"
 
+msgctxt "TitleBarVisibility"
+msgid "Always"
+msgstr "항상"
+
+msgctxt "TitleBarVisibility"
+msgid "Hide In Full Screen"
+msgstr "전체 화면에서 숨기기"
+
+msgctxt "TitleBarVisibility"
+msgid "Never"
+msgstr "안 함"
+
 msgctxt "UseSystemClipboard"
 msgid "Always"
 msgstr "항상"
@@ -4293,6 +4305,10 @@ msgid "Show Tab Bar Buttons"
 msgstr "탭 표시줄 버튼 표시"
 
 msgctxt "settings"
+msgid "Show Title Bar"
+msgstr "제목 표시줄 표시"
+
+msgctxt "settings"
 msgid "Show Turn Stats"
 msgstr "턴 통계 표시"
 
@@ -5499,6 +5515,10 @@ msgstr "편집기에 스크롤바를 표시할 시점을 설정합니다."
 msgctxt "settings"
 msgid "When to show the scrollbar in the terminal."
 msgstr "터미널에 스크롤바를 표시할 시점을 설정합니다."
+
+msgctxt "settings"
+msgid "When to show the title bar and its window controls."
+msgstr "제목 표시줄과 창 제어 버튼을 표시할 시점을 설정합니다."
 
 msgctxt "settings"
 msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."

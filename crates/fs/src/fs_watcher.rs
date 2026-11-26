@@ -1,3 +1,4 @@
+use collections::FxHashMap;
 use futures::{Stream, StreamExt as _};
 use gpui::{BackgroundExecutor, Task};
 use notify::{Event, EventKind};
@@ -31,6 +32,8 @@ use watch_budget::{
     PROMOTIONS_PER_MEASUREMENT, ProcfsBudgetSource, WatchBudget, native_watches_over_learned_limit,
     native_watches_over_share, promotion_capacity, should_yield_native_watches,
 };
+
+const MAX_DISPATCH_BATCH_SIZE: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum OsWatcherKind {
@@ -1112,6 +1115,10 @@ impl WatchKey {
     }
 
     fn folded(path: &SanitizedPath) -> Self {
+        Self::Folded(Self::folded_path(path).into())
+    }
+
+    fn folded_path(path: &SanitizedPath) -> String {
         // Event ancestors omit trailing separators, even when registration paths include them.
         let normalized_path = path.as_path().components().collect::<std::path::PathBuf>();
         let lossy = normalized_path.to_string_lossy();
@@ -1120,13 +1127,18 @@ impl WatchKey {
         // normalize before folding case. Windows (NTFS) and Linux are
         // normalization-sensitive, so there we only fold case.
         #[cfg(target_os = "macos")]
-        let folded = {
+        {
             use unicode_normalization::UnicodeNormalization as _;
+
+            if lossy.is_ascii() {
+                return lossy.to_ascii_lowercase();
+            }
+
             lossy.chars().nfc().collect::<String>().to_lowercase()
-        };
+        }
+
         #[cfg(not(target_os = "macos"))]
-        let folded = lossy.to_lowercase();
-        Self::Folded(folded.into())
+        lossy.to_lowercase()
     }
 
     fn for_registration(path: &SanitizedPath, case_insensitive: bool) -> Self {
@@ -1438,7 +1450,7 @@ enum TransitionOrder {
 /// add (dedup), remove, and dispatch share a single notion of path identity.
 #[derive(Default)]
 struct WatchPaths {
-    entries: HashMap<WatchKey, PathRegistrationState>,
+    entries: FxHashMap<WatchKey, PathRegistrationState>,
     /// Lets dispatch skip building folded keys while no case-insensitive path is registered,
     /// which on Linux is always (the fallback poller can hold tens of thousands of paths).
     folded_entries: usize,
@@ -1657,10 +1669,23 @@ impl WatchPaths {
             if let Some(registration) = self.entries.get(&WatchKey::exact(ancestor)) {
                 ids.extend_from_slice(&registration.watcher_ids);
             }
+
+            #[cfg(not(target_os = "macos"))]
             if include_folded
                 && let Some(registration) = self.entries.get(&WatchKey::folded(ancestor))
             {
                 ids.extend_from_slice(&registration.watcher_ids);
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        if include_folded {
+            let folded_path = WatchKey::folded_path(path);
+            for ancestor in Path::new(&folded_path).ancestors() {
+                let key = WatchKey::Folded(Arc::from(ancestor.to_string_lossy().as_ref()));
+                if let Some(registration) = self.entries.get(&key) {
+                    ids.extend_from_slice(&registration.watcher_ids);
+                }
             }
         }
     }
@@ -1990,6 +2015,7 @@ impl OsWatcher {
                 let mut rescan_history = diagnostics::RescanHistory::default();
                 while let Ok(first) = event_rx.recv().await {
                     dispatch_batch(kind, &state, &mut rescan_history, first, &event_rx);
+                    smol::future::yield_now().await;
                 }
             }
         });
@@ -3375,7 +3401,12 @@ fn dispatch_batch(
     // all dispatched; ordinary events still run.
     let mut rescan_dispatched = false;
 
-    for event in std::iter::once(first).chain(std::iter::from_fn(|| event_rx.try_recv().ok())) {
+    // The backend can keep producing events faster than we dispatch them, so
+    // don't wait for an empty queue before giving other tasks a turn.
+    for event in std::iter::once(first)
+        .chain(std::iter::from_fn(|| event_rx.try_recv().ok()))
+        .take(MAX_DISPATCH_BATCH_SIZE)
+    {
         if event
             .as_ref()
             .is_ok_and(|event| event.need_rescan() && event.paths.is_empty())
@@ -3996,7 +4027,7 @@ mod tests {
                 .expect("watch again")
                 .expect("registered again");
             assert_eq!(backend.lock().watch_calls, [path.clone(), path.clone()]);
-            assert_eq!(backend.lock().watched_paths, HashSet::from([path.clone()]));
+            assert_eq!(backend.lock().watched_paths, HashSet::from([path]));
 
             // The backend already dropped this watch, as inotify does when a
             // watched directory is deleted.
@@ -6000,6 +6031,43 @@ mod tests {
                 "/repo/b".to_owned(),
             ]
         );
+    }
+
+    #[test]
+    fn dispatch_batches_are_bounded_without_losing_or_reordering_events() {
+        let (watcher, fired) = recording_watcher();
+        let (event_tx, event_rx) = async_channel::unbounded();
+        let rescan = || notify::Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
+        for _ in 0..MAX_DISPATCH_BATCH_SIZE {
+            event_tx.try_send(Ok(rescan())).expect("enqueue rescan");
+        }
+        let expected = (0..MAX_DISPATCH_BATCH_SIZE * 2 + 3)
+            .map(|index| if index % 2 == 0 { "/repo/a" } else { "/repo/b" })
+            .collect::<Vec<_>>();
+        for path in &expected {
+            event_tx
+                .try_send(Ok(modify_event(&format!("{path}/file.txt"))))
+                .expect("enqueue event");
+        }
+
+        let first = event_rx.try_recv().expect("first rescan");
+        watcher.dispatch_batch(first, &event_rx);
+        assert_eq!(fired.lock().len(), 3);
+        assert_eq!(event_rx.len(), expected.len());
+        fired.lock().clear();
+
+        let first = event_rx.try_recv().expect("first event");
+        watcher.dispatch_batch(first, &event_rx);
+        assert_eq!(
+            fired.lock().as_slice(),
+            &expected[..MAX_DISPATCH_BATCH_SIZE]
+        );
+        assert_eq!(event_rx.len(), expected.len() - MAX_DISPATCH_BATCH_SIZE);
+
+        while let Ok(first) = event_rx.try_recv() {
+            watcher.dispatch_batch(first, &event_rx);
+        }
+        assert_eq!(fired.lock().as_slice(), expected.as_slice());
     }
 
     #[test]

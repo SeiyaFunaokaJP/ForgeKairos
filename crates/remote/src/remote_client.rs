@@ -28,7 +28,7 @@ use futures::{
 };
 use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, BorrowAppContext, Context, Entity,
-    EventEmitter, FutureExt, Global, Subscription, Task, TaskExt, WeakEntity,
+    EventEmitter, FutureExt, Global, Subscription, Task, WeakEntity,
 };
 use parking_lot::Mutex;
 
@@ -375,6 +375,7 @@ pub struct RemoteClient {
     _egress_policy_task: Option<Task<()>>,
     _system_wake_subscription: Option<Subscription>,
     system_wake_probe_task: Option<Task<()>>,
+    reconnect_task: Option<Task<()>>,
 }
 
 /// Watches the local egress allowlist and re-pushes it to this host on every
@@ -573,6 +574,7 @@ impl RemoteClient {
                     _egress_policy_task: None,
                     _system_wake_subscription: None,
                     system_wake_probe_task: None,
+                    reconnect_task: None,
                 });
 
                 // ADR-F27: a remote host with no route to the internet relays
@@ -582,8 +584,19 @@ impl RemoteClient {
                 AnyProtoClient::from(client.clone())
                     .add_request_handler(this.downgrade(), proxy_http::handle_proxy_http_request);
 
+                let superseded_client = cx.update(|cx| {
+                    let active_clients = &mut cx.default_global::<ActiveRemoteClients>().0;
+                    active_clients.retain(|_, client| client.upgrade().is_some());
+                    active_clients.insert(unique_identifier.clone(), this.downgrade())
+                });
+                if let Some(superseded_client) =
+                    superseded_client.and_then(|client| client.upgrade())
+                {
+                    superseded_client.update(cx, |client, cx| client.supersede(cx));
+                }
+
                 let proxy_started = Instant::now();
-                let io_task = remote_connection.start_proxy(
+                let mut io_task = remote_connection.start_proxy(
                     unique_identifier,
                     false,
                     incoming_tx,
@@ -593,10 +606,13 @@ impl RemoteClient {
                     cx,
                 );
 
-                let ready = client
-                    .wait_for_remote_started()
-                    .with_timeout(INITIAL_CONNECTION_TIMEOUT, cx.background_executor())
-                    .await;
+                let ready = select_biased! {
+                    ready = client
+                        .wait_for_remote_started()
+                        .with_timeout(INITIAL_CONNECTION_TIMEOUT, cx.background_executor())
+                        .fuse() => ready.map_err(|_| None),
+                    status = (&mut io_task).fuse() => Err(Some(status)),
+                };
                 match ready {
                     Ok(Some(_)) => {}
                     Ok(None) => {
@@ -613,9 +629,9 @@ impl RemoteClient {
                         log::error!("failed to establish connection: {}", error);
                         return Err(error);
                     }
-                    Err(_) => {
+                    Err(status) => {
                         let mut error = String::new();
-                        if let Some(status) = io_task.now_or_never() {
+                        if let Some(status) = status.or_else(|| io_task.now_or_never()) {
                             error.push_str("Client exited with ");
                             match status {
                                 Ok(exit_code) => {
@@ -953,9 +969,9 @@ impl RemoteClient {
             }
         });
 
-        cx.spawn(async move |this, cx| {
+        self.reconnect_task = Some(cx.spawn(async move |this, cx| {
             let new_state = reconnect_task.await;
-            this.update(cx, |this, cx| {
+            let Ok(next_attempt) = this.update(cx, |this, cx| {
                 let reconnected = this.state_is(State::is_reconnecting)
                     && matches!(&new_state, State::Connected { .. });
                 this.try_set_state(cx, |old_state| {
@@ -999,11 +1015,25 @@ impl RemoteClient {
                     log::debug!("State has transition from Reconnecting into new state while attempting reconnect.");
                     Ok(())
                 }
-            })
-        })
-        .detach_and_log_err(cx);
+            }) else {
+                return;
+            };
+            next_attempt.log_err();
+        }));
 
         Ok(())
+    }
+
+    fn supersede(&mut self, cx: &mut Context<Self>) {
+        if !self.state_is(|state| state.can_reconnect() || state.is_reconnecting()) {
+            return;
+        }
+        log::info!(
+            "a new connection took over the remote server {}, stopping this client",
+            self.unique_identifier
+        );
+        self.reconnect_task = None;
+        self.set_state(State::ServerNotRunning, cx);
     }
 
     fn heartbeat(
@@ -1563,6 +1593,11 @@ struct ConnectionPool {
 }
 
 impl Global for ConnectionPool {}
+
+#[derive(Default)]
+struct ActiveRemoteClients(HashMap<String, WeakEntity<RemoteClient>>);
+
+impl Global for ActiveRemoteClients {}
 
 impl ConnectionPool {
     fn connect(
@@ -2728,6 +2763,44 @@ mod tests {
             Some(proto::envelope::Payload::SetEgressAllowlist(_))
         ));
         assert!(outgoing_rx.next().now_or_never().is_none());
+    }
+
+    #[gpui::test]
+    async fn test_initial_connection_fails_once_the_proxy_exits(
+        cx: &mut TestAppContext,
+        server_cx: &mut TestAppContext,
+    ) {
+        let (options, _, connect_guard) = MockConnection::new(cx, server_cx);
+        drop(connect_guard);
+        let connection = cx
+            .update(|cx| {
+                cx.default_global::<MockConnectionRegistry>()
+                    .take(&options)
+                    .unwrap()
+            })
+            .await;
+        *connection.proxy_exit_code.lock() = Some(255);
+        let connection: Arc<dyn RemoteConnection> = connection;
+
+        let started_at = cx.executor().now();
+        let (_cancellation_tx, cancellation_rx) = oneshot::channel();
+        let error = cx
+            .update(|cx| {
+                release_channel::init_test(Version::new(0, 0, 0), ReleaseChannel::Dev, cx);
+                RemoteClient::new(
+                    ConnectionIdentifier::setup(),
+                    connection,
+                    cancellation_rx,
+                    Arc::new(MockDelegate),
+                    cx,
+                )
+            })
+            .await
+            .err()
+            .unwrap();
+
+        assert_eq!(error.to_string(), "Client exited with exit_code 255");
+        assert_eq!(cx.executor().now(), started_at);
     }
 
     #[gpui::test]

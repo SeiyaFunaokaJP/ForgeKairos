@@ -1,0 +1,49 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Change Model"
+msgstr "更改模型"
+
+msgid "Configure"
+msgstr "配置"
+
+msgid "Cost Multiplier: {}"
+msgstr "费用倍率：{}"
+
+msgid "Cost per Million Tokens: {}"
+msgstr "每百万 Token 费用：{}"
+
+msgid "Cost: {}"
+msgstr "费用：{}"
+
+msgid "Cycle Favorite Models"
+msgstr "循环切换收藏模型"
+
+msgid "Favorite Model"
+msgstr "收藏模型"
+
+msgid "Latest"
+msgstr "最新"
+
+msgid "Recommended"
+msgstr "推荐"
+
+msgid "Select a Model"
+msgstr "选择模型"
+
+msgid "Select a model…"
+msgstr "选择模型…"
+
+msgid "Unfavorite Model"
+msgstr "取消收藏模型"
+
+msgctxt "model list section"
+msgid "Favorite"
+msgstr "收藏"

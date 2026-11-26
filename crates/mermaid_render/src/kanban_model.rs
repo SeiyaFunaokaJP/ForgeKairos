@@ -502,14 +502,15 @@ fn check_against_merman(source: &str, document: &KanbanDocument) -> Result<()> {
     // that once the board is open; the comparison still has to hold for it.
     let mut expected = Vec::new();
     for column in &document.columns {
+        // Since 0.9 a column carries the same metadata as a card.
         expected.push(DrawnNode {
             id: column.node.id.clone(),
             label: column.node.title(),
             parent: None,
             ticket: column.node.metadata_value(TICKET_KEY),
-            priority: None,
-            assigned: None,
-            icon: None,
+            priority: column.node.metadata_value(PRIORITY_KEY),
+            assigned: column.node.metadata_value(ASSIGNED_KEY),
+            icon: column.node.drawn_icon(),
         });
         let cards = document
             .columns
@@ -1385,7 +1386,7 @@ mod tests {
     }
 
     fn assert_renders(source: &str) {
-        let svg = render_to_svg(source, &MermaidTheme::default())
+        let svg = render_to_svg(source, &MermaidTheme::default(), crate::test_svg_renderer())
             .unwrap_or_else(|error| panic!("emitted source should render: {error}\n{source}"));
         assert!(
             !svg.contains("Syntax error in text"),
